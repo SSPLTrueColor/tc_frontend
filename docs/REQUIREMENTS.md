@@ -69,7 +69,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-031 | OPP-05 | M | Won enables "Generate Sales Order"; Lost needs reason + competitor/price | Opportunity status actions | Built | Done (Generate sales order gated on accepted quotation; Mark lost dialog) |
 | FR-032 | OPP-06 | M | Stagnation alert (no update in N days or past close date) | Opportunity list badge; notifications | Built | Done (stagnant flag, banner, daily sweep notifications) |
 | FR-033 | OPP-07 | S | Monthly/quarterly forecast (weighted + commit) by user/division/category | `/opportunities/forecast` | Built | Done (`/opportunities/forecast`, computed) |
-| FR-034 | OPP-08 | S | Tasks & calendar for meetings/demos/follow-ups; two-way Google/Outlook sync | `/calendar` | Built (calendar) / N/A (external sync: needs OAuth + backend) | Done — calendar `/calendar`; Google/Outlook sync N/A |
+| FR-034 | OPP-08 | S | Tasks & calendar for meetings/demos/follow-ups; two-way Google/Outlook sync | `/calendar` | Built (calendar) / N/A (external sync: needs OAuth + backend) | Done — `/calendar` on FullCalendar (month/week/day/agenda, drag-create, drag/resize reschedule, recurrence with this/all, overlap warning, IST, Monday start); Google/Outlook sync N/A |
 
 #### Quotation Management (BRD 4.4)
 
@@ -249,7 +249,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-149 | 4.13 | M | Role-, module- and decision-based dashboards; customisable later | `/dashboard` (per role), `/reports` | Built (fixed role dashboards; widget customisation Deferred, see Q-26) | Done (`/dashboard` role overview computed from scoped records; `/reports/kpi-summary`; user customisation Deferred, Q-26) |
+| FR-149 | 4.13 | M | Role-, module- and decision-based dashboards; customisable later | `/dashboard` (per role), `/reports` | Built (fixed role dashboards; widget customisation Deferred, see Q-26) | Done (`/dashboard` role dashboard: global date range Today/7D/30D/This month/Custom, KPI cards with % change vs previous period, Recharts trend/donut/funnel, top performers, agenda, activity feed and alerts, all computed from scoped records and linking to filtered lists; `/reports/kpi-summary`; user customisation Deferred, Q-26) |
 
 ### 1.2 Non-functional requirements
 
@@ -774,6 +774,7 @@ Other statuses: Approval (pending → approved / rejected), Expense claim (draft
 | Q-30 | Duplicate threshold | "Fuzzy match" not quantified | Similarity ≥ 0.85 on normalised name |
 | Q-31 | File size limit | COM-04 requires limits but gives none | 10 MB per file |
 | Q-32 | Date format | The template's design skill (rule 14) shows dates as "16 Oct, 2026"; BRD COM-11 (Must) requires DD-MM-YYYY | DD-MM-YYYY everywhere ("16-10-2026"); tooltip "Fri, 16-10-2026 08:30 AM". One function (`lib/dates.ts`) to change if TC prefers the skill format |
+| Q-33 | Past scheduling | The BRD only forbids past dates for follow-ups (BR-07); the calendar brief asks to block past create/edit "if BRD rules require it" | New calendar events, and edits that move an event, may not start in the past (BR-07 generalised). Editing details or marking a past event completed/cancelled is allowed. Calendar times are Asia/Kolkata wall-clock regardless of the browser zone |
 
 ---
 

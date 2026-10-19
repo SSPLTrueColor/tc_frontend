@@ -16,9 +16,10 @@ import { servicePack } from './modules/service';
 import { sparesPack } from './modules/spares';
 import { fieldPack } from './modules/field';
 import { reportsPack } from './modules/reports';
+import { calendarPack } from './modules/calendar';
 
 /** Business modules in navigation order (REQUIREMENTS §3). */
-export const MODULE_PACKS: ModulePack[] = [customersPack, leadsPack, opportunitiesPack, quotationsPack, ordersPack, installedPack, servicePack, sparesPack, catalogPack, fieldPack, reportsPack];
+export const MODULE_PACKS: ModulePack[] = [customersPack, leadsPack, opportunitiesPack, quotationsPack, ordersPack, installedPack, servicePack, sparesPack, catalogPack, fieldPack, reportsPack, calendarPack];
 
 const NONE = p('none');
 

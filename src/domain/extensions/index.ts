@@ -11,3 +11,4 @@ import './service';
 import './spares';
 import './field';
 import './reports';
+import './calendar';

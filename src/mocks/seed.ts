@@ -23,8 +23,9 @@ import * as service from './service';
 import * as spares from './spares';
 import * as field from './field';
 import * as reports from './reports';
+import * as calendar from './calendar';
 
-const MODULES = [catalog, customers, leads, opportunities, quotations, orders, installed, service, spares, field, reports];
+const MODULES = [catalog, customers, leads, opportunities, quotations, orders, installed, service, spares, field, reports, calendar];
 
 /** Changes whenever any module bumps its seed `rev` → stored demo data is re-seeded. */
 export const SEED_REVISION = MODULES.map((m) => m.rev).join('.');
