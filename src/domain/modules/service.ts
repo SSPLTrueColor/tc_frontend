@@ -500,7 +500,7 @@ export const servicePack: ModulePack = {
   nav: {
     id: 'service',
     label: 'Service',
-    icon: 'activity',
+    icon: 'wrench',
     resources: ['tickets', 'pmVisits', 'serviceVisits', 'knowledgeArticles'],
     pages: [
       { id: 'dispatch-board', label: 'Dispatch board', icon: 'layout-dashboard', path: 'dispatch-board', capability: 'ticket.assign' },

@@ -448,7 +448,7 @@ export const ordersPack: ModulePack = {
   nav: {
     id: 'orders',
     label: 'Orders',
-    icon: 'receipt',
+    icon: 'shopping-cart',
     resources: ['salesOrders', 'paymentMilestones', 'dispatches', 'salesContracts'],
     pages: [{ id: 'payments', label: 'Payments due', icon: 'calendar-clock', path: 'orders/payments' }],
   },

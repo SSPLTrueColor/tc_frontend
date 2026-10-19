@@ -30,7 +30,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'value', label: 'Value', type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.contracts) - n(a.contracts)),
-        chart: { label: 'Contracts by status', unit: 'contracts', data: rows.map((r) => ({ key: r._key, label: label('amcStatus', r.status), value: n(r.contracts) })) },
+        chart: { polarity: 'neutral', label: 'Contracts by status', unit: 'contracts', data: rows.map((r) => ({ key: r._key, label: label('amcStatus', r.status), value: n(r.contracts) })) },
         kpis: [{ label: 'AMC renewal rate', value: `pct:${amcRenewalRate(cs) ?? ''}`, hint: 'Renewed ÷ (renewed + lost + expired)' }],
       };
     },
@@ -55,7 +55,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'ageYears', label: 'Age (years)', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(a.ageYears) - n(b.ageYears)),
-        chart: { label: 'Uncovered machines by model', unit: 'machines', data: top([...groupBy(rows, (r) => s(r.model)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
+        chart: { polarity: 'lower', label: 'Uncovered machines by model', unit: 'machines', data: top([...groupBy(rows, (r) => s(r.model)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
         kpis: [{ label: 'Machines without cover', value: `${rows.length} of ${ds.get('machines').filter((m) => m.status !== 'scrapped').length}` }],
       };
     },
@@ -87,7 +87,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'newThisYear', label: 'Installed this year', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.machines) - n(a.machines)),
-        chart: { label: 'Machines', unit: 'machines', data: top(rows.map((r) => ({ key: r._key, label: s(r.group), value: n(r.machines) })), 12) },
+        chart: { polarity: 'neutral', label: 'Machines', unit: 'machines', data: top(rows.map((r) => ({ key: r._key, label: s(r.group), value: n(r.machines) })), 12) },
         kpis: [{ label: 'Machines in the field', value: String(ms_.length) }],
       };
     },
@@ -117,7 +117,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'breached', label: 'SLA' },
         ],
         rows: rows.sort((a, b) => n(b.ageDays) - n(a.ageDays)),
-        chart: { label: 'Open tickets by age', unit: 'tickets', data: ageingBuckets(open, ticketDate, ctx.nowMs).map((b) => ({ key: b.key, label: b.label, value: b.count })) },
+        chart: { polarity: 'ageing', label: 'Open tickets by age', unit: 'tickets', data: ageingBuckets(open, ticketDate, ctx.nowMs).map((b) => ({ key: b.key, label: b.label, value: b.count })) },
         kpis: [
           { label: 'Open tickets', value: String(open.length) },
           { label: 'SLA breached', value: String(rows.filter((r) => r.breached === 'Breached').length) },
@@ -153,7 +153,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'mttr', label: 'MTTR', type: 'hours' },
         ],
         rows: sorted,
-        chart: { label: 'SLA compliance %', unit: '%', data: sorted.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.compliance) * 100) })) },
+        chart: { polarity: 'higher', label: 'SLA compliance %', unit: '%', data: sorted.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.compliance) * 100) })) },
         kpis: [
           { label: 'SLA compliance', value: `pct:${slaCompliance(ts) ?? ''}`, hint: 'Response and resolution on time' },
           { label: 'MTTR', value: `hours:${mttrHours(ts) ?? ''}` },
@@ -189,7 +189,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'csat', label: 'CSAT (1–5)', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.resolved) - n(a.resolved)),
-        chart: { label: 'Tickets resolved per engineer', unit: 'tickets', data: rows.map((r) => ({ key: r._key, label: s(r.engineer), value: n(r.resolved) })) },
+        chart: { polarity: 'higher', label: 'Tickets resolved per engineer', unit: 'tickets', data: rows.map((r) => ({ key: r._key, label: s(r.engineer), value: n(r.resolved) })) },
       };
     },
   },
@@ -214,7 +214,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'reopened', label: 'Re-opened', type: 'number' },
         ],
         rows,
-        chart: { label: 'First-time fix %', unit: '%', data: rows.filter((r) => r.ftfr !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.ftfr) * 100) })) },
+        chart: { polarity: 'higher', label: 'First-time fix %', unit: '%', data: rows.filter((r) => r.ftfr !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.ftfr) * 100) })) },
         kpis: [{ label: 'First-time fix rate', value: `pct:${firstTimeFix(ts, visits) ?? ''}` }],
       };
     },
@@ -245,7 +245,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'open', label: 'Still open', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.hours) - n(a.hours)),
-        chart: { label: 'Downtime hours (top 10 machines)', unit: 'h', data: top(rows.map((r) => ({ key: r._key, label: s(r.machine), value: n(r.hours) }))) },
+        chart: { polarity: 'lower', label: 'Downtime hours (top 10 machines)', unit: 'h', data: top(rows.map((r) => ({ key: r._key, label: s(r.machine), value: n(r.hours) }))) },
       };
     },
   },
@@ -272,7 +272,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'status', label: 'Status', type: 'status', master: 'ticketStatus' },
         ],
         rows,
-        chart: { label: 'Repeats by category', unit: 'tickets', data: [...groupBy(rows, (r) => s(r.category)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
+        chart: { polarity: 'lower', label: 'Repeats by category', unit: 'tickets', data: [...groupBy(rows, (r) => s(r.category)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
         kpis: [{ label: 'Repeat complaint rate', value: `pct:${repeatRate(ts) ?? ''}` }],
       };
     },
@@ -298,7 +298,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'mtbf', label: 'MTBF', type: 'days' },
         ],
         rows: rows.sort((a, b) => n(a.mtbf) - n(b.mtbf)),
-        chart: { label: 'MTBF (days) by model', unit: 'days', data: rows.filter((r) => r.mtbf !== null).map((r) => ({ key: r._key, label: s(r.model), value: Math.round(n(r.mtbf)) })) },
+        chart: { polarity: 'higher', label: 'MTBF (days) by model', unit: 'days', data: rows.filter((r) => r.mtbf !== null).map((r) => ({ key: r._key, label: s(r.model), value: Math.round(n(r.mtbf)) })) },
       };
     },
   },
@@ -324,7 +324,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'compliance', label: 'PM compliance', type: 'pct' },
         ],
         rows,
-        chart: { label: 'PM compliance %', unit: '%', data: rows.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.compliance) * 100) })) },
+        chart: { polarity: 'higher', label: 'PM compliance %', unit: '%', data: rows.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.compliance) * 100) })) },
         kpis: [{ label: 'PM compliance', value: `pct:${pmCompliance(pm, ctx.today) ?? ''}` }],
       };
     },
@@ -354,7 +354,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'low', label: 'Low ratings (≤2)', type: 'number', link: () => list('tickets') },
         ],
         rows,
-        chart: { label: 'Average rating by month (×10)', unit: 'points', data: rows.map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.avg) * 10) })) },
+        chart: { polarity: 'higher', label: 'Average rating by month (×10)', unit: 'points', data: rows.map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.avg) * 10) })) },
         kpis: [
           { label: 'Average rating', value: all.avg === null ? '' : all.avg.toFixed(2) },
           { label: 'Rated 4 or 5', value: `pct:${all.share4plus ?? ''}` },
@@ -387,7 +387,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'late', label: 'Late', type: 'number' },
         ],
         rows,
-        chart: { label: 'Late arrivals per day', unit: 'people', data: [...rows].reverse().slice(-20).map((r) => ({ key: r._key, label: s(r.date).slice(5), value: n(r.late) })) },
+        chart: { polarity: 'lower', label: 'Late arrivals per day', unit: 'people', data: [...rows].reverse().slice(-20).map((r) => ({ key: r._key, label: s(r.date).slice(5), value: n(r.late) })) },
       };
     },
   },
@@ -414,7 +414,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'km', label: 'Km travelled', type: 'number' },
         ],
         rows: rows.sort((a, b) => s(a.employee).localeCompare(s(b.employee))),
-        chart: { label: 'Late days per employee', unit: 'days', data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.lateDays) }))) },
+        chart: { polarity: 'lower', label: 'Late days per employee', unit: 'days', data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.lateDays) }))) },
       };
     },
   },
@@ -446,7 +446,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'collection', label: 'Collection', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.completed) - n(a.completed)),
-        chart: { label: 'Completed visits per person', unit: 'visits', data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.completed) }))) },
+        chart: { polarity: 'higher', label: 'Completed visits per person', unit: 'visits', data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.completed) }))) },
       };
     },
   },
@@ -478,7 +478,7 @@ export const operationsReports: ReportDef[] = [
           { key: 'detail', label: 'Detail' },
         ],
         rows: rows.sort((a, b) => s(b.date).localeCompare(s(a.date))),
-        chart: { label: 'Exceptions by type', unit: 'cases', data: [...groupBy(rows, (r) => s(r.exception)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
+        chart: { polarity: 'lower', label: 'Exceptions by type', unit: 'cases', data: [...groupBy(rows, (r) => s(r.exception)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
       };
     },
   },

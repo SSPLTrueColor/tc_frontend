@@ -226,7 +226,7 @@ export const termsTemplates: ResourceDefinition = {
 
 export const quotationsPack: ModulePack = {
   id: 'quotations',
-  nav: { id: 'quotations', label: 'Quotations', icon: 'receipt', resources: ['quotations', 'termsTemplates'] },
+  nav: { id: 'quotations', label: 'Quotations', icon: 'file-text', resources: ['quotations', 'termsTemplates'] },
   resources: [quotations, termsTemplates],
   masters,
   // REQUIREMENTS §2.2 (proposed matrix). Approvals use capabilities approve.l1/l2/l3.

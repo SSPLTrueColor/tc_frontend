@@ -330,7 +330,7 @@ export const fieldPack: ModulePack = {
   nav: {
     id: 'field',
     label: 'Field & performance',
-    icon: 'activity',
+    icon: 'map-pin',
     resources: ['fieldVisits', 'expenseClaims', 'leaves', 'regularisations', 'beatPlans', 'targets'],
     pages: [
       { id: 'attendance-me', label: 'My day (check-in)', icon: 'calendar-clock', path: 'attendance' },

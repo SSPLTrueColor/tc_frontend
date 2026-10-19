@@ -125,7 +125,7 @@ export const kpiReports: ReportDef[] = [
           { key: 'overdue', label: 'Overdue follow-ups', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.overdue) - n(a.overdue) || n(a.activities) - n(b.activities)),
-        chart: { label: 'Overdue follow-ups per user', unit: 'follow-ups', data: rows.filter((r) => n(r.overdue) > 0).map((r) => ({ key: r._key, label: s(r.user), value: n(r.overdue) })) },
+        chart: { polarity: 'lower', label: 'Overdue follow-ups per user', unit: 'follow-ups', data: rows.filter((r) => n(r.overdue) > 0).map((r) => ({ key: r._key, label: s(r.user), value: n(r.overdue) })) },
         kpis: [
           { label: 'Active users (7 days)', value: `${activeCount} of ${rows.length}` },
           { label: 'Overdue follow-ups', value: String(rows.reduce((t, r) => t + n(r.overdue), 0)) },
@@ -156,7 +156,7 @@ export const kpiReports: ReportDef[] = [
           { key: 'total', label: 'Total', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.total) - n(a.total)),
-        chart: { label: 'Activities per person', unit: 'activities', data: rows.slice(0, 12).map((r) => ({ key: r._key, label: s(r.person), value: n(r.total) })) },
+        chart: { polarity: 'higher', label: 'Activities per person', unit: 'activities', data: rows.slice(0, 12).map((r) => ({ key: r._key, label: s(r.person), value: n(r.total) })) },
       };
     },
   },

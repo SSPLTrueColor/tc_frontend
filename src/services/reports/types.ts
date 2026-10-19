@@ -1,6 +1,8 @@
 import type { RecordData } from '../../metadata/types';
 import type { Actor } from '../authz';
 
+export type ChartPolarity = 'higher' | 'lower' | 'ageing' | 'neutral';
+
 /** Role-scoped records for reports, keyed by resource. Missing / unreadable resources are empty. */
 export interface Dataset {
   get: (resKey: string) => RecordData[];
@@ -34,8 +36,11 @@ export type ReportRow = Record<string, unknown> & { _key: string };
 export interface ReportResult {
   columns: ReportColumn[];
   rows: ReportRow[];
-  /** Single-series bar chart (template BarChart). */
-  chart?: { label: string; unit: string; money?: boolean; data: { key: string; label: string; value: number }[] };
+  /**
+   * Single-series bar chart. `polarity` decides the bar colours: higher/lower is better (compared with the
+   * series average), ageing (older buckets worse) or neutral (one colour, no legend).
+   */
+  chart?: { label: string; unit: string; money?: boolean; polarity: ChartPolarity; data: { key: string; label: string; value: number }[] };
   /** Headline numbers shown above the table. */
   kpis?: { label: string; value: string; hint?: string }[];
 }

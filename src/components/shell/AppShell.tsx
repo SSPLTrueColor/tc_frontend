@@ -509,7 +509,6 @@ function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: 
         <kbd>Ctrl K</kbd>
       </button>
       <div className="topbar-right">
-        <span className="prototype-badge" title="Simulated data stored in this browser only">PROTOTYPE – Demo data</span>
         {workspaces.length > 1 && <WorkspaceSwitcher />}
         <OfflineToggle />
         <NotificationBell />

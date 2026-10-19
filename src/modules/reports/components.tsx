@@ -2,26 +2,37 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from '../../lib/format';
 import { compactInr, formatCell, formatKpi } from '../../services/reports/format';
-import type { ReportColumn, ReportRow } from '../../services/reports/types';
-import type { Tile } from '../../services/reports/dashboard';
+import type { ChartPolarity, ReportColumn, ReportRow } from '../../services/reports/types';
+import type { ChartBar, Signal, Tile } from '../../services/reports/dashboard';
 import { IconButton } from '../../components/primitives/Button';
 import { EmptyValue } from '../../components/primitives/display';
 import { Icon } from '../../components/primitives/Icon';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 
-export const fmtValue = (v: number, unit: string, money?: boolean) => (money ? compactInr(v) : unit === '%' ? `${v}%` : `${Math.round(v * 10) / 10} ${unit}`);
+/** "1 ticket" / "3 tickets"; money compact (₹1.2 Cr); percentages as "42%". */
+export const fmtValue = (v: number, unit: string, money?: boolean) => {
+  if (money) return compactInr(v);
+  if (unit === '%') return `${v}%`;
+  const n = Math.round(v * 10) / 10;
+  return `${n} ${n === 1 && unit.endsWith('s') ? unit.slice(0, -1) : unit}`;
+};
+
+const SIGNAL_TEXT: Record<Signal, string> = { success: 'good', warning: 'needs attention', danger: 'act now', info: 'information', neutral: '' };
 
 /**
- * Single-series ranked bar chart (dataviz: one series = slot-1 colour, no legend; thin bars with a
- * rounded data end anchored to the baseline; recessive axis; hover tooltip via the global tooltip
- * layer; table alternative). Horizontal so long category names stay readable at any width.
+ * Ranked bar chart. Bars are coloured by meaning (green good, amber needs attention, red act now,
+ * blue in progress, grey neutral) with a legend; each bar prints its value so the chart reads
+ * without an axis. Horizontal so long names stay readable; "Show table" is the accessible alternative.
  */
-export function RankBars({ data, label, unit, money, to }: { data: { key: string; label: string; value: number }[]; label: string; unit: string; money?: boolean; to?: string }) {
+export function RankBars({ data: raw, label, unit, money, to, legend: given, compact, polarity }: { data: ChartBar[]; label: string; unit: string; money?: boolean; to?: string; legend?: { tone: Signal; label: string }[]; compact?: boolean; polarity?: ChartPolarity }) {
   const [asTable, setAsTable] = useState(false);
+  const { data, legend } = raw.some((d) => d.tone) || !polarity ? { data: raw, legend: given } : signalBars(raw, polarity);
   const max = Math.max(0, ...data.map((d) => d.value));
   const scale = max > 0 ? max : 1;
+  const used = new Set(data.map((d) => d.tone ?? 'accent'));
+  const shownLegend = (legend ?? []).filter((l) => used.has(l.tone));
   return (
-    <figure className="chart">
+    <figure className={cx('chart', compact && 'chart-compact')}>
       <div className="chart-head">
         <figcaption className="chart-title">{label}</figcaption>
         {to && (
@@ -43,6 +54,7 @@ export function RankBars({ data, label, unit, money, to }: { data: { key: string
               <th scope="col" className="num">
                 Value
               </th>
+              {shownLegend.length > 0 && <th scope="col">Status</th>}
             </tr>
           </thead>
           <tbody>
@@ -50,34 +62,75 @@ export function RankBars({ data, label, unit, money, to }: { data: { key: string
               <tr key={d.key}>
                 <td>{d.label}</td>
                 <td className="num">{fmtValue(d.value, unit, money)}</td>
+                {shownLegend.length > 0 && <td>{legend?.find((l) => l.tone === d.tone)?.label ?? ''}</td>}
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
         <>
-          <div className="rb-rows" role="img" aria-label={`${label}: ${data.map((d) => `${d.label} ${fmtValue(d.value, unit, money)}`).join(', ')}`}>
+          <div className="rb-rows" role="img" aria-label={`${label}: ${data.map((d) => `${d.label} ${fmtValue(d.value, unit, money)}${d.tone ? ` (${legend?.find((l) => l.tone === d.tone)?.label ?? SIGNAL_TEXT[d.tone]})` : ''}`).join(', ')}`}>
             {data.map((d) => (
-              <div key={d.key} className="rb-row" data-tooltip={`${d.label}: ${fmtValue(d.value, unit, money)}`}>
+              <div key={d.key} className="rb-row" data-tooltip={`${d.label}: ${fmtValue(d.value, unit, money)}${d.tone && legend ? ` · ${legend.find((l) => l.tone === d.tone)?.label ?? ''}` : ''}`}>
                 <span className="rb-label">{d.label}</span>
                 <span className="rb-track">
-                  <span className="rb-bar" style={{ width: `${Math.max(0, (d.value / scale) * 100)}%` }} />
+                  <span className={cx('rb-bar', d.tone && `tone-${d.tone}`)} style={{ width: `${Math.max(0, (d.value / scale) * 100)}%` }} />
                 </span>
+                <span className="rb-value">{fmtValue(d.value, unit, money)}</span>
               </div>
             ))}
           </div>
-          <div className="rb-axis" aria-hidden="true">
-            <span />
-            <span className="rb-ticks">
-              <span>{fmtValue(0, unit, money)}</span>
-              <span>{fmtValue(max / 2, unit, money)}</span>
-              <span>{fmtValue(max, unit, money)}</span>
-            </span>
-          </div>
+          {shownLegend.length > 0 && (
+            <ul className="rb-legend" aria-label="Colour meaning">
+              {shownLegend.map((l) => (
+                <li key={l.tone} className={`tone-${l.tone}`}>
+                  <span className="rb-swatch" aria-hidden="true" />
+                  {l.label}
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
     </figure>
   );
+}
+
+/**
+ * Colours bars by meaning when a report gives only a direction:
+ * higher/lower is better → compared with the series average; ageing → older buckets are worse;
+ * neutral → one calm colour, no legend.
+ */
+export function signalBars(data: ChartBar[], polarity: ChartPolarity): { data: ChartBar[]; legend?: { tone: Signal; label: string }[] } {
+  if (polarity === 'neutral') return { data: data.map((d) => ({ ...d, tone: 'info' })) };
+  if (polarity === 'ageing') {
+    const last = data.length - 1;
+    return {
+      data: data.map((d, i) => ({ ...d, tone: i === 0 ? 'success' : i === last && last > 1 ? 'danger' : 'warning' })),
+      legend: [
+        { tone: 'success', label: 'Recent' },
+        { tone: 'warning', label: 'Getting old' },
+        { tone: 'danger', label: 'Oldest — act first' },
+      ],
+    };
+  }
+  const avg = data.length ? data.reduce((t, d) => t + d.value, 0) / data.length : 0;
+  if (polarity === 'higher')
+    return {
+      data: data.map((d) => ({ ...d, tone: d.value >= avg ? 'success' : 'warning' })),
+      legend: [
+        { tone: 'success', label: 'At or above average' },
+        { tone: 'warning', label: 'Below average' },
+      ],
+    };
+  return {
+    data: data.map((d) => ({ ...d, tone: avg && d.value >= avg * 1.5 ? 'danger' : d.value > avg ? 'warning' : 'success' })),
+    legend: [
+      { tone: 'success', label: 'At or below average' },
+      { tone: 'warning', label: 'Above average' },
+      { tone: 'danger', label: 'Far above average (1.5×)' },
+    ],
+  };
 }
 
 /** KPI tiles; empty values render the shared N/A. */
@@ -87,10 +140,15 @@ export function KpiTiles({ tiles, label }: { tiles: Tile[]; label: string }) {
     <section className="stats" aria-label={label}>
       {tiles.map((t) => {
         const v = formatKpi(t.value, { compact: true });
+        const tone = v && t.tone && t.tone !== 'neutral' ? t.tone : undefined;
         const body = (
           <>
             <span className="stat-label">{t.label}</span>
-            <span className="stat-value">{v ? v : <EmptyValue />}</span>
+            <span className={cx('stat-value', tone && `tone-${tone} has-signal`)}>
+              {tone && <span className="stat-dot" aria-hidden="true" />}
+              {v ? v : <EmptyValue />}
+              {tone && SIGNAL_TEXT[tone] && <span className="sr-only"> ({SIGNAL_TEXT[tone]})</span>}
+            </span>
             {t.sub && <span className="stat-sub">{t.sub}</span>}
           </>
         );

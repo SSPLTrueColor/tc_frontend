@@ -1,28 +1,41 @@
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { todayKey } from '../lib/dates';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { call, errorMessage } from '../services/api/client';
 import { useActor } from '../services/hooks';
-import { overviewFor, type PlanItem } from '../services/reports/dashboard';
+import { overviewFor, type PlanItem, type Section, type Tile } from '../services/reports/dashboard';
 import { transitionRecord } from '../services/runtime';
 import { Button } from '../components/primitives/Button';
-import { EmptyState, ErrorState, Skeleton, useToast } from '../components/primitives/feedback';
+import { EmptyState, ErrorState, Skeleton, Tabs, useToast } from '../components/primitives/feedback';
 import { InfoTip } from '../components/primitives/InfoTip';
 import { PageHeader } from '../components/shell/PageHeader';
 import { KpiTiles, RankBars } from '../modules/reports/components';
 import '../modules/reports/reports.css';
 
+const PLAN_LIMIT = 6;
+const STRIP_LIMIT = 6;
+const urgency = (t: Tile) => (t.tone === 'danger' ? 0 : t.tone === 'warning' ? 1 : 2);
+
+/** The one figure per area that most needs the user's eye: the worst-coloured tile, else the first. */
+function attentionStrip(today: Tile[], sections: Section[]): Tile[] {
+  const picks = sections.map((s) => [...s.tiles].sort((a, b) => urgency(a) - urgency(b))[0]).filter(Boolean);
+  return [...today.slice(0, 1), ...picks, ...today.slice(1)].slice(0, STRIP_LIMIT);
+}
+
 /**
- * Role overview (FR-149, NFR-22). Sections adapt to the signed-in role; every number is computed
- * from records read through the scoped services and links to the list it summarises.
+ * Role overview (FR-149, NFR-22) — designed to fit one screen:
+ * 1. Attention strip: one key figure per area, coloured by meaning (green good, amber needs attention, red act now).
+ * 2. Today's plan (left) beside one tabbed panel per area (right) instead of long stacked sections.
+ * Every number is computed from records the role can see and links to the list it summarises.
  */
 export function DashboardPage() {
   const actor = useActor();
   const toast = useToast();
   const today = todayKey();
+  const [params, setParams] = useSearchParams();
   const q = useServiceQuery(() => overviewFor(actor), [actor.user.id, today]);
   const first = actor.user.name.split(' ')[0];
-  const header = <PageHeader title={`Good day, ${first}`} description={`${actor.role.label} overview${q.data ? ` · ${q.data.headline}` : ''}. Figures follow what your role can see and refresh on every change.`} />;
+  const header = <PageHeader title={`Good day, ${first}`} description={`${actor.role.label} overview${q.data ? ` · ${q.data.headline}` : ''}. Colours: green good, amber needs attention, red act now. Every figure opens the list behind it.`} />;
 
   if (q.error)
     return (
@@ -42,6 +55,8 @@ export function DashboardPage() {
     );
 
   const { plan, today: todayTiles, sections } = q.data;
+  const tabId = sections.some((s) => s.id === params.get('area')) ? params.get('area')! : sections[0]?.id;
+  const active = sections.find((s) => s.id === tabId);
 
   const complete = async (item: PlanItem) => {
     if (!item.taskId) return;
@@ -54,62 +69,60 @@ export function DashboardPage() {
   };
 
   return (
-    <div className="page">
+    <div className="page dash-page">
       {header}
-      <KpiTiles tiles={todayTiles} label="Today" />
-      <div className="dash-grid">
-        <section className="panel">
+      <KpiTiles tiles={attentionStrip(todayTiles, sections)} label="Needs your attention" />
+
+      <div className="dash-main">
+        <section className="panel dash-plan">
           <div className="panel-head">
             <h2 className="panel-title dialog-title-row">
               Today’s plan
               <InfoTip text="Your overdue and due items first: tasks, lead and opportunity follow-ups, assigned jobs, PM visits and planned field visits." label="About today’s plan" />
             </h2>
             <Link to="/calendar" className="link small">
-              Calendar
+              {plan.length > PLAN_LIMIT ? `View all ${plan.length}` : 'Calendar'}
             </Link>
           </div>
-          <PlanList items={plan} empty="Nothing due. New tasks, follow-ups and jobs assigned to you appear here." onComplete={complete} />
+          <PlanList items={plan.slice(0, PLAN_LIMIT)} empty="Nothing due. New tasks, follow-ups and jobs assigned to you appear here." onComplete={complete} />
         </section>
-        {sections[0]?.chart && (
-          <section className="panel">
-            <RankBars {...sections[0].chart} />
+
+        {active && (
+          <section className="panel dash-area" aria-label={active.title}>
+            {sections.length > 1 ? (
+              <Tabs label="Overview areas" value={active.id} onChange={(id) => setParams({ area: id }, { replace: true })} tabs={sections.map((s) => ({ id: s.id, label: s.title }))} />
+            ) : (
+              <div className="panel-head">
+                <h2 className="panel-title dialog-title-row">
+                  {active.title}
+                  <InfoTip text={active.info} label={`About ${active.title}`} />
+                </h2>
+              </div>
+            )}
+            <div className="dash-area-body" role={sections.length > 1 ? 'tabpanel' : undefined}>
+              <KpiTiles tiles={active.tiles} label={active.title} />
+              {(active.chart || active.list) && (
+                <div className={active.chart && active.list ? 'dash-area-split' : undefined}>
+                  {active.chart && <RankBars {...active.chart} compact />}
+                  {active.list && (
+                    <div>
+                      <div className="panel-head">
+                        <h3 className="chart-title">{active.list.title}</h3>
+                        {active.list.to && (
+                          <Link to={active.list.to} className="link small">
+                            View all
+                          </Link>
+                        )}
+                      </div>
+                      <PlanList items={active.list.items.slice(0, 4)} empty={active.list.empty} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </section>
         )}
       </div>
-
-      {sections.map((sec, i) => (
-        <section key={sec.id} className="dash-section" aria-labelledby={`sec-${sec.id}`}>
-          <div className="dash-section-head">
-            <h2 id={`sec-${sec.id}`} className="dash-section-title">
-              {sec.title}
-            </h2>
-            <InfoTip text={sec.info} label={`About ${sec.title}`} />
-          </div>
-          <KpiTiles tiles={sec.tiles} label={sec.title} />
-          {((sec.chart && i > 0) || sec.list) && (
-            <div className="dash-grid">
-              {sec.chart && i > 0 && (
-                <section className="panel">
-                  <RankBars {...sec.chart} />
-                </section>
-              )}
-              {sec.list && (
-                <section className="panel">
-                  <div className="panel-head">
-                    <h3 className="panel-title">{sec.list.title}</h3>
-                    {sec.list.to && (
-                      <Link to={sec.list.to} className="link small">
-                        View all
-                      </Link>
-                    )}
-                  </div>
-                  <PlanList items={sec.list.items} empty={sec.list.empty} />
-                </section>
-              )}
-            </div>
-          )}
-        </section>
-      ))}
     </div>
   );
 }

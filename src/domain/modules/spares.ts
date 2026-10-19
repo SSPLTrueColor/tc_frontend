@@ -382,7 +382,7 @@ export const sparesPack: ModulePack = {
   nav: {
     id: 'spares',
     label: 'Spares & consumables',
-    icon: 'blocks',
+    icon: 'package',
     resources: ['requisitions', 'spareParts', 'warrantyClaims', 'rateContracts', 'sampleDispatches'],
     pages: [
       { id: 'stock-alerts', label: 'Stock alerts', icon: 'alert', path: 'spares/stock-alerts', capability: 'spares.stock' },

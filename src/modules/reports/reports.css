@@ -6,7 +6,7 @@
 }
 .rb-row {
   display: grid;
-  grid-template-columns: minmax(90px, 34%) minmax(0, 1fr);
+  grid-template-columns: minmax(90px, 30%) minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 22px;
@@ -37,6 +37,58 @@ button.rb-row:hover {
   min-width: 2px;
   background: var(--s-chart-1);
   border-radius: 0 4px 4px 0;
+}
+/* Meaningful colours: the tone class supplies --tone-fg (green good, amber attention, red act now, blue info, grey neutral). */
+.rb-bar[class*='tone-'] {
+  background: var(--tone-fg);
+}
+.rb-value {
+  min-width: 56px;
+  font-size: var(--fs-supportive);
+  color: var(--s-text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.rb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-supportive);
+  color: var(--s-text-secondary);
+}
+.rb-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.rb-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--tone-fg);
+}
+.chart-compact .rb-rows {
+  gap: 4px;
+}
+.chart-compact .rb-track {
+  height: 12px;
+}
+/* KPI values carry their status colour plus a dot (never colour-only: screen readers get the word). */
+.stat-value.has-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tone-fg);
+}
+.stat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone-fg);
+  flex: none;
 }
 .rb-axis {
   display: grid;
@@ -120,5 +172,41 @@ button.rb-row:hover {
   .rep-toolbar > .input,
   .rep-date {
     width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------- One-screen overview */
+.dash-page > .stats {
+  margin-bottom: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.dash-main {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
+  gap: 12px;
+  align-items: start;
+}
+.dash-area > .tabs {
+  margin: -4px 0 10px;
+}
+.dash-area-body > .stats {
+  /* All of an area's figures on one line on desktop. */
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+.dash-area-body .stat {
+  padding: 10px 12px;
+}
+.dash-area-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.dash-plan .flow-item {
+  padding-block: 6px;
+}
+@media (max-width: 1100px) {
+  .dash-main,
+  .dash-area-split {
+    grid-template-columns: 1fr;
   }
 }
