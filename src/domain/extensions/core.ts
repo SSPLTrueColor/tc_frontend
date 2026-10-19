@@ -4,6 +4,7 @@ import { notify } from '../../services/ledger';
 import { registerResourceHooks } from '../../services/resourceHooks';
 import { getResource } from '../../services/registry';
 import { patchRecordIn } from '../../services/runtime';
+import { L } from '../../constants/labels';
 
 const userOfStaff = (staffId: unknown, ws: string) => demoUsers.find((u) => u.staffIds[ws] === staffId);
 
@@ -14,12 +15,12 @@ registerResourceHooks('tasks', {
   },
   afterCreate: ({ d, actor }, r) => {
     const u = userOfStaff(r.assigneeId, actor.workspaceId);
-    if (u && u.id !== actor.user.id) notify(d, { userId: u.id, workspaceId: actor.workspaceId, kind: 'assignment', title: `${actor.user.name} assigned you ${r.id}: ${String(r.title)}`, link: { resource: 'tasks', recordId: r.id } });
+    if (u && u.id !== actor.user.id) notify(d, { userId: u.id, workspaceId: actor.workspaceId, kind: 'assignment', title: L.common.notify.assigned(actor.user.name, r.id, String(r.title)), link: { resource: 'tasks', recordId: r.id } });
   },
   afterUpdate: ({ d, actor }, before, after) => {
     if (before.assigneeId === after.assigneeId) return;
     const u = userOfStaff(after.assigneeId, actor.workspaceId);
-    if (u && u.id !== actor.user.id) notify(d, { userId: u.id, workspaceId: actor.workspaceId, kind: 'assignment', title: `${actor.user.name} assigned you ${after.id}: ${String(after.title)}`, link: { resource: 'tasks', recordId: after.id } });
+    if (u && u.id !== actor.user.id) notify(d, { userId: u.id, workspaceId: actor.workspaceId, kind: 'assignment', title: L.common.notify.assigned(actor.user.name, after.id, String(after.title)), link: { resource: 'tasks', recordId: after.id } });
   },
 });
 
@@ -33,6 +34,6 @@ registerResourceHooks('activities', {
     const patch: Record<string, unknown> = {};
     if (has('lastActivityAt')) patch.lastActivityAt = a.at;
     if (has('nextFollowUpAt') && a.nextFollowUpAt) patch.nextFollowUpAt = a.nextFollowUpAt;
-    if (Object.keys(patch).length) patchRecordIn(ctx, resKey, String(a.parentId), patch, `Activity ${a.id} logged`);
+    if (Object.keys(patch).length) patchRecordIn(ctx, resKey, String(a.parentId), patch, L.common.audit.activityLogged(a.id));
   },
 });

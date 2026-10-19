@@ -1,12 +1,17 @@
 /**
- * Quotations module pack (FR-035 – FR-047): quotations with revisions, discount approval,
- * terms templates. Line items (`lines`, QuoteLine[]) are stored on the record but hidden from
+ * Quotations module pack (FR-035 – FR-047): quotations with versions (R0, R1 …), discount approval,
+ * Terms & Conditions templates. Line items (`lines`, QuoteLine[]) are stored on the record but hidden from
  * the generic engine — they are edited, priced and shown by the quotations module itself.
+ * Sidebar placement lives in src/domain/sidebar.ts; every label comes from L.quotations.
  */
+import { L } from '../../constants/labels';
 import type { MasterDefinition, MasterValue, ResourceDefinition, Tone } from '../../metadata/types';
 import { ALL, cols, cond, field, FORM_ONLY, group, views } from '../helpers';
 import { type ModulePack, p } from './types';
 
+const T = L.quotations;
+const F = T.fields.quotations;
+const FT = T.fields.termsTemplates;
 const v = (key: string, label: string, tone: Tone = 'neutral'): Omit<MasterValue, 'order'> => ({ key, label, tone, active: true });
 const master = (key: string, label: string, values: Omit<MasterValue, 'order'>[]): MasterDefinition => ({ id: `mst_${key}`, key, label, version: 1, values: values.map((x, i) => ({ ...x, order: i })) });
 
@@ -14,34 +19,36 @@ export const QUOTE_STATUS = ['draft', 'pending_approval', 'approved', 'sent', 'n
 /** Statuses that can still change (BR-18 / FR-044). */
 export const OPEN_QUOTE_STATUS = ['draft', 'pending_approval', 'approved', 'sent', 'negotiation'];
 
+const S = T.masters.quoteStatus.values;
+const LT = T.masters.quoteLineType.values;
 const masters: MasterDefinition[] = [
-  master('quoteStatus', 'Quotation status', [
-    v('draft', 'Draft'),
-    v('pending_approval', 'Pending approval', 'warning'),
-    v('approved', 'Approved', 'info'),
-    v('sent', 'Sent', 'accent'),
-    v('negotiation', 'Under negotiation', 'warning'),
-    v('accepted', 'Accepted', 'success'),
-    v('rejected', 'Rejected', 'danger'),
-    v('expired', 'Expired'),
-    v('superseded', 'Superseded'),
+  master('quoteStatus', T.masters.quoteStatus.label, [
+    v('draft', S.draft),
+    v('pending_approval', S.pending_approval, 'warning'),
+    v('approved', S.approved, 'info'),
+    v('sent', S.sent, 'accent'),
+    v('negotiation', S.negotiation, 'warning'),
+    v('accepted', S.accepted, 'success'),
+    v('rejected', S.rejected, 'danger'),
+    v('expired', S.expired),
+    v('superseded', S.superseded),
   ]),
-  master('quoteLineType', 'Quotation line type', [
-    v('machine', 'Machine', 'accent'),
-    v('configuration', 'Configuration / option'),
-    v('accessory', 'Accessory'),
-    v('software', 'Software (RIP)'),
-    v('ink', 'Ink'),
-    v('consumable', 'Consumables'),
-    v('spares_kit', 'Spare-parts kit'),
-    v('installation', 'Installation'),
-    v('training', 'Training'),
-    v('extended_warranty', 'Extended warranty'),
-    v('amc', 'AMC'),
-    v('other', 'Other'),
+  master('quoteLineType', T.masters.quoteLineType.label, [
+    v('machine', LT.machine, 'accent'),
+    v('configuration', LT.configuration),
+    v('accessory', LT.accessory),
+    v('software', LT.software),
+    v('ink', LT.ink),
+    v('consumable', LT.consumable),
+    v('spares_kit', LT.spares_kit),
+    v('installation', LT.installation),
+    v('training', LT.training),
+    v('extended_warranty', LT.extended_warranty),
+    v('amc', LT.amc),
+    v('other', LT.other),
   ]),
-  master('acceptanceMethod', 'Acceptance method', [v('po', 'Customer PO upload', 'success'), v('electronic', 'Electronic acceptance', 'info')]),
-  master('termsStatus', 'Template status', [v('active', 'Active', 'success'), v('inactive', 'Inactive')]),
+  master('acceptanceMethod', T.masters.acceptanceMethod.label, [v('po', T.masters.acceptanceMethod.values.po, 'success'), v('electronic', T.masters.acceptanceMethod.values.electronic, 'info')]),
+  master('termsStatus', T.masters.termsStatus.label, [v('active', T.masters.termsStatus.values.active, 'success'), v('inactive', T.masters.termsStatus.values.inactive)]),
 ];
 
 const fq = (key: string, label: string, type: Parameters<typeof field>[3], extra?: Parameters<typeof field>[4]) => field('quotations', key, label, type, extra);
@@ -52,8 +59,8 @@ export const quotations: ResourceDefinition = {
   id: 'res_quotations',
   key: 'quotations',
   module: 'quotations',
-  label: 'Quotation',
-  labelPlural: 'Quotations',
+  label: T.records.quotations.one,
+  labelPlural: T.records.quotations.many,
   icon: 'receipt',
   version: 1,
   idPrefix: 'QT',
@@ -62,82 +69,82 @@ export const quotations: ResourceDefinition = {
   subtitleFields: ['customerId', 'status'],
   ownerField: 'ownerId',
   divisionField: 'divisionId',
-  description: 'Commercial quotations with controlled price lists, discount approval, revisions (R0, R1 …) and customer acceptance.',
+  description: T.resources.quotations.description,
   status: 'published',
   fields: [
-    fq('quoteNo', 'Quotation no.', 'text', { readOnly: true, capabilities: ALL, width: 190, subFields: ['customerId'] }),
-    fq('opportunityId', 'Opportunity', 'relation', { required: true, relation: { resource: 'opportunities' }, capabilities: ALL, width: 200 }),
-    fq('customerId', 'Customer', 'relation', { required: true, relation: { resource: 'customers' }, capabilities: ALL, width: 220 }),
-    fq('contactId', 'Contact person', 'relation', { relation: { resource: 'contacts', filterBy: { field: 'customerId', fromField: 'customerId' } }, width: 170 }),
-    fq('divisionId', 'Division', 'master', { master: 'division', required: true, width: 150 }),
-    fq('ownerId', 'Sales executive', 'relation', { required: true, relation: { resource: 'employees', where: { field: 'status', op: 'neq', value: 'inactive' } }, width: 170, display: 'person', personSubtitle: 'designation' }),
-    fq('quoteDate', 'Quotation date', 'date', { required: true, width: 120 }),
-    fq('validUntil', 'Valid until', 'date', { required: true, width: 120, compare: { op: 'gte', field: 'quoteDate', message: 'Validity must end on or after the quotation date' } }),
-    fq('placeOfSupply', 'Place of supply', 'master', { master: 'state', required: true, width: 150, help: 'Same state as True Colors’ GST registration → CGST + SGST; otherwise IGST.' }),
-    fq('status', 'Status', 'master', { master: 'quoteStatus', readOnly: true, width: 150 }),
-    fq('revision', 'Revision', 'number', { readOnly: true, min: 0, width: 90 }),
-    fq('isLatest', 'Latest revision', 'boolean', { readOnly: true, capabilities: { filter: true, export: true } }),
-    fq('rootId', 'First revision', 'text', { system: true, readOnly: true, capabilities: { filter: true } }),
-    fq('revisionNote', 'Revision note', 'text', { readOnly: true, maxLength: 300, capabilities: { list: true, search: true, export: true } }),
-    // Line items: stored here, hidden from the generic engine (fieldOverrides below), shown in the "Lines" tab.
-    fq('lines', 'Line items', 'lineitems', { readOnly: true, capabilities: { export: true } }),
-    money('subtotal', 'Gross value'),
-    money('discountTotal', 'Discount'),
-    fq('freight', 'Freight', 'money', { currency: 'INR', min: 0, defaultValue: 0 }),
-    fq('insurance', 'Insurance', 'money', { currency: 'INR', min: 0, defaultValue: 0 }),
-    money('taxable', 'Taxable value'),
-    money('cgst', 'CGST'),
-    money('sgst', 'SGST'),
-    money('igst', 'IGST'),
-    money('grandTotal', 'Total value', { capabilities: { ...READ, list: true }, width: 150 }),
-    fq('amountInWords', 'Amount in words', 'text', { readOnly: true, capabilities: { export: true } }),
-    fq('maxDiscountPct', 'Highest discount %', 'number', { readOnly: true, unit: '%', width: 110 }),
-    money('landedCostTotal', 'Landed cost', { sensitivity: 'financial' }),
-    fq('marginPct', 'Margin %', 'number', { readOnly: true, unit: '%', sensitivity: 'financial', width: 100 }),
-    fq('termsTemplateId', 'Terms template', 'relation', { relation: { resource: 'termsTemplates', filterBy: { field: 'divisionId', fromField: 'divisionId' } } }),
-    fq('paymentTerms', 'Payment terms', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
-    fq('deliveryTerms', 'Delivery timeline', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
-    fq('warrantyTerms', 'Warranty', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
-    fq('installationTerms', 'Installation terms', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
-    fq('sentAt', 'Sent on', 'datetime', { readOnly: true }),
-    fq('sentVia', 'Sent via', 'text', { readOnly: true, capabilities: { export: true } }),
-    fq('acceptanceMethod', 'Accepted by', 'master', { master: 'acceptanceMethod', readOnly: true }),
-    fq('acceptedAt', 'Accepted on', 'datetime', { readOnly: true }),
-    fq('acceptedByName', 'Accepted by (customer)', 'text', { readOnly: true }),
-    fq('customerPoNo', 'Customer PO no.', 'text', { readOnly: true, capabilities: { list: true, search: true, export: true } }),
-    fq('customerPoDate', 'Customer PO date', 'date', { readOnly: true }),
-    fq('poFileName', 'PO copy', 'text', { readOnly: true }),
-    fq('rejectReason', 'Rejection reason', 'master', { master: 'lostReason', readOnly: true }),
-    fq('rejectNote', 'Rejection / approval note', 'text', { readOnly: true }),
+    fq('quoteNo', F.quoteNo, 'text', { readOnly: true, capabilities: ALL, width: 190, subFields: ['customerId'] }),
+    fq('opportunityId', F.opportunityId, 'relation', { required: true, relation: { resource: 'opportunities' }, capabilities: ALL, width: 200 }),
+    fq('customerId', F.customerId, 'relation', { required: true, relation: { resource: 'customers' }, capabilities: ALL, width: 220 }),
+    fq('contactId', F.contactId, 'relation', { relation: { resource: 'contacts', filterBy: { field: 'customerId', fromField: 'customerId' } }, width: 170 }),
+    fq('divisionId', F.divisionId, 'master', { master: 'division', required: true, width: 150 }),
+    fq('ownerId', F.ownerId, 'relation', { required: true, relation: { resource: 'employees', where: { field: 'status', op: 'neq', value: 'inactive' } }, width: 170, display: 'person', personSubtitle: 'designation' }),
+    fq('quoteDate', F.quoteDate, 'date', { required: true, width: 120 }),
+    fq('validUntil', F.validUntil, 'date', { required: true, width: 120, compare: { op: 'gte', field: 'quoteDate', message: F.validUntilCompare } }),
+    fq('placeOfSupply', F.placeOfSupply, 'master', { master: 'state', required: true, width: 150, help: F.placeOfSupplyHelp }),
+    fq('status', F.status, 'master', { master: 'quoteStatus', readOnly: true, width: 150 }),
+    fq('revision', F.revision, 'number', { readOnly: true, min: 0, width: 90 }),
+    fq('isLatest', F.isLatest, 'boolean', { readOnly: true, capabilities: { filter: true, export: true } }),
+    fq('rootId', F.rootId, 'text', { system: true, readOnly: true, capabilities: { filter: true } }),
+    fq('revisionNote', F.revisionNote, 'text', { readOnly: true, maxLength: 300, capabilities: { list: true, search: true, export: true } }),
+    // Line items: stored here, hidden from the generic engine, shown in the "Line Items" tab.
+    fq('lines', F.lines, 'lineitems', { readOnly: true, capabilities: { export: true } }),
+    money('subtotal', F.subtotal),
+    money('discountTotal', F.discountTotal),
+    fq('freight', F.freight, 'money', { currency: 'INR', min: 0, defaultValue: 0 }),
+    fq('insurance', F.insurance, 'money', { currency: 'INR', min: 0, defaultValue: 0 }),
+    money('taxable', F.taxable),
+    money('cgst', F.cgst),
+    money('sgst', F.sgst),
+    money('igst', F.igst),
+    money('grandTotal', F.grandTotal, { capabilities: { ...READ, list: true }, width: 150 }),
+    fq('amountInWords', F.amountInWords, 'text', { readOnly: true, capabilities: { export: true } }),
+    fq('maxDiscountPct', F.maxDiscountPct, 'number', { readOnly: true, unit: '%', width: 110 }),
+    money('landedCostTotal', F.landedCostTotal, { sensitivity: 'financial' }),
+    fq('marginPct', F.marginPct, 'number', { readOnly: true, unit: '%', sensitivity: 'financial', width: 100 }),
+    fq('termsTemplateId', F.termsTemplateId, 'relation', { relation: { resource: 'termsTemplates', filterBy: { field: 'divisionId', fromField: 'divisionId' } } }),
+    fq('paymentTerms', F.paymentTerms, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
+    fq('deliveryTerms', F.deliveryTerms, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
+    fq('warrantyTerms', F.warrantyTerms, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
+    fq('installationTerms', F.installationTerms, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
+    fq('sentAt', F.sentAt, 'datetime', { readOnly: true }),
+    fq('sentVia', F.sentVia, 'text', { readOnly: true, capabilities: { export: true } }),
+    fq('acceptanceMethod', F.acceptanceMethod, 'master', { master: 'acceptanceMethod', readOnly: true }),
+    fq('acceptedAt', F.acceptedAt, 'datetime', { readOnly: true }),
+    fq('acceptedByName', F.acceptedByName, 'text', { readOnly: true }),
+    fq('customerPoNo', F.customerPoNo, 'text', { readOnly: true, capabilities: { list: true, search: true, export: true } }),
+    fq('customerPoDate', F.customerPoDate, 'date', { readOnly: true }),
+    fq('poFileName', F.poFileName, 'text', { readOnly: true }),
+    fq('rejectReason', F.rejectReason, 'master', { master: 'lostReason', readOnly: true }),
+    fq('rejectNote', F.rejectNote, 'text', { readOnly: true }),
     // FR-047 ROI / payback calculator inputs (editable in any status).
-    fq('roiOutputPerDay', 'Production per day', 'number', { min: 0, unit: 'm / prints', capabilities: { export: true } }),
-    fq('roiPricePerUnit', 'Selling price per unit', 'money', { min: 0, currency: 'INR', capabilities: { export: true } }),
-    fq('roiCostPerUnit', 'Running cost per unit', 'money', { min: 0, currency: 'INR', capabilities: { export: true } }),
-    fq('roiWorkingDays', 'Working days per month', 'number', { min: 1, max: 31, capabilities: { export: true } }),
+    fq('roiOutputPerDay', F.roiOutputPerDay, 'number', { min: 0, unit: F.roiOutputUnit, capabilities: { export: true } }),
+    fq('roiPricePerUnit', F.roiPricePerUnit, 'money', { min: 0, currency: 'INR', capabilities: { export: true } }),
+    fq('roiCostPerUnit', F.roiCostPerUnit, 'money', { min: 0, currency: 'INR', capabilities: { export: true } }),
+    fq('roiWorkingDays', F.roiWorkingDays, 'number', { min: 1, max: 31, capabilities: { export: true } }),
   ],
   relationships: [],
   form: {
     fullPage: true,
     quickCreate: ['opportunityId', 'quoteDate', 'validUntil', 'placeOfSupply'],
     sections: [
-      { id: 'header', title: 'Quotation', fields: ['quoteNo', 'opportunityId', 'customerId', 'contactId', 'divisionId', 'ownerId', 'quoteDate', 'validUntil', 'placeOfSupply'], columns: 2 },
-      { id: 'value', title: 'Value', fields: ['subtotal', 'discountTotal', 'freight', 'insurance', 'taxable', 'cgst', 'sgst', 'igst', 'grandTotal', 'amountInWords', 'maxDiscountPct', 'landedCostTotal', 'marginPct'], columns: 2 },
-      { id: 'terms', title: 'Commercial terms', fields: ['termsTemplateId', 'paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'], columns: 2 },
-      { id: 'outcome', title: 'Outcome', fields: ['sentAt', 'sentVia', 'acceptanceMethod', 'acceptedAt', 'acceptedByName', 'customerPoNo', 'customerPoDate', 'poFileName', 'rejectReason', 'rejectNote'], columns: 2 },
+      { id: 'header', title: T.sections.quotations.header, fields: ['quoteNo', 'opportunityId', 'customerId', 'contactId', 'divisionId', 'ownerId', 'quoteDate', 'validUntil', 'placeOfSupply'], columns: 2 },
+      { id: 'value', title: T.sections.quotations.value, fields: ['subtotal', 'discountTotal', 'freight', 'insurance', 'taxable', 'cgst', 'sgst', 'igst', 'grandTotal', 'amountInWords', 'maxDiscountPct', 'landedCostTotal', 'marginPct'], columns: 2 },
+      { id: 'terms', title: T.sections.quotations.terms, fields: ['termsTemplateId', 'paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'], columns: 2 },
+      { id: 'outcome', title: T.sections.quotations.outcome, fields: ['sentAt', 'sentVia', 'acceptanceMethod', 'acceptedAt', 'acceptedByName', 'customerPoNo', 'customerPoDate', 'poFileName', 'rejectReason', 'rejectNote'], columns: 2 },
     ],
   },
   lifecycle: {
     field: 'status',
     initial: 'draft',
     terminal: ['accepted', 'rejected', 'expired', 'superseded'],
-    // Only the plain step is a lifecycle button; submit/send/accept/reject/revise need data and run through the quotations service.
-    transitions: [{ from: ['sent'], to: 'negotiation', action: 'Mark under negotiation' }],
+    // Only the plain step is a lifecycle button; submit/send/accept/reject/new version need data and run through the quotations service.
+    transitions: [{ from: ['sent'], to: 'negotiation', action: T.lifecycle.markNegotiation }],
   },
   views: views([
     {
       id: 'v_quotes_open',
       resource: 'quotations',
-      name: 'Open',
+      name: T.views.open,
       type: 'table',
       filter: group('and', [cond('isLatest', 'eq', true), cond('status', 'in', OPEN_QUOTE_STATUS)]),
       sort: [{ field: 'quoteDate', dir: 'desc' }],
@@ -146,7 +153,7 @@ export const quotations: ResourceDefinition = {
     {
       id: 'v_quotes_approval',
       resource: 'quotations',
-      name: 'Pending approval',
+      name: T.views.pendingApproval,
       type: 'table',
       filter: group('and', [cond('status', 'eq', 'pending_approval')]),
       sort: [{ field: 'quoteDate', dir: 'asc' }],
@@ -155,7 +162,7 @@ export const quotations: ResourceDefinition = {
     {
       id: 'v_quotes_expiring',
       resource: 'quotations',
-      name: 'Expiring in 7 days',
+      name: T.views.expiring,
       type: 'table',
       filter: group('and', [cond('isLatest', 'eq', true), cond('status', 'in', ['approved', 'sent', 'negotiation']), cond('validUntil', 'next7')]),
       sort: [{ field: 'validUntil', dir: 'asc' }],
@@ -164,7 +171,7 @@ export const quotations: ResourceDefinition = {
     {
       id: 'v_quotes_board',
       resource: 'quotations',
-      name: 'Board',
+      name: T.views.board,
       type: 'board',
       boardField: 'status',
       filter: group('and', [cond('isLatest', 'eq', true)]),
@@ -174,7 +181,7 @@ export const quotations: ResourceDefinition = {
     {
       id: 'v_quotes_all',
       resource: 'quotations',
-      name: 'All revisions',
+      name: T.views.allVersions,
       type: 'table',
       filter: group('and'),
       sort: [{ field: 'quoteDate', dir: 'desc' }],
@@ -185,48 +192,47 @@ export const quotations: ResourceDefinition = {
 
 const ft = (key: string, label: string, type: Parameters<typeof field>[3], extra?: Parameters<typeof field>[4]) => field('termsTemplates', key, label, type, extra);
 
-/** QUO-07: commercial terms templates per division (filled into quotations, editable within permissions). */
+/** QUO-07: Terms & Conditions templates per division (filled into quotations, editable within permissions). */
 export const termsTemplates: ResourceDefinition = {
   id: 'res_termsTemplates',
   key: 'termsTemplates',
   module: 'quotations',
-  label: 'Terms template',
-  labelPlural: 'Terms templates',
+  label: T.records.termsTemplates.one,
+  labelPlural: T.records.termsTemplates.many,
   icon: 'scroll-text',
   version: 1,
   idPrefix: 'TT',
   titleField: 'name',
   subtitleFields: ['divisionId', 'status'],
   divisionField: 'divisionId',
-  description: 'Standard payment, delivery, warranty and installation terms per division. Picked when preparing a quotation.',
+  description: T.resources.termsTemplates.description,
   status: 'published',
   fields: [
-    ft('name', 'Name', 'text', { required: true, maxLength: 80, capabilities: ALL, width: 240 }),
-    ft('divisionId', 'Division', 'master', { master: 'division', required: true, width: 160 }),
-    ft('isDefault', 'Default for division', 'boolean', { defaultValue: false }),
-    ft('status', 'Status', 'master', { master: 'termsStatus', required: true, defaultValue: 'active' }),
-    ft('paymentTerms', 'Payment terms', 'longtext', { required: true, maxLength: 1000, capabilities: { ...FORM_ONLY, search: true } }),
-    ft('deliveryTerms', 'Delivery timeline', 'longtext', { required: true, maxLength: 1000, capabilities: FORM_ONLY }),
-    ft('warrantyTerms', 'Warranty', 'longtext', { required: true, maxLength: 1000, capabilities: FORM_ONLY }),
-    ft('installationTerms', 'Installation terms', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
+    ft('name', FT.name, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 240 }),
+    ft('divisionId', FT.divisionId, 'master', { master: 'division', required: true, width: 160 }),
+    ft('isDefault', FT.isDefault, 'boolean', { defaultValue: false }),
+    ft('status', FT.status, 'master', { master: 'termsStatus', required: true, defaultValue: 'active' }),
+    ft('paymentTerms', FT.paymentTerms, 'longtext', { required: true, maxLength: 1000, capabilities: { ...FORM_ONLY, search: true } }),
+    ft('deliveryTerms', FT.deliveryTerms, 'longtext', { required: true, maxLength: 1000, capabilities: FORM_ONLY }),
+    ft('warrantyTerms', FT.warrantyTerms, 'longtext', { required: true, maxLength: 1000, capabilities: FORM_ONLY }),
+    ft('installationTerms', FT.installationTerms, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
   ],
-  relationships: [{ id: 'rel_tt_quotes', label: 'Quotations', resource: 'quotations', foreignKey: 'termsTemplateId' }],
+  relationships: [{ id: 'rel_tt_quotes', label: T.relationships.quotations, resource: 'quotations', foreignKey: 'termsTemplateId' }],
   form: {
     quickCreate: ['name', 'divisionId', 'isDefault', 'paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'],
     sections: [
-      { id: 'main', title: 'Template', fields: ['name', 'divisionId', 'isDefault', 'status'], columns: 2 },
-      { id: 'terms', title: 'Terms', fields: ['paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'], columns: 2 },
+      { id: 'main', title: T.sections.termsTemplates.main, fields: ['name', 'divisionId', 'isDefault', 'status'], columns: 2 },
+      { id: 'terms', title: T.sections.termsTemplates.terms, fields: ['paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'], columns: 2 },
     ],
   },
   views: views([
-    { id: 'v_tt_all', resource: 'termsTemplates', name: 'All templates', type: 'table', filter: group('and'), sort: [{ field: 'divisionId', dir: 'asc' }], columns: cols('name', 'divisionId', 'isDefault', 'status') },
+    { id: 'v_tt_all', resource: 'termsTemplates', name: T.views.allTemplates, type: 'table', filter: group('and'), sort: [{ field: 'divisionId', dir: 'asc' }], columns: cols('name', 'divisionId', 'isDefault', 'status') },
   ]),
 };
 
 
 export const quotationsPack: ModulePack = {
   id: 'quotations',
-  nav: { id: 'quotations', label: 'Quotations', icon: 'file-text', resources: ['quotations', 'termsTemplates'] },
   resources: [quotations, termsTemplates],
   masters,
   // REQUIREMENTS §2.2 (proposed matrix). Approvals use capabilities approve.l1/l2/l3.

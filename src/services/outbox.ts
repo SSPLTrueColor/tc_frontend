@@ -8,6 +8,7 @@ import { type Actor, can } from './authz';
 import { getDb } from './db';
 import type { HookContext } from './resourceHooks';
 import { type OutboxMessage, ServiceError } from './types';
+import { L } from '../constants/labels';
 
 export function queueMessage(ctx: HookContext, m: Omit<OutboxMessage, 'id' | 'workspaceId' | 'createdAt' | 'createdBy' | 'status'>): OutboxMessage {
   const msg: OutboxMessage = { ...m, id: uid('msg'), workspaceId: ctx.actor.workspaceId, createdAt: nowIso(), createdBy: ctx.actor.user.id, status: 'simulated' };
@@ -17,6 +18,6 @@ export function queueMessage(ctx: HookContext, m: Omit<OutboxMessage, 'id' | 'wo
 }
 
 export function listOutbox(actor: Actor): OutboxMessage[] {
-  if (!can(actor, 'outbox.view')) throw new ServiceError('forbidden', 'Your role cannot view the message outbox.');
+  if (!can(actor, 'outbox.view')) throw new ServiceError('forbidden', L.common.errors.outboxOnly);
   return getDb().outbox.filter((m) => m.workspaceId === actor.workspaceId);
 }

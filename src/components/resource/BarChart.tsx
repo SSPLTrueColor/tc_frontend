@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { cx } from '../../lib/format';
+import { L } from '../../constants/labels';
 
 /**
  * Single-series bar chart (dataviz: one series → slot-1 color, thin marks,
@@ -21,14 +22,14 @@ export function BarChart({ data, label, unit, onSelect }: { data: { key: string;
       <div className="chart-head">
         <figcaption className="chart-title">{label}</figcaption>
         <button type="button" className="link small" onClick={() => setAsTable((t) => !t)} aria-pressed={asTable}>
-          {asTable ? 'Show chart' : 'Show table'}
+          {asTable ? L.common.list.showChart : L.common.list.showTable}
         </button>
       </div>
       {asTable ? (
         <table className="mini-table">
           <thead>
             <tr>
-              <th scope="col">Day</th>
+              <th scope="col">{L.common.list.day}</th>
               <th scope="col" className="num">
                 {unit}
               </th>

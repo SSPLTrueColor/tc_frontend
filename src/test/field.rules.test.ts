@@ -72,7 +72,7 @@ describe('target periods and achievement (TGT-01, BR-47)', () => {
   const t = (metric: string, extra = {}) => ({ metric, periodType: 'month', periodStart: '2026-10-01', ...extra });
   const e1 = (o: unknown) => o === 'E1';
 
-  it('counts only booked orders in the period, optionally by product category', () => {
+  it('counts only booked orders in the period, optionally by product type', () => {
     expect(achievementFor(t('order_value'), data, e1)).toBe(1_180_000);
     expect(achievementFor(t('order_value', { productCategory: 'ink' }), data, e1)).toBe(45_000);
     expect(achievementFor(t('quantity', { productCategory: 'ink' }), data, e1)).toBe(10);

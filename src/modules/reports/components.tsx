@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { L } from '../../constants/labels';
 import { cx } from '../../lib/format';
 import { compactInr, formatCell, formatKpi } from '../../services/reports/format';
 import type { ChartPolarity, ReportColumn, ReportRow } from '../../services/reports/types';
@@ -17,7 +18,9 @@ export const fmtValue = (v: number, unit: string, money?: boolean) => {
   return `${n} ${n === 1 && unit.endsWith('s') ? unit.slice(0, -1) : unit}`;
 };
 
-const SIGNAL_TEXT: Record<Signal, string> = { success: 'good', warning: 'needs attention', danger: 'act now', info: 'information', neutral: '' };
+const SIGNAL_TEXT: Record<Signal, string> = L.reports.chart.signal;
+const CH = L.reports.chart;
+const TB = L.reports.table;
 
 /**
  * Ranked bar chart. Bars are coloured by meaning (green good, amber needs attention, red act now,
@@ -37,24 +40,24 @@ export function RankBars({ data: raw, label, unit, money, to, legend: given, com
         <figcaption className="chart-title">{label}</figcaption>
         {to && (
           <Link to={to} className="link small">
-            Details
+            {CH.details}
           </Link>
         )}
         <button type="button" className="link small" onClick={() => setAsTable((t) => !t)} aria-pressed={asTable}>
-          {asTable ? 'Show chart' : 'Show table'}
+          {asTable ? CH.showChart : CH.showTable}
         </button>
       </div>
       {!data.length || max === 0 ? (
-        <p className="muted small">No data for this selection.</p>
+        <p className="muted small">{CH.noData}</p>
       ) : asTable ? (
         <table className="mini-table rep-table">
           <thead>
             <tr>
-              <th scope="col">Item</th>
+              <th scope="col">{CH.item}</th>
               <th scope="col" className="num">
-                Value
+                {CH.value}
               </th>
-              {shownLegend.length > 0 && <th scope="col">Status</th>}
+              {shownLegend.length > 0 && <th scope="col">{CH.status}</th>}
             </tr>
           </thead>
           <tbody>
@@ -81,7 +84,7 @@ export function RankBars({ data: raw, label, unit, money, to, legend: given, com
             ))}
           </div>
           {shownLegend.length > 0 && (
-            <ul className="rb-legend" aria-label="Colour meaning">
+            <ul className="rb-legend" aria-label={CH.colourMeaning}>
               {shownLegend.map((l) => (
                 <li key={l.tone} className={`tone-${l.tone}`}>
                   <span className="rb-swatch" aria-hidden="true" />
@@ -108,9 +111,9 @@ export function signalBars(data: ChartBar[], polarity: ChartPolarity): { data: C
     return {
       data: data.map((d, i) => ({ ...d, tone: i === 0 ? 'success' : i === last && last > 1 ? 'danger' : 'warning' })),
       legend: [
-        { tone: 'success', label: 'Recent' },
-        { tone: 'warning', label: 'Getting old' },
-        { tone: 'danger', label: 'Oldest — act first' },
+        { tone: 'success', label: CH.legend.recent },
+        { tone: 'warning', label: CH.legend.gettingOld },
+        { tone: 'danger', label: CH.legend.oldest },
       ],
     };
   }
@@ -119,16 +122,16 @@ export function signalBars(data: ChartBar[], polarity: ChartPolarity): { data: C
     return {
       data: data.map((d) => ({ ...d, tone: d.value >= avg ? 'success' : 'warning' })),
       legend: [
-        { tone: 'success', label: 'At or above average' },
-        { tone: 'warning', label: 'Below average' },
+        { tone: 'success', label: CH.legend.atOrAbove },
+        { tone: 'warning', label: CH.legend.below },
       ],
     };
   return {
     data: data.map((d) => ({ ...d, tone: avg && d.value >= avg * 1.5 ? 'danger' : d.value > avg ? 'warning' : 'success' })),
     legend: [
-      { tone: 'success', label: 'At or below average' },
-      { tone: 'warning', label: 'Above average' },
-      { tone: 'danger', label: 'Far above average (1.5×)' },
+      { tone: 'success', label: CH.legend.atOrBelow },
+      { tone: 'warning', label: CH.legend.above },
+      { tone: 'danger', label: CH.legend.farAbove },
     ],
   };
 }
@@ -251,20 +254,20 @@ export function ReportTable({ columns, rows, search, caption, footer }: { column
           <strong>
             {filtered.length ? p * size + 1 : 0}–{Math.min(filtered.length, (p + 1) * size)}
           </strong>{' '}
-          of {filtered.length.toLocaleString('en-IN')} rows
+          {TB.of(filtered.length.toLocaleString('en-IN'))}
         </span>
         {footer}
-        <nav className="grid-pages" aria-label="Pagination">
-          <IconButton icon="chevron-left" label="Previous page" disabledReason={p === 0 ? 'First page' : undefined} onClick={() => setPage(p - 1)} />
+        <nav className="grid-pages" aria-label={TB.pagination}>
+          <IconButton icon="chevron-left" label={TB.previous} disabledReason={p === 0 ? TB.firstPage : undefined} onClick={() => setPage(p - 1)} />
           <span className="muted small">
-            Page {p + 1} of {pageCount}
+            {TB.page(p + 1, pageCount)}
           </span>
-          <IconButton icon="chevron-right" label="Next page" disabledReason={p >= pageCount - 1 ? 'Last page' : undefined} onClick={() => setPage(p + 1)} />
+          <IconButton icon="chevron-right" label={TB.next} disabledReason={p >= pageCount - 1 ? TB.lastPage : undefined} onClick={() => setPage(p + 1)} />
         </nav>
         <SelectMenu
-          label="Rows per page"
+          label={TB.rowsPerPage}
           value={size}
-          options={PAGE_SIZES.map((x) => ({ value: x, label: `${x} / page` }))}
+          options={PAGE_SIZES.map((x) => ({ value: x, label: TB.perPage(x) }))}
           onChange={(x) => {
             setSize(x);
             setPage(0);

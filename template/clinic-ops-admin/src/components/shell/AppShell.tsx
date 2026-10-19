@@ -13,7 +13,7 @@ import { searchRecords } from '../../services/search';
 import { getSettings, SIDEBAR_MAX, SIDEBAR_MIN, switchSession, toggleFavorite, togglePin, updateSettings } from '../../services/settings';
 import { listViews } from '../../services/views';
 import { relativeTime } from '../../lib/dates';
-import { applyPalette, DEFAULT_PALETTE_ID, findPalette } from '../../lib/palette';
+import { applyPalette, DEFAULT_PALETTE_ID, findPalette, type Palette } from '../../lib/palette';
 import { Button, IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
 import { Avatar, useToast } from '../primitives/feedback';
@@ -21,6 +21,8 @@ import { Dialog, Drawer, Popover, useLayer } from '../primitives/overlay';
 import { HelpContent } from './help';
 import { InfoTip } from '../primitives/InfoTip';
 import { TOPBAR_TITLE_SLOT } from './PageHeader';
+import { TYPE_ICON } from '../resource/ViewControls';
+import { PaletteEditor, ThemePicker } from './ThemePicker';
 
 function moduleVisible(actor: ReturnType<typeof useActor>, m: (typeof clinicModules)[number]) {
   if (m.resources.some((r) => canReadResource(actor, r))) return true;
@@ -94,7 +96,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
       <div className="shell">
         {!phone && <IconRail mod={mod} onSearch={() => setPaletteOpen(true)} onHelp={() => setHelpOpen(true)} />}
-        {!drawerNav && !settings.sidebarCollapsed && <ContextSidebar mod={mod} />}
+        {/* Always mounted so collapse / expand can animate smoothly (width slides to 0) */}
+        {!drawerNav && <ContextSidebar mod={mod} collapsed={settings.sidebarCollapsed} />}
         {drawerNav && navOpen && <MobileNav mod={mod} onClose={() => setNavOpen(false)} onSearch={() => setPaletteOpen(true)} onHelp={() => setHelpOpen(true)} showRail={phone} />}
         <div className="workspace">
           <TopBar onMenu={() => setNavOpen(true)} showMenu={drawerNav || settings.sidebarCollapsed} onSearch={() => setPaletteOpen(true)} />
@@ -165,6 +168,13 @@ function IconRail({ mod, onSearch, onHelp }: { mod: string; onSearch: () => void
           <Link to={pagePath(actor.workspaceId, 'admin', 'settings')} className={cx('rail-item', mod === 'admin' && 'is-active')} aria-label="Administration and settings" data-tooltip="Administration">
             <Icon name="settings" />
           </Link>
+        </li>
+        {/* Theme & colours and the user's profile live at the bottom of the rail (owner rule) */}
+        <li>
+          <ThemeButton inRail />
+        </li>
+        <li>
+          <AccountMenu inRail />
         </li>
       </ul>
     </nav>
@@ -240,7 +250,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
       const current = location.pathname === base ? new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || views[0]?.id) : undefined;
       const withIcons = m.navChildIcons?.includes(rk);
       const items: NavEntry[] = views.map((v) => {
-        const typeIcon = v.type === 'board' ? 'board' : v.type === 'calendar' ? 'calendar' : 'list';
+        const typeIcon = TYPE_ICON[v.type];
         return { key: `view:${v.id}`, label: v.name, path: `${base}?view=${v.id}`, icon: withIcons ? typeIcon : undefined, altIcon: typeIcon, active: current === v.id };
       });
       return { rk, label: res.labelPlural, items };
@@ -282,7 +292,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
                 <span className="nav-section is-static">Favorites</span>
                 <ul className="nav-list">
                   {settings.favorites.map((f) => (
-                    <NavItem key={f.path} entry={{ key: f.path, label: f.label, path: f.path, icon: f.icon ?? 'list', active: here === f.path || location.pathname === f.path }} />
+                    <NavItem key={f.path} entry={{ key: f.path, label: f.label, path: f.path, icon: f.icon ?? 'table', active: here === f.path || location.pathname === f.path }} />
                   ))}
                 </ul>
               </>
@@ -364,13 +374,21 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
   );
 }
 
-function ContextSidebar({ mod }: { mod: string }) {
+function ContextSidebar({ mod, collapsed = false }: { mod: string; collapsed?: boolean }) {
   const actor = useActor();
   const settings = getSettings(actor.user.id);
   const [width, setWidth] = useState(settings.sidebarWidth);
+  const [dragging, setDragging] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  // Collapsed sidebar stays mounted for the animation but is not focusable or clickable.
+  useEffect(() => {
+    if (collapsed) navRef.current?.setAttribute('inert', '');
+    else navRef.current?.removeAttribute('inert');
+  }, [collapsed]);
   useEffect(() => setWidth(settings.sidebarWidth), [settings.sidebarWidth]);
   const startDrag = (x0: number) => {
     let w = width;
+    setDragging(true);
     const move = (e: PointerEvent) => {
       w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width + e.clientX - x0));
       setWidth(w);
@@ -378,14 +396,17 @@ function ContextSidebar({ mod }: { mod: string }) {
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      setDragging(false);
       updateSettings(actor.user.id, { sidebarWidth: w });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
   return (
-    <nav className="sidebar" style={{ width }} aria-label="Module navigation">
-      <SidebarContent mod={mod} headerAction={<IconButton icon="panel-left" label="Collapse sidebar" onClick={() => updateSettings(actor.user.id, { sidebarCollapsed: true })} className="sidebar-toggle" />} />
+    <nav className={cx('sidebar', collapsed && 'is-collapsed', dragging && 'is-dragging')} style={{ width: collapsed ? 0 : width }} aria-label="Module navigation" aria-hidden={collapsed || undefined} ref={navRef}>
+      <div className="sidebar-inner" style={{ width }}>
+        <SidebarContent mod={mod} headerAction={<IconButton icon="panel-left" label="Collapse sidebar" onClick={() => updateSettings(actor.user.id, { sidebarCollapsed: true })} className="sidebar-toggle" />} />
+      </div>
       <div
         className="sidebar-resize"
         role="separator"
@@ -459,6 +480,7 @@ function MobileNav({ mod, onClose, onSearch, onHelp, showRail }: { mod: string; 
 
 function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: boolean; onSearch: () => void }) {
   const actor = useActor();
+  const phone = useMedia(PHONE); // on phones the rail is hidden, so theme + profile stay in the top bar
   const settings = getSettings(actor.user.id);
   return (
     <div className="topbar">
@@ -479,8 +501,9 @@ function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: 
       </button>
       <div className="topbar-right">
         <WorkspaceSwitcher />
+        {phone && <ThemeButton />}
         <NotificationBell />
-        <AccountMenu />
+        {phone && <AccountMenu />}
       </div>
     </div>
   );
@@ -585,7 +608,37 @@ function NotificationBell() {
   );
 }
 
-function AccountMenu() {
+/** Theme changer in the top bar: mode + colour palettes (presets and the user's own). */
+function ThemeButton({ inRail = false }: { inRail?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Palette | null>(null);
+  const ref = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      {inRail ? (
+        <button ref={ref} type="button" className={cx('rail-item', open && 'is-active')} aria-label="Theme and colours" data-tooltip="Theme & colours" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <Icon name="palette" />
+        </button>
+      ) : (
+        <IconButton ref={ref} icon="palette" label="Theme and colours" aria-haspopup="dialog" aria-expanded={open} pressed={open} onClick={() => setOpen((o) => !o)} />
+      )}
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Theme and colours" width={360} align={inRail ? 'start' : 'end'} side={inRail ? 'right' : 'bottom'} className={cx('theme-pop', inRail && 'from-rail')}>
+        <div className="pop-head">
+          <strong>Theme</strong>
+        </div>
+        <ThemePicker
+          onEditPalette={(p) => {
+            setOpen(false);
+            setEditing(p);
+          }}
+        />
+      </Popover>
+      {editing && <PaletteEditor initial={editing} onClose={() => setEditing(null)} />}
+    </>
+  );
+}
+
+function AccountMenu({ inRail = false }: { inRail?: boolean }) {
   const actor = useActor();
   const [open, setOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -594,14 +647,20 @@ function AccountMenu() {
   const navigate = useNavigate();
   return (
     <>
-      <button ref={ref} type="button" className="account-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} aria-label={`Account: ${actor.user.name}, ${actor.role.label}`}>
-        <Avatar name={actor.user.name} size={26} />
-        <span className="account-text hide-phone">
-          <span className="account-name">{actor.user.name}</span>
-          <span className="account-role">{actor.role.label}</span>
-        </span>
-      </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Account and role" width={300} align="end">
+      {inRail ? (
+        <button ref={ref} type="button" className={cx('rail-item rail-profile', open && 'is-active')} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} aria-label={`Account: ${actor.user.name}, ${actor.role.label}`} data-tooltip={`${actor.user.name} · ${actor.role.label}`}>
+          <Avatar name={actor.user.name} size={30} />
+        </button>
+      ) : (
+        <button ref={ref} type="button" className="account-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} aria-label={`Account: ${actor.user.name}, ${actor.role.label}`}>
+          <Avatar name={actor.user.name} size={26} />
+          <span className="account-text hide-phone">
+            <span className="account-name">{actor.user.name}</span>
+            <span className="account-role">{actor.role.label}</span>
+          </span>
+        </button>
+      )}
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Account and role" width={300} align={inRail ? 'start' : 'end'} side={inRail ? 'right' : 'bottom'} className={cx(inRail && 'from-rail')}>
         <p className="pop-label">Simulated sign-in (demo users)</p>
         <ul className="menu">
           {demoUsers.map((u) => (
@@ -742,7 +801,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
         .forEach((r) => {
           const res = getResource(r);
           out.push({ id: `r-${r}`, label: res.labelPlural, hint: m.label, icon: res.icon === 'calendar' ? 'calendar' : res.icon, run: go(resourcePath(actor.workspaceId, r)) });
-          listViews(actor, r).forEach((v) => out.push({ id: `v-${v.id}`, label: `${res.labelPlural}: ${v.name}`, hint: 'Saved view', icon: 'list', run: go(resourcePath(actor.workspaceId, r, { view: v.id })) }));
+          listViews(actor, r).forEach((v) => out.push({ id: `v-${v.id}`, label: `${res.labelPlural}: ${v.name}`, hint: 'Saved view', icon: TYPE_ICON[v.type], run: go(resourcePath(actor.workspaceId, r, { view: v.id })) }));
         });
     });
     getSettings(actor.user.id).recents.forEach((r) => out.push({ id: `rec-${r.path}`, label: r.label, hint: 'Recent', icon: 'reset', run: go(r.path) }));

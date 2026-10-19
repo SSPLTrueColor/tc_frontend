@@ -1,22 +1,25 @@
-/** Installed-base record extensions: actions, banners and tabs for installations, machines and contracts. */
+/** Installed Base record extensions: actions, banners and tabs for installation jobs, machines and contracts. Labels: L.installed. */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { L } from '../../constants/labels';
+import { ROUTES, toPath } from '../../constants/routes';
 import type { RecordData } from '../../metadata/types';
 import { addDays, formatDate, todayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
 import { recordPeekPath } from '../../lib/routes';
 import { errorMessage } from '../../services/api/client';
 import { installedApi } from '../../services/api/installed';
-import { can, canReadResource, perm } from '../../services/authz';
+import { can, canReadResource, fieldAccessMap, perm } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { useActor, useRevision } from '../../services/hooks';
 import { coverageFor } from '../../services/lookups';
-import { activeMasterValues, masterLabel, masterValue } from '../../services/registry';
+import { activeMasterValues, getResource, masterLabel, masterValue } from '../../services/registry';
 import { queryRecords, recordTitle } from '../../services/runtime';
 import { ServiceError } from '../../services/types';
-import { handoverComplete, missingReadiness, missingSteps, signOffBlockers } from '../../services/installed/logic';
+import { allSteps, handoverComplete, hasResource, missingReadiness, missingSteps, READINESS_FIELDS, signOffBlockers } from '../../services/installed/logic';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
+import { FieldValue } from '../../components/resource/FieldValue';
 import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { Button } from '../../components/primitives/Button';
 import { DatePicker } from '../../components/primitives/DatePicker';
@@ -24,6 +27,11 @@ import { DateText, EmptyValue } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
+
+const T = L.installed;
+const M = T.messages;
+const A = T.actions;
+const C = T.columns;
 
 // ---------------------------------------------------------------- small form helpers
 
@@ -61,34 +69,34 @@ export function InstallationBanner({ record }: RecordExtensionProps) {
   const s = String(raw.status);
   if (s === 'signed_off')
     return (
-      <InlineAlert tone="success" title="Signed off">
-        Machine{' '}
+      <InlineAlert tone="success" title={M.signedOffTitle}>
+        {M.machineWord}{' '}
         {raw.machineId ? (
           <Link to={recordPeekPath('tc', 'machines', String(raw.machineId))} className="rel-link">
             {String(raw.serialNo ?? raw.machineId)}
           </Link>
         ) : (
-          'record'
+          M.recordWord
         )}{' '}
-        created with warranty and preventive-maintenance schedule.
+        {M.signedOffBody}
       </InlineAlert>
     );
   const todo: string[] = [];
   if (s === 'scheduled') {
-    if (!raw.engineerId || !raw.scheduledAt) todo.push('Assign an engineer and a date');
-    if (!raw.readinessSharedAt) todo.push('Share the readiness checklist with the customer');
+    if (!raw.engineerId || !raw.scheduledAt) todo.push(M.todoAssign);
+    if (!raw.readinessSharedAt) todo.push(M.todoShare);
     const miss = missingReadiness(raw);
-    if (miss.length) todo.push(`Verify on site: ${miss.join(', ')}`);
+    if (miss.length) todo.push(M.todoVerify(miss.join(', ')));
   }
-  if (s === 'site_ready' && !handoverComplete(raw)) todo.push('Complete the sales-to-service handover (expectations, commitments, key contacts)');
+  if (s === 'site_ready' && !handoverComplete(raw)) todo.push(M.todoHandover);
   if (s === 'in_progress') {
     const steps = missingSteps(raw);
-    if (steps.length) todo.push(`Job card steps left: ${steps.map((x) => masterLabel('installStep', x)).join(', ')}`);
+    if (steps.length) todo.push(M.todoSteps(steps.map((x) => masterLabel('installStep', x)).join(', ')));
   }
   if (s === 'trial_training') signOffBlockers(raw).forEach((b) => todo.push(b));
   if (!todo.length) return null;
   return (
-    <InlineAlert tone="info" title="Next steps">
+    <InlineAlert tone="info" title={M.nextSteps}>
       <ul className="plain-list bullets">
         {todo.map((t) => (
           <li key={t}>{t}</li>
@@ -111,12 +119,12 @@ export function InstallationActions({ actor, record }: RecordExtensionProps) {
         <Button
           icon="send"
           loading={busy}
-          disabledReason={!canEdit ? 'Read-only for your role' : undefined}
+          disabledReason={!canEdit ? M.readOnly : undefined}
           onClick={async () => {
             setBusy(true);
             try {
               await installedApi.shareReadinessChecklist(actor, record.id);
-              toast('Readiness checklist sent to the customer (simulated)');
+              toast(M.checklistShared);
             } catch (e) {
               toast(errorMessage(e), 'danger');
             } finally {
@@ -124,13 +132,13 @@ export function InstallationActions({ actor, record }: RecordExtensionProps) {
             }
           }}
         >
-          Share readiness checklist
+          {A.shareChecklist}
         </Button>
       )}
       {status !== 'signed_off' && (
         <>
-          <Button icon="plus" onClick={() => fileRef.current?.click()} disabledReason={!canEdit ? 'Read-only for your role' : undefined}>
-            Add photo / video
+          <Button icon="plus" onClick={() => fileRef.current?.click()} disabledReason={!canEdit ? M.readOnly : undefined}>
+            {A.addMedia}
           </Button>
           <input
             ref={fileRef}
@@ -143,7 +151,7 @@ export function InstallationActions({ actor, record }: RecordExtensionProps) {
               e.target.value = '';
               try {
                 await installedApi.attachMedia(actor, record.id, files);
-                toast(`${files.length} file(s) attached (names only — prototype)`);
+                toast(M.filesAttached(files.length));
               } catch (err) {
                 toast(errorMessage(err), 'danger');
               }
@@ -152,8 +160,8 @@ export function InstallationActions({ actor, record }: RecordExtensionProps) {
         </>
       )}
       {status === 'trial_training' && (
-        <Button variant="primary" icon="check" onClick={() => setSigning(true)} disabledReason={!can(actor, 'install.signoff') ? 'Your role cannot record customer sign-off' : undefined}>
-          Customer sign-off
+        <Button variant="primary" icon="check" onClick={() => setSigning(true)} disabledReason={!can(actor, 'install.signoff') ? M.noSignOffCapability : undefined}>
+          {A.customerSignOff}
         </Button>
       )}
       {signing && <SignOffDialog record={record} onClose={() => setSigning(false)} />}
@@ -184,7 +192,7 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
         ref={ref}
         width={560}
         height={160}
-        aria-label="Signature box — draw with mouse or finger"
+        aria-label={M.signatureBox}
         style={{ width: '100%', height: 160, border: '1px solid var(--s-border)', borderRadius: 'var(--c-radius-control)', touchAction: 'none', background: '#fff' }}
         onPointerDown={(e) => {
           drawing.current = true;
@@ -217,7 +225,7 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
           onChange(null);
         }}
       >
-        Clear signature
+        {A.clearSignature}
       </Button>
     </div>
   );
@@ -241,7 +249,7 @@ function SignOffDialog({ record, onClose }: { record: RecordData; onClose: () =>
     setErrors({});
     try {
       await installedApi.signOff(actor, record.id, { method, otp, signatureData: signature ?? undefined, signedOffBy: name }, raw.version);
-      toast(`${record.id} signed off — machine, warranty and PM schedule created`);
+      toast(M.signOffDone(record.id));
       onClose();
     } catch (e) {
       setErrors(fieldErrorsOf(e));
@@ -254,19 +262,19 @@ function SignOffDialog({ record, onClose }: { record: RecordData; onClose: () =>
       open
       onClose={onClose}
       size="md"
-      title={`Customer sign-off · ${record.id}`}
-      description="Confirms installation, trial printing and training with the customer. Creates the machine record, starts the warranty and generates the preventive-maintenance schedule."
+      title={M.signOffTitle(record.id)}
+      description={M.signOffDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={submit} disabledReason={blockers.length ? 'Resolve the items listed first' : undefined}>
-            Confirm sign-off
+          <Button onClick={onClose}>{A.cancel}</Button>
+          <Button variant="primary" loading={busy} onClick={submit} disabledReason={blockers.length ? M.resolveFirst : undefined}>
+            {A.confirmSignOff}
           </Button>
         </>
       }
     >
       {blockers.length > 0 ? (
-        <InlineAlert tone="warning" title="Not ready for sign-off">
+        <InlineAlert tone="warning" title={M.notReady}>
           <ul className="plain-list bullets">
             {blockers.map((b) => (
               <li key={b}>{b}</li>
@@ -275,12 +283,12 @@ function SignOffDialog({ record, onClose }: { record: RecordData; onClose: () =>
         </InlineAlert>
       ) : (
         <div className="form-grid cols-2">
-          <Field id="so-name" label="Customer representative" required error={errors.signedOffBy} wide>
+          <Field id="so-name" label={M.representative} required error={errors.signedOffBy} wide>
             <input id="so-name" className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} data-autofocus />
           </Field>
           <fieldset className="form-field span-all">
-            <legend className="field-label">Sign-off method</legend>
-            <div className="segmented" role="radiogroup" aria-label="Sign-off method">
+            <legend className="field-label">{T.fields.installations.signOffMethod}</legend>
+            <div className="segmented" role="radiogroup" aria-label={T.fields.installations.signOffMethod}>
               {(['otp', 'signature'] as const).map((m) => (
                 <button key={m} type="button" role="radio" aria-checked={method === m} className={`seg-btn${method === m ? ' is-on' : ''}`} onClick={() => setMethod(m)}>
                   {masterLabel('installSignOffMethod', m)}
@@ -301,15 +309,15 @@ function SignOffDialog({ record, onClose }: { record: RecordData; onClose: () =>
                     }
                   }}
                 >
-                  {sentCode ? 'Resend code' : 'Send code to customer'}
+                  {sentCode ? A.resendCode : A.sendCode}
                 </Button>
               </div>
               {sentCode && (
-                <InlineAlert tone="info" title="Simulated SMS">
-                  The customer would receive this by SMS. Code: <strong className="mono">{sentCode}</strong>
+                <InlineAlert tone="info" title={M.simulatedSms}>
+                  {M.smsBody} <strong className="mono">{sentCode}</strong>
                 </InlineAlert>
               )}
-              <Field id="so-otp" label="Code from the customer" required error={errors.otp}>
+              <Field id="so-otp" label={M.codeFromCustomer} required error={errors.otp}>
                 <input id="so-otp" className="input" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} disabled={!sentCode} />
               </Field>
             </>
@@ -335,10 +343,10 @@ export function MachineBanner({ record }: RecordExtensionProps) {
   const c = (getDb().records.amcContracts ?? []).filter((x) => x.machineId === record.id && ['active', 'due_for_renewal'].includes(String(x.status))).sort((a, b) => String(b.endDate).localeCompare(String(a.endDate)))[0];
   const mv = masterValue('coverage', cov);
   return (
-    <InlineAlert tone={cov === 'none' ? 'warning' : 'info'} title={`Coverage today: ${mv?.label ?? cov}`}>
-      {c ? `${c.contractNo} until ${formatDate(String(c.endDate))}. ` : ''}
-      {w ? `Warranty ${String(w.endDate) < todayKey() ? 'ended' : 'until'} ${formatDate(String(w.endDate))}.` : 'No warranty on record.'}
-      {cov === 'none' && ' Offer an AMC / CMC — this machine is on the upsell list.'}
+    <InlineAlert tone={cov === 'none' ? 'warning' : 'info'} title={M.coverageToday(mv?.label ?? cov)}>
+      {c ? M.contractUntil(String(c.contractNo), formatDate(String(c.endDate))) : ''}
+      {w ? M.warrantyUntil(String(w.endDate) < todayKey(), formatDate(String(w.endDate))) : M.noWarranty}
+      {cov === 'none' && M.upsell}
     </InlineAlert>
   );
 }
@@ -349,14 +357,14 @@ export function MachineActions({ actor, record }: RecordExtensionProps) {
   const [component, setComponent] = useState(false);
   return (
     <>
-      <Button icon="reset" onClick={() => setMoving(true)} disabledReason={!can(actor, 'machine.transfer') ? 'Only service leadership, coordinators and admins can relocate or transfer machines' : record.status === 'scrapped' ? 'Scrapped machine' : undefined}>
-        Relocate / transfer
+      <Button icon="reset" onClick={() => setMoving(true)} disabledReason={!can(actor, 'machine.transfer') ? M.noTransfer : record.status === 'scrapped' ? M.scrapped : undefined}>
+        {A.relocate}
       </Button>
-      <Button icon="activity" onClick={() => setReading(true)} disabledReason={!perm(actor, 'machineReadings').create ? 'Your role cannot record readings' : undefined}>
-        Add reading
+      <Button icon="activity" onClick={() => setReading(true)} disabledReason={!perm(actor, 'machineReadings').create ? M.noReadings : undefined}>
+        {A.addReading}
       </Button>
-      <Button icon="plus" onClick={() => setComponent(true)} disabledReason={!perm(actor, 'machineComponents').create ? 'Your role cannot add components' : undefined}>
-        Add component
+      <Button icon="plus" onClick={() => setComponent(true)} disabledReason={!perm(actor, 'machineComponents').create ? M.noComponents : undefined}>
+        {A.addComponent}
       </Button>
       {moving && <MoveDialog machine={record} onClose={() => setMoving(false)} />}
       <QuickCreateDialog open={reading} resKey="machineReadings" initial={{ machineId: record.id, readingDate: todayKey(), recordedById: actor.staffId, source: 'visit' }} onClose={() => setReading(false)} onCreated={() => setReading(false)} />
@@ -383,11 +391,11 @@ function MoveDialog({ machine, onClose }: { machine: RecordData; onClose: () => 
       open
       onClose={onClose}
       size="md"
-      title={`Relocate or transfer ${String(machine.serialNo)}`}
-      description="Records the change in the machine’s ownership / site history. Warranty and contracts stay with the machine; their owners are notified on resale."
+      title={M.moveTitle(String(machine.serialNo))}
+      description={M.moveDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{A.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
@@ -396,7 +404,7 @@ function MoveDialog({ machine, onClose }: { machine: RecordData; onClose: () => 
               setErrors({});
               try {
                 await installedApi.moveMachine(actor, machine.id, { moveType, toCustomerId: toCustomerId || undefined, toSiteAddressId: site || null, moveDate: date, reason });
-                toast(moveType === 'resale' ? 'Ownership transferred' : 'Machine relocated');
+                toast(moveType === 'resale' ? M.transferred : M.relocated);
                 onClose();
               } catch (e) {
                 setErrors(fieldErrorsOf(e));
@@ -405,15 +413,15 @@ function MoveDialog({ machine, onClose }: { machine: RecordData; onClose: () => 
               }
             }}
           >
-            Save change
+            {A.saveChange}
           </Button>
         </>
       }
     >
       <div className="form-grid cols-2">
         <fieldset className="form-field span-all">
-          <legend className="field-label">Change</legend>
-          <div className="segmented" role="radiogroup" aria-label="Change type">
+          <legend className="field-label">{T.fields.machineMoves.moveType}</legend>
+          <div className="segmented" role="radiogroup" aria-label={M.changeType}>
             {(['relocation', 'resale'] as const).map((m) => (
               <button
                 key={m}
@@ -432,17 +440,17 @@ function MoveDialog({ machine, onClose }: { machine: RecordData; onClose: () => 
           </div>
         </fieldset>
         {moveType === 'resale' && (
-          <Field id="mv-to" label="New owner" required error={errors.toCustomerId} wide>
-            <SelectMenu id="mv-to" block searchable label="New owner" value={toCustomerId} options={customers.filter((c) => c.id !== machine.customerId).map((c) => ({ value: c.id, label: String(c.name) }))} onChange={(v) => (setTo(v), setSite(''))} />
+          <Field id="mv-to" label={M.newOwner} required error={errors.toCustomerId} wide>
+            <SelectMenu id="mv-to" block searchable label={M.newOwner} value={toCustomerId} options={customers.filter((c) => c.id !== machine.customerId).map((c) => ({ value: c.id, label: String(c.name) }))} onChange={(v) => (setTo(v), setSite(''))} />
           </Field>
         )}
-        <Field id="mv-site" label="New site" required={moveType === 'relocation'} error={errors.toSiteAddressId}>
-          <SelectMenu id="mv-site" block label="New site" value={site} options={sites} onChange={setSite} placeholder={owner ? (sites.length ? 'Select site…' : 'No addresses for this customer') : 'Choose the new owner first'} />
+        <Field id="mv-site" label={M.newSite} required={moveType === 'relocation'} error={errors.toSiteAddressId}>
+          <SelectMenu id="mv-site" block label={M.newSite} value={site} options={sites} onChange={setSite} placeholder={owner ? (sites.length ? M.selectSite : M.noSites) : M.chooseOwnerFirst} />
         </Field>
-        <Field id="mv-date" label="Effective date" required error={errors.moveDate}>
-          <DatePicker id="mv-date" block value={date} onChange={(v) => setDate(v ?? '')} label="Effective date" />
+        <Field id="mv-date" label={M.effectiveDate} required error={errors.moveDate}>
+          <DatePicker id="mv-date" block value={date} onChange={(v) => setDate(v ?? '')} label={M.effectiveDate} />
         </Field>
-        <Field id="mv-reason" label="Reason" required error={errors.reason} wide>
+        <Field id="mv-reason" label={M.reason} required error={errors.reason} wide>
           <input id="mv-reason" className="input" maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
         <FormError errors={errors} />
@@ -486,7 +494,7 @@ function useMachineRows(actor: RecordExtensionProps['actor'], resKey: string, ma
 function Loaded<T>({ q, children }: { q: { data: T | undefined; error: string | null; retry: () => void }; children: (d: T) => ReactNode }) {
   if (q.error)
     return (
-      <ErrorState title="Could not load" onRetry={q.retry}>
+      <ErrorState title={M.loadError} onRetry={q.retry}>
         {q.error}
       </ErrorState>
     );
@@ -503,17 +511,17 @@ export function ComponentsTab({ actor, record }: RecordExtensionProps) {
       {(rows) => (
         <>
           <MiniTable
-            head={['Component', 'Position', 'Serial', 'Fitted', 'Status', '']}
-            empty="No serial-numbered components recorded"
+            head={[C.component, C.position, C.serial, C.fitted, C.status, '']}
+            empty={M.noComponentRows}
             rows={rows.map((c) => [
               masterLabel('machineComponentType', c.componentType),
               c.position ? String(c.position) : null,
               <span className="mono">{String(c.serialNo)}</span>,
               <DateText value={String(c.installedAt)} />,
-              c.status === 'replaced' ? `Replaced ${c.replacedAt} — ${c.replacementReason ?? ''}` : <StatusChip label="In service" tone="success" />,
+              c.status === 'replaced' ? M.replacedNote(formatDate(String(c.replacedAt)), String(c.replacementReason ?? '')) : <StatusChip label={masterLabel('machineComponentStatus', 'in_service')} tone="success" />,
               c.status === 'in_service' && canReplace ? (
                 <Button size="compact" onClick={() => setReplacing(c)}>
-                  Replace
+                  {A.replace}
                 </Button>
               ) : null,
             ])}
@@ -538,11 +546,11 @@ function ReplaceDialog({ component, onClose }: { component: RecordData; onClose:
       open
       onClose={onClose}
       size="sm"
-      title={`Replace ${masterLabel('machineComponentType', component.componentType).toLowerCase()} ${String(component.serialNo)}`}
-      description="The old part keeps its history; the new part is fitted in the same position."
+      title={M.replaceTitle(masterLabel('machineComponentType', component.componentType), String(component.serialNo))}
+      description={M.replaceDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{A.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
@@ -551,7 +559,7 @@ function ReplaceDialog({ component, onClose }: { component: RecordData; onClose:
               setErrors({});
               try {
                 await installedApi.replaceComponent(actor, component.id, { newSerial: serial, date, reason });
-                toast('Component replaced');
+                toast(M.componentReplaced);
                 onClose();
               } catch (e) {
                 setErrors(fieldErrorsOf(e));
@@ -560,19 +568,19 @@ function ReplaceDialog({ component, onClose }: { component: RecordData; onClose:
               }
             }}
           >
-            Replace
+            {A.replace}
           </Button>
         </>
       }
     >
       <div className="form-grid">
-        <Field id="rp-serial" label="New serial no." required error={errors.newSerial}>
+        <Field id="rp-serial" label={M.newSerial} required error={errors.newSerial}>
           <input id="rp-serial" className="input" value={serial} maxLength={30} onChange={(e) => setSerial(e.target.value.toUpperCase())} data-autofocus />
         </Field>
-        <Field id="rp-date" label="Replaced on" required error={errors.date}>
-          <DatePicker id="rp-date" block value={date} onChange={(v) => setDate(v ?? '')} label="Replaced on" />
+        <Field id="rp-date" label={M.replacedOn} required error={errors.date}>
+          <DatePicker id="rp-date" block value={date} onChange={(v) => setDate(v ?? '')} label={M.replacedOn} />
         </Field>
-        <Field id="rp-reason" label="Reason" required error={errors.reason}>
+        <Field id="rp-reason" label={M.reason} required error={errors.reason}>
           <input id="rp-reason" className="input" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
         <FormError errors={errors} />
@@ -587,8 +595,8 @@ export function ReadingsTab({ actor, record }: RecordExtensionProps) {
     <Loaded q={q}>
       {(rows) => (
         <MiniTable
-          head={['Date', 'Print counter', 'Ink since last', 'Source', 'Recorded by']}
-          empty="No usage readings yet"
+          head={[C.date, C.printCounter, C.inkSinceLast, C.source, C.recordedBy]}
+          empty={M.noReadingRows}
           rows={rows.map((r) => [
             <DateText value={String(r.readingDate)} />,
             `${Number(r.printCounter).toLocaleString('en-IN')} m²`,
@@ -608,8 +616,8 @@ export function HistoryTab({ actor, record }: RecordExtensionProps) {
     <Loaded q={q}>
       {(rows) => (
         <MiniTable
-          head={['Effective', 'Change', 'From', 'To', 'Reason']}
-          empty="No resale or relocation recorded"
+          head={[C.effective, C.change, C.from, C.to, C.reason]}
+          empty={M.noMoveRows}
           rows={rows.map((m) => [
             <DateText value={String(m.moveDate)} />,
             masterLabel('machineMoveType', m.moveType),
@@ -630,14 +638,15 @@ export function ContractActions({ actor, record }: RecordExtensionProps) {
   const [losing, setLosing] = useState(false);
   const s = String(record.status);
   const open = ['active', 'due_for_renewal', 'expired'].includes(s);
-  const reason = !can(actor, 'amc.renew') ? 'Your role cannot renew contracts' : perm(actor, 'amcContracts').update === 'none' ? 'Read-only for your role' : !open ? `Not possible for a ${masterLabel('amcStatus', s).toLowerCase()} contract` : undefined;
+  const reason = !can(actor, 'amc.renew') ? M.noRenewCapability : perm(actor, 'amcContracts').update === 'none' ? M.readOnly : !open ? M.notPossibleFor(masterLabel('amcStatus', s)) : undefined;
   return (
     <>
       <Button variant={s === 'due_for_renewal' ? 'primary' : 'secondary'} icon="reset" onClick={() => setRenewing(true)} disabledReason={reason}>
-        Renew
+        {A.renew}
       </Button>
+      <RenewalQuotationButton actor={actor} contract={record} disabledReason={reason} />
       <Button onClick={() => setLosing(true)} disabledReason={reason}>
-        Mark lost
+        {A.markLost}
       </Button>
       {renewing && <RenewDialog contract={record} onClose={() => setRenewing(false)} />}
       {losing && <LostDialog contract={record} onClose={() => setLosing(false)} />}
@@ -648,18 +657,18 @@ export function ContractActions({ actor, record }: RecordExtensionProps) {
 export function ContractBanner({ record }: RecordExtensionProps) {
   if (record.status !== 'due_for_renewal') return null;
   return (
-    <InlineAlert tone="warning" title="Due for renewal">
-      Ends {formatDate(String(record.endDate))}.{' '}
+    <InlineAlert tone="warning" title={M.dueTitle}>
+      {M.endsOn(formatDate(String(record.endDate)))}
       {record.renewalOpportunityId ? (
         <>
-          Renewal opportunity{' '}
+          {M.renewalOpportunity}{' '}
           <Link className="rel-link" to={recordPeekPath('tc', 'opportunities', String(record.renewalOpportunityId))}>
             {String(record.renewalOpportunityId)}
           </Link>
           .
         </>
       ) : (
-        'Renew or mark lost with a reason.'
+        M.renewOrLose
       )}
     </InlineAlert>
   );
@@ -681,11 +690,11 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
       open
       onClose={onClose}
       size="md"
-      title={`Renew ${String(contract.contractNo)}`}
-      description="Creates the new contract (active), links it to this one and schedules its preventive visits. Value defaults to +5%."
+      title={M.renewTitle(String(contract.contractNo))}
+      description={M.renewDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{A.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
@@ -694,7 +703,7 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
               setErrors({});
               try {
                 const fresh = await installedApi.renew(actor, contract.id, { contractType: type, startDate, endDate, value: Number(value), pmVisitsPerYear: Number(visits) });
-                toast(`Renewed as ${String(fresh.contractNo)}`);
+                toast(M.renewedAs(String(fresh.contractNo)));
                 onClose();
               } catch (e) {
                 setErrors(fieldErrorsOf(e));
@@ -703,32 +712,32 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
               }
             }}
           >
-            Renew contract
+            {A.renewContract}
           </Button>
         </>
       }
     >
       <div className="form-grid cols-2">
-        <Field id="rn-type" label="Type" required>
-          <SelectMenu id="rn-type" block label="Type" value={type} options={options('amcType') as { value: 'amc' | 'cmc'; label: string }[]} onChange={setType} />
+        <Field id="rn-type" label={T.fields.amcContracts.contractType} required>
+          <SelectMenu id="rn-type" block label={T.fields.amcContracts.contractType} value={type} options={options('amcType') as { value: 'amc' | 'cmc'; label: string }[]} onChange={setType} />
         </Field>
-        <Field id="rn-visits" label="PM visits / year" required error={errors.pmVisitsPerYear}>
+        <Field id="rn-visits" label={T.fields.amcContracts.pmVisitsPerYear} required error={errors.pmVisitsPerYear}>
           <input id="rn-visits" className="input" inputMode="numeric" value={visits} onChange={(e) => setVisits(e.target.value.replace(/\D/g, ''))} />
         </Field>
-        <Field id="rn-start" label="Starts" required error={errors.startDate}>
-          <DatePicker id="rn-start" block value={startDate} onChange={(v) => setStart(v ?? '')} label="Starts" />
+        <Field id="rn-start" label={T.fields.amcContracts.startDate} required error={errors.startDate}>
+          <DatePicker id="rn-start" block value={startDate} onChange={(v) => setStart(v ?? '')} label={T.fields.amcContracts.startDate} />
         </Field>
-        <Field id="rn-end" label="Ends" required error={errors.endDate}>
-          <DatePicker id="rn-end" block value={endDate} onChange={(v) => setEnd(v ?? '')} label="Ends" />
+        <Field id="rn-end" label={T.fields.amcContracts.endDate} required error={errors.endDate}>
+          <DatePicker id="rn-end" block value={endDate} onChange={(v) => setEnd(v ?? '')} label={T.fields.amcContracts.endDate} />
         </Field>
-        <Field id="rn-value" label="Value" required error={errors.value}>
+        <Field id="rn-value" label={T.fields.amcContracts.value} required error={errors.value}>
           <div className="input-affix">
             <span className="affix affix-start">₹</span>
             <input id="rn-value" className="input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ''))} />
           </div>
         </Field>
         <div className="form-field">
-          <span className="field-label">Current value</span>
+          <span className="field-label">{M.currentValue}</span>
           <span>{formatMoney(Number(contract.value))}</span>
         </div>
         <FormError errors={errors} />
@@ -750,12 +759,12 @@ export function LostDialog({ contract, onClose }: { contract: RecordData; onClos
       onClose={onClose}
       size="sm"
       role="alertdialog"
-      title={`Mark ${String(contract.contractNo)} lost?`}
-      description="The customer is not renewing. The reason feeds the lost-renewal report; the machine shows no contract after the end date."
+      title={M.lostTitle(String(contract.contractNo))}
+      description={M.lostDescription}
       footer={
         <>
           <Button onClick={onClose} data-autofocus>
-            Cancel
+            {A.cancel}
           </Button>
           <Button
             variant="danger"
@@ -765,7 +774,7 @@ export function LostDialog({ contract, onClose }: { contract: RecordData; onClos
               setErrors({});
               try {
                 await installedApi.markLost(actor, contract.id, reason, note);
-                toast(`${String(contract.contractNo)} marked lost`);
+                toast(M.markedLost(String(contract.contractNo)));
                 onClose();
               } catch (e) {
                 setErrors(fieldErrorsOf(e));
@@ -774,16 +783,16 @@ export function LostDialog({ contract, onClose }: { contract: RecordData; onClos
               }
             }}
           >
-            Mark lost
+            {A.markLost}
           </Button>
         </>
       }
     >
       <div className="form-grid">
-        <Field id="lo-reason" label="Lost reason" required error={errors.lostReason}>
-          <SelectMenu id="lo-reason" block label="Lost reason" value={reason} options={options('lostReason')} onChange={setReason} />
+        <Field id="lo-reason" label={T.fields.amcContracts.lostReason} required error={errors.lostReason}>
+          <SelectMenu id="lo-reason" block label={T.fields.amcContracts.lostReason} value={reason} options={options('lostReason')} onChange={setReason} />
         </Field>
-        <Field id="lo-note" label="Note">
+        <Field id="lo-note" label={M.note}>
           <textarea id="lo-note" className="input textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
         <FormError errors={errors} />
@@ -792,7 +801,7 @@ export function LostDialog({ contract, onClose }: { contract: RecordData; onClos
   );
 }
 
-// ---------------------------------------------------------------- Customer 360 → Training (FR-067)
+// ---------------------------------------------------------------- Customer 360 → Training Records (FR-067)
 
 export function CustomerTrainingTab({ actor, record }: RecordExtensionProps) {
   const q = useServiceQuery(() => (canReadResource(actor, 'trainingRecords') ? queryRecords(actor, 'trainingRecords', { where: { customerId: record.id }, sort: [{ field: 'date', dir: 'desc' }] }).rows : []), [record.id, actor.user.id]);
@@ -803,13 +812,13 @@ export function CustomerTrainingTab({ actor, record }: RecordExtensionProps) {
         <>
           <div className="toolbar">
             <span className="spacer" />
-            <Button icon="plus" onClick={() => setAdding(true)} disabledReason={!perm(actor, 'trainingRecords').create ? 'Your role cannot record training' : undefined}>
-              Record training / re-training request
+            <Button icon="plus" onClick={() => setAdding(true)} disabledReason={!perm(actor, 'trainingRecords').create ? M.noTrainingCapability : undefined}>
+              {A.recordTraining}
             </Button>
           </div>
           <MiniTable
-            head={['Date', 'Machine', 'Topics', 'Trainees', 'Re-training']}
-            empty="No training recorded for this customer"
+            head={[C.date, C.machine, C.topics, C.trainees, C.retraining]}
+            empty={M.noTrainingRows}
             rows={rows.map((t) => [
               <Link className="rel-link" to={recordPeekPath('tc', 'trainingRecords', t.id)}>
                 <DateText value={String(t.date)} />
@@ -836,3 +845,180 @@ export const countFor = (actor: RecordExtensionProps['actor'], resKey: string, w
   }
 };
 
+
+// ---------------------------------------------------------------- shared tab helpers
+
+/** Read-only field list in the record-details style; values via FieldValue (masking and links included). */
+function FieldList({ actor, resKey, record, keys, title }: { actor: RecordExtensionProps['actor']; resKey: string; record: RecordData; keys: string[]; title?: string }) {
+  const res = getResource(resKey);
+  const access = fieldAccessMap(actor, res);
+  const fields = keys.map((k) => res.fields.find((f) => f.key === k)).filter((f): f is NonNullable<typeof f> => !!f && access[f.key] !== 'hide');
+  return (
+    <section className="detail-section">
+      {title && <h3 className="detail-section-title">{title}</h3>}
+      <dl className="detail-list">
+        {fields.map((f) => (
+          <div key={f.key} className="detail-row" data-type={f.type}>
+            <dt>{f.label}</dt>
+            <dd>{record[f.key] == null || record[f.key] === '' ? <EmptyValue label={M.notRecorded} /> : <FieldValue field={f} value={record[f.key]} access={access[f.key]} actor={actor} />}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** Checklist rows: label + Yes / No chip. */
+function Checklist({ items, caption }: { items: { key: string; label: string; done: boolean }[]; caption: string }) {
+  return (
+    <div className="table-scroll">
+      <table className="mini-table">
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{C.item}</th>
+            <th scope="col">{C.done}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((i) => (
+            <tr key={i.key}>
+              <td>{i.label}</td>
+              <td>
+                <StatusChip label={i.done ? C.yes : C.no} tone={i.done ? 'success' : 'warning'} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Raw installation record (live, unmasked workflow flags). */
+const rawInstallation = (record: RecordData) => getDb().records.installations?.find((r) => r.id === record.id) ?? record;
+
+// ---------------------------------------------------------------- installation job tabs (INS-03 … INS-06)
+
+export function ReadinessTab({ actor, record }: RecordExtensionProps) {
+  useRevision();
+  const raw = rawInstallation(record);
+  return (
+    <>
+      <p className="muted small">{M.readinessEditHint}</p>
+      <Checklist caption={T.tabs.readiness} items={READINESS_FIELDS.map(([k, label]) => ({ key: k, label, done: raw[k] === true }))} />
+      <FieldList actor={actor} resKey="installations" record={record} keys={['readinessSharedAt', 'readinessVerifiedAt']} />
+    </>
+  );
+}
+
+export function HandoverTab({ actor, record }: RecordExtensionProps) {
+  useRevision();
+  const done = handoverComplete(rawInstallation(record));
+  return (
+    <>
+      <InlineAlert tone={done ? 'success' : 'info'} title={done ? M.handoverDone : M.handoverPending}>
+        {M.handoverEditHint}
+      </InlineAlert>
+      <FieldList actor={actor} resKey="installations" record={record} keys={['hoExpectations', 'hoCommitments', 'hoKeyContacts', 'handoverAt']} />
+    </>
+  );
+}
+
+export function JobCardTab({ actor, record }: RecordExtensionProps) {
+  useRevision();
+  const raw = rawInstallation(record);
+  const done = new Set((raw.jcSteps as string[] | undefined) ?? []);
+  return (
+    <>
+      <Checklist caption={T.tabs.jobCard} items={allSteps().map((k) => ({ key: k, label: masterLabel('installStep', k), done: done.has(k) }))} />
+      <FieldList actor={actor} resKey="installations" record={record} keys={['trialResults', 'parameters', 'mediaFiles', 'trainingTopics', 'trainees']} />
+    </>
+  );
+}
+
+export function SignOffTab({ actor, record }: RecordExtensionProps) {
+  useRevision();
+  const raw = rawInstallation(record);
+  const signed = raw.status === 'signed_off';
+  const blockers = signed ? [] : signOffBlockers(raw);
+  return (
+    <>
+      {!signed && (
+        <InlineAlert tone={blockers.length ? 'warning' : 'info'} title={blockers.length ? M.signOffBlockersTitle : M.signOffPending}>
+          {blockers.length > 0 && (
+            <ul className="plain-list bullets">
+              {blockers.map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+          )}
+        </InlineAlert>
+      )}
+      <FieldList actor={actor} resKey="installations" record={record} keys={['serialNo', 'printHeads', 'printWidth', 'softwareVersion', 'signOffMethod', 'signedOffBy', 'signedOffAt', 'signatureData', 'machineId']} />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- machine tabs (IB-01 … IB-06)
+
+/** Rows of another resource for this machine, first column links to the record. */
+function MachineRowsTab({ actor, record, resKey, sortField, keys, empty }: RecordExtensionProps & { resKey: string; sortField: string; keys: string[]; empty: string }) {
+  const q = useMachineRows(actor, resKey, record.id, sortField);
+  if (!hasResource(resKey) || !canReadResource(actor, resKey)) return <EmptyState icon="list" title={empty} />;
+  const res = getResource(resKey);
+  const access = fieldAccessMap(actor, res);
+  const fields = keys.map((k) => res.fields.find((f) => f.key === k)).filter((f): f is NonNullable<typeof f> => !!f && access[f.key] !== 'hide');
+  return (
+    <Loaded q={q}>
+      {(rows) => (
+        <MiniTable
+          head={[res.label, ...fields.map((f) => f.label)]}
+          empty={empty}
+          rows={rows.map((r) => [
+            <Link className="rel-link" to={recordPeekPath('tc', resKey, r.id)}>
+              {r.id}
+            </Link>,
+            ...fields.map((f) => (r[f.key] == null || r[f.key] === '' ? null : <FieldValue field={f} value={r[f.key]} access={access[f.key]} actor={actor} />)),
+          ])}
+        />
+      )}
+    </Loaded>
+  );
+}
+
+export const WarrantyTab = (p: RecordExtensionProps) => <MachineRowsTab {...p} resKey="warranties" sortField="endDate" keys={['coverageType', 'startDate', 'endDate', 'warrantyStatus']} empty={M.noWarrantyRows} />;
+export const ContractsTab = (p: RecordExtensionProps) => (
+  <MachineRowsTab {...p} resKey="amcContracts" sortField="endDate" keys={['contractNo', 'contractType', 'startDate', 'endDate', 'pmVisitsPerYear', 'value', 'status']} empty={M.noContractRows} />
+);
+export const TicketsTab = (p: RecordExtensionProps) =>
+  hasResource('tickets') ? <MachineRowsTab {...p} resKey="tickets" sortField="reportedAt" keys={['reportedAt', 'ticketType', 'priority', 'status', 'assigneeId']} empty={M.noTicketRows} /> : <EmptyState icon="list" title={M.ticketsUnavailable} />;
+
+// ---------------------------------------------------------------- Create Renewal Quotation (IB-05)
+
+export function RenewalQuotationButton({ actor, contract, disabledReason }: { actor: RecordExtensionProps['actor']; contract: RecordData; disabledReason?: string }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const unavailable = !hasResource('quotations') || !hasResource('opportunities') ? M.quotationNotAvailable : !perm(actor, 'quotations').create ? M.readOnly : undefined;
+  return (
+    <Button
+      icon="receipt"
+      loading={busy}
+      disabledReason={disabledReason ?? unavailable}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const opportunity = await installedApi.prepareRenewalQuotation(actor, contract.id);
+          navigate(toPath(ROUTES.quotationNew, {}, { opportunity }));
+        } catch (e) {
+          toast(errorMessage(e), 'danger');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {A.createRenewalQuotation}
+    </Button>
+  );
+}

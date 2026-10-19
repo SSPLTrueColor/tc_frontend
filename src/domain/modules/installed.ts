@@ -9,21 +9,14 @@ const same = (perm: ResourcePermission, overrides: Partial<Record<Key, ResourceP
 const RO_HISTORY = p('all');
 
 /**
- * Installed base (BRD 4.6 Dispatch-to-installation, 4.7 Installed base, warranty & AMC).
- * Permissions follow REQUIREMENTS §2.2: service leadership and coordinators run installations
- * and contracts; engineers work their own jobs; sales sees its division's base and owns renewals.
- * Machine moves are written only by the Relocate / transfer action (no direct create).
+ * Installed Base & AMC (BRD 4.7) plus installation jobs and training records (BRD 4.6).
+ * Sidebar placement lives in src/domain/sidebar.ts. Permissions follow REQUIREMENTS §2.2: service
+ * leadership and coordinators run installations and contracts; service engineers work their own jobs;
+ * sales sees its division's installed base and owns renewals. Resale / relocation history is written
+ * only by the Relocate / Transfer action (no direct create).
  */
 export const installedPack: ModulePack = {
   id: 'installed',
-  nav: {
-    id: 'installed',
-    label: 'Installed base',
-    icon: 'printer',
-    resources: ['installations', 'machines', 'amcContracts', 'warranties', 'trainingRecords', 'machineComponents', 'machineReadings', 'machineMoves'],
-    pages: [{ id: 'renewals', label: 'Renewals', icon: 'reset', path: 'renewals' }],
-    navChildIcons: [],
-  },
   resources: installedResources,
   masters: installedMasters,
   permissions: {

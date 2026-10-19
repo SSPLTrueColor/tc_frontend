@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { L } from '../../constants/labels';
 import { addDays, formatDateTime, formatDate } from '../../lib/dates';
 import { errorMessage } from '../../services/api/client';
 import { calendarService } from '../../services/api/calendar';
@@ -46,7 +47,9 @@ function assignable(actor: Actor): { value: string; label: string }[] {
   return all.filter(ok).map((e) => ({ value: e.id, label: String(e.fullName) }));
 }
 
-const LINK_TYPES = () => [{ value: '', label: 'No linked record' }, ...activeMasterValues('calLinkType').map((v) => ({ value: v.key, label: v.label }))];
+const C = L.calendar;
+const FL = C.fields.calendarEvents;
+const LINK_TYPES = () => [{ value: '', label: C.form.noLinkedRecord }, ...activeMasterValues('calLinkType').map((v) => ({ value: v.key, label: v.label }))];
 
 function initialValues(actor: Actor, mode: DialogMode): Values {
   if (mode.kind === 'create')
@@ -134,13 +137,13 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
     try {
       if (mode.kind === 'create') {
         await calendarService.create(actor, payload);
-        toast(`“${payload.title}” added to the calendar`);
+        toast(C.toasts.created(String(payload.title)));
       } else if (mode.scope === 'this' && mode.occurrence) {
         await calendarService.updateOccurrence(actor, mode.item.recordId, mode.occurrence.start, payload, mode.item.version);
-        toast('This occurrence was updated; the rest of the series is unchanged');
+        toast(C.toasts.occurrenceUpdated);
       } else {
         await calendarService.update(actor, mode.item.recordId, payload, mode.item.version);
-        toast(mode.item.recurrence !== 'none' ? 'All events in the series were updated' : 'Event updated');
+        toast(mode.item.recurrence !== 'none' ? C.toasts.seriesUpdated : C.toasts.updated);
       }
       onClose();
     } catch (e) {
@@ -157,13 +160,13 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
       open
       onClose={onClose}
       size="md"
-      title={mode.kind === 'create' ? 'New event' : mode.scope === 'this' ? 'Edit this occurrence' : mode.item.recurrence !== 'none' ? 'Edit all events in the series' : 'Edit event'}
-      description="Times are India Standard Time (IST). The assigned person and attendees see it in their calendar."
+      title={mode.kind === 'create' ? C.form.newEvent : mode.scope === 'this' ? C.form.editOccurrence : mode.item.recurrence !== 'none' ? C.form.editSeries : C.form.editEvent}
+      description={C.form.description}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{C.form.cancel}</Button>
           <Button variant="primary" loading={busy} onClick={save}>
-            {overlaps.length ? 'Save anyway' : 'Save'}
+            {overlaps.length ? C.form.saveAnyway : C.form.save}
           </Button>
         </>
       }
@@ -171,111 +174,111 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
       <div className="form-grid cols-2 cal-form">
         <div className="form-field span-all">
           <label className="field-label" htmlFor="ev-title">
-            Title <span className="req">*</span>
+            {FL.title} <span className="req">*</span>
           </label>
           <input id="ev-title" className="input" maxLength={120} value={v.title} onChange={(e) => set({ title: e.target.value })} aria-invalid={!!shown.title || undefined} data-autofocus />
           {shown.title && <p className="field-error">{shown.title}</p>}
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-type">
-            Type <span className="req">*</span>
+            {FL.eventType} <span className="req">*</span>
           </label>
-          <SelectMenu id="ev-type" block label="Event type" value={v.eventType} options={activeMasterValues('calEventType').map((x) => ({ value: x.key, label: x.label }))} onChange={(x) => set({ eventType: x })} />
+          <SelectMenu id="ev-type" block label={FL.eventType} value={v.eventType} options={activeMasterValues('calEventType').map((x) => ({ value: x.key, label: x.label }))} onChange={(x) => set({ eventType: x })} />
         </div>
         <div className="form-field">
-          <span className="field-label">All day</span>
+          <span className="field-label">{FL.allDay}</span>
           <label className="switch">
             <input type="checkbox" checked={v.allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
             <span className="switch-track" aria-hidden="true" />
-            <span>{v.allDay ? 'Yes' : 'No'}</span>
+            <span>{v.allDay ? C.form.yes : C.form.no}</span>
           </label>
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-start">
-            Starts <span className="req">*</span>
+            {FL.start} <span className="req">*</span>
           </label>
-          <DatePicker id="ev-start" block withTime={!v.allDay} value={v.start} clearable={false} label="Starts" invalid={!!shown.start} onChange={(x) => x && set({ start: x, end: x >= v.end ? (v.allDay ? x : `${x.slice(0, 10)}T${String(Math.min(23, +x.slice(11, 13) + 1)).padStart(2, '0')}${x.slice(13, 16)}`) : v.end })} />
+          <DatePicker id="ev-start" block withTime={!v.allDay} value={v.start} clearable={false} label={FL.start} invalid={!!shown.start} onChange={(x) => x && set({ start: x, end: x >= v.end ? (v.allDay ? x : `${x.slice(0, 10)}T${String(Math.min(23, +x.slice(11, 13) + 1)).padStart(2, '0')}${x.slice(13, 16)}`) : v.end })} />
           {shown.start && <p className="field-error">{shown.start}</p>}
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-end">
-            Ends <span className="req">*</span>
+            {FL.end} <span className="req">*</span>
           </label>
-          <DatePicker id="ev-end" block withTime={!v.allDay} value={v.end} clearable={false} label="Ends" invalid={!!shown.end} onChange={(x) => x && set({ end: x })} />
+          <DatePicker id="ev-end" block withTime={!v.allDay} value={v.end} clearable={false} label={FL.end} invalid={!!shown.end} onChange={(x) => x && set({ end: x })} />
           {shown.end && <p className="field-error">{shown.end}</p>}
         </div>
         {!(mode.kind === 'edit' && mode.scope === 'this') && (
           <>
             <div className="form-field">
               <label className="field-label" htmlFor="ev-rec">
-                Repeats
+                {FL.recurrence}
               </label>
-              <SelectMenu id="ev-rec" block label="Repeats" value={v.recurrence} options={activeMasterValues('calRecurrence').map((x) => ({ value: x.key, label: x.label }))} onChange={(x) => set({ recurrence: x, recurrenceUntil: x === 'none' ? '' : v.recurrenceUntil || addDays(v.start.slice(0, 10), x === 'daily' ? 30 : x === 'weekly' ? 84 : 365) })} />
+              <SelectMenu id="ev-rec" block label={FL.recurrence} value={v.recurrence} options={activeMasterValues('calRecurrence').map((x) => ({ value: x.key, label: x.label }))} onChange={(x) => set({ recurrence: x, recurrenceUntil: x === 'none' ? '' : v.recurrenceUntil || addDays(v.start.slice(0, 10), x === 'daily' ? 30 : x === 'weekly' ? 84 : 365) })} />
             </div>
             <div className="form-field">
               <label className="field-label" htmlFor="ev-until">
-                Repeat until
+                {FL.recurrenceUntil}
               </label>
-              <DatePicker id="ev-until" block value={v.recurrenceUntil} label="Repeat until" disabled={v.recurrence === 'none'} invalid={!!shown.recurrenceUntil} onChange={(x) => set({ recurrenceUntil: x ?? '' })} />
+              <DatePicker id="ev-until" block value={v.recurrenceUntil} label={FL.recurrenceUntil} disabled={v.recurrence === 'none'} invalid={!!shown.recurrenceUntil} onChange={(x) => set({ recurrenceUntil: x ?? '' })} />
               {shown.recurrenceUntil && <p className="field-error">{shown.recurrenceUntil}</p>}
             </div>
           </>
         )}
         <div className="form-field">
           <label className="field-label" htmlFor="ev-who">
-            Assigned to <span className="req">*</span>
+            {FL.assigneeId} <span className="req">*</span>
           </label>
-          <SelectMenu id="ev-who" block searchable label="Assigned to" value={v.assigneeId} options={people} onChange={(x) => set({ assigneeId: x })} />
+          <SelectMenu id="ev-who" block searchable label={FL.assigneeId} value={v.assigneeId} options={people} onChange={(x) => set({ assigneeId: x })} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-att">
-            Attendees
+            {FL.attendeeIds}
           </label>
-          <MultiSelectMenu id="ev-att" block label="Attendees" values={v.attendeeIds} options={everyone.filter((e) => e.value !== v.assigneeId)} onChange={(x) => set({ attendeeIds: x })} emptyLabel="No attendees" />
+          <MultiSelectMenu id="ev-att" block label={FL.attendeeIds} values={v.attendeeIds} options={everyone.filter((e) => e.value !== v.assigneeId)} onChange={(x) => set({ attendeeIds: x })} emptyLabel={C.form.noAttendees} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-lt">
-            Linked record
+            {FL.linkId}
           </label>
-          <SelectMenu id="ev-lt" block label="Linked record type" value={v.linkResource} options={LINK_TYPES()} onChange={(x) => set({ linkResource: x, linkId: '' })} />
+          <SelectMenu id="ev-lt" block label={FL.linkResource} value={v.linkResource} options={LINK_TYPES()} onChange={(x) => set({ linkResource: x, linkId: '' })} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-lr">
-            {v.linkResource ? 'Record' : ' '}
+            {v.linkResource ? C.form.record : ' '}
           </label>
-          <SelectMenu id="ev-lr" block searchable label="Linked record" value={v.linkId} options={records} disabled={!v.linkResource} placeholder={v.linkResource ? 'Search…' : 'Pick a type first'} onChange={(x) => set({ linkId: x })} />
+          <SelectMenu id="ev-lr" block searchable label={FL.linkId} value={v.linkId} options={records} disabled={!v.linkResource} placeholder={v.linkResource ? C.form.search : C.form.pickTypeFirst} onChange={(x) => set({ linkId: x })} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-loc">
-            Location
+            {FL.location}
           </label>
           <input id="ev-loc" className="input" maxLength={160} value={v.location} onChange={(e) => set({ location: e.target.value })} />
         </div>
         {isEdit && (
           <div className="form-field">
             <label className="field-label" htmlFor="ev-status">
-              Status
+              {FL.status}
             </label>
-            <SelectMenu id="ev-status" block label="Status" value={v.status} options={activeMasterValues('calEventStatus').map((x) => ({ value: x.key, label: x.label }))} onChange={(x) => set({ status: x })} />
+            <SelectMenu id="ev-status" block label={FL.status} value={v.status} options={activeMasterValues('calEventStatus').map((x) => ({ value: x.key, label: x.label }))} onChange={(x) => set({ status: x })} />
           </div>
         )}
         <div className="form-field span-all">
           <span className="field-label-row">
             <label className="field-label" htmlFor="ev-notes">
-              Notes
+              {FL.notes}
             </label>
-            <VoiceButton onText={(t) => set({ notes: v.notes ? `${v.notes} ${t}` : t })} label="Dictate notes" />
+            <VoiceButton onText={(t) => set({ notes: v.notes ? `${v.notes} ${t}` : t })} label={C.form.dictateNotes} />
           </span>
           <textarea id="ev-notes" className="input textarea" rows={2} maxLength={2000} value={v.notes} onChange={(e) => set({ notes: e.target.value })} />
         </div>
         {overlaps.length > 0 && (
           <div className="span-all">
-            <InlineAlert tone="warning" title={`Overlaps ${overlaps.length} other ${overlaps.length === 1 ? 'event' : 'events'} for this person`}>
+            <InlineAlert tone="warning" title={C.form.overlaps(overlaps.length)}>
               {overlaps
                 .slice(0, 3)
                 .map((o) => `${o.title} (${fmt(o.start)}–${o.end.slice(11, 16)})`)
                 .join(' · ')}
-              {overlaps.length > 3 ? ` · +${overlaps.length - 3} more` : ''}
+              {overlaps.length > 3 ? C.form.moreOverlaps(overlaps.length - 3) : ''}
             </InlineAlert>
           </div>
         )}

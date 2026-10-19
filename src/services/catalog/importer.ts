@@ -3,6 +3,7 @@
  * resource definitions; each row is converted and validated with the same rules as the forms
  * before anything is written. Imports are role-restricted and audited.
  */
+import { L } from '../../constants/labels';
 import type { FieldDefinition, ResourceDefinition } from '../../metadata/types';
 import { appPack } from '../../domain/pack';
 import { uid } from '../../lib/ids';
@@ -37,15 +38,16 @@ export function exportableResources(actor: Actor): ResourceDefinition[] {
 export function templateCsv(actor: Actor, resKey: string): string {
   const res = getResource(resKey);
   const fields = importFields(actor, res);
+  const H = L.admin.importExport.hints;
   const hint = (f: FieldDefinition) => {
-    if (f.type === 'master') return `One of: ${getMaster(f.master!).values.filter((v) => v.active).map((v) => v.label).slice(0, 8).join(' | ')}`;
-    if (f.type === 'multimaster') return `Several of: ${getMaster(f.master!).values.map((v) => v.label).slice(0, 6).join(' | ')} (separate with ;)`;
-    if (f.type === 'relation') return `${getResource(f.relation!.resource).label} ID or name`;
-    if (f.type === 'date') return 'DD-MM-YYYY';
-    if (f.type === 'datetime') return 'DD-MM-YYYY HH:mm';
-    if (f.type === 'boolean') return 'Yes / No';
-    if (f.type === 'money' || f.type === 'number') return 'Number';
-    return f.required ? 'Required' : 'Optional';
+    if (f.type === 'master') return H.oneOf(getMaster(f.master!).values.filter((v) => v.active).map((v) => v.label).slice(0, 8).join(' | '));
+    if (f.type === 'multimaster') return H.severalOf(getMaster(f.master!).values.map((v) => v.label).slice(0, 6).join(' | '));
+    if (f.type === 'relation') return H.relation(getResource(f.relation!.resource).label);
+    if (f.type === 'date') return H.date;
+    if (f.type === 'datetime') return H.datetime;
+    if (f.type === 'boolean') return H.boolean;
+    if (f.type === 'money' || f.type === 'number') return H.number;
+    return f.required ? H.required : H.optional;
   };
   return [fields.map((f) => csvCell(`${f.label}${f.required ? ' *' : ''}`)).join(','), fields.map((f) => csvCell(`# ${hint(f)}`)).join(',')].join('\n');
 }
@@ -101,32 +103,33 @@ function toDateKey(s: string): string | null {
 /** Converts one cell to the field's stored value, or returns an error message. */
 function convert(actor: Actor, f: FieldDefinition, raw: string): { value?: unknown; error?: string } {
   const s = clean(raw);
+  const E = L.admin.importExport.rowErrors;
   if (s === '') return { value: undefined };
   switch (f.type) {
     case 'number':
     case 'money': {
       const n = Number(s.replace(/[₹,\s]/g, ''));
-      return Number.isNaN(n) ? { error: `${f.label}: "${s}" is not a number` } : { value: n };
+      return Number.isNaN(n) ? { error: E.notNumber(f.label, s) } : { value: n };
     }
     case 'boolean':
       if (/^(yes|y|true|1)$/i.test(s)) return { value: true };
       if (/^(no|n|false|0)$/i.test(s)) return { value: false };
-      return { error: `${f.label}: use Yes or No` };
+      return { error: E.yesNo(f.label) };
     case 'date':
     case 'datetime': {
       const d = toDateKey(s);
-      return d ? { value: f.type === 'date' ? d.slice(0, 10) : d } : { error: `${f.label}: use DD-MM-YYYY` };
+      return d ? { value: f.type === 'date' ? d.slice(0, 10) : d } : { error: E.date(f.label) };
     }
     case 'master': {
       const mv = getMaster(f.master!).values.find((v) => v.key.toLowerCase() === s.toLowerCase() || v.label.toLowerCase() === s.toLowerCase());
-      return mv ? { value: mv.key } : { error: `${f.label}: "${s}" is not a known value` };
+      return mv ? { value: mv.key } : { error: E.unknownValue(f.label, s) };
     }
     case 'multimaster': {
       const parts = s.split(/[;|]/).map((x) => x.trim()).filter(Boolean);
       const keys: string[] = [];
       for (const part of parts) {
         const mv = getMaster(f.master!).values.find((v) => v.key.toLowerCase() === part.toLowerCase() || v.label.toLowerCase() === part.toLowerCase());
-        if (!mv) return { error: `${f.label}: "${part}" is not a known value` };
+        if (!mv) return { error: E.unknownValue(f.label, part) };
         keys.push(mv.key);
       }
       return { value: keys };
@@ -135,7 +138,7 @@ function convert(actor: Actor, f: FieldDefinition, raw: string): { value?: unkno
       const target = f.relation!.resource;
       const rows = getDb().records[target] ?? [];
       const hit = rows.find((r) => r.id.toLowerCase() === s.toLowerCase()) ?? rows.find((r) => recordTitle(target, r.id, actor).toLowerCase() === s.toLowerCase());
-      return hit ? { value: hit.id } : { error: `${f.label}: no ${getResource(target).label.toLowerCase()} "${s}"` };
+      return hit ? { value: hit.id } : { error: E.noRecord(f.label, getResource(target).label.toLowerCase(), s) };
     }
     case 'phone':
       return { value: s.replace(/[\s-]/g, '').replace(/^(\+91|0)(?=\d{10}$)/, '') };
@@ -161,12 +164,12 @@ export interface ImportPreview {
 
 /** Maps headers to fields (by label or key), converts and validates every row. Nothing is written. */
 export function previewImport(actor: Actor, resKey: string, text: string): ImportPreview {
-  if (!can(actor, 'data.import') || !perm(actor, resKey).create) throw new ServiceError('forbidden', 'Your role cannot import these records.');
+  if (!can(actor, 'data.import') || !perm(actor, resKey).create) throw new ServiceError('forbidden', L.admin.importExport.rowErrors.forbidden);
   const res = getResource(resKey);
   const fields = importFields(actor, res);
-  const table = parseCsv(text.replace(/^﻿/, ''));
-  if (!table.length) throw new ServiceError('validation', 'The file is empty.');
-  if (table.length > 1001) throw new ServiceError('validation', 'Import at most 1,000 rows at a time.');
+  const table = parseCsv(text.replace(/^\uFEFF/, ''));
+  if (!table.length) throw new ServiceError('validation', L.admin.importExport.rowErrors.empty);
+  if (table.length > 1001) throw new ServiceError('validation', L.admin.importExport.rowErrors.tooMany);
   const columns = table[0].map((h) => ({ header: h.trim(), field: fields.find((f) => norm(f.label) === norm(h) || norm(f.key) === norm(h)) }));
   const unknownColumns = columns.filter((c) => !c.field && c.header).map((c) => c.header);
   const missing = fields.filter((f) => f.required && f.defaultValue === undefined && !columns.some((c) => c.field?.key === f.key));
@@ -174,7 +177,7 @@ export function previewImport(actor: Actor, resKey: string, text: string): Impor
   table.slice(1).forEach((cells, i) => {
     if (cells[0]?.trim().startsWith('#')) return; // template help row
     const values: Record<string, unknown> = {};
-    const errors: string[] = missing.map((f) => `${f.label} column is missing`);
+    const errors: string[] = missing.map((f) => L.admin.importExport.rowErrors.missingColumn(f.label));
     columns.forEach((c, j) => {
       if (!c.field) return;
       const r = convert(actor, c.field, cells[j] ?? '');
@@ -211,10 +214,10 @@ export function commitImport(actor: Actor, preview: ImportPreview): ImportResult
       try {
         result.created.push(createRecord(actor, preview.resource, r.values, { idempotencyKey: `${key}:${i}` }).record.id);
       } catch (e) {
-        result.failed.push({ line: r.line, message: e instanceof Error ? e.message : 'Failed' });
+        result.failed.push({ line: r.line, message: e instanceof Error ? e.message : L.admin.common.failed });
       }
     });
-  commit((d) => appendAudit(d, actor, { action: 'import', resource: preview.resource, summary: `Imported ${result.created.length} ${res.labelPlural.toLowerCase()} from CSV (${preview.rows.length - result.created.length} skipped)`, correlationId: key }));
+  commit((d) => appendAudit(d, actor, { action: 'import', resource: preview.resource, summary: L.admin.importExport.auditImport(result.created.length, res.labelPlural.toLowerCase(), preview.rows.length - result.created.length), correlationId: key }));
   return result;
 }
 

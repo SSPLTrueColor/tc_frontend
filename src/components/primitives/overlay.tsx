@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { cx } from '../../lib/format';
 import { Button } from './Button';
 import { Icon } from './Icon';
-import { InfoTip } from './InfoTip';
+import { L } from '../../constants/labels';
 
 // ---------------------------------------------------------------- layer stack
 // Escape closes only the topmost layer (§1.5).
@@ -94,9 +94,11 @@ export interface DialogProps {
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
   role?: 'dialog' | 'alertdialog';
+  /** Controls on the right of the header (e.g. Simple | Canvas, Drawer | Popup). */
+  headerExtra?: ReactNode;
 }
 
-export function Dialog({ open, onClose, title, description, children, footer, size = 'md', role = 'dialog' }: DialogProps) {
+export function Dialog({ open, onClose, title, description, children, footer, size = 'md', role = 'dialog', headerExtra }: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
@@ -112,18 +114,20 @@ export function Dialog({ open, onClose, title, description, children, footer, si
             <h2 id={titleId} className="dialog-title">
               {title}
             </h2>
-            {description && <InfoTip text={description} label={`About ${title}`} />}
+            {/* no ⓘ next to popup titles (owner rule) — description is screen-reader text */}
+            {description && <span className="sr-only">{description}</span>}
             {description && (
               <span id={descId} className="sr-only">
                 {description}
               </span>
             )}
           </div>
+          {headerExtra}
           {/* Owner rule: popups have no × icon — they close with the footer Cancel button (or Esc / scrim click).
           <IconButton icon="x" label="Close dialog" onClick={onClose} /> */}
         </header>
         <div className="dialog-body">{children}</div>
-        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>Cancel</Button>}</footer>
+        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>{L.common.actions.cancel}</Button>}</footer>
       </div>
     </div>,
     document.body,
@@ -170,7 +174,7 @@ export function ConfirmHost() {
       footer={
         <>
           <Button onClick={() => setCur(null)} data-autofocus>
-            Cancel
+            {L.common.actions.cancel}
           </Button>
           <Button
             variant="danger"
@@ -180,7 +184,7 @@ export function ConfirmHost() {
               c?.onConfirm();
             }}
           >
-            {cur?.confirmLabel ?? 'Delete'}
+            {cur?.confirmLabel ?? L.common.actions.delete}
           </Button>
         </>
       }
@@ -198,6 +202,7 @@ export function Drawer({
   children,
   footer,
   wide,
+  headerExtra,
 }: {
   open: boolean;
   onClose: () => void;
@@ -206,6 +211,8 @@ export function Drawer({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Controls on the right of the drawer header (e.g. the Simple | Canvas layout switch). */
+  headerExtra?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -221,13 +228,15 @@ export function Drawer({
             <h2 id={titleId} className="dialog-title">
               {title}
             </h2>
-            {description && <InfoTip text={description} label={`About ${title}`} />}
+            {/* no ⓘ next to popup titles (owner rule) — description is screen-reader text */}
+            {description && <span className="sr-only">{description}</span>}
           </div>
+          {headerExtra}
           {/* Owner rule: side drawers have no × icon — they close with the footer Cancel button (or Esc / scrim click).
           <IconButton icon="x" label="Close panel" onClick={onClose} /> */}
         </header>
         <div className="drawer-body">{children}</div>
-        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>Cancel</Button>}</footer>
+        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>{L.common.actions.cancel}</Button>}</footer>
       </div>
     </div>,
     document.body,
@@ -244,6 +253,7 @@ export function Popover({
   label,
   width,
   align = 'start',
+  side = 'bottom',
   className,
 }: {
   open: boolean;
@@ -253,6 +263,8 @@ export function Popover({
   label: string;
   width?: number;
   align?: 'start' | 'end';
+  /** 'right' opens beside the anchor (used by icon-rail buttons), bottom-aligned to it and kept on screen. */
+  side?: 'bottom' | 'right';
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -268,6 +280,11 @@ export function Popover({
     const h = el.offsetHeight;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    if (side === 'right') {
+      const top = Math.min(Math.max(8, a.bottom - h), vh - h - 8);
+      setPos({ top, left: Math.min(a.right + 8, vw - w - 8), maxH: vh - 16 });
+      return;
+    }
     const below = vh - a.bottom - 8;
     const above = a.top - 8;
     const flip = h > below && above > below;
@@ -275,7 +292,7 @@ export function Popover({
     let left = align === 'end' ? a.right - w : a.left;
     left = Math.min(Math.max(8, left), vw - w - 8);
     setPos({ top, left, maxH: Math.max(160, (flip ? above : below) - 4) });
-  }, [anchor, align]);
+  }, [anchor, align, side]);
 
   useLayoutEffect(() => {
     if (!open) return;

@@ -108,6 +108,8 @@ export interface PersonalSettings {
   favorites: { label: string; path: string; icon?: string }[];
   /** Colour theme (palette id) and the user's own saved palettes. */
   palette: string;
+  /** Add / edit drawer layout: simple grid form or canvas (property list). */
+  formLayout: 'simple' | 'canvas';
   customPalettes: { id: string; name: string; accent: string; sidebar: string; rail: string; custom?: boolean }[];
   recents: { label: string; path: string; at: string }[];
   defaultViews: Record<string, string>;

@@ -8,7 +8,9 @@ import { ServiceError } from '../../services/types';
 import { IconButton } from '../primitives/Button';
 import { StatusChip, useToast } from '../primitives/feedback';
 import { Menu } from '../primitives/overlay';
-import { FieldValue } from './FieldValue';
+import { FieldValue, photoOf } from './FieldValue';
+import { Icon } from '../primitives/Icon';
+import { ImageTile } from '../primitives/People';
 
 /** Board: columns are lifecycle states; moves go through the same guarded transition API. */
 export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, activeId }: { res: ResourceDefinition; actor: Actor; rows: RecordData[]; boardField: string; cardFields: string[]; onOpen: (id: string) => void; activeId?: string }) {
@@ -42,6 +44,9 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
   };
 
   const shownFields = cardFields.filter((k) => k !== boardField && k !== res.titleField && access[k] && access[k] !== 'hide').slice(0, 4);
+  // The first person (staff relation) becomes the avatar in the card's top-right corner; the rest are meta lines.
+  const personKey = shownFields.find((k) => res.fields.find((x) => x.key === k)?.relation?.resource === 'staff');
+  const metaFields = shownFields.filter((k) => k !== personKey);
 
   return (
     <div className="board" aria-label={`${res.labelPlural} board`}>
@@ -78,16 +83,29 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                   onDragEnd={() => setDragId(null)}
                 >
                   <button type="button" className="board-card-main" onClick={() => onOpen(r.id)}>
-                    <span className="card-title">{recordTitle(res.key, r.id, actor)}</span>
-                    <span className="mono muted">{r.id}</span>
-                    {shownFields.map((k) => {
-                      const f = res.fields.find((x) => x.key === k)!;
-                      return (
-                        <span key={k} className="card-field">
-                          <FieldValue field={f} value={r[k]} access={access[k]} actor={actor} linkRelations={false} />
+                    <span className="card-top">
+                      <span className="mono card-id">{r.id}</span>
+                      {personKey && r[personKey] != null && access[personKey] !== 'hide' && (
+                        <span className="card-person" data-tooltip={recordTitle('staff', r[personKey], actor)}>
+                          <ImageTile src={photoOf('staff', r[personKey])} name={recordTitle('staff', r[personKey], actor)} size={24} shape="circle" />
                         </span>
-                      );
-                    })}
+                      )}
+                    </span>
+                    <span className="card-title">{recordTitle(res.key, r.id, actor).split(' · ')[0]}</span>
+                    {metaFields.length > 0 && (
+                      <span className="card-meta">
+                        {metaFields.map((k) => {
+                          const f = res.fields.find((x) => x.key === k)!;
+                          const icon = f.type === 'date' || f.type === 'datetime' ? 'calendar' : f.type === 'relation' ? (f.relation?.resource === 'staff' ? 'f-person' : 'f-relation') : undefined;
+                          return (
+                            <span key={k} className="card-field">
+                              {icon && <Icon name={icon} size={14} className="card-field-icon" />}
+                              <FieldValue field={f} value={r[k]} access={access[k]} actor={actor} linkRelations={false} />
+                            </span>
+                          );
+                        })}
+                      </span>
+                    )}
                   </button>
                   <IconButton
                     icon="more"
@@ -96,13 +114,16 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                     className="board-card-menu"
                     onClick={(e) => {
                       anchor.current = e.currentTarget;
-                      setMenu(r);
+                      setMenu((m) => (m?.id === r.id ? null : r)); // click again closes
                     }}
                   />
                 </li>
               ))}
               {!items.length && <li className="board-empty muted">Nothing here</li>}
             </ul>
+            <footer className="board-col-foot muted">
+              {items.length} {items.length === 1 ? res.label.toLowerCase() : res.labelPlural.toLowerCase()}
+            </footer>
           </section>
         );
       })}

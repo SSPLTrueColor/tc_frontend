@@ -1,59 +1,285 @@
-import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+/**
+ * Customers & Contacts pages that are not plain resource lists:
+ *  - Contact Pool (CUS-05)                     ROUTES.contactPool
+ *  - Import Contacts (CUS-05)                  ROUTES.contactPoolImport
+ *  - Duplicate Detection & Merge (CUS-06)      ROUTES.duplicateMerge
+ *  - Bulk Ownership Transfer (CUS-10, ADM-08)  ROUTES.ownershipTransfer
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { L } from '../../constants/labels';
+import { ROUTES, toPath } from '../../constants/routes';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { recordPeekPath } from '../../lib/routes';
 import { errorMessage } from '../../services/api/client';
-import { importContacts, merge, parseContactCsv, phoneBookSample, transfer, visitingCardSample } from '../../services/api/customers';
+import {
+  CONTACT_CSV_TEMPLATE,
+  getContactPool,
+  getDuplicateGroups,
+  getTransferPreview,
+  importContacts,
+  type ImportRow,
+  merge,
+  parseContactCsv,
+  phoneBookSample,
+  type PoolContact,
+  removePoolContact,
+  transfer,
+  visitingCardSample,
+} from '../../services/api/customers';
 import { can, perm } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { downloadText } from '../../services/exporter';
 import { useActor } from '../../services/hooks';
-import { masterLabel } from '../../services/registry';
+import { activeMasterValues, masterLabel, masterValue } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
 import { ServiceError } from '../../services/types';
-import { listDuplicateGroups, previewTransfer } from '../../services/customers/operations';
-import { CONTACT_CSV_TEMPLATE, type ImportRow } from '../../services/customers/importContacts';
-import { Button } from '../../components/primitives/Button';
-import { EmptyValue } from '../../components/primitives/display';
+import { Button, IconButton } from '../../components/primitives/Button';
+import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
+import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { ConvertDialog, convertBlockedReason } from './components';
 
-// ---------------------------------------------------------------- Duplicates & merge (CUS-06)
+const A = L.customers.actions;
+const PAGES = L.nav.pages;
+
+// ---------------------------------------------------------------- Contact Pool (CUS-05)
+
+const PAGE_SIZE = 25;
+type PoolSort = 'createdAt' | 'name' | 'city';
+type StatusFilter = 'open' | 'all' | 'new' | 'contacted' | 'converted';
+
+export function ContactPoolPage() {
+  const actor = useActor();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const P = L.customers.pool;
+  const readable = perm(actor, 'contacts').read !== 'none';
+  const q = useServiceQuery(() => (readable ? getContactPool(actor) : []), [actor.user.id]);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('open');
+  const [source, setSource] = useState('');
+  const [sort, setSort] = useState<{ key: PoolSort; dir: 1 | -1 }>({ key: 'createdAt', dir: -1 });
+  const [page, setPage] = useState(0);
+  const [adding, setAdding] = useState(false);
+  const [converting, setConverting] = useState<PoolContact['contact'] | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const rows = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const list = (q.data ?? [])
+      .filter(({ contact: c }) => (status === 'all' ? true : status === 'open' ? c.poolStatus !== 'converted' : c.poolStatus === status))
+      .filter(({ contact: c }) => !source || c.source === source)
+      .filter(({ contact: c }) => !needle || [c.name, c.mobile, c.whatsapp, c.email, c.city, c.designation].some((v) => String(v ?? '').toLowerCase().includes(needle)));
+    const val = (r: PoolContact) => String(r.contact[sort.key] ?? '').toLowerCase();
+    return [...list].sort((a, b) => (val(a) < val(b) ? -sort.dir : val(a) > val(b) ? sort.dir : 0));
+  }, [q.data, search, status, source, sort]);
+
+  if (!readable) return <NoAccess what={P.noAccess} />;
+
+  const canCreate = perm(actor, 'contacts').create;
+  const canDelete = perm(actor, 'contacts').delete;
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const current = Math.min(page, pageCount - 1);
+  const visible = rows.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
+  const filtered = !!(search.trim() || source || status !== 'open');
+  const reset = () => setPage(0);
+  const sortBtn = (key: PoolSort, label: string) => (
+    <button type="button" className="th-btn" onClick={() => (setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 })), reset())} aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}>
+      <span className="th-label">{label}</span>
+      <span aria-hidden="true">{sort.key === key ? (sort.dir === 1 ? '↑' : '↓') : '↕'}</span>
+    </button>
+  );
+  const importWith = (add?: 'phone' | 'card') => navigate(toPath(ROUTES.contactPoolImport, {}, { add }));
+  const remove = (c: PoolContact['contact']) =>
+    confirmDelete({
+      title: P.deleteTitle(String(c.name)),
+      message: P.deleteMessage,
+      confirmLabel: A.delete,
+      onConfirm: async () => {
+        setDeleting(c.id);
+        try {
+          await removePoolContact(actor, c.id);
+          toast(P.deleted(String(c.name)));
+        } catch (e) {
+          toast(errorMessage(e), 'danger');
+        } finally {
+          setDeleting(null);
+        }
+      },
+    });
+  const statusOptions: { value: StatusFilter; label: string }[] = [
+    { value: 'open', label: P.statusOpen },
+    { value: 'new', label: L.customers.masters.poolStatus.values.new },
+    { value: 'contacted', label: L.customers.masters.poolStatus.values.contacted },
+    { value: 'converted', label: L.customers.masters.poolStatus.values.converted },
+    { value: 'all', label: P.statusAll },
+  ];
+
+  return (
+    <div className="page">
+      <PageHeader title={PAGES.contactPool.title} description={P.description} />
+      <div className="toolbar">
+        <Button variant="primary" icon="plus" onClick={() => setAdding(true)} disabledReason={canCreate ? undefined : P.noCreate}>
+          {A.addManually}
+        </Button>
+        <Button icon="arrow-up" onClick={() => importWith()} disabledReason={canCreate ? undefined : P.noCreate}>
+          {A.uploadExcel}
+        </Button>
+        <Button icon="users" onClick={() => importWith('phone')} disabledReason={canCreate ? undefined : P.noCreate} title={A.simulatedPhoneBook}>
+          {A.phoneBook}
+        </Button>
+        <Button icon="id-card" onClick={() => importWith('card')} disabledReason={canCreate ? undefined : P.noCreate} title={A.simulatedCard}>
+          {A.visitingCard}
+        </Button>
+        <InfoTip text={L.customers.import.demoTip} label={L.customers.import.demoTipLabel} />
+      </div>
+      <div className="toolbar">
+        <input type="search" className="input input-compact" placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), reset())} />
+        <SelectMenu label={P.filterStatus} value={status} options={statusOptions} onChange={(v) => (setStatus(v as StatusFilter), reset())} />
+        <SelectMenu label={P.filterSource} value={source} options={[{ value: '', label: P.sourceAll }, ...activeMasterValues('leadSource').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setSource(v), reset())} />
+        <span className="spacer" />
+        {q.data && <span className="toolbar-count">{P.count(rows.length)}</span>}
+      </div>
+      <div className="content-surface">
+        {q.error ? (
+          <ErrorState title={P.loadError} onRetry={q.retry}>
+            {q.error}
+          </ErrorState>
+        ) : !q.data ? (
+          <Skeleton rows={8} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={filtered ? 'search' : 'users'}
+            title={filtered ? P.noMatch : P.empty}
+            action={
+              filtered ? (
+                <Button onClick={() => (setSearch(''), setSource(''), setStatus('open'), reset())}>{A.clear}</Button>
+              ) : canCreate ? (
+                <Button variant="primary" icon="plus" onClick={() => setAdding(true)}>
+                  {A.addManually}
+                </Button>
+              ) : undefined
+            }
+          >
+            {filtered ? P.noMatchText : P.emptyText}
+          </EmptyState>
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{sortBtn('name', P.cols.name)}</th>
+                    <th scope="col">{P.cols.mobile}</th>
+                    <th scope="col">{P.cols.email}</th>
+                    <th scope="col">{sortBtn('city', P.cols.city)}</th>
+                    <th scope="col">{P.cols.source}</th>
+                    <th scope="col">{P.cols.owner}</th>
+                    <th scope="col">{sortBtn('createdAt', P.cols.added)}</th>
+                    <th scope="col">{P.cols.status}</th>
+                    <th scope="col">{P.cols.actions}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map(({ contact: c, leadId }) => {
+                    const st = masterValue('poolStatus', c.poolStatus);
+                    const blocked = convertBlockedReason(actor, c);
+                    return (
+                      <tr key={c.id}>
+                        <td>
+                          <Link className="rel-link" to={recordPeekPath(actor.workspaceId, 'contacts', c.id)}>
+                            {String(c.name)}
+                          </Link>
+                          {c.designation ? <div className="muted small">{String(c.designation)}</div> : null}
+                        </td>
+                        <td className="nowrap">{c.mobile ? String(c.mobile) : <EmptyValue />}</td>
+                        <td>{c.email ? String(c.email) : <EmptyValue />}</td>
+                        <td>{c.city ? String(c.city) : <EmptyValue />}</td>
+                        <td>{c.source ? masterLabel('leadSource', c.source) : <EmptyValue />}</td>
+                        <td>{c.ownerId ? recordTitle('employees', c.ownerId, actor) : <EmptyValue />}</td>
+                        <td className="nowrap">
+                          <DateText value={String(c.createdAt ?? '')} />
+                        </td>
+                        <td>{st && <StatusChip label={st.label} tone={st.tone} />}</td>
+                        <td className="nowrap">
+                          {leadId ? (
+                            <Link className="link small" to={recordPeekPath(actor.workspaceId, 'leads', leadId)}>
+                              {A.openLead(leadId)}
+                            </Link>
+                          ) : (
+                            <>
+                              <Button size="compact" icon="arrow-up" onClick={() => setConverting(c)} disabledReason={blocked}>
+                                {A.convertToLead}
+                              </Button>{' '}
+                              <IconButton icon="trash" label={A.delete} disabledReason={canDelete ? (deleting === c.id ? A.delete : undefined) : P.noDelete} onClick={() => remove(c)} />
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="grid-footer">
+              <span className="grid-footer-range">
+                <strong>{P.range(current * PAGE_SIZE + 1, Math.min(rows.length, (current + 1) * PAGE_SIZE), rows.length)}</strong>
+              </span>
+              <nav className="grid-pages" aria-label={P.pagination}>
+                <IconButton icon="chevron-left" label={P.prevPage} disabledReason={current === 0 ? P.firstPage : undefined} onClick={() => setPage(current - 1)} />
+                <span className="muted small">{P.page(current + 1, pageCount)}</span>
+                <IconButton icon="chevron-right" label={P.nextPage} disabledReason={current >= pageCount - 1 ? P.lastPage : undefined} onClick={() => setPage(current + 1)} />
+              </nav>
+            </div>
+          </>
+        )}
+      </div>
+      <QuickCreateDialog open={adding} resKey="contacts" initial={{ customerId: null, poolStatus: 'new', ownerId: actor.staffId, divisionIds: actor.divisionIds.slice(0, 1) }} onClose={() => setAdding(false)} onCreated={() => setAdding(false)} />
+      {converting && <ConvertDialog actor={actor} contact={converting} onClose={() => setConverting(null)} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Duplicate Detection & Merge (CUS-06)
 
 export function DuplicatesPage() {
   const actor = useActor();
   const toast = useToast();
-  const q = useServiceQuery(() => (can(actor, 'customers.merge') ? listDuplicateGroups(actor) : []), [actor.user.id]);
+  const D = L.customers.duplicates;
+  const allowed = can(actor, 'customers.merge');
+  const q = useServiceQuery(() => (allowed ? getDuplicateGroups(actor) : []), [actor.user.id]);
   const [keep, setKeep] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
-  if (!can(actor, 'customers.merge')) return <NoAccess what="duplicate review" />;
+  if (!allowed) return <NoAccess what={D.noAccess} />;
   const customers = getDb().records.customers ?? [];
   const contacts = getDb().records.contacts ?? [];
   return (
     <div className="page">
-      <PageHeader title="Duplicates & merge" description="Customers with the same GSTIN or very similar names (≥ 85%), and contacts sharing a mobile number. Merging re-points every linked record to the survivor and moves the duplicate to the recycle bin; the merge is audited." />
+      <PageHeader title={PAGES.duplicateMerge.title} description={D.description} />
       <div className="content-surface">
         {q.error ? (
-          <ErrorState title="Could not check for duplicates" onRetry={q.retry}>
+          <ErrorState title={D.loadError} onRetry={q.retry}>
             {q.error}
           </ErrorState>
         ) : !q.data ? (
           <Skeleton rows={6} />
         ) : !q.data.length ? (
-          <EmptyState icon="check" title="No likely duplicates">
-            New customers are checked on entry; anything that slips through appears here.
+          <EmptyState icon="check" title={D.empty}>
+            {D.emptyText}
           </EmptyState>
         ) : (
           <div className="table-scroll">
             <table className="mini-table">
               <thead>
                 <tr>
-                  <th scope="col">Why</th>
-                  <th scope="col">Records (choose the one to keep)</th>
-                  <th scope="col">Action</th>
+                  <th scope="col">{D.cols.why}</th>
+                  <th scope="col">{D.cols.records}</th>
+                  <th scope="col">{D.cols.action}</th>
                 </tr>
               </thead>
               <tbody>
@@ -64,7 +290,7 @@ export function DuplicatesPage() {
                   return (
                     <tr key={`${g.kind}-${g.ids.join('-')}`}>
                       <td>
-                        <Badge tone={g.kind === 'gstin' ? 'danger' : 'warning'}>{g.kind === 'gstin' ? 'Same GSTIN' : g.kind === 'name' ? 'Similar name' : 'Same mobile'}</Badge>
+                        <Badge tone={g.kind === 'gstin' ? 'danger' : 'warning'}>{D.kinds[g.kind]}</Badge>
                         <div className="muted small">{g.reason}</div>
                       </td>
                       <td>
@@ -79,11 +305,13 @@ export function DuplicatesPage() {
                                     <Link to={recordPeekPath(actor.workspaceId, 'customers', id)}>
                                       <span className="mono">{id}</span> {String(r?.name ?? '')}
                                     </Link>
-                                    <span className="muted small">{r?.gstin ? String(r.gstin) : 'No GSTIN'} · {masterLabel('territory', r?.territoryId)}</span>
+                                    <span className="muted small">
+                                      {r?.gstin ? String(r.gstin) : D.noGstin} · {masterLabel('territory', r?.territoryId)}
+                                    </span>
                                   </label>
                                 ) : (
                                   <Link to={recordPeekPath(actor.workspaceId, 'contacts', id)}>
-                                    <span className="mono">{id}</span> {String(r?.name ?? '')} {r?.customerId ? `· ${recordTitle('customers', r.customerId)}` : '· pool'}
+                                    <span className="mono">{id}</span> {String(r?.name ?? '')} · {r?.customerId ? recordTitle('customers', r.customerId) : D.pool}
                                   </Link>
                                 )}
                               </li>
@@ -95,17 +323,18 @@ export function DuplicatesPage() {
                         {isCustomer ? (
                           <Button
                             loading={busy === i}
+                            icon="copy"
                             onClick={() => {
                               const drop = g.ids.find((x) => x !== survivor)!;
                               confirmDelete({
-                                title: `Merge ${drop} into ${survivor}?`,
-                                message: `Contacts, addresses, leads, orders, machines, tickets and activities of ${drop} move to ${survivor}. ${drop} goes to the recycle bin. This cannot be undone automatically.`,
-                                confirmLabel: 'Merge',
+                                title: D.confirmTitle(drop, survivor),
+                                message: D.confirmMessage(drop, survivor),
+                                confirmLabel: A.merge,
                                 onConfirm: async () => {
                                   setBusy(i);
                                   try {
                                     const r = await merge(actor, survivor, drop);
-                                    toast(`Merged ${drop} into ${survivor} (${r.moved} linked records moved)`);
+                                    toast(D.merged(drop, survivor, r.moved));
                                   } catch (e) {
                                     toast(errorMessage(e), 'danger');
                                   } finally {
@@ -115,10 +344,10 @@ export function DuplicatesPage() {
                               });
                             }}
                           >
-                            Merge into selected
+                            {A.merge}
                           </Button>
                         ) : (
-                          <span className="muted small">Open the contacts and edit or delete the wrong one.</span>
+                          <span className="muted small">{D.contactHint}</span>
                         )}
                       </td>
                     </tr>
@@ -133,32 +362,34 @@ export function DuplicatesPage() {
   );
 }
 
-// ---------------------------------------------------------------- Ownership transfer (CUS-10, BR-52)
+// ---------------------------------------------------------------- Bulk Ownership Transfer (CUS-10, BR-52)
 
 export function TransferPage() {
   const actor = useActor();
   const toast = useToast();
+  const X = L.customers.transfer;
+  const allowed = can(actor, 'customers.transfer');
   const employees = (getDb().records.employees ?? []).filter((e) => e.workspaceId === actor.workspaceId);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
-  const preview = useServiceQuery(() => (from && can(actor, 'customers.transfer') ? previewTransfer(actor, from) : null), [actor.user.id, from]);
-  if (!can(actor, 'customers.transfer')) return <NoAccess what="ownership transfer" />;
+  const preview = useServiceQuery(() => (from && allowed ? getTransferPreview(actor, from) : null), [actor.user.id, from]);
+  if (!allowed) return <NoAccess what={X.noAccess} />;
   const total = preview.data?.reduce((s, x) => s + x.count, 0) ?? 0;
   const name = (id: string) => recordTitle('employees', id, actor);
   const run = () =>
     confirmDelete({
-      title: `Transfer ${total} records to ${name(to)}?`,
-      message: `Accounts, contacts, open leads, open opportunities and open tasks of ${name(from)} move to ${name(to)}. Closed records keep their original owner. Every change is kept in the record history.`,
-      confirmLabel: 'Transfer',
+      title: X.confirmTitle(total, name(to)),
+      message: X.confirmMessage(name(from), name(to)),
+      confirmLabel: A.transferOwnership,
       onConfirm: async () => {
         setBusy(true);
         setErrors({});
         try {
           const r = await transfer(actor, from, to, reason);
-          toast(`Transferred ${Object.values(r.moved).reduce((a, b) => a + b, 0)} records to ${name(to)}`);
+          toast(X.done(Object.values(r.moved).reduce((a, b) => a + b, 0), name(to)));
           setReason('');
           preview.retry();
         } catch (e) {
@@ -171,41 +402,41 @@ export function TransferPage() {
     });
   return (
     <div className="page">
-      <PageHeader title="Ownership transfer" description="Move a person’s accounts and open work to someone else — when they leave or territories change. Closed records keep their original owner." />
+      <PageHeader title={PAGES.ownershipTransfer.title} description={X.description} />
       <section className="panel">
         <div className="form-grid cols-2">
           <div className="form-field">
             <label className="field-label" htmlFor="tr-from">
-              Current owner <span className="req">*</span>
+              {X.from} <span className="req">*</span>
             </label>
-            <SelectMenu id="tr-from" block label="Current owner" value={from} options={employees.map((e) => ({ value: e.id, label: `${String(e.fullName)} — ${String(e.designation)}${e.status === 'inactive' ? ' (inactive)' : ''}` }))} onChange={setFrom} />
+            <SelectMenu id="tr-from" block label={X.from} value={from} options={employees.map((e) => ({ value: e.id, label: `${String(e.fullName)} — ${String(e.designation)}${e.status === 'inactive' ? X.inactive : ''}` }))} onChange={setFrom} />
             {errors.from && <p className="field-error">{errors.from}</p>}
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="tr-to">
-              New owner <span className="req">*</span>
+              {X.to} <span className="req">*</span>
             </label>
-            <SelectMenu id="tr-to" block label="New owner" value={to} options={employees.filter((e) => e.id !== from && e.status !== 'inactive').map((e) => ({ value: e.id, label: `${String(e.fullName)} — ${String(e.designation)}` }))} onChange={setTo} />
+            <SelectMenu id="tr-to" block label={X.to} value={to} options={employees.filter((e) => e.id !== from && e.status !== 'inactive').map((e) => ({ value: e.id, label: `${String(e.fullName)} — ${String(e.designation)}` }))} onChange={setTo} />
             {errors.to && <p className="field-error">{errors.to}</p>}
           </div>
           <div className="form-field span-all">
             <span className="field-label-row">
               <label className="field-label" htmlFor="tr-reason">
-                Reason <span className="req">*</span>
+                {X.reason} <span className="req">*</span>
               </label>
-              <InfoTip text="Recorded in the history of every transferred record and in the audit log." label="About the reason" />
+              <InfoTip text={X.reasonTip} label={X.reasonTipLabel} />
             </span>
-            <input id="tr-reason" className="input" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Territory realignment – Surat moved to Karan" />
+            <input id="tr-reason" className="input" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={X.reasonPlaceholder} />
             {errors.reason && <p className="field-error">{errors.reason}</p>}
           </div>
         </div>
       </section>
       <section className="panel">
-        <h2 className="panel-title">What will move</h2>
+        <h2 className="panel-title">{X.whatMoves}</h2>
         {!from ? (
-          <p className="muted">Choose the current owner to see their records.</p>
+          <p className="muted">{X.chooseFrom}</p>
         ) : preview.error ? (
-          <ErrorState title="Could not count records" onRetry={preview.retry}>
+          <ErrorState title={X.countError} onRetry={preview.retry}>
             {preview.error}
           </ErrorState>
         ) : !preview.data ? (
@@ -221,9 +452,10 @@ export function TransferPage() {
               ))}
             </dl>
             <div className="row-gap">
-              <Button variant="primary" loading={busy} onClick={run} disabledReason={!total ? 'Nothing to transfer' : !to ? 'Choose the new owner' : reason.trim().length < 5 ? 'Give a reason (at least 5 characters)' : undefined}>
-                Transfer {total} records
+              <Button variant="primary" icon="users" loading={busy} onClick={run} disabledReason={!total ? X.nothing : !to ? X.chooseTo : reason.trim().length < 5 ? X.reasonShort : undefined}>
+                {A.transferOwnership}
               </Button>
+              <span className="muted small">{X.buttonCount(total)}</span>
             </div>
           </>
         )}
@@ -232,17 +464,19 @@ export function TransferPage() {
   );
 }
 
-// ---------------------------------------------------------------- Contact import (CUS-05)
+// ---------------------------------------------------------------- Import Contacts (CUS-05)
 
 export function ContactImportPage() {
   const actor = useActor();
   const toast = useToast();
+  const I = L.customers.import;
+  const [params, setParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ImportRow[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [cardN, setCardN] = useState(0);
-  if (!perm(actor, 'contacts').create) return <NoAccess what="importing contacts" />;
+  const allowed = perm(actor, 'contacts').create;
   const load = async (label: string, op: () => Promise<ImportRow[]>, append = false) => {
     setBusy(label);
     setError('');
@@ -255,16 +489,30 @@ export function ContactImportPage() {
       setBusy(null);
     }
   };
+  const scanCard = () => {
+    setCardN((n) => n + 1);
+    load('card', () => visitingCardSample(cardN), true);
+  };
+  // Arriving from the Contact Pool with ?add=phone|card starts that (simulated) source once.
+  const add = params.get('add');
+  useEffect(() => {
+    if (!allowed || (add !== 'phone' && add !== 'card')) return;
+    setParams({}, { replace: true });
+    if (add === 'phone') load('phone', phoneBookSample, true);
+    else load('card', () => visitingCardSample(0), true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [add, allowed]);
+  if (!allowed) return <NoAccess what={I.noAccess} />;
   const valid = rows?.filter((r) => !r.errors.length && !r.duplicateOf) ?? [];
   return (
     <div className="page">
-      <PageHeader title="Import contacts" description="Add prospects to the contact pool from a CSV file. Every row is validated (name, mobile or email, formats) and checked for duplicates before anything is saved." />
+      <PageHeader title={PAGES.contactPoolImport.title} description={I.description} />
       <div className="toolbar">
         <Button icon="download" onClick={() => downloadText('contacts-template.csv', CONTACT_CSV_TEMPLATE)}>
-          Download template
+          {A.downloadTemplate}
         </Button>
         <Button variant="primary" icon="arrow-up" loading={busy === 'csv'} onClick={() => fileRef.current?.click()}>
-          Upload CSV…
+          {A.uploadExcel}
         </Button>
         <input
           ref={fileRef}
@@ -275,51 +523,57 @@ export function ContactImportPage() {
             const f = e.target.files?.[0];
             e.target.value = '';
             if (!f) return;
-            if (f.size > 2 * 1024 * 1024) return setError('That file is larger than 2 MB.');
+            if (f.size > 2 * 1024 * 1024) return setError(I.tooLarge);
             f.text().then((t) => load('csv', () => parseContactCsv(t)));
           }}
         />
         <span className="viewbar-divider" aria-hidden="true" />
-        <Button loading={busy === 'phone'} onClick={() => load('phone', phoneBookSample, true)} title="Simulated: adds sample entries, the phone book is not read">
-          Add from phone book (demo)
+        <Button icon="users" loading={busy === 'phone'} onClick={() => load('phone', phoneBookSample, true)} title={A.simulatedPhoneBook}>
+          {A.phoneBook}
         </Button>
-        <Button
-          loading={busy === 'card'}
-          onClick={() => {
-            setCardN((n) => n + 1);
-            load('card', () => visitingCardSample(cardN), true);
-          }}
-          title="Simulated OCR: adds a sample card, the camera is not used"
-        >
-          Scan visiting card (demo)
+        <Button icon="id-card" loading={busy === 'card'} onClick={scanCard} title={A.simulatedCard}>
+          {A.visitingCard}
         </Button>
-        <InfoTip text="Phone-book import and visiting-card scanning run in the mobile app. Here they add sample rows so the review step can be shown." label="About demo sources" />
+        <InfoTip text={I.demoTip} label={I.demoTipLabel} />
+        <span className="spacer" />
+        <Link className="link small" to={ROUTES.contactPool}>
+          {PAGES.contactPool.title}
+        </Link>
       </div>
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       <div className="content-surface">
         {!rows ? (
-          <EmptyState icon="arrow-up" title="No file yet">
-            Upload a CSV with columns name, company, designation, mobile, email, city, source.
-          </EmptyState>
+          busy ? (
+            <Skeleton rows={4} />
+          ) : (
+            <EmptyState icon="arrow-up" title={I.noFile}>
+              {I.noFileText}
+            </EmptyState>
+          )
         ) : !rows.length ? (
-          <EmptyState icon="search" title="The file has no rows" />
+          <EmptyState icon="search" title={I.noRows} />
         ) : (
           <>
             <div className="toolbar">
               <span className="toolbar-count">
-                {rows.length} rows · <strong>{valid.length}</strong> ready · {rows.filter((r) => r.errors.length).length} with errors · {rows.filter((r) => r.duplicateOf).length} already exist
+                {I.summary(
+                  rows.length,
+                  valid.length,
+                  rows.filter((r) => r.errors.length).length,
+                  rows.filter((r) => r.duplicateOf).length,
+                )}
               </span>
               <span className="spacer" />
-              <Button onClick={() => setRows(null)}>Clear</Button>
+              <Button onClick={() => setRows(null)}>{A.clear}</Button>
               <Button
                 variant="primary"
                 loading={busy === 'import'}
-                disabledReason={valid.length ? undefined : 'No valid new rows to import'}
+                disabledReason={valid.length ? undefined : I.noValid}
                 onClick={async () => {
                   setBusy('import');
                   try {
                     const r = await importContacts(actor, rows);
-                    toast(`Imported ${r.created.length} contact(s)${r.skipped.length ? `, skipped ${r.skipped.length}` : ''}`, r.created.length ? 'success' : 'info');
+                    toast(I.imported(r.created.length, r.skipped.length), r.created.length ? 'success' : 'info');
                     setRows(null);
                   } catch (e) {
                     toast(errorMessage(e), 'danger');
@@ -328,20 +582,20 @@ export function ContactImportPage() {
                   }
                 }}
               >
-                Import {valid.length} contact(s)
+                {A.importN(valid.length)}
               </Button>
             </div>
             <div className="table-scroll">
               <table className="mini-table">
                 <thead>
                   <tr>
-                    <th scope="col">Line</th>
-                    <th scope="col">Name</th>
-                    <th scope="col">Company</th>
-                    <th scope="col">Mobile</th>
-                    <th scope="col">Email</th>
-                    <th scope="col">City</th>
-                    <th scope="col">Check</th>
+                    <th scope="col">{I.cols.line}</th>
+                    <th scope="col">{I.cols.name}</th>
+                    <th scope="col">{I.cols.company}</th>
+                    <th scope="col">{I.cols.mobile}</th>
+                    <th scope="col">{I.cols.email}</th>
+                    <th scope="col">{I.cols.city}</th>
+                    <th scope="col">{I.cols.check}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -349,7 +603,7 @@ export function ContactImportPage() {
                     <tr key={r.line}>
                       <td className="num">{r.line}</td>
                       <td>{r.name || <EmptyValue />}</td>
-                      <td>{r.customerId ? <Link to={recordPeekPath(actor.workspaceId, 'customers', r.customerId)}>{r.company}</Link> : r.company || <span className="muted small">Pool</span>}</td>
+                      <td>{r.customerId ? <Link to={recordPeekPath(actor.workspaceId, 'customers', r.customerId)}>{r.company}</Link> : r.company || <span className="muted small">{I.pool}</span>}</td>
                       <td>{r.mobile || <EmptyValue />}</td>
                       <td>{r.email || <EmptyValue />}</td>
                       <td>{r.city || <EmptyValue />}</td>
@@ -358,10 +612,10 @@ export function ContactImportPage() {
                           <StatusChip label={r.errors[0]} tone="danger" />
                         ) : r.duplicateOf ? (
                           <Link to={recordPeekPath(actor.workspaceId, 'contacts', r.duplicateOf)}>
-                            <StatusChip label={`Exists as ${r.duplicateOf}`} tone="warning" />
+                            <StatusChip label={I.exists(r.duplicateOf)} tone="warning" />
                           </Link>
                         ) : (
-                          <StatusChip label="Ready" tone="success" />
+                          <StatusChip label={I.ready} tone="success" />
                         )}
                       </td>
                     </tr>
@@ -375,4 +629,3 @@ export function ContactImportPage() {
     </div>
   );
 }
-

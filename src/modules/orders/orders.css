@@ -1,4 +1,4 @@
-/* Orders module — layout helpers on top of the template classes (tokens only). */
+/* Sales Orders & Contracts module: layout helpers on top of the template classes (tokens only). */
 .orders-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -54,6 +54,16 @@
   justify-content: space-between;
   gap: var(--sp-4);
   padding-top: var(--sp-6, 32px);
+}
+.orders-processing td {
+  vertical-align: top;
+}
+.orders-processing .input,
+.orders-processing .date-picker {
+  min-width: 140px;
+}
+.orders-processing td > * + * {
+  margin-top: 4px;
 }
 @media print {
   .rail,

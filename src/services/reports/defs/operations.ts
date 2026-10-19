@@ -1,9 +1,14 @@
 /** FR-074 installed base, FR-091 service, FR-113 field force reports. */
+import { L } from '../../../constants/labels';
+import { ROUTES } from '../../../constants/routes';
 import { coverageFor } from '../../lookups';
 import { ageingBuckets, amcRenewalRate, csat, dayOf, firstTimeFix, hoursBetween, isOpenTicket, isResolvedTicket, mtbfByModel, mttrHours, ms, pmCompliance, repeatRate, slaCompliance } from '../kpis';
 import { applyFilters, empName, groupBy, label, list, monthKey, n, pctOf, peek, s, top } from '../helpers';
 import type { ReportDef, ReportRow } from '../types';
 
+const D = L.reports.defs;
+const C = L.reports.cols;
+const G = L.reports.groupBy;
 const row = (key: string, o: Record<string, unknown>): ReportRow => ({ _key: key, ...o });
 const ticketDate = 'reportedAt';
 
@@ -11,36 +16,36 @@ export const operationsReports: ReportDef[] = [
   // ---------------------------------------------------------------- FR-074 installed base
   {
     id: 'amc-status',
-    title: 'AMC / CMC status',
-    group: 'installed',
+    title: D.amcStatus.title,
+    group: 'installed-base',
     fr: ['FR-074', 'FR-072'],
-    description: 'Contracts due for renewal, renewed, lost and expired, with renewal rate.',
+    description: D.amcStatus.description,
     needs: ['amcContracts'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Contract end date',
+    dateLabel: D.amcStatus.dateLabel,
     compute: (ds, f) => {
       const cs = applyFilters(ds.get('amcContracts'), f, { date: 'endDate', owner: 'ownerId' });
       const rows = [...groupBy(cs, (c) => s(c.status)).entries()].map(([st, v]) => row(st, { status: st, contracts: v.length, value: v.reduce((t, c) => t + n(c.value), 0), amc: v.filter((c) => c.contractType === 'amc').length, cmc: v.filter((c) => c.contractType === 'cmc').length }));
       return {
         columns: [
-          { key: 'status', label: 'Status', type: 'status', master: 'amcStatus', link: () => list('amcContracts') },
-          { key: 'contracts', label: 'Contracts', type: 'number' },
-          { key: 'amc', label: 'AMC', type: 'number' },
-          { key: 'cmc', label: 'CMC', type: 'number' },
-          { key: 'value', label: 'Value', type: 'money' },
+          { key: 'status', label: C.status, type: 'status', master: 'amcStatus', link: () => list('amcContracts') },
+          { key: 'contracts', label: D.amcStatus.cols.contracts, type: 'number' },
+          { key: 'amc', label: D.amcStatus.cols.amc, type: 'number' },
+          { key: 'cmc', label: D.amcStatus.cols.cmc, type: 'number' },
+          { key: 'value', label: C.value, type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.contracts) - n(a.contracts)),
-        chart: { polarity: 'neutral', label: 'Contracts by status', unit: 'contracts', data: rows.map((r) => ({ key: r._key, label: label('amcStatus', r.status), value: n(r.contracts) })) },
-        kpis: [{ label: 'AMC renewal rate', value: `pct:${amcRenewalRate(cs) ?? ''}`, hint: 'Renewed ÷ (renewed + lost + expired)' }],
+        chart: { polarity: 'neutral', label: D.amcStatus.chart, unit: D.amcStatus.unit, data: rows.map((r) => ({ key: r._key, label: label('amcStatus', r.status), value: n(r.contracts) })) },
+        kpis: [{ label: D.amcStatus.tile, value: `pct:${amcRenewalRate(cs) ?? ''}`, hint: D.amcStatus.hint }],
       };
     },
   },
   {
     id: 'machines-without-contract',
-    title: 'Machines without a contract',
-    group: 'installed',
+    title: D.machinesWithoutContract.title,
+    group: 'installed-base',
     fr: ['FR-074', 'FR-072'],
-    description: 'Active machines with no warranty and no AMC/CMC today — the upsell list.',
+    description: D.machinesWithoutContract.description,
     needs: ['machines'],
     filters: { division: true },
     compute: (ds, f, ctx) => {
@@ -48,47 +53,47 @@ export const operationsReports: ReportDef[] = [
       const rows = ms_.map((m) => row(m.id, { id: m.id, serial: s(m.serialNo), model: s(m.model) || ds.name('products', m.productId), customer: ds.name('customers', m.customerId), installDate: m.installDate, ageYears: Math.round(((ms(ctx.today) - ms(dayOf(m.installDate))) / (365 * 86_400_000)) * 10) / 10 }));
       return {
         columns: [
-          { key: 'serial', label: 'Serial', link: peek('machines') },
-          { key: 'model', label: 'Model' },
-          { key: 'customer', label: 'Customer' },
-          { key: 'installDate', label: 'Installed', type: 'date' },
-          { key: 'ageYears', label: 'Age (years)', type: 'number' },
+          { key: 'serial', label: C.serialNumber, link: peek('machines') },
+          { key: 'model', label: C.model },
+          { key: 'customer', label: C.customer },
+          { key: 'installDate', label: C.installationDate, type: 'date' },
+          { key: 'ageYears', label: D.machinesWithoutContract.cols.ageYears, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(a.ageYears) - n(b.ageYears)),
-        chart: { polarity: 'lower', label: 'Uncovered machines by model', unit: 'machines', data: top([...groupBy(rows, (r) => s(r.model)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
-        kpis: [{ label: 'Machines without cover', value: `${rows.length} of ${ds.get('machines').filter((m) => m.status !== 'scrapped').length}` }],
+        chart: { polarity: 'lower', label: D.machinesWithoutContract.chart, unit: D.machinesWithoutContract.unit, data: top([...groupBy(rows, (r) => s(r.model)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
+        kpis: [{ label: D.machinesWithoutContract.tile, value: L.reports.common.ofTotal(rows.length, ds.get('machines').filter((m) => m.status !== 'scrapped').length) }],
       };
     },
   },
   {
-    id: 'installed-base',
-    title: 'Installed base',
-    group: 'installed',
+    id: 'installed-base-by-model',
+    title: D.installedBase.title,
+    group: 'installed-base',
     fr: ['FR-074'],
-    description: 'Machines in the field by model or region (customer billing state).',
+    description: D.installedBase.description,
     needs: ['machines'],
     filters: { division: true },
     groupOptions: [
-      { value: 'model', label: 'By model' },
-      { value: 'region', label: 'By region' },
-      { value: 'coverage', label: 'By coverage today' },
+      { value: 'model', label: G.model },
+      { value: 'region', label: G.region },
+      { value: 'coverage', label: G.coverage },
     ],
     compute: (ds, f, ctx) => {
       const ms_ = applyFilters(ds.get('machines').filter((m) => m.status !== 'scrapped'), f);
       const custState = new Map(ds.get('customers').map((c) => [c.id, label('state', c.billingState)]));
       const g = f.group ?? 'model';
-      const keyOf = (m: Record<string, unknown>) => (g === 'region' ? custState.get(s(m.customerId)) ?? 'Unknown' : g === 'coverage' ? label('coverage', coverageFor(s(m.id), ctx.today)) : s(m.model) || ds.name('products', m.productId));
+      const keyOf = (m: Record<string, unknown>) => (g === 'region' ? custState.get(s(m.customerId)) ?? L.reports.common.unknown : g === 'coverage' ? label('coverage', coverageFor(s(m.id), ctx.today)) : s(m.model) || ds.name('products', m.productId));
       const rows = [...groupBy(ms_, keyOf).entries()].map(([k, v]) => row(k, { group: k, machines: v.length, customers: new Set(v.map((m) => s(m.customerId))).size, newThisYear: v.filter((m) => dayOf(m.installDate) >= `${ctx.today.slice(0, 4)}-01-01`).length }));
       return {
         columns: [
-          { key: 'group', label: g === 'region' ? 'Region (state)' : g === 'coverage' ? 'Coverage' : 'Model', link: () => list('machines') },
-          { key: 'machines', label: 'Machines', type: 'number' },
-          { key: 'customers', label: 'Customers', type: 'number' },
-          { key: 'newThisYear', label: 'Installed this year', type: 'number' },
+          { key: 'group', label: g === 'region' ? D.installedBase.cols.region : g === 'coverage' ? D.installedBase.cols.coverage : C.model, link: () => list('machines') },
+          { key: 'machines', label: C.machines, type: 'number' },
+          { key: 'customers', label: D.installedBase.cols.customers, type: 'number' },
+          { key: 'newThisYear', label: D.installedBase.cols.newThisYear, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.machines) - n(a.machines)),
-        chart: { polarity: 'neutral', label: 'Machines', unit: 'machines', data: top(rows.map((r) => ({ key: r._key, label: s(r.group), value: n(r.machines) })), 12) },
-        kpis: [{ label: 'Machines in the field', value: String(ms_.length) }],
+        chart: { polarity: 'neutral', label: D.installedBase.chart, unit: D.installedBase.unit, data: top(rows.map((r) => ({ key: r._key, label: s(r.group), value: n(r.machines) })), 12) },
+        kpis: [{ label: D.installedBase.tile, value: String(ms_.length) }],
       };
     },
   },
@@ -96,48 +101,48 @@ export const operationsReports: ReportDef[] = [
   // ---------------------------------------------------------------- FR-091 service
   {
     id: 'open-tickets',
-    title: 'Open tickets and ageing',
+    title: D.openTickets.title,
     group: 'service',
     fr: ['FR-091'],
-    description: 'Tickets not yet resolved, by age since they were reported.',
+    description: D.openTickets.description,
     needs: ['tickets'],
     filters: { division: true, owner: true },
     compute: (ds, f, ctx) => {
       const open = applyFilters(ds.get('tickets').filter(isOpenTicket), f, { owner: 'assigneeId' });
-      const rows = open.map((t) => row(t.id, { id: t.id, customer: ds.name('customers', t.customerId), priority: t.priority, status: t.status, engineer: empName(ds, t.assigneeId), reported: t.reportedAt, ageDays: Math.floor((ctx.nowMs - ms(t.reportedAt)) / 86_400_000), breached: t.slaBreached ? 'Breached' : s(t.resolutionDueAt) && ms(t.resolutionDueAt) < ctx.nowMs ? 'Breached' : 'On track' }));
+      const rows = open.map((t) => row(t.id, { id: t.id, customer: ds.name('customers', t.customerId), priority: t.priority, status: t.status, engineer: empName(ds, t.assigneeId), reported: t.reportedAt, ageDays: Math.floor((ctx.nowMs - ms(t.reportedAt)) / 86_400_000), breached: t.slaBreached ? D.openTickets.breached : s(t.resolutionDueAt) && ms(t.resolutionDueAt) < ctx.nowMs ? D.openTickets.breached : D.openTickets.onTrack }));
       return {
         columns: [
-          { key: 'id', label: 'Ticket', link: peek('tickets') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'priority', label: 'Priority', type: 'status', master: 'ticketPriority' },
-          { key: 'status', label: 'Status', type: 'status', master: 'ticketStatus' },
-          { key: 'engineer', label: 'Engineer' },
-          { key: 'reported', label: 'Reported', type: 'date' },
-          { key: 'ageDays', label: 'Age (days)', type: 'number' },
-          { key: 'breached', label: 'SLA' },
+          { key: 'id', label: C.serviceTicket, link: peek('tickets') },
+          { key: 'customer', label: C.customer },
+          { key: 'priority', label: D.openTickets.cols.priority, type: 'status', master: 'ticketPriority' },
+          { key: 'status', label: C.status, type: 'status', master: 'ticketStatus' },
+          { key: 'engineer', label: C.serviceEngineer },
+          { key: 'reported', label: D.openTickets.cols.reported, type: 'date' },
+          { key: 'ageDays', label: C.ageDays, type: 'number' },
+          { key: 'breached', label: D.openTickets.cols.sla },
         ],
         rows: rows.sort((a, b) => n(b.ageDays) - n(a.ageDays)),
-        chart: { polarity: 'ageing', label: 'Open tickets by age', unit: 'tickets', data: ageingBuckets(open, ticketDate, ctx.nowMs).map((b) => ({ key: b.key, label: b.label, value: b.count })) },
+        chart: { polarity: 'ageing', label: D.openTickets.chart, unit: D.openTickets.unit, data: ageingBuckets(open, ticketDate, ctx.nowMs).map((b) => ({ key: b.key, label: b.label, value: b.count })) },
         kpis: [
-          { label: 'Open tickets', value: String(open.length) },
-          { label: 'SLA breached', value: String(rows.filter((r) => r.breached === 'Breached').length) },
+          { label: D.openTickets.tiles.open, value: String(open.length) },
+          { label: D.openTickets.tiles.breached, value: String(rows.filter((r) => r.breached === D.openTickets.breached).length) },
         ],
       };
     },
   },
   {
     id: 'sla-compliance',
-    title: 'SLA compliance',
+    title: D.slaCompliance.title,
     group: 'service',
     fr: ['FR-091', 'FR-083'],
-    description: 'Resolved tickets meeting response and resolution targets, by month or priority.',
+    description: D.slaCompliance.description,
     needs: ['tickets'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Reported',
+    dateLabel: D.slaCompliance.dateLabel,
     groupOptions: [
-      { value: 'month', label: 'By month' },
-      { value: 'priority', label: 'By priority' },
-      { value: 'coverage', label: 'By coverage' },
+      { value: 'month', label: G.month },
+      { value: 'priority', label: G.priority },
+      { value: 'coverage', label: G.coverage },
     ],
     compute: (ds, f) => {
       const ts = applyFilters(ds.get('tickets'), f, { date: ticketDate });
@@ -146,30 +151,30 @@ export const operationsReports: ReportDef[] = [
       const sorted = g === 'month' ? rows.sort((a, b) => s(a.group).localeCompare(s(b.group))) : rows;
       return {
         columns: [
-          { key: 'group', label: g === 'priority' ? 'Priority' : g === 'coverage' ? 'Coverage' : 'Month' },
-          { key: 'tickets', label: 'Tickets', type: 'number' },
-          { key: 'resolved', label: 'Resolved', type: 'number' },
-          { key: 'compliance', label: 'SLA compliance', type: 'pct' },
-          { key: 'mttr', label: 'MTTR', type: 'hours' },
+          { key: 'group', label: g === 'priority' ? D.slaCompliance.cols.priority : g === 'coverage' ? D.slaCompliance.cols.coverage : C.month },
+          { key: 'tickets', label: C.serviceTickets, type: 'number' },
+          { key: 'resolved', label: C.resolved, type: 'number' },
+          { key: 'compliance', label: D.slaCompliance.cols.compliance, type: 'pct' },
+          { key: 'mttr', label: D.slaCompliance.cols.mttr, type: 'hours' },
         ],
         rows: sorted,
-        chart: { polarity: 'higher', label: 'SLA compliance %', unit: '%', data: sorted.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.compliance) * 100) })) },
+        chart: { polarity: 'higher', label: D.slaCompliance.chart, unit: '%', data: sorted.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.compliance) * 100) })) },
         kpis: [
-          { label: 'SLA compliance', value: `pct:${slaCompliance(ts) ?? ''}`, hint: 'Response and resolution on time' },
-          { label: 'MTTR', value: `hours:${mttrHours(ts) ?? ''}` },
+          { label: D.slaCompliance.tiles.sla, value: `pct:${slaCompliance(ts) ?? ''}`, hint: D.slaCompliance.hint },
+          { label: D.slaCompliance.tiles.mttr, value: `hours:${mttrHours(ts) ?? ''}` },
         ],
       };
     },
   },
   {
     id: 'engineer-productivity',
-    title: 'Engineer productivity',
+    title: D.engineerProductivity.title,
     group: 'service',
     fr: ['FR-091'],
-    description: 'Per engineer: tickets resolved, visits, MTTR, first-time fix, repeats and CSAT.',
+    description: D.engineerProductivity.description,
     needs: ['tickets'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Reported',
+    dateLabel: D.engineerProductivity.dateLabel,
     compute: (ds, f) => {
       const ts = applyFilters(ds.get('tickets'), f, { date: ticketDate });
       const visits = ds.get('serviceVisits');
@@ -179,55 +184,55 @@ export const operationsReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'engineer', label: 'Engineer' },
-          { key: 'tickets', label: 'Tickets', type: 'number' },
-          { key: 'resolved', label: 'Resolved', type: 'number' },
-          { key: 'visits', label: 'Site visits', type: 'number' },
-          { key: 'mttr', label: 'MTTR', type: 'hours' },
-          { key: 'ftfr', label: 'First-time fix', type: 'pct' },
-          { key: 'repeats', label: 'Repeats', type: 'number' },
-          { key: 'csat', label: 'CSAT (1–5)', type: 'number' },
+          { key: 'engineer', label: C.serviceEngineer },
+          { key: 'tickets', label: C.serviceTickets, type: 'number' },
+          { key: 'resolved', label: C.resolved, type: 'number' },
+          { key: 'visits', label: D.engineerProductivity.cols.visits, type: 'number' },
+          { key: 'mttr', label: D.engineerProductivity.cols.mttr, type: 'hours' },
+          { key: 'ftfr', label: D.engineerProductivity.cols.ftfr, type: 'pct' },
+          { key: 'repeats', label: D.engineerProductivity.cols.repeats, type: 'number' },
+          { key: 'csat', label: D.engineerProductivity.cols.csat, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.resolved) - n(a.resolved)),
-        chart: { polarity: 'higher', label: 'Tickets resolved per engineer', unit: 'tickets', data: rows.map((r) => ({ key: r._key, label: s(r.engineer), value: n(r.resolved) })) },
+        chart: { polarity: 'higher', label: D.engineerProductivity.chart, unit: D.engineerProductivity.unit, data: rows.map((r) => ({ key: r._key, label: s(r.engineer), value: n(r.resolved) })) },
       };
     },
   },
   {
     id: 'first-time-fix',
-    title: 'First-time fix rate',
+    title: D.firstTimeFix.title,
     group: 'service',
     fr: ['FR-091'],
-    description: 'Resolved site-visit tickets fixed on the first visit and never re-opened, by month.',
+    description: D.firstTimeFix.description,
     needs: ['tickets', 'serviceVisits'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Reported',
+    dateLabel: D.firstTimeFix.dateLabel,
     compute: (ds, f) => {
       const ts = applyFilters(ds.get('tickets'), f, { date: ticketDate });
       const visits = ds.get('serviceVisits');
       const rows = [...groupBy(ts, (t) => monthKey(t.reportedAt)).entries()].sort().map(([k, v]) => row(k, { month: k, resolved: v.filter(isResolvedTicket).length, ftfr: firstTimeFix(v, visits), reopened: v.filter((t) => n(t.reopenCount) > 0).length }));
       return {
         columns: [
-          { key: 'month', label: 'Month' },
-          { key: 'resolved', label: 'Resolved', type: 'number' },
-          { key: 'ftfr', label: 'First-time fix', type: 'pct' },
-          { key: 'reopened', label: 'Re-opened', type: 'number' },
+          { key: 'month', label: C.month },
+          { key: 'resolved', label: C.resolved, type: 'number' },
+          { key: 'ftfr', label: D.firstTimeFix.cols.ftfr, type: 'pct' },
+          { key: 'reopened', label: D.firstTimeFix.cols.reopened, type: 'number' },
         ],
         rows,
-        chart: { polarity: 'higher', label: 'First-time fix %', unit: '%', data: rows.filter((r) => r.ftfr !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.ftfr) * 100) })) },
-        kpis: [{ label: 'First-time fix rate', value: `pct:${firstTimeFix(ts, visits) ?? ''}` }],
+        chart: { polarity: 'higher', label: D.firstTimeFix.chart, unit: '%', data: rows.filter((r) => r.ftfr !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.ftfr) * 100) })) },
+        kpis: [{ label: D.firstTimeFix.tile, value: `pct:${firstTimeFix(ts, visits) ?? ''}` }],
       };
     },
   },
   {
     id: 'machine-downtime',
-    title: 'Machine downtime',
+    title: D.machineDowntime.title,
     group: 'service',
     fr: ['FR-091'],
-    description: 'Breakdown hours per machine (reported to resolved, or to now when still open).',
+    description: D.machineDowntime.description,
     needs: ['tickets'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Reported',
+    dateLabel: D.machineDowntime.dateLabel,
     compute: (ds, f, ctx) => {
       const ts = applyFilters(ds.get('tickets').filter((t) => t.ticketType === 'breakdown' && t.machineId), f, { date: ticketDate });
       const rows = [...groupBy(ts, (t) => s(t.machineId)).entries()].map(([mid, v]) => {
@@ -237,107 +242,107 @@ export const operationsReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'machine', label: 'Machine', link: peek('machines') },
-          { key: 'model', label: 'Model' },
-          { key: 'customer', label: 'Customer' },
-          { key: 'breakdowns', label: 'Breakdowns', type: 'number' },
-          { key: 'hours', label: 'Downtime', type: 'hours' },
-          { key: 'open', label: 'Still open', type: 'number' },
+          { key: 'machine', label: C.machine, link: peek('machines') },
+          { key: 'model', label: C.model },
+          { key: 'customer', label: C.customer },
+          { key: 'breakdowns', label: C.breakdowns, type: 'number' },
+          { key: 'hours', label: D.machineDowntime.cols.hours, type: 'hours' },
+          { key: 'open', label: D.machineDowntime.cols.open, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.hours) - n(a.hours)),
-        chart: { polarity: 'lower', label: 'Downtime hours (top 10 machines)', unit: 'h', data: top(rows.map((r) => ({ key: r._key, label: s(r.machine), value: n(r.hours) }))) },
+        chart: { polarity: 'lower', label: D.machineDowntime.chart, unit: 'h', data: top(rows.map((r) => ({ key: r._key, label: s(r.machine), value: n(r.hours) }))) },
       };
     },
   },
   {
     id: 'repeat-complaints',
-    title: 'Repeat complaints',
+    title: D.repeatComplaints.title,
     group: 'service',
     fr: ['FR-091', 'FR-087'],
-    description: 'Tickets flagged as repeats (same machine and category within the policy window) with root cause.',
+    description: D.repeatComplaints.description,
     needs: ['tickets'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Reported',
+    dateLabel: D.repeatComplaints.dateLabel,
     compute: (ds, f) => {
       const ts = applyFilters(ds.get('tickets'), f, { date: ticketDate });
       const reps = ts.filter((t) => t.repeatOfId);
       const rows = reps.map((t) => row(t.id, { id: t.id, customer: ds.name('customers', t.customerId), category: label('complaintCategory', t.category), repeatOf: s(t.repeatOfId), rootCause: s(t.rootCause), status: t.status }));
       return {
         columns: [
-          { key: 'id', label: 'Ticket', link: peek('tickets') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'category', label: 'Category' },
-          { key: 'repeatOf', label: 'Repeat of', link: peek('tickets', 'repeatOf') },
-          { key: 'rootCause', label: 'Root cause' },
-          { key: 'status', label: 'Status', type: 'status', master: 'ticketStatus' },
+          { key: 'id', label: C.serviceTicket, link: peek('tickets') },
+          { key: 'customer', label: C.customer },
+          { key: 'category', label: D.repeatComplaints.cols.category },
+          { key: 'repeatOf', label: D.repeatComplaints.cols.repeatOf, link: peek('tickets', 'repeatOf') },
+          { key: 'rootCause', label: D.repeatComplaints.cols.rootCause },
+          { key: 'status', label: C.status, type: 'status', master: 'ticketStatus' },
         ],
         rows,
-        chart: { polarity: 'lower', label: 'Repeats by category', unit: 'tickets', data: [...groupBy(rows, (r) => s(r.category)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
-        kpis: [{ label: 'Repeat complaint rate', value: `pct:${repeatRate(ts) ?? ''}` }],
+        chart: { polarity: 'lower', label: D.repeatComplaints.chart, unit: D.repeatComplaints.unit, data: [...groupBy(rows, (r) => s(r.category)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
+        kpis: [{ label: D.repeatComplaints.tile, value: `pct:${repeatRate(ts) ?? ''}` }],
       };
     },
   },
   {
     id: 'mtbf-by-model',
-    title: 'Mean time between failures',
+    title: D.mtbf.title,
     group: 'service',
     fr: ['FR-091'],
-    description: 'Machine-days in the window ÷ breakdown tickets, per model.',
+    description: D.mtbf.description,
     needs: ['machines', 'tickets'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Window',
+    dateLabel: D.mtbf.dateLabel,
     compute: (ds, f, ctx) => {
       const from = f.from ?? '2000-01-01';
       const to = f.to ?? ctx.today;
       const rows = mtbfByModel(applyFilters(ds.get('machines'), f), ds.get('tickets'), from, to).map((g) => row(g.model, { model: g.model, machines: g.machines, breakdowns: g.breakdowns, mtbf: g.mtbfDays }));
       return {
         columns: [
-          { key: 'model', label: 'Model' },
-          { key: 'machines', label: 'Machines', type: 'number' },
-          { key: 'breakdowns', label: 'Breakdowns', type: 'number' },
-          { key: 'mtbf', label: 'MTBF', type: 'days' },
+          { key: 'model', label: C.model },
+          { key: 'machines', label: C.machines, type: 'number' },
+          { key: 'breakdowns', label: C.breakdowns, type: 'number' },
+          { key: 'mtbf', label: D.mtbf.cols.mtbf, type: 'days' },
         ],
         rows: rows.sort((a, b) => n(a.mtbf) - n(b.mtbf)),
-        chart: { polarity: 'higher', label: 'MTBF (days) by model', unit: 'days', data: rows.filter((r) => r.mtbf !== null).map((r) => ({ key: r._key, label: s(r.model), value: Math.round(n(r.mtbf)) })) },
+        chart: { polarity: 'higher', label: D.mtbf.chart, unit: D.mtbf.unit, data: rows.filter((r) => r.mtbf !== null).map((r) => ({ key: r._key, label: s(r.model), value: Math.round(n(r.mtbf)) })) },
       };
     },
   },
   {
     id: 'pm-compliance',
-    title: 'PM compliance',
+    title: D.pmCompliance.title,
     group: 'service',
     fr: ['FR-091', 'FR-085'],
-    description: 'Preventive visits done on time ÷ visits due, by month due.',
+    description: D.pmCompliance.description,
     needs: ['pmVisits'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Due date',
+    dateLabel: D.pmCompliance.dateLabel,
     compute: (ds, f, ctx) => {
       const pm = applyFilters(ds.get('pmVisits'), f, { date: 'dueDate' }).filter((v) => dayOf(v.dueDate) <= ctx.today);
       const rows = [...groupBy(pm, (v) => monthKey(v.dueDate)).entries()].sort().map(([k, v]) => row(k, { month: k, due: v.length, onTime: v.filter((x) => x.status === 'done' && (!s(x.completedAt) || dayOf(x.completedAt) <= dayOf(x.dueDate))).length, late: v.filter((x) => x.status === 'done' && s(x.completedAt) && dayOf(x.completedAt) > dayOf(x.dueDate)).length, missed: v.filter((x) => x.status === 'missed' || x.status === 'overdue').length, compliance: pmCompliance(v, ctx.today) }));
       return {
         columns: [
-          { key: 'month', label: 'Month due', link: () => list('pmVisits') },
-          { key: 'due', label: 'Due', type: 'number' },
-          { key: 'onTime', label: 'Done on time', type: 'number' },
-          { key: 'late', label: 'Done late', type: 'number' },
-          { key: 'missed', label: 'Overdue / missed', type: 'number' },
-          { key: 'compliance', label: 'PM compliance', type: 'pct' },
+          { key: 'month', label: D.pmCompliance.cols.month, link: () => ROUTES.pmSchedule },
+          { key: 'due', label: D.pmCompliance.cols.due, type: 'number' },
+          { key: 'onTime', label: D.pmCompliance.cols.onTime, type: 'number' },
+          { key: 'late', label: D.pmCompliance.cols.late, type: 'number' },
+          { key: 'missed', label: D.pmCompliance.cols.missed, type: 'number' },
+          { key: 'compliance', label: D.pmCompliance.cols.compliance, type: 'pct' },
         ],
         rows,
-        chart: { polarity: 'higher', label: 'PM compliance %', unit: '%', data: rows.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.compliance) * 100) })) },
-        kpis: [{ label: 'PM compliance', value: `pct:${pmCompliance(pm, ctx.today) ?? ''}` }],
+        chart: { polarity: 'higher', label: D.pmCompliance.chart, unit: '%', data: rows.filter((r) => r.compliance !== null).map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.compliance) * 100) })) },
+        kpis: [{ label: D.pmCompliance.tile, value: `pct:${pmCompliance(pm, ctx.today) ?? ''}` }],
       };
     },
   },
   {
     id: 'csat',
-    title: 'Customer satisfaction (CSAT)',
+    title: D.csat.title,
     group: 'service',
     fr: ['FR-091', 'FR-086'],
-    description: 'Average feedback rating and share of 4–5 ratings, by month; low ratings listed.',
+    description: D.csat.description,
     needs: ['tickets'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Reported',
+    dateLabel: D.csat.dateLabel,
     compute: (ds, f) => {
       const ts = applyFilters(ds.get('tickets'), f, { date: ticketDate });
       const rows = [...groupBy(ts.filter((t) => n(t.rating) > 0), (t) => monthKey(t.reportedAt)).entries()].sort().map(([k, v]) => {
@@ -347,17 +352,17 @@ export const operationsReports: ReportDef[] = [
       const all = csat(ts);
       return {
         columns: [
-          { key: 'month', label: 'Month' },
-          { key: 'ratings', label: 'Ratings', type: 'number' },
-          { key: 'avg', label: 'Average (1–5)', type: 'number' },
-          { key: 'share4', label: 'Rated 4 or 5', type: 'pct' },
-          { key: 'low', label: 'Low ratings (≤2)', type: 'number', link: () => list('tickets') },
+          { key: 'month', label: C.month },
+          { key: 'ratings', label: D.csat.cols.ratings, type: 'number' },
+          { key: 'avg', label: D.csat.cols.avg, type: 'number' },
+          { key: 'share4', label: D.csat.cols.share4, type: 'pct' },
+          { key: 'low', label: D.csat.cols.low, type: 'number', link: () => list('tickets') },
         ],
         rows,
-        chart: { polarity: 'higher', label: 'Average rating by month (×10)', unit: 'points', data: rows.map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.avg) * 10) })) },
+        chart: { polarity: 'higher', label: D.csat.chart, unit: D.csat.unit, data: rows.map((r) => ({ key: r._key, label: s(r.month), value: Math.round(n(r.avg) * 10) })) },
         kpis: [
-          { label: 'Average rating', value: all.avg === null ? '' : all.avg.toFixed(2) },
-          { label: 'Rated 4 or 5', value: `pct:${all.share4plus ?? ''}` },
+          { label: D.csat.tiles.avg, value: all.avg === null ? '' : all.avg.toFixed(2) },
+          { label: D.csat.tiles.share4, value: `pct:${all.share4plus ?? ''}` },
         ],
       };
     },
@@ -366,67 +371,67 @@ export const operationsReports: ReportDef[] = [
   // ---------------------------------------------------------------- FR-113 field force
   {
     id: 'attendance-daily',
-    title: 'Daily attendance',
-    group: 'field',
+    title: D.attendanceDaily.title,
+    group: 'field-force',
     fr: ['FR-113'],
-    description: 'Present, half-day, on tour, leave, absent and late arrivals per day.',
+    description: D.attendanceDaily.description,
     needs: ['attendance'],
     filters: { date: 'past', owner: true },
-    dateLabel: 'Date',
+    dateLabel: D.attendanceDaily.dateLabel,
     compute: (ds, f) => {
       const at = applyFilters(ds.get('attendance'), f, { date: 'date', owner: 'employeeId' });
       const rows = [...groupBy(at, (a) => dayOf(a.date)).entries()].sort().reverse().map(([d, v]) => row(d, { date: d, present: v.filter((a) => a.status === 'present').length, halfDay: v.filter((a) => a.status === 'half_day').length, onTour: v.filter((a) => a.status === 'on_tour').length, leave: v.filter((a) => a.status === 'leave').length, absent: v.filter((a) => a.status === 'absent').length, late: v.filter((a) => n(a.lateByMin) > 0).length }));
       return {
         columns: [
-          { key: 'date', label: 'Date', type: 'date', link: () => '/attendance/team' },
-          { key: 'present', label: 'Present', type: 'number' },
-          { key: 'halfDay', label: 'Half-day', type: 'number' },
-          { key: 'onTour', label: 'On tour', type: 'number' },
-          { key: 'leave', label: 'Leave', type: 'number' },
-          { key: 'absent', label: 'Absent', type: 'number' },
-          { key: 'late', label: 'Late', type: 'number' },
+          { key: 'date', label: C.date, type: 'date', link: () => ROUTES.teamAttendance },
+          { key: 'present', label: D.attendanceDaily.cols.present, type: 'number' },
+          { key: 'halfDay', label: D.attendanceDaily.cols.halfDay, type: 'number' },
+          { key: 'onTour', label: D.attendanceDaily.cols.onTour, type: 'number' },
+          { key: 'leave', label: D.attendanceDaily.cols.leave, type: 'number' },
+          { key: 'absent', label: D.attendanceDaily.cols.absent, type: 'number' },
+          { key: 'late', label: D.attendanceDaily.cols.late, type: 'number' },
         ],
         rows,
-        chart: { polarity: 'lower', label: 'Late arrivals per day', unit: 'people', data: [...rows].reverse().slice(-20).map((r) => ({ key: r._key, label: s(r.date).slice(5), value: n(r.late) })) },
+        chart: { polarity: 'lower', label: D.attendanceDaily.chart, unit: D.attendanceDaily.unit, data: [...rows].reverse().slice(-20).map((r) => ({ key: r._key, label: s(r.date).slice(5), value: n(r.late) })) },
       };
     },
   },
   {
     id: 'attendance-monthly',
-    title: 'Monthly attendance by employee',
-    group: 'field',
+    title: D.attendanceMonthly.title,
+    group: 'field-force',
     fr: ['FR-113'],
-    description: 'Days present, half-days, leave, late days and hours worked per employee in the period.',
+    description: D.attendanceMonthly.description,
     needs: ['attendance'],
     filters: { date: 'past', owner: true },
-    dateLabel: 'Date',
+    dateLabel: D.attendanceMonthly.dateLabel,
     compute: (ds, f) => {
       const at = applyFilters(ds.get('attendance'), f, { date: 'date', owner: 'employeeId' });
       const rows = [...groupBy(at, (a) => s(a.employeeId)).entries()].map(([e, v]) => row(e, { employee: empName(ds, e), present: v.filter((a) => a.status === 'present' || a.status === 'on_tour').length, halfDay: v.filter((a) => a.status === 'half_day').length, leave: v.filter((a) => a.status === 'leave').length, lateDays: v.filter((a) => n(a.lateByMin) > 0).length, hours: Math.round(v.reduce((t, a) => t + n(a.workMinutes), 0) / 6) / 10, km: Math.round(v.reduce((t, a) => t + n(a.distanceKm), 0)) }));
       return {
         columns: [
-          { key: 'employee', label: 'Employee' },
-          { key: 'present', label: 'Days present', type: 'number' },
-          { key: 'halfDay', label: 'Half-days', type: 'number' },
-          { key: 'leave', label: 'Leave', type: 'number' },
-          { key: 'lateDays', label: 'Late days', type: 'number' },
-          { key: 'hours', label: 'Hours worked', type: 'number' },
-          { key: 'km', label: 'Km travelled', type: 'number' },
+          { key: 'employee', label: C.user },
+          { key: 'present', label: D.attendanceMonthly.cols.present, type: 'number' },
+          { key: 'halfDay', label: D.attendanceMonthly.cols.halfDay, type: 'number' },
+          { key: 'leave', label: D.attendanceMonthly.cols.leave, type: 'number' },
+          { key: 'lateDays', label: D.attendanceMonthly.cols.lateDays, type: 'number' },
+          { key: 'hours', label: D.attendanceMonthly.cols.hours, type: 'number' },
+          { key: 'km', label: D.attendanceMonthly.cols.km, type: 'number' },
         ],
         rows: rows.sort((a, b) => s(a.employee).localeCompare(s(b.employee))),
-        chart: { polarity: 'lower', label: 'Late days per employee', unit: 'days', data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.lateDays) }))) },
+        chart: { polarity: 'lower', label: D.attendanceMonthly.chart, unit: D.attendanceMonthly.unit, data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.lateDays) }))) },
       };
     },
   },
   {
     id: 'field-visits',
-    title: 'Field visit report',
-    group: 'field',
+    title: D.fieldVisits.title,
+    group: 'field-force',
     fr: ['FR-113', 'FR-108'],
-    description: 'Visits planned and completed per person, by purpose.',
+    description: D.fieldVisits.description,
     needs: ['fieldVisits'],
     filters: { date: 'past', owner: true },
-    dateLabel: 'Visit date',
+    dateLabel: D.fieldVisits.dateLabel,
     compute: (ds, f) => {
       const vs = applyFilters(ds.get('fieldVisits'), f, { date: 'plannedFor', owner: 'employeeId' });
       const rows = [...groupBy(vs, (v) => s(v.employeeId)).entries()].map(([e, v]) => {
@@ -435,50 +440,51 @@ export const operationsReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'employee', label: 'Employee', link: () => list('fieldVisits') },
-          { key: 'planned', label: 'Visits', type: 'number' },
-          { key: 'completed', label: 'Completed', type: 'number' },
-          { key: 'adherence', label: 'Completed %', type: 'pct' },
-          { key: 'prospecting', label: 'Prospecting', type: 'number' },
-          { key: 'followUp', label: 'Follow-up', type: 'number' },
-          { key: 'demo', label: 'Demo', type: 'number' },
-          { key: 'service', label: 'Service', type: 'number' },
-          { key: 'collection', label: 'Collection', type: 'number' },
+          { key: 'employee', label: C.user, link: () => ROUTES.fieldVisits },
+          { key: 'planned', label: D.fieldVisits.cols.planned, type: 'number' },
+          { key: 'completed', label: D.fieldVisits.cols.completed, type: 'number' },
+          { key: 'adherence', label: D.fieldVisits.cols.adherence, type: 'pct' },
+          { key: 'prospecting', label: D.fieldVisits.cols.prospecting, type: 'number' },
+          { key: 'followUp', label: D.fieldVisits.cols.followUp, type: 'number' },
+          { key: 'demo', label: D.fieldVisits.cols.demo, type: 'number' },
+          { key: 'service', label: D.fieldVisits.cols.service, type: 'number' },
+          { key: 'collection', label: D.fieldVisits.cols.collection, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.completed) - n(a.completed)),
-        chart: { polarity: 'higher', label: 'Completed visits per person', unit: 'visits', data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.completed) }))) },
+        chart: { polarity: 'higher', label: D.fieldVisits.chart, unit: D.fieldVisits.unit, data: top(rows.map((r) => ({ key: r._key, label: s(r.employee), value: n(r.completed) }))) },
       };
     },
   },
   {
     id: 'attendance-exceptions',
-    title: 'Attendance exceptions',
-    group: 'field',
+    title: D.attendanceExceptions.title,
+    group: 'field-force',
     fr: ['FR-113'],
-    description: 'Late check-ins, missing check-outs, mock locations and early exits in the period.',
+    description: D.attendanceExceptions.description,
     needs: ['attendance'],
     filters: { date: 'past', owner: true },
-    dateLabel: 'Date',
+    dateLabel: D.attendanceExceptions.dateLabel,
     compute: (ds, f, ctx) => {
       const at = applyFilters(ds.get('attendance'), f, { date: 'date', owner: 'employeeId' });
       const rows: ReportRow[] = [];
       at.forEach((a) => {
         const add = (kind: string, detail: string) => rows.push(row(`${a.id}:${kind}`, { id: a.id, date: a.date, employee: empName(ds, a.employeeId), exception: kind, detail }));
-        if (n(a.lateByMin) > 0) add('Late check-in', `${n(a.lateByMin)} min late`);
-        if (n(a.earlyByMin) > 0) add('Early exit', `${n(a.earlyByMin)} min early`);
-        if (s(a.checkInAt) && !s(a.checkOutAt) && dayOf(a.date) < ctx.today) add('No check-out', 'Checked in but never checked out');
-        if (a.mockLocation) add('Mock location', 'Fake-GPS app detected');
-        if (a.status === 'absent') add('Absent', 'No check-in, no leave');
+        const X = D.attendanceExceptions;
+        if (n(a.lateByMin) > 0) add(X.kinds.late, X.details.late(n(a.lateByMin)));
+        if (n(a.earlyByMin) > 0) add(X.kinds.early, X.details.early(n(a.earlyByMin)));
+        if (s(a.checkInAt) && !s(a.checkOutAt) && dayOf(a.date) < ctx.today) add(X.kinds.noCheckOut, X.details.noCheckOut);
+        if (a.mockLocation) add(X.kinds.mock, X.details.mock);
+        if (a.status === 'absent') add(X.kinds.absent, X.details.absent);
       });
       return {
         columns: [
-          { key: 'date', label: 'Date', type: 'date', link: () => '/attendance/exceptions' },
-          { key: 'employee', label: 'Employee' },
-          { key: 'exception', label: 'Exception' },
-          { key: 'detail', label: 'Detail' },
+          { key: 'date', label: C.date, type: 'date', link: () => ROUTES.exceptionDashboard },
+          { key: 'employee', label: C.user },
+          { key: 'exception', label: D.attendanceExceptions.cols.exception },
+          { key: 'detail', label: D.attendanceExceptions.cols.detail },
         ],
         rows: rows.sort((a, b) => s(b.date).localeCompare(s(a.date))),
-        chart: { polarity: 'lower', label: 'Exceptions by type', unit: 'cases', data: [...groupBy(rows, (r) => s(r.exception)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
+        chart: { polarity: 'lower', label: D.attendanceExceptions.chart, unit: D.attendanceExceptions.unit, data: [...groupBy(rows, (r) => s(r.exception)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length })) },
       };
     },
   },

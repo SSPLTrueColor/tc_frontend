@@ -1,6 +1,6 @@
 /**
  * Customers demo data: ~58 fictional Indian companies across divisions and hubs, their billing /
- * installation addresses (with plausible coordinates), 1–3 contacts each, a contact pool and a few
+ * installation sites (with plausible coordinates), 1–3 contacts each, a contact pool and a few
  * logged interactions. GSTINs are syntactically valid (state code + PAN + check digit) but fictional.
  */
 import type { RecordData } from '../metadata/types';

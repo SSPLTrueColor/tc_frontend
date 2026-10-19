@@ -13,14 +13,16 @@ import type { DemoUser } from '../domain/pack';
 import type { FieldAccess, FieldDefinition, RecordData, ResourceDefinition, ResourcePermission, RoleDefinition, RowScope } from '../metadata/types';
 import { getDb, getRevision } from './db';
 import { getRole, getUser } from './registry';
+import { L } from '../constants/labels';
+import { applyRoleOverrides } from './catalog/roleOverrides';
 
 export interface Actor {
   user: DemoUser;
   role: RoleDefinition;
   workspaceId: string;
-  /** Employee id of the actor. */
+  /** User record id (Administration › Users) of the actor. */
   staffId: string;
-  /** Employee ids the actor manages: self + all direct and indirect reports. */
+  /** User record ids the actor manages: self + all direct and indirect reports. */
   teamStaffIds: string[];
   /** Divisions the actor belongs to (from the employee record). */
   divisionIds: string[];
@@ -46,7 +48,8 @@ export function actorFor(userId: string, workspaceId: string): Actor {
   const me = employees.find((e) => e.id === staffId);
   const actor: Actor = {
     user,
-    role: getRole(String(me?.roleId ?? user.roleId)),
+    // Shipped role + admin edits from Roles & Permissions (ADM-02); unchanged when nothing was edited.
+    role: applyRoleOverrides(getRole(String(me?.roleId ?? user.roleId))),
     workspaceId,
     staffId,
     teamStaffIds: teamOf(staffId, employees),
@@ -113,7 +116,7 @@ function inScope(scope: RowScope, actor: Actor, res: ResourceDefinition, record:
 export const canReadRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).read, actor, res, record);
 export const canUpdateRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).update, actor, res, record);
 
-export const SCOPE_LABELS: Record<RowScope, string> = { all: 'Company-wide', division: 'Own division', team: 'Own + team', own: 'Own records', none: 'No access' };
+export const SCOPE_LABELS: Record<RowScope, string> = L.common.scopes;
 
 /**
  * Effective field access for an actor. `edit` is only returned when the actor

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { appModules, demoUsers, organization, workspaces } from '../../domain/pack';
 import { cx } from '../../lib/format';
 import { pagePath, recordPeekPath, resourcePath, wsBase } from '../../lib/routes';
+import { keyOfSlug, ROUTES } from '../../constants/routes';
 import { PHONE, TABLET, useMedia } from '../../lib/useMedia';
 import { can, canReadResource } from '../../services/authz';
 import { listNotifications, markAllRead, markNotification, snoozeNotification } from '../../services/collab';
@@ -15,7 +16,7 @@ import { searchRecords } from '../../services/search';
 import { getSettings, SIDEBAR_MAX, SIDEBAR_MIN, switchSession, toggleFavorite, togglePin, updateSettings } from '../../services/settings';
 import { listViews } from '../../services/views';
 import { relativeTime } from '../../lib/dates';
-import { applyPalette, DEFAULT_PALETTE_ID, findPalette } from '../../lib/palette';
+import { applyPalette, DEFAULT_PALETTE_ID, findPalette, type Palette } from '../../lib/palette';
 import { Button, IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
 import { Avatar, useToast } from '../primitives/feedback';
@@ -23,6 +24,22 @@ import { Dialog, Drawer, Popover, useLayer } from '../primitives/overlay';
 import { HelpContent } from './help';
 import { InfoTip } from '../primitives/InfoTip';
 import { TOPBAR_TITLE_SLOT } from './PageHeader';
+import { TYPE_ICON } from '../resource/ViewControls';
+import { PaletteEditor, ThemePicker } from './ThemePicker';
+import { GuidedTour, useTour, useTourHighlight } from './GuidedTour';
+import { moduleTitle, RESOURCE_PAGES } from '../../domain/sidebar';
+import { L } from '../../constants/labels';
+
+const C = L.common;
+
+/** Where a module's rail icon goes: Dashboard for home, else its first readable resource list or first page. */
+function moduleHome(actor: ReturnType<typeof useActor>, m: (typeof appModules)[number]) {
+  if (m.id === 'home') return ROUTES.dashboard;
+  const res = m.resources.find((r) => canReadResource(actor, r));
+  if (res) return resourcePath(actor.workspaceId, res);
+  const page = (m.pages ?? []).find((p) => !p.capability || can(actor, p.capability)) ?? m.pages![0];
+  return pagePath(actor.workspaceId, m.id, page.path);
+}
 
 function moduleVisible(actor: ReturnType<typeof useActor>, m: (typeof appModules)[number]) {
   if (m.resources.some((r) => canReadResource(actor, r))) return true;
@@ -31,12 +48,20 @@ function moduleVisible(actor: ReturnType<typeof useActor>, m: (typeof appModules
 
 /** Module of the current URL: /admin/* → admin; /<resource> → its module; /<page> → the module owning the page. */
 function activeModule(pathname: string) {
-  const seg = pathname.split('/')[1] ?? '';
-  if (!seg || seg === 'dashboard') return 'home';
-  if (seg === 'admin') return 'admin';
-  const byResource = appModules.find((m) => m.resources.includes(seg));
+  const parts = pathname.split('/').filter(Boolean);
+  if (!parts.length) return 'home';
+  // Exact page match first, then the longest page prefix, then the resource slug.
+  const pages = appModules.flatMap((m) => (m.pages ?? []).map((p) => ({ m: m.id, path: p.path })));
+  const exact = pages.find((p) => p.path === pathname);
+  if (exact) return exact.m;
+  const slug = parts[0] === 'admin' ? `admin/${parts[1] ?? ''}` : parts[0];
+  const key = keyOfSlug(slug);
+  const byResource = key && appModules.find((m) => m.resources.includes(key));
   if (byResource) return byResource.id;
-  return appModules.find((m) => m.id !== 'admin' && (m.pages ?? []).some((p) => p.path.split('/')[0] === seg))?.id ?? seg;
+  if (key && RESOURCE_PAGES[key]) return RESOURCE_PAGES[key].module;
+  if (parts[0] === 'admin') return 'admin';
+  const prefix = pages.filter((p) => pathname.startsWith(`${p.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
+  return prefix?.m ?? pages.find((p) => p.path.split('/')[1] === parts[0])?.m ?? 'home';
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -68,8 +93,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     const timer = window.setInterval(() => {
       if (idleExpired()) {
         signOut('idle');
-        toast('Signed out after inactivity. Sign in again to continue.', 'info');
-        navigate('/login');
+        toast(C.account.idleSignedOut, 'info');
+        navigate(ROUTES.login);
       }
     }, 20_000);
     window.addEventListener('pointerdown', onActivity);
@@ -103,31 +128,35 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   const persistError = getPersistError();
+  const tour = useTour();
 
   return (
     <div className={cx('app', settings.navDensity === 'compact' && 'nav-compact')} data-rail-skin={palette.id === DEFAULT_PALETTE_ID ? settings.railSkin : 'palette'}>
       <a href="#main" className="skip-link">
-        Skip to content
+        {C.shell.skipToContent}
       </a>
-      <div className="preview-banner" role="note">
-        <Icon name="info" size={14} />
-        <span>
-          <strong>Prototype</strong> · Demo data stored only in this browser · Sign-in and roles are simulated · No email, WhatsApp or ERP message is really sent.
-        </span>
-        <button type="button" className="link" onClick={() => setHelpOpen(true)}>
-          What is real?
-        </button>
-      </div>
-      {persistError && (
-        <div className="preview-banner tone-danger" role="alert">
-          Local storage is unavailable ({persistError}). Changes will be lost on reload.
-        </div>
-      )}
       <div className="shell">
         {!phone && <IconRail mod={mod} onSearch={() => setPaletteOpen(true)} onHelp={() => setHelpOpen(true)} />}
-        {!drawerNav && !settings.sidebarCollapsed && <ContextSidebar mod={mod} />}
+        {/* Always mounted so collapse / expand can animate smoothly (width slides to 0) */}
+        {!drawerNav && <ContextSidebar mod={mod} collapsed={settings.sidebarCollapsed} />}
         {drawerNav && navOpen && <MobileNav mod={mod} onClose={() => setNavOpen(false)} onSearch={() => setPaletteOpen(true)} onHelp={() => setHelpOpen(true)} showRail={phone} />}
         <div className="workspace">
+          {/* The banner sits over the content column only: the rail and sidebar always start at the top. */}
+          <div className="preview-banner" role="note">
+            <Icon name="info" size={14} />
+            <span>
+              <strong>{C.shell.banner.prototype}</strong>
+              {C.shell.banner.text}
+            </span>
+            <button type="button" className="link" onClick={() => setHelpOpen(true)}>
+              {C.shell.banner.whatIsReal}
+            </button>
+          </div>
+          {persistError && (
+            <div className="preview-banner tone-danger" role="alert">
+              {C.shell.banner.storageError(persistError)}
+            </div>
+          )}
           <TopBar onMenu={() => setNavOpen(true)} showMenu={drawerNav || settings.sidebarCollapsed} onSearch={() => setPaletteOpen(true)} />
           <main id="main" className="canvas" tabIndex={-1}>
             {children}
@@ -135,9 +164,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <Drawer open={helpOpen} onClose={() => setHelpOpen(false)} title="Help & prototype boundaries">
-        <HelpContent mod={mod} />
+      <Drawer open={helpOpen} onClose={() => setHelpOpen(false)} title={C.shell.helpTitle}>
+        <HelpContent
+          mod={mod}
+          onStartTour={() => {
+            setHelpOpen(false);
+            tour.start();
+          }}
+        />
       </Drawer>
+      {tour.open && <GuidedTour onClose={tour.close} />}
     </div>
   );
 }
@@ -149,62 +185,94 @@ function IconRail({ mod, onSearch, onHelp }: { mod: string; onSearch: () => void
   const unread = listNotifications(actor).filter((n) => !n.readAt).length;
   const navigate = useNavigate();
   const location = useLocation();
+  const tourHighlight = useTourHighlight();
   return (
-    <nav className="rail" aria-label="Modules">
-      <Link to={`${wsBase(actor.workspaceId)}/dashboard`} className="rail-brand" aria-label={`${organization.name} home`} data-tooltip={organization.name}>
+    <nav className="rail" aria-label={C.shell.modulesNav}>
+      <Link to={ROUTES.dashboard} className="rail-brand" aria-label={C.shell.home(organization.name)} data-tooltip={organization.name}>
         <span aria-hidden="true">{organization.monogram}</span>
       </Link>
-      <ul className="rail-list">
-        {appModules
-          .filter((m) => m.id !== 'admin' && moduleVisible(actor, m))
-          .map((m) => (
-            <li key={m.id}>
-              <Link
-                to={m.id === 'home' ? `${wsBase(actor.workspaceId)}/dashboard` : m.resources[0] ? resourcePath(actor.workspaceId, m.resources[0]) : pagePath(actor.workspaceId, m.id, m.pages![0].path)}
-                className={cx('rail-item', mod === m.id && 'is-active')}
-                aria-current={mod === m.id ? 'page' : undefined}
-                aria-label={m.label}
-                data-tooltip={m.label}
-              >
-                <Icon name={m.icon} />
-              </Link>
-            </li>
-          ))}
-      </ul>
-      <ul className="rail-list rail-bottom">
-        <li>
-          <button type="button" className="rail-item" aria-label="Search and commands (Ctrl+K)" data-tooltip="Search · Ctrl K" onClick={onSearch}>
-            <Icon name="search" />
-          </button>
-        </li>
-        <li>
-          <button type="button" className={cx('rail-item', mod === 'work' && location.pathname.endsWith('inbox') && 'is-active')} aria-label={`Work inbox${unread ? `, ${unread} unread` : ''}`} data-tooltip="Work inbox" onClick={() => navigate(pagePath(actor.workspaceId, 'work', 'inbox'))}>
-            <Icon name="inbox" />
-            {unread > 0 && (
-              <span className="rail-badge" aria-hidden="true">
-                {unread > 9 ? '9+' : unread}
-              </span>
-            )}
-          </button>
-        </li>
-        <li>
-          <button type="button" className="rail-item" aria-label="AI assistant (not available)" data-tooltip="AI assistant — not enabled in this prototype" aria-disabled="true" onClick={onHelp}>
-            <Icon name="sparkles" />
-          </button>
-        </li>
-        <li>
-          <Link to={pagePath(actor.workspaceId, 'admin', 'settings')} className={cx('rail-item', mod === 'admin' && 'is-active')} aria-label="Administration and settings" data-tooltip="Administration">
-            <Icon name="settings" />
-          </Link>
-        </li>
-      </ul>
+      {/* Brand stays at the top and the profile at the bottom; everything between scrolls when the window is short. */}
+      <div className="rail-scroll">
+        <ul className="rail-list">
+          {appModules
+            .filter((m) => m.id !== 'admin' && moduleVisible(actor, m))
+            .map((m) => (
+              <li key={m.id}>
+                <Link
+                  to={moduleHome(actor, m)}
+                  className={cx('rail-item', mod === m.id && 'is-active', tourHighlight.includes(m.id) && 'is-tour-highlight')}
+                  aria-current={mod === m.id ? 'page' : undefined}
+                  aria-label={moduleTitle(m.id)}
+                  data-tooltip={moduleTitle(m.id)}
+                >
+                  <Icon name={m.icon} />
+                </Link>
+              </li>
+            ))}
+        </ul>
+        <ul className="rail-list rail-bottom">
+          <li>
+            <button type="button" className="rail-item" aria-label={C.shell.searchAria} data-tooltip={C.shell.searchTip} onClick={onSearch}>
+              <Icon name="search" />
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              className={cx('rail-item', location.pathname === ROUTES.notifications && 'is-active')}
+              aria-label={C.shell.notificationsAria(unread)}
+              data-tooltip={L.nav.pages.notifications.title}
+              onClick={() => navigate(ROUTES.notifications)}
+            >
+              <Icon name="inbox" />
+              {unread > 0 && (
+                <span className="rail-badge" aria-hidden="true">
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
+            </button>
+          </li>
+          <li>
+            <button type="button" className="rail-item" aria-label={C.shell.aiAria} data-tooltip={C.shell.aiTip} aria-disabled="true" onClick={onHelp}>
+              <Icon name="sparkles" />
+            </button>
+          </li>
+          <li>
+            <Link
+              to={moduleHome(
+                actor,
+                appModules.find((x) => x.id === 'admin')!,
+              )}
+              className={cx('rail-item', mod === 'admin' && 'is-active', tourHighlight.includes('admin') && 'is-tour-highlight')}
+              aria-label={C.shell.adminAria}
+              data-tooltip={moduleTitle('admin')}
+            >
+              <Icon name="settings" />
+            </Link>
+          </li>
+          {/* Theme & colours and the user's profile live at the bottom of the rail (owner rule) */}
+          <li>
+            <ThemeButton inRail />
+          </li>
+        </ul>
+      </div>
+      <div className="rail-foot">
+        <AccountMenu inRail />
+      </div>
     </nav>
   );
 }
 
 // ---------------------------------------------------------------- Context sidebar
 
-type NavEntry = { key: string; label: string; path: string; icon?: string; active: boolean; /** icon used in Favorites / Results when the row itself is text-only */ altIcon?: string };
+type NavEntry = {
+  key: string;
+  label: string;
+  path: string;
+  icon?: string;
+  active: boolean;
+  /** icon used in Favorites / Results when the row itself is text-only */ altIcon?: string;
+};
 
 /** Star beside a sidebar option: hidden until hover/focus; filled (accent) once it is a favourite. */
 function FavStar({ entry }: { entry: NavEntry }) {
@@ -215,12 +283,16 @@ function FavStar({ entry }: { entry: NavEntry }) {
       type="button"
       className={cx('nav-star', fav && 'is-on')}
       aria-pressed={fav}
-      aria-label={fav ? `Remove ${entry.label} from favorites` : `Add ${entry.label} to favorites`}
-      data-tooltip={fav ? 'Remove from favorites' : 'Add to favorites'}
+      aria-label={fav ? C.sidebar.removeFavorite(entry.label) : C.sidebar.addFavorite(entry.label)}
+      data-tooltip={fav ? C.sidebar.removeFavoriteTip : C.sidebar.addFavoriteTip}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        toggleFavorite(actor, { label: entry.label, path: entry.path, icon: entry.icon ?? entry.altIcon });
+        toggleFavorite(actor, {
+          label: entry.label,
+          path: entry.path,
+          icon: entry.icon ?? entry.altIcon,
+        });
       }}
     >
       <Icon name="star" size={14} />
@@ -260,19 +332,32 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
     .filter((p) => !p.capability || can(actor, p.capability))
     .map((p) => {
       const path = pagePath(actor.workspaceId, m.id, p.path);
-      return { key: `page:${p.id}`, label: p.label, path, icon: p.icon, active: location.pathname === path };
+      return {
+        key: `page:${p.id}`,
+        label: p.label,
+        path,
+        icon: p.icon,
+        active: location.pathname === path,
+      };
     });
   const groups = m.resources
     .filter((r) => canReadResource(actor, r))
     .map((rk) => {
       const res = getResource(rk);
       const views = listViews(actor, rk);
-      const base = `/${rk}`;
-      const current = location.pathname === base ? new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || views[0]?.id) : undefined;
+      const base = resourcePath(actor.workspaceId, rk);
+      const current = location.pathname === base ? (new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || views[0]?.id)) : undefined;
       const withIcons = m.navChildIcons?.includes(rk);
       const items: NavEntry[] = views.map((v) => {
-        const typeIcon = v.type === 'board' ? 'board' : v.type === 'calendar' ? 'calendar' : 'list';
-        return { key: `view:${v.id}`, label: v.name, path: `${base}?view=${v.id}`, icon: withIcons ? typeIcon : undefined, altIcon: typeIcon, active: current === v.id };
+        const typeIcon = TYPE_ICON[v.type];
+        return {
+          key: `view:${v.id}`,
+          label: v.name,
+          path: `${base}?view=${v.id}`,
+          icon: withIcons ? typeIcon : undefined,
+          altIcon: typeIcon,
+          active: current === v.id,
+        };
       });
       return { rk, label: res.labelPlural, items };
     });
@@ -283,19 +368,22 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
   return (
     <>
       <div className="sidebar-head">
-        <span className="sidebar-title">{m.label}</span>
+        {/* Short sidebar name on one line; the full BRD module name is the tooltip. */}
+        <span className="sidebar-title" title={moduleTitle(m.id)}>
+          {m.label}
+        </span>
         {headerAction}
       </div>
       <div className="sidebar-search">
         <Icon name="search" size={14} />
-        <input type="search" placeholder={`Find a page (${all.length})`} aria-label="Find a page in this module" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+        <input type="search" placeholder={C.sidebar.findPage(all.length)} aria-label={C.sidebar.findPageAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
       </div>
       <div className="sidebar-scroll">
         {/* Section separators are plain muted text. Rows WITH an icon: icon + text. Rows WITHOUT an icon
             (children of a group): text only, indented under the group label. ☆ on hover → Favorites (top). */}
         {needle ? (
           <>
-            <span className="nav-section is-static">Results</span>
+            <span className="nav-section is-static">{C.sidebar.results}</span>
             {results.length ? (
               <ul className="nav-list">
                 {results.map((e) => (
@@ -303,22 +391,31 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
                 ))}
               </ul>
             ) : (
-              <p className="nav-empty muted">No pages match “{q}”.</p>
+              <p className="nav-empty muted">{C.sidebar.noPagesMatch(q)}</p>
             )}
           </>
         ) : (
           <>
             {settings.favorites.length > 0 && (
               <>
-                <span className="nav-section is-static">Favorites</span>
+                <span className="nav-section is-static">{C.sidebar.favorites}</span>
                 <ul className="nav-list">
                   {settings.favorites.map((f) => (
-                    <NavItem key={f.path} entry={{ key: f.path, label: f.label, path: f.path, icon: f.icon ?? 'list', active: here === f.path || location.pathname === f.path }} />
+                    <NavItem
+                      key={f.path}
+                      entry={{
+                        key: f.path,
+                        label: f.label,
+                        path: f.path,
+                        icon: f.icon ?? 'table',
+                        active: here === f.path || location.pathname === f.path,
+                      }}
+                    />
                   ))}
                 </ul>
               </>
             )}
-            {pages.length > 0 && <span className="nav-section is-static">Pages</span>}
+            {pages.length > 0 && <span className="nav-section is-static">{C.sidebar.pages}</span>}
             <ul className="nav-list">
               {pages.map((e) => (
                 <NavItem key={e.key} entry={e} />
@@ -328,14 +425,14 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
                   .filter((p) => p.capability && !can(actor, p.capability))
                   .map((p) => (
                     <li key={p.id}>
-                      <span className="nav-row is-disabled" data-tooltip={`Not available for ${actor.role.label}`}>
+                      <span className="nav-row is-disabled" data-tooltip={C.states.notAvailableFor(actor.role.label)}>
                         <Icon name="lock" />
                         <span className="nav-label">{p.label}</span>
                       </span>
                     </li>
                   ))}
             </ul>
-            {groups.length > 0 && <span className="nav-section is-static">Menu</span>}
+            {groups.length > 0 && <span className="nav-section is-static">{C.sidebar.menu}</span>}
             {groups.map((g) => {
               const open = !collapsedGroups.has(g.rk);
               return (
@@ -357,7 +454,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
             })}
             {settings.pins.length > 0 && (
               <div className="nav-group">
-                <span className="nav-section is-static">Pinned</span>
+                <span className="nav-section is-static">{C.sidebar.pinned}</span>
                 <ul className="nav-list">
                   {settings.pins.map((p) => (
                     <li key={p.path} className="nav-pin">
@@ -365,7 +462,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
                         <Icon name="pin" />
                         <span className="nav-label">{p.label}</span>
                       </Link>
-                      <button type="button" className="nav-unpin" aria-label={`Unpin ${p.label}`} onClick={() => togglePin(actor, p.label, p.path)}>
+                      <button type="button" className="nav-unpin" aria-label={C.sidebar.unpin(p.label)} onClick={() => togglePin(actor, p.label, p.path)}>
                         <Icon name="x" size={12} />
                       </button>
                     </li>
@@ -375,7 +472,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
             )}
             {settings.recents.length > 0 && (
               <div className="nav-group">
-                <span className="nav-section is-static">Recent</span>
+                <span className="nav-section is-static">{C.sidebar.recent}</span>
                 <ul className="nav-list">
                   {settings.recents.slice(0, 5).map((r) => (
                     <li key={r.path}>
@@ -395,13 +492,21 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
   );
 }
 
-function ContextSidebar({ mod }: { mod: string }) {
+function ContextSidebar({ mod, collapsed = false }: { mod: string; collapsed?: boolean }) {
   const actor = useActor();
   const settings = getSettings(actor.user.id);
   const [width, setWidth] = useState(settings.sidebarWidth);
+  const [dragging, setDragging] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  // Collapsed sidebar stays mounted for the animation but is not focusable or clickable.
+  useEffect(() => {
+    if (collapsed) navRef.current?.setAttribute('inert', '');
+    else navRef.current?.removeAttribute('inert');
+  }, [collapsed]);
   useEffect(() => setWidth(settings.sidebarWidth), [settings.sidebarWidth]);
   const startDrag = (x0: number) => {
     let w = width;
+    setDragging(true);
     const move = (e: PointerEvent) => {
       w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width + e.clientX - x0));
       setWidth(w);
@@ -409,19 +514,22 @@ function ContextSidebar({ mod }: { mod: string }) {
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      setDragging(false);
       updateSettings(actor.user.id, { sidebarWidth: w });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
   return (
-    <nav className="sidebar" style={{ width }} aria-label="Module navigation">
-      <SidebarContent mod={mod} headerAction={<IconButton icon="panel-left" label="Collapse sidebar" onClick={() => updateSettings(actor.user.id, { sidebarCollapsed: true })} className="sidebar-toggle" />} />
+    <nav className={cx('sidebar', collapsed && 'is-collapsed', dragging && 'is-dragging')} style={{ width: collapsed ? 0 : width }} aria-label={C.shell.moduleNavigation} aria-hidden={collapsed || undefined} ref={navRef}>
+      <div className="sidebar-inner" style={{ width }}>
+        <SidebarContent mod={mod} headerAction={<IconButton icon="panel-left" label={C.shell.collapseSidebar} onClick={() => updateSettings(actor.user.id, { sidebarCollapsed: true })} className="sidebar-toggle" />} />
+      </div>
       <div
         className="sidebar-resize"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize sidebar"
+        aria-label={C.shell.resizeSidebar}
         aria-valuemin={SIDEBAR_MIN}
         aria-valuemax={SIDEBAR_MAX}
         aria-valuenow={width}
@@ -434,7 +542,9 @@ function ContextSidebar({ mod }: { mod: string }) {
         onKeyDown={(e) => {
           if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
             e.preventDefault();
-            updateSettings(actor.user.id, { sidebarWidth: width + (e.key === 'ArrowRight' ? 16 : -16) });
+            updateSettings(actor.user.id, {
+              sidebarWidth: width + (e.key === 'ArrowRight' ? 16 : -16),
+            });
           }
         }}
       />
@@ -451,36 +561,31 @@ function MobileNav({ mod, onClose, onSearch, onHelp, showRail }: { mod: string; 
   }, []);
   return (
     <div className="overlay-scrim overlay-scrim-left" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} className="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation">
+      <div ref={ref} className="mobile-nav" role="dialog" aria-modal="true" aria-label={C.shell.navigation}>
         {showRail && (
           <div className="mobile-modules">
             {appModules
               .filter((m) => moduleVisible(actor, m))
               .map((m) => (
-                <Link
-                  key={m.id}
-                  to={m.id === 'home' ? `${wsBase(actor.workspaceId)}/dashboard` : m.resources[0] ? resourcePath(actor.workspaceId, m.resources[0]) : pagePath(actor.workspaceId, m.id, m.pages![0].path)}
-                  className={cx('mobile-module', mod === m.id && 'is-active')}
-                  aria-current={mod === m.id ? 'page' : undefined}
-                >
+                <Link key={m.id} to={moduleHome(actor, m)} className={cx('mobile-module', mod === m.id && 'is-active')} aria-current={mod === m.id ? 'page' : undefined}>
                   <Icon name={m.icon} />
                   <span>{m.label}</span>
                 </Link>
               ))}
             <button type="button" className="mobile-module" onClick={onSearch}>
               <Icon name="search" />
-              <span>Search</span>
+              <span>{C.shell.search}</span>
             </button>
             <button type="button" className="mobile-module" onClick={onHelp}>
               <Icon name="help" />
-              <span>Help</span>
+              <span>{C.shell.help}</span>
             </button>
           </div>
         )}
         <div className="sidebar mobile-sidebar">
           <SidebarContent mod={mod} />
         </div>
-        <IconButton icon="x" label="Close navigation" onClick={onClose} className="mobile-nav-close" />
+        <IconButton icon="x" label={C.shell.closeNavigation} onClick={onClose} className="mobile-nav-close" />
       </div>
     </div>
   );
@@ -490,29 +595,31 @@ function MobileNav({ mod, onClose, onSearch, onHelp, showRail }: { mod: string; 
 
 function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: boolean; onSearch: () => void }) {
   const actor = useActor();
+  const phone = useMedia(PHONE); // on phones the rail is hidden, so theme + profile stay in the top bar
   const settings = getSettings(actor.user.id);
   return (
     <div className="topbar">
       <div className="topbar-left">
         {showMenu &&
           (settings.sidebarCollapsed && !window.matchMedia(TABLET).matches ? (
-            <IconButton icon="panel-left" label="Expand sidebar" onClick={() => updateSettings(actor.user.id, { sidebarCollapsed: false })} />
+            <IconButton icon="panel-left" label={C.shell.expandSidebar} onClick={() => updateSettings(actor.user.id, { sidebarCollapsed: false })} />
           ) : (
-            <IconButton icon="menu" label="Open navigation" onClick={onMenu} />
+            <IconButton icon="menu" label={C.shell.openNavigation} onClick={onMenu} />
           ))}
         {/* Page title + ⓘ description are portalled here by <PageHeader>. */}
         <div id={TOPBAR_TITLE_SLOT} className="topbar-title" />
       </div>
-      <button type="button" className="topbar-search" onClick={onSearch} aria-label="Search records, pages and actions (Ctrl+K)">
+      <button type="button" className="topbar-search" onClick={onSearch} aria-label={C.shell.searchTopbarAria}>
         <Icon name="search" size={14} />
-        <span>Search…</span>
+        <span>{C.shell.searchTopbar}</span>
         <kbd>Ctrl K</kbd>
       </button>
       <div className="topbar-right">
         {workspaces.length > 1 && <WorkspaceSwitcher />}
         <OfflineToggle />
+        {phone && <ThemeButton />}
         <NotificationBell />
-        <AccountMenu />
+        {phone && <AccountMenu />}
       </div>
     </div>
   );
@@ -521,20 +628,24 @@ function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: 
 /** NFR-15 simulated offline mode: queues field writes; going online syncs them and reports conflicts. */
 function OfflineToggle() {
   const off = useSyncExternalStore(subscribeOffline, isOffline, isOffline);
-  const pending = useSyncExternalStore(subscribeOffline, () => pendingWrites().length, () => 0);
+  const pending = useSyncExternalStore(
+    subscribeOffline,
+    () => pendingWrites().length,
+    () => 0,
+  );
   const toast = useToast();
   return (
     <IconButton
       icon={off ? 'eye-off' : 'activity'}
-      label={off ? `Offline (simulated)${pending ? `, ${pending} change(s) waiting to sync` : ''}. Go online` : 'Online. Simulate going offline'}
+      label={off ? C.shell.offline.offlineLabel(pending) : C.shell.offline.onlineLabel}
       badge={off ? pending : undefined}
       aria-pressed={off}
       className={off ? 'is-offline' : undefined}
       onClick={() => {
         const r = setOffline(!off);
-        if (!r) toast('Offline (simulated): attendance, visits and job cards are saved on this device until you go online', 'info');
-        else if (r.conflicts.length) toast(`Back online: ${r.synced.length} synced, ${r.conflicts.length} conflict(s) — ${r.conflicts.map((c) => `${c.label}: ${c.message}`).join('; ')}`, 'danger');
-        else toast(r.synced.length ? `Back online: ${r.synced.length} change(s) synced` : 'Back online', 'success');
+        if (!r) toast(C.shell.offline.wentOffline, 'info');
+        else if (r.conflicts.length) toast(C.shell.offline.backOnlineConflicts(r.synced.length, r.conflicts.length, r.conflicts.map((c) => `${c.label}: ${c.message}`).join('; ')), 'danger');
+        else toast(r.synced.length ? C.shell.offline.backOnlineSynced(r.synced.length) : C.shell.offline.backOnline, 'success');
       }}
     />
   );
@@ -549,15 +660,24 @@ function WorkspaceSwitcher() {
   const ws = workspaces.find((w) => w.id === actor.workspaceId)!;
   return (
     <>
-      <button ref={ref} type="button" className="ws-switch" data-tooltip={`${organization.name} / ${ws.name}`} aria-label={`Workspace: ${ws.name}. Switch workspace`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button
+        ref={ref}
+        type="button"
+        className="ws-switch"
+        data-tooltip={`${organization.name} / ${ws.name}`}
+        aria-label={C.shell.workspace.aria(ws.name)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
         <Icon name="building" size={14} />
         <span className="ws-name">{ws.name}</span>
         <Icon name="chevrons-up-down" size={14} />
       </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Switch workspace" width={260}>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label={C.shell.workspace.switch} width={260}>
         <p className="pop-label dialog-title-row">
-          {organization.name} · workspaces
-          <InfoTip text="Records are isolated per workspace." label="About workspaces" />
+          {C.shell.workspace.heading(organization.name)}
+          <InfoTip text={C.shell.workspace.about} label={C.shell.workspace.aboutLabel} />
         </p>
         <ul className="menu">
           {workspaces.map((w) => (
@@ -595,20 +715,20 @@ function NotificationBell() {
     markNotification(actor, n.id, true);
     setOpen(false);
     if (!n.link) return;
-    if ('page' in n.link) navigate(`/${n.link.page}`);
+    if ('page' in n.link) navigate(n.link.page === 'inbox' ? `${ROUTES.notifications}?tab=approvals` : `/${n.link.page}`);
     else navigate(recordPeekPath(actor.workspaceId, n.link.resource, n.link.recordId));
   };
   return (
     <>
-      <IconButton ref={ref} icon="bell" label={`Notifications${unread ? `, ${unread} unread` : ''}`} badge={unread} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} />
-      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Notifications" width={360} align="end">
+      <IconButton ref={ref} icon="bell" label={C.shell.notificationsAria(unread)} badge={unread} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} />
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label={C.notifications.title} width={360} align="end">
         <div className="pop-head">
           <span className="dialog-title-row">
-            <strong>Notifications</strong>
-            <InfoTip text="Reading a notification never approves or completes the linked work." label="About notifications" />
+            <strong>{C.notifications.title}</strong>
+            <InfoTip text={C.notifications.about} label={C.notifications.aboutLabel} />
           </span>
-          <Button variant="ghost" onClick={() => markAllRead(actor)} disabledReason={unread ? undefined : 'Nothing unread'}>
-            Mark all read
+          <Button variant="ghost" onClick={() => markAllRead(actor)} disabledReason={unread ? undefined : C.notifications.nothingUnread}>
+            {C.notifications.markAllRead}
           </Button>
         </div>
         {items.length ? (
@@ -616,30 +736,78 @@ function NotificationBell() {
             {items.slice(0, 12).map((n) => (
               <li key={n.id} className={cx('notif', !n.readAt && 'is-unread')}>
                 <button type="button" className="notif-main" onClick={() => go(n)}>
-                  {!n.readAt && <span className="unread-dot" aria-label="Unread" />}
+                  {!n.readAt && <span className="unread-dot" aria-label={C.notifications.unread} />}
                   <span>
                     <span className="notif-title">{n.title}</span>
                     <span className="muted small">
-                      {n.kind.replace('_', ' ')} · {relativeTime(n.createdAt)}
+                      {C.notifications.kinds[n.kind] ?? n.kind.replace(/_/g, ' ')} · {relativeTime(n.createdAt)}
                     </span>
                   </span>
                 </button>
-                <IconButton icon="calendar-clock" label="Snooze for 4 hours" onClick={() => snoozeNotification(actor, n.id, 4)} />
+                <IconButton icon="calendar-clock" label={C.notifications.snoozeAria} onClick={() => snoozeNotification(actor, n.id, 4)} />
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted pop-empty">You’re all caught up.</p>
+          <p className="muted pop-empty">{C.notifications.allCaughtUp}</p>
         )}
-        <Link className="pop-foot link" to={pagePath(actor.workspaceId, 'work', 'inbox')} onClick={() => setOpen(false)}>
-          Open Work inbox
+        <Link className="pop-foot link" to={ROUTES.notifications} onClick={() => setOpen(false)}>
+          {C.notifications.openAll}
         </Link>
       </Popover>
     </>
   );
 }
 
-function AccountMenu() {
+/** Theme changer in the top bar: mode + colour palettes (presets and the user's own). */
+function ThemeButton({ inRail = false }: { inRail?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Palette | null>(null);
+  const ref = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      {inRail ? (
+        <button
+          ref={ref}
+          type="button"
+          className={cx('rail-item', open && 'is-active')}
+          aria-label={C.shell.themeAria}
+          data-tooltip={C.shell.themeTip}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Icon name="palette" />
+        </button>
+      ) : (
+        <IconButton ref={ref} icon="palette" label={C.shell.themeAria} aria-haspopup="dialog" aria-expanded={open} pressed={open} onClick={() => setOpen((o) => !o)} />
+      )}
+      <Popover
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={ref}
+        label={C.shell.themeAria}
+        width={360}
+        align={inRail ? 'start' : 'end'}
+        side={inRail ? 'right' : 'bottom'}
+        className={cx('theme-pop', inRail && 'from-rail')}
+      >
+        <div className="pop-head">
+          <strong>{C.shell.theme}</strong>
+        </div>
+        <ThemePicker
+          onEditPalette={(p) => {
+            setOpen(false);
+            setEditing(p);
+          }}
+        />
+      </Popover>
+      {editing && <PaletteEditor initial={editing} onClose={() => setEditing(null)} />}
+    </>
+  );
+}
+
+function AccountMenu({ inRail = false }: { inRail?: boolean }) {
   const actor = useActor();
   const [open, setOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -648,15 +816,30 @@ function AccountMenu() {
   const navigate = useNavigate();
   return (
     <>
-      <button ref={ref} type="button" className="account-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} aria-label={`Account: ${actor.user.name}, ${actor.role.label}`}>
-        <Avatar name={actor.user.name} size={26} />
-        <span className="account-text hide-phone">
-          <span className="account-name">{actor.user.name}</span>
-          <span className="account-role">{actor.role.label}</span>
-        </span>
-      </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Account and role" width={300} align="end">
-        <p className="pop-label">Switch demo user (simulated sign-in)</p>
+      {inRail ? (
+        <button
+          ref={ref}
+          type="button"
+          className={cx('rail-item rail-profile', open && 'is-active')}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          aria-label={C.account.aria(actor.user.name, actor.role.label)}
+          data-tooltip={C.account.tip(actor.user.name, actor.role.label)}
+        >
+          <Avatar name={actor.user.name} size={30} />
+        </button>
+      ) : (
+        <button ref={ref} type="button" className="account-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} aria-label={C.account.aria(actor.user.name, actor.role.label)}>
+          <Avatar name={actor.user.name} size={26} />
+          <span className="account-text hide-phone">
+            <span className="account-name">{actor.user.name}</span>
+            <span className="account-role">{actor.role.label}</span>
+          </span>
+        </button>
+      )}
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label={C.account.menu} width={320} align={inRail ? 'start' : 'end'} side={inRail ? 'right' : 'bottom'} className={cx(inRail && 'from-rail')}>
+        <p className="pop-label">{C.account.switchUser}</p>
         <ul className="menu" style={{ maxHeight: 300, overflowY: 'auto' }}>
           {demoUsers.map((u) => (
             <li key={u.id}>
@@ -667,13 +850,13 @@ function AccountMenu() {
                   setOpen(false);
                   if (u.id === actor.user.id) return;
                   switchSession(u.id, actor.workspaceId);
-                  toast(`Now viewing as ${u.name} (${getRole(u.roleId).label})`, 'info');
+                  toast(C.account.nowViewingAs(u.name, C.account.rolePosition(getRole(u.roleId).label, u.title)), 'info');
                 }}
               >
                 <Avatar name={u.name} size={22} />
                 <span className="menu-label">
                   {u.name}
-                  <span className="menu-reason">{getRole(u.roleId).label}</span>
+                  <span className="menu-reason">{C.account.rolePosition(getRole(u.roleId).label, u.title)}</span>
                 </span>
                 {u.id === actor.user.id && <Icon name="check" />}
               </button>
@@ -688,11 +871,11 @@ function AccountMenu() {
               className="menu-item"
               onClick={() => {
                 setOpen(false);
-                navigate('/inbox');
+                navigate(ROUTES.notifications);
               }}
             >
               <Icon name="inbox" />
-              <span className="menu-label">My work</span>
+              <span className="menu-label">{C.account.myWork}</span>
             </button>
           </li>
           <li>
@@ -701,11 +884,11 @@ function AccountMenu() {
               className="menu-item"
               onClick={() => {
                 setOpen(false);
-                navigate(pagePath(actor.workspaceId, 'admin', 'settings'));
+                navigate(ROUTES.demoSettings);
               }}
             >
               <Icon name="sliders" />
-              <span className="menu-label">Personal settings</span>
+              <span className="menu-label">{C.account.personalSettings}</span>
             </button>
           </li>
           <li>
@@ -718,7 +901,7 @@ function AccountMenu() {
               }}
             >
               <Icon name="reset" />
-              <span className="menu-label">Reset demo data…</span>
+              <span className="menu-label">{C.account.resetDemo}</span>
             </button>
           </li>
           <li>
@@ -728,11 +911,11 @@ function AccountMenu() {
               onClick={() => {
                 setOpen(false);
                 signOut();
-                navigate('/login');
+                navigate(ROUTES.login);
               }}
             >
               <Icon name="door-open" />
-              <span className="menu-label">Sign out</span>
+              <span className="menu-label">{C.account.signOut}</span>
             </button>
           </li>
         </ul>
@@ -750,27 +933,27 @@ export function ResetDialog({ open, onClose }: { open: boolean; onClose: () => v
       onClose={onClose}
       size="sm"
       role="alertdialog"
-      title="Reset demo data?"
-      description="Restores the original demo dataset in this browser. Your personal settings are kept."
+      title={C.confirm.resetTitle}
+      description={C.confirm.resetDescription}
       footer={
         <>
           <Button onClick={onClose} data-autofocus>
-            Cancel
+            {C.actions.cancel}
           </Button>
           <Button
             variant="danger"
             onClick={() => {
               resetDb();
               onClose();
-              toast('Demo data reset', 'info');
+              toast(C.toasts.demoReset, 'info');
             }}
           >
-            Reset data
+            {C.confirm.resetAction}
           </Button>
         </>
       }
     >
-      <p className="muted">All records, comments, approvals, messages, views and configuration changes made in this browser will be discarded.</p>
+      <p className="muted">{C.confirm.resetBody}</p>
     </Dialog>
   );
 }
@@ -804,16 +987,48 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
       navigate(to);
     };
     appModules.forEach((m) => {
-      (m.pages ?? []).filter((p) => !p.capability || can(actor, p.capability)).forEach((p) => out.push({ id: `p-${p.id}`, label: p.label, hint: m.label, icon: p.icon, run: go(pagePath(actor.workspaceId, m.id, p.path)) }));
+      (m.pages ?? [])
+        .filter((p) => !p.capability || can(actor, p.capability))
+        .forEach((p) =>
+          out.push({
+            id: `p-${p.id}`,
+            label: p.label,
+            hint: m.label,
+            icon: p.icon,
+            run: go(pagePath(actor.workspaceId, m.id, p.path)),
+          }),
+        );
       m.resources
         .filter((r) => canReadResource(actor, r))
         .forEach((r) => {
           const res = getResource(r);
-          out.push({ id: `r-${r}`, label: res.labelPlural, hint: m.label, icon: res.icon === 'calendar' ? 'calendar' : res.icon, run: go(resourcePath(actor.workspaceId, r)) });
-          listViews(actor, r).forEach((v) => out.push({ id: `v-${v.id}`, label: `${res.labelPlural}: ${v.name}`, hint: 'Saved view', icon: 'list', run: go(resourcePath(actor.workspaceId, r, { view: v.id })) }));
+          out.push({
+            id: `r-${r}`,
+            label: res.labelPlural,
+            hint: m.label,
+            icon: res.icon === 'calendar' ? 'calendar' : res.icon,
+            run: go(resourcePath(actor.workspaceId, r)),
+          });
+          listViews(actor, r).forEach((v) =>
+            out.push({
+              id: `v-${v.id}`,
+              label: C.palette.viewLabel(res.labelPlural, v.name),
+              hint: C.palette.savedView,
+              icon: TYPE_ICON[v.type],
+              run: go(resourcePath(actor.workspaceId, r, { view: v.id })),
+            }),
+          );
         });
     });
-    getSettings(actor.user.id).recents.forEach((r) => out.push({ id: `rec-${r.path}`, label: r.label, hint: 'Recent', icon: 'reset', run: go(r.path) }));
+    getSettings(actor.user.id).recents.forEach((r) =>
+      out.push({
+        id: `rec-${r.path}`,
+        label: r.label,
+        hint: C.palette.recent,
+        icon: 'reset',
+        run: go(r.path),
+      }),
+    );
     return out;
   }, [actor.user.id, actor.workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -823,7 +1038,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
     ...records.map((h) => ({
       id: `rec-${h.resource}-${h.id}`,
       label: `${h.id} · ${h.title}`,
-      hint: h.exact ? `${h.resourceLabel} · exact ID` : h.resourceLabel,
+      hint: h.exact ? C.palette.exactId(h.resourceLabel) : h.resourceLabel,
       icon: 'search',
       run: () => {
         onClose();
@@ -834,12 +1049,12 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
   ];
 
   return (
-    <Dialog open={open} onClose={onClose} title="Search" description="Pages, saved views and records you can access. Search covers fields your role can see in full; masked fields are not searchable." size="md">
+    <Dialog open={open} onClose={onClose} title={C.palette.title} description={C.palette.description} size="md">
       <div className="palette">
         <input
           className="input"
-          placeholder="Type a name, ID (e.g. P-1003) or page…"
-          aria-label="Search"
+          placeholder={C.palette.placeholder}
+          aria-label={C.palette.title}
           role="combobox"
           aria-expanded="true"
           aria-controls="palette-list"
@@ -863,7 +1078,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
             }
           }}
         />
-        <ul id="palette-list" role="listbox" className="palette-list" aria-label="Results">
+        <ul id="palette-list" role="listbox" className="palette-list" aria-label={C.palette.results}>
           {list.map((c, i) => (
             <li key={c.id} id={`pal-${c.id}`} role="option" aria-selected={i === active} className={cx('palette-item', i === active && 'is-active')} onMouseEnter={() => setActive(i)} onClick={c.run}>
               <Icon name={c.icon} />
@@ -871,7 +1086,7 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
               <span className="muted small">{c.hint}</span>
             </li>
           ))}
-          {!list.length && <li className="muted palette-empty">No results you can access.</li>}
+          {!list.length && <li className="muted palette-empty">{C.palette.noResults}</li>}
         </ul>
       </div>
     </Dialog>

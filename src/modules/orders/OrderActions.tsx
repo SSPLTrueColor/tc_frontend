@@ -1,10 +1,13 @@
-/** Sales order record actions, banner and dialogs (approval, hold/cancel, ERP, dispatch, delivery). */
+/** Sales order record actions, banner and dialogs (approval, Hold Order / Cancel Order, Push to ERP, Record Dispatch, Confirm Delivery). */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
+import { L } from '../../constants/labels';
+import { ROUTES, toPath } from '../../constants/routes';
 import { addDays, todayKey } from '../../lib/dates';
+import { recordEditPath } from '../../lib/routes';
 import { errorMessage } from '../../services/api/client';
-import { confirmOrderDelivery, recordOrderDispatch, requestOrderStatusChange, submitOrderForApproval, syncOrderFromErp } from '../../services/api/orders';
+import { confirmOrderDelivery, pushOrderToErp, recordOrderDispatch, requestOrderStatusChange, submitOrderForApproval } from '../../services/api/orders';
 import { can, canUpdateRecord } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { useActor } from '../../services/hooks';
@@ -19,6 +22,10 @@ import { Dialog } from '../../components/primitives/overlay';
 import { Field, FilePick } from './components';
 import { ReceiptDialog } from './OrderTabs';
 
+const O = L.orders;
+const D = L.dispatch;
+const FD = D.fields.dispatches;
+
 type Kind = 'hold' | 'resume' | 'cancel' | 'submit';
 
 const pendingFor = (id: string) => getDb().approvals.filter((a) => a.recordId === id && a.resource === 'salesOrders' && a.status === 'pending');
@@ -27,65 +34,71 @@ export function OrderActions({ actor, record }: RecordExtensionProps) {
   const toast = useToast();
   const [reason, setReason] = useState<Kind | null>(null);
   const [dispatching, setDispatching] = useState(false);
+  const [pushing, setPushing] = useState(false);
   const status = String(record.status);
   const raw = getDb().records.salesOrders?.find((r) => r.id === record.id);
   const editable = !!raw && canUpdateRecord(actor, getResource('salesOrders'), raw);
   const pending = pendingFor(record.id);
   const openApproval = pending.find((a) => a.type === 'salesOrder.approval');
   const statusRequest = pending.find((a) => a.type !== 'salesOrder.approval');
-  const ro = editable ? undefined : `Read-only for ${actor.role.label}`;
+  const ro = editable ? undefined : O.common.readOnly(actor.role.label);
+  const busyReason = ro ?? (statusRequest ? O.dialogs.alreadyPending(approvalTypeLabel(statusRequest.type)) : undefined);
 
   return (
     <>
       {status === 'pending_approval' && !openApproval && (
         <Button variant="primary" onClick={() => setReason('submit')} disabledReason={ro}>
-          Submit for approval
+          {O.actions.submitForApproval}
         </Button>
       )}
       {SO_BEFORE_DISPATCH.includes(status) && editable && (
-        <Link className="btn btn-secondary" to={`/salesOrders/${encodeURIComponent(record.id)}/edit`}>
-          <span className="btn-label">Edit lines</span>
+        <Link className="btn btn-secondary" to={recordEditPath('salesOrders', record.id)}>
+          <span className="btn-label">{O.actions.editLines}</span>
         </Link>
       )}
       {status === 'ready_for_dispatch' && (
-        <Button variant="primary" icon="send" onClick={() => setDispatching(true)} disabledReason={can(actor, 'orders.dispatch') ? undefined : 'Import/SCM or a coordinator records dispatches'}>
-          Record dispatch
+        <Button variant="primary" icon="send" onClick={() => setDispatching(true)} disabledReason={can(actor, 'orders.dispatch') ? undefined : O.disabled.dispatch}>
+          {D.actions.recordDispatch}
         </Button>
       )}
       {!['pending_approval', 'cancelled'].includes(status) && !record.invoiceNo && (
         <Button
           icon="reset"
-          disabledReason={can(actor, 'orders.erp') ? undefined : 'Accounts, Import/SCM or an administrator syncs with the ERP'}
+          loading={pushing}
+          disabledReason={can(actor, 'orders.erp') ? undefined : O.disabled.erp}
           onClick={async () => {
+            setPushing(true);
             try {
-              const r = await syncOrderFromErp(actor, record.id);
-              toast(`ERP invoice ${r.invoiceNo} received (simulated)`);
+              const r = await pushOrderToErp(actor, record.id);
+              toast(O.record.erpReceived(String(r.invoiceNo)));
             } catch (e) {
               toast(errorMessage(e), 'danger');
+            } finally {
+              setPushing(false);
             }
           }}
         >
-          Sync from ERP
+          {O.actions.pushToErp}
         </Button>
       )}
       {record.orderKind === 'consumables' && status !== 'cancelled' && can(actor, 'orders.contract') && (
-        <Link className="btn btn-secondary" to={`/orders/new?repeatOf=${encodeURIComponent(record.id)}`}>
-          <span className="btn-label">Repeat order</span>
+        <Link className="btn btn-secondary" to={toPath(ROUTES.salesOrderNew, {}, { repeatOf: record.id })}>
+          <span className="btn-label">{O.actions.repeatOrder}</span>
         </Link>
       )}
       {SO_BEFORE_DISPATCH.includes(status) && (
-        <Button onClick={() => setReason('hold')} disabledReason={ro ?? (statusRequest ? `${approvalTypeLabel(statusRequest.type)} already pending` : undefined)}>
-          Put on hold
+        <Button onClick={() => setReason('hold')} disabledReason={busyReason}>
+          {O.actions.holdOrder}
         </Button>
       )}
       {status === 'on_hold' && (
-        <Button onClick={() => setReason('resume')} disabledReason={ro ?? (statusRequest ? `${approvalTypeLabel(statusRequest.type)} already pending` : undefined)}>
-          Request resume
+        <Button onClick={() => setReason('resume')} disabledReason={busyReason}>
+          {O.actions.resumeOrder}
         </Button>
       )}
       {(SO_BEFORE_DISPATCH.includes(status) || status === 'on_hold') && (
-        <Button variant="danger" onClick={() => setReason('cancel')} disabledReason={ro ?? (statusRequest ? `${approvalTypeLabel(statusRequest.type)} already pending` : undefined)}>
-          Cancel order
+        <Button variant="danger" onClick={() => setReason('cancel')} disabledReason={busyReason}>
+          {O.actions.cancelOrder}
         </Button>
       )}
       {reason && <ReasonDialog kind={reason} orderId={record.id} orderNo={String(record.orderNo)} onClose={() => setReason(null)} />}
@@ -95,10 +108,10 @@ export function OrderActions({ actor, record }: RecordExtensionProps) {
 }
 
 const COPY: Record<Kind, { title: string; button: string; help: string; danger?: boolean }> = {
-  submit: { title: 'Submit for approval', button: 'Submit', help: 'Goes to your reporting manager; a finance check is added when the advance is below policy or the customer has overdue amounts.' },
-  hold: { title: 'Put order on hold', button: 'Request hold', help: 'Needs your reporting manager’s approval. The order resumes from the same status.' },
-  resume: { title: 'Resume order', button: 'Request resume', help: 'Needs your reporting manager’s approval.' },
-  cancel: { title: 'Cancel order', button: 'Request cancellation', help: 'Needs approval up to the division head. Dispatched orders cannot be cancelled.', danger: true },
+  submit: { title: O.dialogs.submit.title, button: O.actions.submit, help: O.dialogs.submit.help },
+  hold: { title: O.dialogs.hold.title, button: O.actions.requestHold, help: O.dialogs.hold.help },
+  resume: { title: O.dialogs.resume.title, button: O.actions.requestResume, help: O.dialogs.resume.help },
+  cancel: { title: O.dialogs.cancel.title, button: O.actions.requestCancellation, help: O.dialogs.cancel.help, danger: true },
 };
 
 function ReasonDialog({ kind, orderId, orderNo, onClose }: { kind: Kind; orderId: string; orderNo: string; onClose: () => void }) {
@@ -114,12 +127,12 @@ function ReasonDialog({ kind, orderId, orderNo, onClose }: { kind: Kind; orderId
       onClose={onClose}
       size="sm"
       role={c.danger ? 'alertdialog' : 'dialog'}
-      title={`${c.title} · ${orderNo}`}
+      title={O.dialogs.titleFor(c.title, orderNo)}
       description={c.help}
       footer={
         <>
           <Button onClick={onClose} data-autofocus={c.danger || undefined}>
-            Keep as is
+            {O.actions.keepAsIs}
           </Button>
           <Button
             variant={c.danger ? 'danger' : 'primary'}
@@ -129,10 +142,11 @@ function ReasonDialog({ kind, orderId, orderNo, onClose }: { kind: Kind; orderId
               setError('');
               try {
                 const a = kind === 'submit' ? await submitOrderForApproval(actor, orderId, text) : await requestOrderStatusChange(actor, orderId, kind, text);
-                toast(`${a.id} sent to ${a.levels.map((l) => l.label).join(' → ')}`);
+                toast(O.dialogs.sentTo(a.id, a.levels.map((l) => l.label).join(' → ')));
                 onClose();
               } catch (e) {
                 setError(e instanceof ServiceError && e.fieldErrors?.reason ? e.fieldErrors.reason : errorMessage(e));
+                toast(errorMessage(e), 'danger');
               } finally {
                 setBusy(false);
               }
@@ -143,7 +157,7 @@ function ReasonDialog({ kind, orderId, orderNo, onClose }: { kind: Kind; orderId
         </>
       }
     >
-      <Field id="so-reason" label={kind === 'submit' ? 'Note for the approver' : 'Reason'} required={kind !== 'submit'} error={error}>
+      <Field id="so-reason" label={kind === 'submit' ? O.dialogs.approverNote : O.dialogs.reason} required={kind !== 'submit'} error={error}>
         <textarea id="so-reason" className="input textarea" rows={3} maxLength={500} value={text} onChange={(e) => setText(e.target.value)} data-autofocus={!c.danger || undefined} />
       </Field>
     </Dialog>
@@ -163,11 +177,11 @@ function DispatchDialog({ order, onClose }: { order: RecordExtensionProps['recor
       open
       onClose={onClose}
       size="md"
-      title={`Record dispatch · ${order.orderNo}`}
-      description="Creates the dispatch record, moves the order to Dispatched and (optionally) sends the dispatch intimation by WhatsApp / e-mail (simulated)."
+      title={D.dialogs.recordTitle(String(order.orderNo))}
+      description={D.dialogs.recordDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{O.actions.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
@@ -176,45 +190,46 @@ function DispatchDialog({ order, onClose }: { order: RecordExtensionProps['recor
               setForm('');
               try {
                 const d = await recordOrderDispatch(actor, order.id, f);
-                toast(`Dispatched — LR ${d.lrNumber}`);
+                toast(D.messages.dispatched(String(d.lrNumber)));
                 onClose();
               } catch (e) {
                 if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
                 setForm(errorMessage(e));
+                toast(errorMessage(e), 'danger');
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Record dispatch
+            {D.actions.recordDispatch}
           </Button>
         </>
       }
     >
       <div className="form-grid cols-2">
-        <Field id="dp-date" label="Dispatch date" required error={errors.dispatchDate}>
-          <DatePicker id="dp-date" label="Dispatch date" value={f.dispatchDate} onChange={(v) => set({ dispatchDate: v ?? '' })} invalid={!!errors.dispatchDate} />
+        <Field id="dp-date" label={FD.dispatchDate} required error={errors.dispatchDate}>
+          <DatePicker id="dp-date" label={FD.dispatchDate} value={f.dispatchDate} onChange={(v) => set({ dispatchDate: v ?? '' })} invalid={!!errors.dispatchDate} />
         </Field>
-        <Field id="dp-exp" label="Expected delivery" required error={errors.expectedDelivery}>
-          <DatePicker id="dp-exp" label="Expected delivery" value={f.expectedDelivery} onChange={(v) => set({ expectedDelivery: v ?? '' })} invalid={!!errors.expectedDelivery} />
+        <Field id="dp-exp" label={FD.expectedDelivery} required error={errors.expectedDelivery}>
+          <DatePicker id="dp-exp" label={FD.expectedDelivery} value={f.expectedDelivery} onChange={(v) => set({ expectedDelivery: v ?? '' })} invalid={!!errors.expectedDelivery} />
         </Field>
-        <Field id="dp-tr" label="Transporter" required error={errors.transporter}>
-          <input id="dp-tr" className="input" maxLength={80} value={f.transporter} onChange={(e) => set({ transporter: e.target.value })} placeholder="e.g. VRL Logistics" data-autofocus />
+        <Field id="dp-tr" label={FD.transporter} required error={errors.transporter}>
+          <input id="dp-tr" className="input" maxLength={80} value={f.transporter} onChange={(e) => set({ transporter: e.target.value })} placeholder={FD.transporterPlaceholder} data-autofocus />
         </Field>
-        <Field id="dp-lr" label="LR number" required error={errors.lrNumber}>
+        <Field id="dp-lr" label={FD.lrNumber} required error={errors.lrNumber}>
           <input id="dp-lr" className="input" maxLength={40} value={f.lrNumber} onChange={(e) => set({ lrNumber: e.target.value })} />
         </Field>
-        <Field id="dp-ch" label="Delivery challan">
+        <Field id="dp-ch" label={FD.challanNo}>
           <input id="dp-ch" className="input" maxLength={40} value={f.challanNo} onChange={(e) => set({ challanNo: e.target.value })} />
         </Field>
-        <Field id="dp-inv" label="Invoice ref.">
+        <Field id="dp-inv" label={FD.invoiceRef}>
           <input id="dp-inv" className="input" maxLength={40} value={f.invoiceRef} onChange={(e) => set({ invoiceRef: e.target.value })} />
         </Field>
-        <Field id="dp-ewb" label="E-way bill no." error={errors.ewayBill} help="12 digits">
+        <Field id="dp-ewb" label={FD.ewayBill} error={errors.ewayBill} help={FD.ewayBillHelp}>
           <input id="dp-ewb" className="input" inputMode="numeric" maxLength={12} value={f.ewayBill} onChange={(e) => set({ ewayBill: e.target.value.replace(/\D/g, '') })} />
         </Field>
         <label className="orders-check">
-          <input type="checkbox" checked={f.notifyCustomer} onChange={(e) => set({ notifyCustomer: e.target.checked })} /> Send dispatch intimation to the customer
+          <input type="checkbox" checked={f.notifyCustomer} onChange={(e) => set({ notifyCustomer: e.target.checked })} /> {FD.notifyCustomer}
         </label>
       </div>
       {form && <InlineAlert tone="danger">{form}</InlineAlert>}
@@ -235,11 +250,11 @@ export function ConfirmDeliveryDialog({ dispatch, onClose }: { dispatch: Record<
       open
       onClose={onClose}
       size="md"
-      title={`Confirm delivery · LR ${String(dispatch.lrNumber)}`}
-      description="Records the actual delivery with signed proof of delivery. Machine orders get an installation job automatically."
+      title={D.dialogs.deliveryTitle(String(dispatch.lrNumber))}
+      description={D.dialogs.deliveryDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{O.actions.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
@@ -247,28 +262,29 @@ export function ConfirmDeliveryDialog({ dispatch, onClose }: { dispatch: Record<
               setBusy(true);
               try {
                 const r = await confirmOrderDelivery(actor, dispatch.id, { actualDelivery: date, podFileName: pod.name, podFileSize: pod.size, podPhotoName: photo });
-                toast(r.installationId ? `Delivered — installation job ${r.installationId} created` : 'Delivery confirmed');
+                toast(r.installationId ? D.messages.deliveredWithJob(r.installationId) : D.messages.delivered);
                 onClose();
               } catch (e) {
                 setErrors(e instanceof ServiceError && e.fieldErrors ? e.fieldErrors : { form: errorMessage(e) });
+                toast(errorMessage(e), 'danger');
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Confirm delivery
+            {D.actions.confirmDelivery}
           </Button>
         </>
       }
     >
       <div className="form-grid cols-2">
-        <Field id="dl-date" label="Delivered on" required error={errors.actualDelivery}>
-          <DatePicker id="dl-date" label="Delivered on" value={date} onChange={(v) => setDate(v ?? '')} invalid={!!errors.actualDelivery} />
+        <Field id="dl-date" label={FD.actualDelivery} required error={errors.actualDelivery}>
+          <DatePicker id="dl-date" label={FD.actualDelivery} value={date} onChange={(v) => setDate(v ?? '')} invalid={!!errors.actualDelivery} />
         </Field>
-        <Field id="dl-pod" label="Signed proof of delivery" required error={errors.podFileName} wide>
+        <Field id="dl-pod" label={FD.podFileName} required error={errors.podFileName} wide>
           <FilePick id="dl-pod" value={pod.name} onPick={(name, size) => setPod({ name, size })} invalid={!!errors.podFileName} />
         </Field>
-        <Field id="dl-photo" label="Delivery photo" wide>
+        <Field id="dl-photo" label={FD.podPhotoName} wide>
           <FilePick id="dl-photo" value={photo} accept=".jpg,.jpeg,.png" onPick={(name) => setPhoto(name)} />
         </Field>
       </div>
@@ -279,56 +295,75 @@ export function ConfirmDeliveryDialog({ dispatch, onClose }: { dispatch: Record<
 
 /** Banner: open approval / last rejection / hold / cancellation. */
 export function OrderBanner({ record }: RecordExtensionProps) {
-  const approvals = getDb().approvals.filter((a) => a.recordId === record.id && a.resource === 'salesOrders').sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  const B = O.banner;
+  const approvals = getDb()
+    .approvals.filter((a) => a.recordId === record.id && a.resource === 'salesOrders')
+    .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
   const open = approvals.filter((a) => a.status === 'pending');
   if (open.length)
     return (
       <>
         {open.map((a) => {
           const level = a.levels[a.currentLevel];
+          const who = level.approverStaffId ? level.label : `${level.label} (${levelHolders(level.capability).join(' / ')})`;
           return (
-            <InlineAlert key={a.id} tone="warning" title={`${approvalTypeLabel(a.type)} pending (${a.id})`}>
-              Level {a.currentLevel + 1} of {a.levels.length}: {level.approverStaffId ? level.label : `${level.label} (${levelHolders(level.capability).join(' / ')})`}. Requested by {getUser(a.requestedBy)?.name}.{a.reason ? ` “${a.reason}”` : ''}
+            <InlineAlert key={a.id} tone="warning" title={B.pending(approvalTypeLabel(a.type), a.id)}>
+              {B.pendingBody(O.record.level(a.currentLevel + 1, a.levels.length, who), getUser(a.requestedBy)?.name ?? a.requestedBy, a.reason)}
             </InlineAlert>
           );
         })}
       </>
     );
-  if (record.status === 'on_hold') return <InlineAlert tone="danger" title="On hold">{String(record.holdReason ?? '')}</InlineAlert>;
-  if (record.status === 'cancelled') return <InlineAlert tone="info" title="Cancelled">{String(record.cancelReason ?? '')}</InlineAlert>;
+  if (record.status === 'on_hold')
+    return (
+      <InlineAlert tone="danger" title={B.hold}>
+        {String(record.holdReason ?? '')}
+      </InlineAlert>
+    );
+  if (record.status === 'cancelled')
+    return (
+      <InlineAlert tone="info" title={B.cancelled}>
+        {String(record.cancelReason ?? '')}
+      </InlineAlert>
+    );
   const last = approvals[0];
   if (record.status === 'pending_approval' && last?.status === 'rejected')
     return (
-      <InlineAlert tone="danger" title={`Rejected by ${getUser(last.decidedBy ?? '')?.name ?? 'approver'}`}>
-        {last.decisionNote || 'No note.'} Edit the order if needed and submit again.
+      <InlineAlert tone="danger" title={B.rejectedBy(getUser(last.decidedBy ?? '')?.name ?? B.approver)}>
+        {last.decisionNote || B.noNote} {B.resubmit}
       </InlineAlert>
     );
-  if (record.status === 'pending_approval') return <InlineAlert tone="info" title="Not submitted">No approval request is open. Submit the order for approval.</InlineAlert>;
+  if (record.status === 'pending_approval')
+    return (
+      <InlineAlert tone="info" title={B.notSubmitted}>
+        {B.notSubmittedBody}
+      </InlineAlert>
+    );
   return null;
 }
 
-/** On a dispatch record: confirm delivery. */
+/** On a dispatch record: Confirm Delivery. */
 export function DispatchActions({ actor, record }: RecordExtensionProps) {
   const [open, setOpen] = useState(false);
   if (record.status !== 'in_transit') return null;
   return (
     <>
-      <Button variant="primary" onClick={() => setOpen(true)} disabledReason={can(actor, 'orders.dispatch') ? undefined : 'Import/SCM or a coordinator confirms deliveries'}>
-        Confirm delivery
+      <Button variant="primary" onClick={() => setOpen(true)} disabledReason={can(actor, 'orders.dispatch') ? undefined : O.disabled.deliveries}>
+        {D.actions.confirmDelivery}
       </Button>
       {open && <ConfirmDeliveryDialog dispatch={record} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-/** On a milestone record: record an ERP receipt. */
+/** On a payment milestone record: record an ERP receipt. */
 export function MilestoneActions({ actor, record }: RecordExtensionProps) {
   const [open, setOpen] = useState(false);
   if (record.status === 'received') return null;
   return (
     <>
-      <Button variant="primary" onClick={() => setOpen(true)} disabledReason={can(actor, 'orders.receipts') ? undefined : 'Accounts records ERP receipts'}>
-        Record receipt
+      <Button variant="primary" onClick={() => setOpen(true)} disabledReason={can(actor, 'orders.receipts') ? undefined : O.disabled.receipts}>
+        {O.actions.recordReceipt}
       </Button>
       {open && <ReceiptDialog milestone={record} onClose={() => setOpen(false)} />}
     </>

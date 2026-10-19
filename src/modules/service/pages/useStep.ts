@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { call, errorMessage } from '../../../services/api/client';
 import { isOffline, pendingWrites, runOrQueue, subscribeOffline } from '../../../services/offline';
 import { useToast } from '../../../components/primitives/feedback';
+import { L } from '../../../constants/labels';
 
 /** Offline state for field pages (NFR-15). */
 export function useOffline() {
@@ -20,7 +21,7 @@ export function useStep() {
   const run = async (label: string, op: () => unknown, ok: string) => {
     if (isOffline()) {
       runOrQueue(label, () => void op());
-      toast(`${label}: saved on this device — it syncs when you are back online`, 'info');
+      toast(L.service.toasts.queued(label), 'info');
       return true;
     }
     setBusy(label);

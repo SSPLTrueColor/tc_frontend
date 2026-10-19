@@ -1,4 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { L } from '../../constants/labels';
+import { recordPeekPath } from '../../lib/routes';
 import { formatDate } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
@@ -13,26 +15,28 @@ import { EmptyState, ErrorState, Skeleton } from '../../components/primitives/fe
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 
+const C = L.quotations.compare;
+const F = L.quotations.fields.quotations;
 const HEADER: [string, string, (r: RecordData) => string][] = [
-  ['status', 'Status', (r) => masterLabel('quoteStatus', r.status)],
-  ['quoteDate', 'Quotation date', (r) => formatDate(String(r.quoteDate))],
-  ['validUntil', 'Valid until', (r) => formatDate(String(r.validUntil))],
-  ['placeOfSupply', 'Place of supply', (r) => masterLabel('state', r.placeOfSupply)],
-  ['subtotal', 'Gross value', (r) => formatMoney(Number(r.subtotal) || 0)],
-  ['discountTotal', 'Discount', (r) => formatMoney(Number(r.discountTotal) || 0)],
-  ['maxDiscountPct', 'Highest discount', (r) => `${Number(r.maxDiscountPct) || 0}%`],
-  ['freight', 'Freight', (r) => formatMoney(Number(r.freight) || 0)],
-  ['insurance', 'Insurance', (r) => formatMoney(Number(r.insurance) || 0)],
-  ['grandTotal', 'Total', (r) => formatMoney(Number(r.grandTotal) || 0)],
-  ['paymentTerms', 'Payment terms', (r) => String(r.paymentTerms ?? '')],
-  ['deliveryTerms', 'Delivery', (r) => String(r.deliveryTerms ?? '')],
-  ['warrantyTerms', 'Warranty', (r) => String(r.warrantyTerms ?? '')],
+  ['status', F.status, (r) => masterLabel('quoteStatus', r.status)],
+  ['quoteDate', F.quoteDate, (r) => formatDate(String(r.quoteDate))],
+  ['validUntil', F.validUntil, (r) => formatDate(String(r.validUntil))],
+  ['placeOfSupply', F.placeOfSupply, (r) => masterLabel('state', r.placeOfSupply)],
+  ['subtotal', F.subtotal, (r) => formatMoney(Number(r.subtotal) || 0)],
+  ['discountTotal', F.discountTotal, (r) => formatMoney(Number(r.discountTotal) || 0)],
+  ['maxDiscountPct', C.highestDiscount, (r) => `${Number(r.maxDiscountPct) || 0}%`],
+  ['freight', F.freight, (r) => formatMoney(Number(r.freight) || 0)],
+  ['insurance', F.insurance, (r) => formatMoney(Number(r.insurance) || 0)],
+  ['grandTotal', C.total, (r) => formatMoney(Number(r.grandTotal) || 0)],
+  ['paymentTerms', F.paymentTerms, (r) => String(r.paymentTerms ?? '')],
+  ['deliveryTerms', C.delivery, (r) => String(r.deliveryTerms ?? '')],
+  ['warrantyTerms', F.warrantyTerms, (r) => String(r.warrantyTerms ?? '')],
 ];
 
-const lineText = (l?: QuoteLine) => (l ? `${l.qty} × ${formatMoney(l.listPrice)} − ${formatMoney(lineAmounts(l).discount)} = ${formatMoney(lineAmounts(l).net)} · GST ${l.gstRate}%` : '');
+const lineText = (l?: QuoteLine) => (l ? `${l.qty} × ${formatMoney(l.listPrice)} − ${formatMoney(lineAmounts(l).discount)} = ${formatMoney(lineAmounts(l).net)} · ${L.quotations.lineTable.gst} ${l.gstRate}%` : '');
 
-/** /quotations/:recordId/compare?with=<id> — side-by-side revisions (FR-043). */
-export function QuoteComparePage() {
+/** ROUTES.quotationCompare (?with=<id>) — Compare Versions side by side (FR-043). */
+export function CompareVersionsPage() {
   const { recordId = '' } = useParams();
   const [params, setParams] = useSearchParams();
   const actor = useActor();
@@ -41,12 +45,12 @@ export function QuoteComparePage() {
   const idx = revs.findIndex((r) => r.id === recordId);
   const withId = params.get('with') ?? (idx > 0 ? revs[idx - 1].id : revs.find((r) => r.id !== recordId)?.id ?? '');
   const other = useServiceQuery(() => (withId ? getQuote(actor, withId) : null), [withId, actor.user.id]);
-  const title = base.data ? `Compare ${String(base.data.record.quoteNo).replace(/-R\d+$/, '')}` : 'Compare revisions';
+  const title = base.data ? C.title(String(base.data.record.quoteNo).replace(/-R\d+$/, '')) : L.nav.pages.quotationCompare.title;
   if (base.error || other.error)
     return (
       <div className="page">
         <PageHeader title={title} />
-        <ErrorState title="Could not load the revisions" onRetry={() => (base.retry(), other.retry())}>
+        <ErrorState title={C.loadError} onRetry={() => (base.retry(), other.retry())}>
           {base.error ?? other.error}
         </ErrorState>
       </div>
@@ -62,26 +66,24 @@ export function QuoteComparePage() {
     return (
       <div className="page">
         <PageHeader title={title} />
-        <EmptyState icon="columns" title="Only one revision">
-          Revise the quotation to create R1, then compare. <Link to={`/quotations?peek=${recordId}`}>Back to quotation</Link>
+        <EmptyState icon="columns" title={C.onlyOne}>
+          {C.onlyOneBody} <Link to={recordPeekPath('tc', 'quotations', recordId)}>{L.quotations.actions.backToQuotation}</Link>
         </EmptyState>
       </div>
     );
-  // Older revision on the left.
+  // Older version on the left.
   const [a, b] = Number(other.data.record.revision) <= Number(base.data.record.revision) ? [other.data, base.data] : [base.data, other.data];
   const diff = compareLines(a.lines, b.lines);
   const opts = revs.filter((r) => r.id !== recordId).map((r) => ({ value: r.id, label: `R${Number(r.revision) || 0} · ${masterLabel('quoteStatus', r.status)}` }));
   return (
     <div className="page">
-      <PageHeader title={title} description="Older revision on the left, newer on the right. Changed values are highlighted." />
+      <PageHeader title={title} description={C.description} />
       <div className="toolbar">
-        <span className="muted small">
-          Comparing R{Number(base.data.record.revision) || 0} with
-        </span>
-        <SelectMenu label="Compare with revision" value={withId} options={opts} onChange={(v) => setParams({ with: v })} />
+        <span className="muted small">{C.comparing(Number(base.data.record.revision) || 0)}</span>
+        <SelectMenu label={C.compareWith} value={withId} options={opts} onChange={(v) => setParams({ with: v })} />
         <span className="spacer" />
-        <Link className="link small" to={`/quotations?peek=${recordId}`}>
-          Back to quotation
+        <Link className="link small" to={recordPeekPath('tc', 'quotations', recordId)}>
+          {L.quotations.actions.backToQuotation}
         </Link>
       </div>
       <section className="panel">
@@ -89,7 +91,7 @@ export function QuoteComparePage() {
           <table className="mini-table qt-compare">
             <thead>
               <tr>
-                <th scope="col">Field</th>
+                <th scope="col">{C.field}</th>
                 <th scope="col">{String(a.record.quoteNo)}</th>
                 <th scope="col">{String(b.record.quoteNo)}</th>
               </tr>
@@ -111,13 +113,13 @@ export function QuoteComparePage() {
         </div>
       </section>
       <section className="panel">
-        <h2 className="panel-title">Line items</h2>
+        <h2 className="panel-title">{C.lineItems}</h2>
         <div className="table-scroll">
           <table className="mini-table qt-compare">
             <thead>
               <tr>
-                <th scope="col">Item</th>
-                <th scope="col">Change</th>
+                <th scope="col">{L.quotations.lineTable.item}</th>
+                <th scope="col">{C.change}</th>
                 <th scope="col">{String(a.record.quoteNo)}</th>
                 <th scope="col">{String(b.record.quoteNo)}</th>
               </tr>
@@ -127,7 +129,7 @@ export function QuoteComparePage() {
                 <tr key={row.key} className={cx(row.state !== 'same' && 'qt-changed')}>
                   <th scope="row">{(row.b ?? row.a)?.description}</th>
                   <td>
-                    <span className={`tag tone-${row.state === 'added' ? 'success' : row.state === 'removed' ? 'danger' : row.state === 'changed' ? 'warning' : 'neutral'}`}>{row.state === 'same' ? 'Unchanged' : row.state[0].toUpperCase() + row.state.slice(1)}</span>
+                    <span className={`tag tone-${row.state === 'added' ? 'success' : row.state === 'removed' ? 'danger' : row.state === 'changed' ? 'warning' : 'neutral'}`}>{C.state[row.state]}</span>
                   </td>
                   <td>{lineText(row.a) || <EmptyValue />}</td>
                   <td>{lineText(row.b) || <EmptyValue />}</td>
@@ -136,7 +138,7 @@ export function QuoteComparePage() {
             </tbody>
           </table>
         </div>
-        {b.record.revisionNote ? <p className="muted small">Revision note: {String(b.record.revisionNote)}</p> : null}
+        {b.record.revisionNote ? <p className="muted small">{C.versionNote(String(b.record.revisionNote))}</p> : null}
       </section>
     </div>
   );

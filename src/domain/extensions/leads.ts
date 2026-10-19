@@ -8,6 +8,7 @@ import { patchRecordIn } from '../../services/runtime';
 import { isSignedIn } from '../../services/session';
 import { ServiceError } from '../../services/types';
 import { injectLeadDeps } from '../modules/leads/computed';
+import { L } from '../../constants/labels';
 import { ownerDivisionError, resolveOwner, sweepLeads } from '../../services/leads/rules';
 import { registerRecordActions, registerRecordBanner } from '../../components/resource/extensions';
 import { LeadActions, LeadBanner } from '../../modules/leads/LeadActions';
@@ -39,7 +40,7 @@ registerResourceHooks('leads', {
     if (customer && !c.industry) c.industry = customer.industry;
   },
   beforeUpdate: (ctx, before, c) => {
-    if (before.status === 'qualified') throw new ServiceError('invalid_state', `Qualified leads are read-only — continue on opportunity ${before.opportunityId ?? ''}.`.trim());
+    if (before.status === 'qualified') throw new ServiceError('invalid_state', L.leads.errors.qualifiedReadOnly(String(before.opportunityId ?? '')));
     if (c.ownerId !== before.ownerId || c.divisionId !== before.divisionId) {
       const err = ownerDivisionError(ctx.d, c.ownerId, c.divisionId);
       if (err) throw new ServiceError('validation', err, { fieldErrors: { ownerId: err } });
@@ -50,7 +51,7 @@ registerResourceHooks('leads', {
     if (!rec.firstContactAt) rec.firstContactAt = nowLocal();
     rec.disqualifyReason = null;
     rec.nurtureUntil = null;
-    if (!rec.nextFollowUpAt || String(rec.nextFollowUpAt) < todayKey()) throw new ServiceError('validation', 'Set a next follow-up date (today or later) before changing the status — edit the lead or log an activity.', { fieldErrors: { nextFollowUpAt: 'Required' } });
+    if (!rec.nextFollowUpAt || String(rec.nextFollowUpAt) < todayKey()) throw new ServiceError('validation', L.leads.errors.followUpRequired, { fieldErrors: { nextFollowUpAt: L.leads.errors.required } });
   },
 });
 
@@ -63,7 +64,7 @@ registerResourceHooks('activities', {
     const patch: Record<string, unknown> = {};
     if (!lead.firstContactAt) patch.firstContactAt = a.at;
     if (lead.status === 'new') patch.status = 'contacted';
-    if (Object.keys(patch).length) patchRecordIn(ctx, 'leads', lead.id, patch, lead.status === 'new' ? `First contact logged (${a.id}): New → Contacted` : `First contact logged (${a.id})`);
+    if (Object.keys(patch).length) patchRecordIn(ctx, 'leads', lead.id, patch, L.leads.messages.firstContact(a.id, lead.status === 'new'));
   },
 });
 

@@ -22,6 +22,6 @@ export interface SeedContext {
   base: (daysAgo?: number, createdBy?: string) => Pick<RecordData, 'workspaceId' | 'version' | 'createdAt' | 'updatedAt' | 'createdBy'>;
   /** Next id for a resource, matching the runtime's series ("C-1001" or "LD-2627-00001"). */
   nextId: (resKey: string, prefix: string, format?: 'seq' | 'fy', at?: Date) => string;
-  /** Employee id of a demo user. */
+  /** User record id of a demo user. */
   staff: (userId: string) => string;
 }

@@ -1,18 +1,25 @@
-import { Navigate } from 'react-router-dom';
+import { ROUTES } from '../../constants/routes';
 import type { AppRoute } from '../types';
+import { CustomFieldsPage } from '../../pages/AdminPages';
 import { ImportExportPage } from './ImportExportPage';
 import { IntegrationsPage } from './IntegrationsPage';
 import { OrganisationPage } from './OrganisationPage';
-import { PoliciesPage } from './PoliciesPage';
+import { ConfigurableRulesPage, SlaMatrixPage, WorkflowsPage } from './PolicyPages';
 import { RecycleBinPage } from './RecycleBinPage';
 import './catalog.css';
 
-/** Catalog & administration pages (resource lists — products, price lists, templates — are routed automatically). */
+/**
+ * Administration pages (BRD 4.14). Product & Price Master and Notification Templates are resource lists,
+ * routed automatically under /admin/<slug>. Masters, Roles & Permissions, Audit Trail, Sent Messages and
+ * Demo Settings are registered in App.tsx.
+ */
 export const routes: AppRoute[] = [
-  { path: '/admin/organisation', element: <OrganisationPage /> },
-  { path: '/admin/policies', element: <PoliciesPage /> },
-  { path: '/admin/import-export', element: <ImportExportPage /> },
-  { path: '/admin/integrations', element: <IntegrationsPage /> },
-  { path: '/admin/recycle-bin', element: <RecycleBinPage /> },
-  { path: '/admin/notification-templates', element: <Navigate to="/notificationTemplates" replace /> },
+  { path: ROUTES.organisationHierarchy, element: <OrganisationPage /> },
+  { path: ROUTES.customFields, element: <CustomFieldsPage /> },
+  { path: ROUTES.workflows, element: <WorkflowsPage /> },
+  { path: ROUTES.slaMatrix, element: <SlaMatrixPage /> },
+  { path: ROUTES.configurableRules, element: <ConfigurableRulesPage /> },
+  { path: ROUTES.bulkImportExport, element: <ImportExportPage /> },
+  { path: ROUTES.integrations, element: <IntegrationsPage /> },
+  { path: ROUTES.recycleBin, element: <RecycleBinPage /> },
 ];

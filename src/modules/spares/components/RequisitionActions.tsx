@@ -4,6 +4,7 @@ import { InlineAlert, useToast } from '../../../components/primitives/feedback';
 import { Dialog } from '../../../components/primitives/overlay';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import type { RecordExtensionProps } from '../../../components/resource/extensions';
+import { L } from '../../../constants/labels';
 import { formatMoney } from '../../../lib/format';
 import { errorMessage } from '../../../services/api/client';
 import * as api from '../../../services/api/spares';
@@ -14,7 +15,10 @@ import { ServiceError } from '../../../services/types';
 
 type Mode = 'reject' | 'issue' | 'consume' | 'return' | 'claim' | null;
 
-/** Data-capturing requisition actions (SPR-03/04/05): reject, issue, consume, return, defective receipt, OEM claim. */
+const A = L.spares.actions;
+const D = L.spares.dialogs;
+
+/** Data-capturing Spares Requisition actions (SPR-03/04/05): reject, issue, consume, return, defective receipt, warranty claim (OEM). */
 export function RequisitionActions({ res, actor, record }: RecordExtensionProps) {
   const [mode, setMode] = useState<Mode>(null);
   const [busy, setBusy] = useState(false);
@@ -27,7 +31,7 @@ export function RequisitionActions({ res, actor, record }: RecordExtensionProps)
     setBusy(true);
     try {
       await api.receiveDefective(actor, record.id, record.version);
-      toast(`Defective ${part?.partNo ?? 'part'} received at store`);
+      toast(D.defectiveOk(String(part?.partNo ?? D.part)));
     } catch (e) {
       toast(errorMessage(e), 'danger');
     } finally {
@@ -38,35 +42,35 @@ export function RequisitionActions({ res, actor, record }: RecordExtensionProps)
   return (
     <>
       {status === 'requested' && can(actor, 'approve.service') && (
-        <Button onClick={() => setMode('reject')} disabledReason={record.engineerId === actor.staffId ? 'Separation of duties: you raised this requisition' : undefined}>
-          Reject
+        <Button onClick={() => setMode('reject')} disabledReason={record.engineerId === actor.staffId ? D.separation : undefined}>
+          {A.reject}
         </Button>
       )}
       {status === 'approved' && can(actor, 'spares.issue') && (
-        <Button variant="primary" icon="send" onClick={() => setMode('issue')} disabledReason={part && Number(part.stockMain ?? 0) < 1 ? 'No stock in the main store — see Stock alerts' : undefined}>
-          Issue part
+        <Button variant="primary" icon="send" onClick={() => setMode('issue')} disabledReason={part && Number(part.stockMain ?? 0) < 1 ? D.noStock : undefined}>
+          {A.issue}
         </Button>
       )}
       {status === 'received' && mayUpdate && (
         <>
           <Button variant="primary" onClick={() => setMode('consume')}>
-            Record consumption
+            {A.recordConsumption}
           </Button>
-          <Button onClick={() => setMode('return')}>Return unused</Button>
+          <Button onClick={() => setMode('return')}>{A.returnUnused}</Button>
         </>
       )}
       {status === 'consumed' && record.defectiveReturn === 'pending' && can(actor, 'spares.issue') && (
         <Button loading={busy} onClick={defectiveReceived}>
-          Defective part received
+          {A.defectiveReceived}
         </Button>
       )}
       {status === 'consumed' && record.basis === 'warranty' && actor.role.resources.warrantyClaims?.create && (
         <Button icon="shield" onClick={() => setMode('claim')}>
-          Raise OEM claim
+          {A.raiseClaim}
         </Button>
       )}
-      {mode === 'reject' && <ReasonDialog title={`Reject ${record.id}?`} description="The engineer is notified with your reason. The ticket goes back to “In progress” if no other part is pending." label="Reason" danger confirm="Reject requisition" onClose={() => setMode(null)} onSubmit={(reason) => api.rejectRequisition(actor, record.id, reason, record.version).then(() => toast(`${record.id} rejected`))} />}
-      {mode === 'return' && <ReasonDialog title={`Return ${record.id} unused?`} description="The part goes back to main-store stock and the requisition closes as Returned." label="Why is it not needed?" confirm="Return to store" onClose={() => setMode(null)} onSubmit={(reason) => api.returnRequisition(actor, record.id, reason, record.version).then(() => toast(`${record.id} returned to store`))} />}
+      {mode === 'reject' && <ReasonDialog title={D.rejectTitle(record.id)} description={D.rejectBody} label={D.rejectLabel} danger confirm={D.rejectConfirm} onClose={() => setMode(null)} onSubmit={(reason) => api.rejectRequisition(actor, record.id, reason, record.version).then(() => toast(D.rejected(record.id)))} />}
+      {mode === 'return' && <ReasonDialog title={D.returnTitle(record.id)} description={D.returnBody} label={D.returnLabel} confirm={A.returnToStore} onClose={() => setMode(null)} onSubmit={(reason) => api.returnRequisition(actor, record.id, reason, record.version).then(() => toast(D.returned(record.id)))} />}
       {mode === 'issue' && <IssueDialog props={{ res, actor, record }} stock={Number(part?.stockMain ?? 0)} onClose={() => setMode(null)} />}
       {mode === 'consume' && <ConsumeDialog props={{ res, actor, record }} returnable={!!part?.returnable} warrantyAllowed={part?.warrantyApplicable !== false} onClose={() => setMode(null)} />}
       {mode === 'claim' && <ClaimDialog props={{ res, actor, record }} onClose={() => setMode(null)} />}
@@ -113,7 +117,7 @@ function ReasonDialog({ title, description, label, confirm, danger, onClose, onS
       footer={
         <>
           <Button onClick={onClose} data-autofocus={danger || undefined}>
-            Cancel
+            {A.cancel}
           </Button>
           <Button variant={danger ? 'danger' : 'primary'} loading={busy} onClick={() => run(() => onSubmit(reason))}>
             {confirm}
@@ -144,41 +148,41 @@ function IssueDialog({ props, stock, onClose }: { props: RecordExtensionProps; s
       open
       onClose={onClose}
       size="sm"
-      title={`Issue ${record.id}`}
-      description="Stock is reduced in the main store and the engineer is notified to acknowledge receipt."
+      title={D.issueTitle(record.id)}
+      description={D.issueBody}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={() => run(() => api.issueRequisition(actor, record.id, { issuedQty: Number(qty), courier, docketNo: docket }, record.version).then(() => toast(`${record.id} issued`)))}>
-            Issue part
+          <Button onClick={onClose}>{A.cancel}</Button>
+          <Button variant="primary" loading={busy} onClick={() => run(() => api.issueRequisition(actor, record.id, { issuedQty: Number(qty), courier, docketNo: docket }, record.version).then(() => toast(D.issued(record.id))))}>
+            {A.issue}
           </Button>
         </>
       }
     >
       <div className="form-grid">
         {stock < Number(record.qty) && (
-          <InlineAlert tone="warning" title="Short at main store">
-            Requested {String(record.qty)}, in stock {stock}. Issue what is available; SCM sees the import requirement.
+          <InlineAlert tone="warning" title={L.spares.banners.shortTitle}>
+            {D.issueShort(String(record.qty), stock)}
           </InlineAlert>
         )}
         <div className="form-field">
           <label className="field-label" htmlFor="iss-qty">
-            Quantity to issue <span className="req">*</span>
+            {D.issueQty} <span className="req">*</span>
           </label>
           <input id="iss-qty" className="input" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.issuedQty || undefined} data-autofocus />
-          <p className="muted small">Requested {String(record.qty)} · in stock {stock}</p>
+          <p className="muted small">{D.issueQtyHint(String(record.qty), stock)}</p>
           <Err msg={errors.issuedQty} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="iss-courier">
-            Courier / mode <span className="req">*</span>
+            {D.courier} <span className="req">*</span>
           </label>
-          <input id="iss-courier" className="input" maxLength={60} placeholder="e.g. Blue Dart, hand delivery" value={courier} onChange={(e) => setCourier(e.target.value)} aria-invalid={!!errors.courier || undefined} />
+          <input id="iss-courier" className="input" maxLength={60} placeholder={D.courierPlaceholder} value={courier} onChange={(e) => setCourier(e.target.value)} aria-invalid={!!errors.courier || undefined} />
           <Err msg={errors.courier} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="iss-docket">
-            Docket / challan no. <span className="req">*</span>
+            {D.docket} <span className="req">*</span>
           </label>
           <input id="iss-docket" className="input" maxLength={40} value={docket} onChange={(e) => setDocket(e.target.value)} aria-invalid={!!errors.docketNo || undefined} />
           <Err msg={errors.docketNo} />
@@ -203,13 +207,13 @@ function ConsumeDialog({ props, returnable, warrantyAllowed, onClose }: { props:
       open
       onClose={onClose}
       size="sm"
-      title={`Record consumption · ${record.id}`}
-      description="Records the part against the ticket and machine. Unused quantity goes back to store stock."
+      title={D.consumeTitle(record.id)}
+      description={D.consumeBody}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={() => run(() => api.recordConsumption(actor, record.id, { consumedQty: Number(qty), basis, defectiveReturned: returned }, record.version).then(() => toast(`${record.id} consumption recorded`)))}>
-            Save consumption
+          <Button onClick={onClose}>{A.cancel}</Button>
+          <Button variant="primary" loading={busy} onClick={() => run(() => api.recordConsumption(actor, record.id, { consumedQty: Number(qty), basis, defectiveReturned: returned }, record.version).then(() => toast(D.consumed(record.id))))}>
+            {A.saveConsumption}
           </Button>
         </>
       }
@@ -217,32 +221,29 @@ function ConsumeDialog({ props, returnable, warrantyAllowed, onClose }: { props:
       <div className="form-grid">
         <div className="form-field">
           <label className="field-label" htmlFor="con-qty">
-            Quantity used <span className="req">*</span>
+            {D.consumeQty} <span className="req">*</span>
           </label>
           <input id="con-qty" className="input" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.consumedQty || undefined} data-autofocus />
-          <p className="muted small">
-            Issued {issued}
-            {unitPrice ? ` · value ${formatMoney(unitPrice * (Number(qty) || 0))}` : ''}
-          </p>
+          <p className="muted small">{D.consumeHint(issued, unitPrice ? formatMoney(unitPrice * (Number(qty) || 0)) : '')}</p>
           <Err msg={errors.consumedQty} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="con-basis">
-            Basis <span className="req">*</span>
+            {L.spares.fields.requisitions.basis} <span className="req">*</span>
           </label>
           <SelectMenu
             id="con-basis"
             block
-            label="Basis"
+            label={L.spares.fields.requisitions.basis}
             value={basis}
-            options={activeMasterValues('partBasis').map((v) => ({ value: v.key, label: v.key === 'warranty' && !warrantyAllowed ? `${v.label} (not covered)` : v.label, disabled: v.key === 'warranty' && !warrantyAllowed }))}
+            options={activeMasterValues('partBasis').map((v) => ({ value: v.key, label: v.key === 'warranty' && !warrantyAllowed ? D.notCovered(v.label) : v.label, disabled: v.key === 'warranty' && !warrantyAllowed }))}
             onChange={setBasis}
           />
           <Err msg={errors.basis} />
         </div>
         {returnable && (
           <label className="check">
-            <input type="checkbox" checked={returned} onChange={(e) => setReturned(e.target.checked)} /> Defective part handed back to the store already
+            <input type="checkbox" checked={returned} onChange={(e) => setReturned(e.target.checked)} /> {D.handedBack}
           </label>
         )}
         <Err msg={errors.form} />
@@ -261,22 +262,22 @@ function ClaimDialog({ props, onClose }: { props: RecordExtensionProps; onClose:
       open
       onClose={onClose}
       size="sm"
-      title={`Raise OEM warranty claim for ${record.id}`}
-      description="Creates a claim with the part, quantity and value from this requisition. Add the OEM claim number when it arrives."
+      title={D.claimTitle(record.id)}
+      description={D.claimBody}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={() => run(() => api.raiseClaimFromRequisition(actor, record.id, oem).then((c) => toast(`Claim ${(c as { id: string }).id} raised`)))}>
-            Raise claim
+          <Button onClick={onClose}>{A.cancel}</Button>
+          <Button variant="primary" loading={busy} onClick={() => run(() => api.raiseClaimFromRequisition(actor, record.id, oem).then((c) => toast(D.claimRaised((c as { id: string }).id))))}>
+            {A.raiseClaim}
           </Button>
         </>
       }
     >
       <div className="form-field">
         <label className="field-label" htmlFor="claim-oem">
-          OEM / principal <span className="req">*</span>
+          {L.spares.fields.warrantyClaims.oem} <span className="req">*</span>
         </label>
-        <SelectMenu id="claim-oem" block label="OEM / principal" placeholder="Choose OEM" value={oem} options={activeMasterValues('oem').map((v) => ({ value: v.key, label: v.label }))} onChange={setOem} />
+        <SelectMenu id="claim-oem" block label={L.spares.fields.warrantyClaims.oem} placeholder={D.chooseOem} value={oem} options={activeMasterValues('oem').map((v) => ({ value: v.key, label: v.label }))} onChange={setOem} />
         <Err msg={errors.oem ?? errors.form} />
       </div>
     </Dialog>

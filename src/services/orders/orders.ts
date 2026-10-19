@@ -3,6 +3,7 @@
  * logic; pages call it through src/services/api/orders.ts. Every write is one commit, audited.
  */
 import { appPack } from '../../domain/pack';
+import { L } from '../../constants/labels';
 import { addDays, todayKey } from '../../lib/dates';
 import { nowIso } from '../../lib/clock';
 import { fyLabel } from '../../lib/fy';
@@ -17,11 +18,15 @@ import { queueMessage } from '../outbox';
 import { getPolicies } from '../policies';
 import type { HookContext } from '../resourceHooks';
 import { getResource } from '../registry';
-import { insertRecordIn, patchRecordIn } from '../runtime';
+import { insertRecordIn, patchRecordIn, updateRecord } from '../runtime';
 import { type Approval, type ApprovalLevel, type Db, ServiceError } from '../types';
 import { requestApprovalIn } from '../workflow';
 import { computeTotals, describeDiff, diffLines, type LineDiff, type OrderTotals, type QuoteLine } from './lines';
-import { SO_BEFORE_DISPATCH } from '../../domain/modules/orders';
+import { CUSTOMS_STATUSES, SO_BEFORE_DISPATCH, SO_PROCESSING_STATUSES } from '../../domain/modules/orders';
+
+const E = L.orders.errors;
+const N = L.orders.notices;
+const statusLabel = (key: unknown) => (L.orders.masters.soStatus.values as Record<string, string>)[String(key)] ?? String(key);
 
 export const SO = 'salesOrders';
 export const APPROVAL = 'salesOrder.approval';
@@ -41,12 +46,12 @@ export const linesOf = (r: RecordData | undefined): QuoteLine[] => ((r?.lines as
 export function getOrder(actor: Actor, id: string): RecordData {
   const res = getResource(SO);
   const r = rows(getDb(), SO).find((x) => x.id === id);
-  if (!r || !canReadRecord(actor, res, r)) throw new ServiceError('not_found', `Sales order ${id} was not found or you do not have access.`);
+  if (!r || !canReadRecord(actor, res, r)) throw new ServiceError('not_found', E.notFound(id));
   return r;
 }
 
 function requireUpdatable(actor: Actor, r: RecordData) {
-  if (!canUpdateRecord(actor, getResource(SO), r)) throw new ServiceError('forbidden', `Your role (${actor.role.label}) cannot change sales order ${r.orderNo ?? r.id}.`);
+  if (!canUpdateRecord(actor, getResource(SO), r)) throw new ServiceError('forbidden', E.cannotChange(actor.role.label, String(r.orderNo ?? r.id)));
 }
 
 export const milestonesOf = (d: Db, orderId: string) => rows(d, 'paymentMilestones').filter((m) => m.salesOrderId === orderId).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
@@ -93,13 +98,13 @@ export function orderView(actor: Actor, id: string): OrderView {
 
 /** Why a quotation cannot become a sales order — or null when it can. */
 export function quotationBlocker(d: Db, q: RecordData | undefined): string | null {
-  if (!q) return 'Quotation not found.';
-  if (q.status !== 'accepted') return `Only accepted quotations can become sales orders (this one is “${String(q.status).replace(/_/g, ' ')}”).`;
-  if (q.isLatest === false) return 'Only the latest revision of a quotation can be used (BR-18).';
+  if (!q) return E.quotationNotFound;
+  if (q.status !== 'accepted') return E.quotationNotAccepted(String(q.status).replace(/_/g, ' '));
+  if (q.isLatest === false) return E.quotationNotLatest;
   const opp = q.opportunityId ? rows(d, 'opportunities').find((o) => o.id === q.opportunityId) : undefined;
-  if (opp && opp.stage !== 'won') return `The opportunity ${opp.id} is not marked Won yet. Mark it Won first.`;
+  if (opp && opp.stage !== 'won') return E.opportunityNotWon(opp.id);
   const existing = rows(d, SO).find((o) => o.quotationId === q.id && o.status !== 'cancelled');
-  if (existing) return `Sales order ${existing.orderNo ?? existing.id} already exists for this quotation.`;
+  if (existing) return E.orderExists(String(existing.orderNo ?? existing.id));
   return null;
 }
 
@@ -165,9 +170,9 @@ function kindOf(lines: QuoteLine[]): 'machine' | 'consumables' {
 
 export function draftFromQuotation(actor: Actor, quotationId: string): OrderDraft {
   const d = getDb();
-  if (!hasResource('quotations')) throw new ServiceError('not_found', 'Quotations are not available yet.');
+  if (!hasResource('quotations')) throw new ServiceError('not_found', E.quotationsUnavailable);
   const q = rows(d, 'quotations').find((x) => x.id === quotationId);
-  if (!q || !canReadRecord(actor, getResource('quotations'), q)) throw new ServiceError('not_found', `Quotation ${quotationId} was not found or you do not have access.`);
+  if (!q || !canReadRecord(actor, getResource('quotations'), q)) throw new ServiceError('not_found', E.quotationNotFoundId(quotationId));
   const lines = linesOf(q);
   const customer = byId('customers', q.customerId);
   const placeOfSupply = String(q.placeOfSupply ?? customer?.billingState ?? getPolicies().companyGstState);
@@ -180,7 +185,7 @@ export function draftFromQuotation(actor: Actor, quotationId: string): OrderDraf
     ownerId: String(q.ownerId ?? actor.staffId),
     placeOfSupply,
     lines,
-    priceSource: lines.map(() => 'Accepted quotation'),
+    priceSource: lines.map(() => L.orders.lines.priceSource.quotation),
     freight: Number(q.freight) || 0,
     insurance: Number(q.insurance) || 0,
     totals: computeTotals(lines, placeOfSupply, Number(q.freight) || 0, Number(q.insurance) || 0),
@@ -197,21 +202,21 @@ export function draftFromQuotation(actor: Actor, quotationId: string): OrderDraf
 /** CON-02: repeat a consumables order at today's rate contract (if any), else today's list price. */
 export function draftFromRepeat(actor: Actor, orderId: string): OrderDraft {
   const prev = getOrder(actor, orderId);
-  if (prev.orderKind !== 'consumables') throw new ServiceError('invalid_state', 'Only consumables orders can be repeated. Machine orders start from a quotation.');
+  if (prev.orderKind !== 'consumables') throw new ServiceError('invalid_state', E.onlyConsumablesRepeat);
   const today = todayKey();
   const priceSource: string[] = [];
   const lines = linesOf(prev).map((l) => {
     const rate = contractRateFor(String(prev.customerId), l.productId, today);
     const lp = listPriceFor(l.productId, today);
     if (rate !== null) {
-      priceSource.push('Rate contract');
+      priceSource.push(L.orders.lines.priceSource.rateContract);
       return { ...l, listPrice: rate, discountPct: 0, discountAmt: 0 };
     }
     if (lp) {
-      priceSource.push('Current price list');
+      priceSource.push(L.orders.lines.priceSource.priceList);
       return { ...l, listPrice: lp.listPrice };
     }
-    priceSource.push('Previous order price');
+    priceSource.push(L.orders.lines.priceSource.previous);
     return l;
   });
   const placeOfSupply = String(prev.placeOfSupply);
@@ -249,25 +254,25 @@ export interface PoInput {
 /** BR-21: PO number, PO date (not in the future) and PO copy are mandatory. */
 export function validatePo(po: PoInput): Record<string, string> {
   const e: Record<string, string> = {};
-  if (!po.customerPoNo?.trim()) e.customerPoNo = 'Customer PO number is required';
-  else if (po.customerPoNo.trim().length > 40) e.customerPoNo = 'At most 40 characters';
-  if (!po.customerPoDate) e.customerPoDate = 'Customer PO date is required';
-  else if (po.customerPoDate > todayKey()) e.customerPoDate = 'PO date cannot be in the future';
-  if (!po.poFileName?.trim()) e.poFileName = 'Attach the customer’s PO copy';
-  else if (!ALLOWED_PO.test(po.poFileName)) e.poFileName = 'Upload a PDF, JPG or PNG file';
-  else if ((po.poFileSize ?? 0) > getPolicies().maxFileMb * 1024 * 1024) e.poFileName = `File is larger than ${getPolicies().maxFileMb} MB`;
+  if (!po.customerPoNo?.trim()) e.customerPoNo = E.poRequired;
+  else if (po.customerPoNo.trim().length > 40) e.customerPoNo = E.maxChars(40);
+  if (!po.customerPoDate) e.customerPoDate = E.poDateRequired;
+  else if (po.customerPoDate > todayKey()) e.customerPoDate = E.poDateFuture;
+  if (!po.poFileName?.trim()) e.poFileName = E.poFileRequired;
+  else if (!ALLOWED_PO.test(po.poFileName)) e.poFileName = E.fileType;
+  else if ((po.poFileSize ?? 0) > getPolicies().maxFileMb * 1024 * 1024) e.poFileName = E.fileSize(getPolicies().maxFileMb);
   return e;
 }
 
 export function validateLines(lines: QuoteLine[]): string | null {
-  if (!lines.length) return 'Add at least one line.';
+  if (!lines.length) return E.addLine;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (!(Number(l.qty) > 0)) return `Line ${i + 1}: quantity must be greater than zero.`;
-    if (!(Number(l.listPrice) >= 0)) return `Line ${i + 1}: price cannot be negative.`;
+    if (!(Number(l.qty) > 0)) return E.lineQty(i + 1);
+    if (!(Number(l.listPrice) >= 0)) return E.linePrice(i + 1);
     const pct = Number(l.discountPct) || 0;
-    if (pct < 0 || pct > 100) return `Line ${i + 1}: discount must be between 0 and 100%.`;
-    if ((Number(l.discountAmt) || 0) > Number(l.qty) * Number(l.listPrice)) return `Line ${i + 1}: discount cannot exceed the line value.`;
+    if (pct < 0 || pct > 100) return E.lineDiscountRange(i + 1);
+    if ((Number(l.discountAmt) || 0) > Number(l.qty) * Number(l.listPrice)) return E.lineDiscountMax(i + 1);
   }
   return null;
 }
@@ -288,7 +293,7 @@ export function sanitizeLines(input: QuoteLine[], reference: QuoteLine[]): Quote
     if (ref) return { ...ref, qty, discountPct, discountAmt };
     const product = products.find((p) => p.id === l.productId);
     const price = listPriceFor(l.productId);
-    if (!product || !price) throw new ServiceError('validation', `Line ${i + 1}: no valid list price for this product today — it cannot be added.`);
+    if (!product || !price) throw new ServiceError('validation', E.lineNoPrice(i + 1));
     return {
       productId: l.productId,
       description: String(product.name),
@@ -306,10 +311,10 @@ export function sanitizeLines(input: QuoteLine[], reference: QuoteLine[]): Quote
 
 // ---------------------------------------------------------------- approval levels (FR-052 / BR-23)
 
-const MANAGER_LEVEL: ApprovalLevel = { capability: 'orders.approve.manager', label: 'Reporting manager (Sales manager)' };
-const L2: ApprovalLevel = { capability: 'approve.l2', label: 'Division head' };
-const L3: ApprovalLevel = { capability: 'approve.l3', label: 'Management (MD)' };
-const FINANCE: ApprovalLevel = { capability: 'approve.finance', label: 'Finance check (Accounts)' };
+const MANAGER_LEVEL: ApprovalLevel = { capability: 'orders.approve.manager', label: L.roles.approvalLevels[1] };
+const L2: ApprovalLevel = { capability: 'approve.l2', label: L.roles.approvalLevels[2] };
+const L3: ApprovalLevel = { capability: 'approve.l3', label: L.roles.approvalLevels[3] };
+const FINANCE: ApprovalLevel = { capability: 'approve.finance', label: L.orders.approvals.finance };
 
 /**
  * SO-04: the requester's direct reporting manager decides (pinned by employee id). Their role
@@ -344,19 +349,19 @@ function withdrawPending(ctx: HookContext, orderId: string, type: string, why: s
     .forEach((a) => {
       a.status = 'withdrawn';
       a.version++;
-      appendAudit(ctx.d, ctx.actor, { action: 'approval.withdrawn', actorType: 'workflow', resource: SO, recordId: orderId, summary: `Withdrew ${a.id}: ${why}`, correlationId: ctx.correlationId });
+      appendAudit(ctx.d, ctx.actor, { action: 'approval.withdrawn', actorType: 'workflow', resource: SO, recordId: orderId, summary: N.withdrew(a.id, why), correlationId: ctx.correlationId });
     });
 }
 
 function requestOrderApproval(ctx: HookContext, order: RecordData, reason: string) {
   const finance = needsFinanceCheck(ctx.d, order);
-  patchRecordIn(ctx, SO, order.id, { financeCheck: finance }, finance ? 'Finance check required (advance below policy or customer overdue)' : undefined);
+  patchRecordIn(ctx, SO, order.id, { financeCheck: finance }, finance ? N.financeLog : undefined);
   return requestApprovalIn(ctx, {
     type: APPROVAL,
     resource: SO,
     recordId: order.id,
     reason,
-    summary: `Sales order ${order.orderNo} · ${formatMoney(Number(order.grandTotal))}`,
+    summary: L.orders.approvals.summary(String(order.orderNo), formatMoney(Number(order.grandTotal))),
     amount: Number(order.grandTotal),
     divisionIds: [String(order.divisionId)],
     levels: finance ? [orderManagerLevel(ctx, order), FINANCE] : [orderManagerLevel(ctx, order)],
@@ -376,11 +381,11 @@ function nextOrderNo(d: Db, divisionId: string) {
 export function defaultSchedule(kind: string, orderDate: string): { label: string; percent: number; dueDate: string }[] {
   return kind === 'machine'
     ? [
-        { label: 'Advance', percent: 30, dueDate: addDays(orderDate, 7) },
-        { label: 'Before dispatch', percent: 60, dueDate: addDays(orderDate, 45) },
-        { label: 'On installation', percent: 10, dueDate: addDays(orderDate, 75) },
+        { label: L.orders.schedule.advance, percent: 30, dueDate: addDays(orderDate, 7) },
+        { label: L.orders.schedule.beforeDispatch, percent: 60, dueDate: addDays(orderDate, 45) },
+        { label: L.orders.schedule.onInstallation, percent: 10, dueDate: addDays(orderDate, 75) },
       ]
-    : [{ label: 'Payment (30-day credit)', percent: 100, dueDate: addDays(orderDate, 30) }];
+    : [{ label: L.orders.schedule.credit, percent: 100, dueDate: addDays(orderDate, 30) }];
 }
 
 function writeSchedule(ctx: HookContext, order: RecordData, schedule: { label: string; percent: number; dueDate: string; id?: string }[]) {
@@ -413,15 +418,15 @@ export interface CreateOrderInput extends PoInput {
 }
 
 export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
-  if (!perm(actor, SO).create) throw new ServiceError('forbidden', `Your role (${actor.role.label}) cannot create sales orders.`);
+  if (!perm(actor, SO).create) throw new ServiceError('forbidden', E.cannotCreate(actor.role.label));
   const draft = input.source === 'quotation' ? draftFromQuotation(actor, input.sourceId) : draftFromRepeat(actor, input.sourceId);
   if (draft.blocker) throw new ServiceError('invalid_state', draft.blocker);
   const errors = validatePo(input);
-  if (Object.keys(errors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: errors });
+  if (Object.keys(errors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: errors });
   const lines = sanitizeLines(input.lines, draft.lines);
   const lineErr = validateLines(lines);
   if (lineErr) throw new ServiceError('validation', lineErr);
-  if (input.siteAddressId && !draft.siteAddresses.some((a) => a.id === input.siteAddressId)) throw new ServiceError('validation', 'The installation site must be one of the customer’s addresses.', { fieldErrors: { siteAddressId: 'Not an address of this customer' } });
+  if (input.siteAddressId && !draft.siteAddresses.some((a) => a.id === input.siteAddressId)) throw new ServiceError('validation', E.siteInvalid, { fieldErrors: { siteAddressId: E.siteNotCustomer } });
 
   return commit((d) => {
     const existing = d.idempotency[input.idempotencyKey];
@@ -450,16 +455,16 @@ export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
       siteAddressId: input.siteAddressId || null,
       placeOfSupply: draft.placeOfSupply,
       ...totals,
-      changeSummary: diff ? describeDiff(diff) : 'Repeat order',
+      changeSummary: diff ? describeDiff(diff) : L.orders.diff.repeat,
       ...draft.terms,
       status: 'pending_approval',
       financeCheck: false,
     });
-    const order = patchRecordIn(ctx, SO, created.id, { lines }, `Lines captured (${lines.length})`);
+    const order = patchRecordIn(ctx, SO, created.id, { lines }, N.linesCaptured(lines.length));
     writeSchedule(ctx, order, defaultSchedule(draft.orderKind, orderDate));
     d.idempotency[input.idempotencyKey] = order.id;
-    appendAudit(d, actor, { action: 'salesOrder.created', resource: SO, recordId: order.id, summary: `Sales order ${order.orderNo} created from ${draft.source === 'quotation' ? `quotation ${draft.sourceId}` : `previous order ${draft.sourceId}`} (PO ${input.customerPoNo})`, correlationId: ctx.correlationId });
-    requestOrderApproval(ctx, order, draft.source === 'quotation' ? `New order from accepted quotation. ${diff ? describeDiff(diff) : ''}` : 'Repeat consumables order');
+    appendAudit(d, actor, { action: 'salesOrder.created', resource: SO, recordId: order.id, summary: N.createdLog(String(order.orderNo), draft.source === 'quotation' ? N.fromQuotation(draft.sourceId) : N.fromPrevious(draft.sourceId), input.customerPoNo), correlationId: ctx.correlationId });
+    requestOrderApproval(ctx, order, draft.source === 'quotation' ? L.orders.approvals.reasonNew(diff ? describeDiff(diff) : '') : L.orders.approvals.reasonRepeat);
     return rows(d, SO).find((x) => x.id === order.id)!;
   });
 }
@@ -468,23 +473,23 @@ export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
 export function submitForApproval(actor: Actor, id: string, note: string): Approval {
   return commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
-    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', `Sales order ${id} was not found.`);
+    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
     requireUpdatable(actor, order);
-    if (order.status !== 'pending_approval') throw new ServiceError('invalid_state', 'Only orders pending approval can be submitted.');
-    return requestOrderApproval(ctxOf(d, actor), order, note.trim() || 'Resubmitted for approval');
+    if (order.status !== 'pending_approval') throw new ServiceError('invalid_state', E.submitOnlyPending);
+    return requestOrderApproval(ctxOf(d, actor), order, note.trim() || L.orders.approvals.reasonResubmit);
   });
 }
 
 // ---------------------------------------------------------------- edit lines (FR-051 / BR-22)
 
 export function updateLines(actor: Actor, id: string, input: { lines: QuoteLine[]; freight: number; insurance: number; version: number; note?: string }): { reapproval: boolean; summary: string } {
-  if ((Number(input.freight) || 0) < 0 || (Number(input.insurance) || 0) < 0) throw new ServiceError('validation', 'Freight and insurance cannot be negative.');
+  if ((Number(input.freight) || 0) < 0 || (Number(input.insurance) || 0) < 0) throw new ServiceError('validation', E.negativeExtras);
   return commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
-    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', `Sales order ${id} was not found.`);
+    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
     requireUpdatable(actor, order);
-    if (!SO_BEFORE_DISPATCH.includes(String(order.status))) throw new ServiceError('invalid_state', 'Lines can only change before dispatch.');
-    if (order.version !== input.version) throw new ServiceError('version_conflict', `Sales order ${order.orderNo} changed since you opened it. Reload to see the latest.`);
+    if (!SO_BEFORE_DISPATCH.includes(String(order.status))) throw new ServiceError('invalid_state', E.linesBeforeDispatch);
+    if (order.version !== input.version) throw new ServiceError('version_conflict', E.versionConflict(String(order.orderNo)));
     const ctx = ctxOf(d, actor);
     const quotation = order.quotationId ? rows(d, 'quotations').find((q) => q.id === order.quotationId) : undefined;
     const lines = sanitizeLines(input.lines, [...linesOf(order), ...linesOf(quotation).filter((q) => !linesOf(order).some((o) => o.productId === q.productId))]);
@@ -497,18 +502,18 @@ export function updateLines(actor: Actor, id: string, input: { lines: QuoteLine[
     const diff = diffLines(lines, refLines, totals.grandTotal, refTotal);
     const tol = getPolicies().soTolerancePct;
     const reasons: string[] = [];
-    if (diff.added.length || diff.removed.length) reasons.push('lines added or removed');
-    if (Math.abs(diff.valueChangePct) > tol) reasons.push(`value changed ${diff.valueChangePct}% (tolerance ±${tol}%)`);
-    if (diff.discountIncreased) reasons.push('discount increased');
+    if (diff.added.length || diff.removed.length) reasons.push(L.orders.diff.reasonLines);
+    if (Math.abs(diff.valueChangePct) > tol) reasons.push(L.orders.diff.reasonValue(diff.valueChangePct, tol));
+    if (diff.discountIncreased) reasons.push(L.orders.diff.reasonDiscount);
     const reapproval = reasons.length > 0 && order.status !== 'pending_approval';
-    const summary = quotation ? describeDiff(diff) : reasons.length ? reasons.join(', ') : 'No significant change';
-    const next = patchRecordIn(ctx, SO, id, { ...totals, lines, changeSummary: summary, productId: mainProduct(lines) ?? order.productId, ...(reapproval ? { status: 'pending_approval' } : {}) }, `Lines edited: ${summary}`);
+    const summary = quotation ? describeDiff(diff) : reasons.length ? reasons.join(', ') : L.orders.diff.noSignificant;
+    const next = patchRecordIn(ctx, SO, id, { ...totals, lines, changeSummary: summary, productId: mainProduct(lines) ?? order.productId, ...(reapproval ? { status: 'pending_approval' } : {}) }, N.linesEdited(summary));
     // Re-split unpaid milestones on the new value (received ones keep their amount).
     const ms = milestonesOf(d, id);
     if (ms.length && !ms.some((m) => Number(m.receivedAmount) > 0)) writeSchedule(ctx, next, ms.map((m) => ({ id: m.id, label: String(m.label), percent: Number(m.percent), dueDate: String(m.dueDate) })));
     if (reapproval || (order.status === 'pending_approval' && reasons.length)) {
-      withdrawPending(ctx, id, APPROVAL, 'order changed');
-      requestOrderApproval(ctx, next, `Changes after approval: ${reasons.join(', ')}. ${input.note ?? ''}`.trim());
+      withdrawPending(ctx, id, APPROVAL, L.orders.approvals.withdrawnChanged);
+      requestOrderApproval(ctx, next, L.orders.approvals.reasonChanged(reasons.join(', '), input.note ?? ''));
     }
     return { reapproval: reapproval || (order.status === 'pending_approval' && reasons.length > 0), summary };
   });
@@ -542,65 +547,66 @@ export function onOrderApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
   if (!order || order.status !== 'pending_approval') return;
   const status = paymentStatusAfterApproval(ctx.d, order.id);
-  const next = patchRecordIn(ctx, SO, order.id, { status, erpPushedAt: nowIso() }, `Approved (${a.id}) → ${status.replace(/_/g, ' ')}; pushed to ERP for invoicing (simulated)`);
-  notifyOwner(ctx, next, `${order.orderNo} approved — generate the sales contract`);
+  const next = patchRecordIn(ctx, SO, order.id, { status, erpPushedAt: nowIso() }, N.approvedLog(a.id, statusLabel(status)));
+  notifyOwner(ctx, next, N.approved(String(order.orderNo)));
   const c = customerContact(ctx.d, order.customerId);
-  if (c.email) queueMessage(ctx, { channel: 'email', to: c.email, subject: `Order confirmation ${order.orderNo}`, body: `Dear ${c.name ?? 'Customer'}, thank you for your PO ${order.customerPoNo}. Your order ${order.orderNo} for ${formatMoney(Number(order.grandTotal))} is confirmed.`, related: { resource: SO, recordId: order.id } });
+  if (c.email) queueMessage(ctx, { channel: 'email', to: c.email, subject: N.confirmationSubject(String(order.orderNo)), body: N.confirmationBody(c.name ?? N.customer, String(order.customerPoNo), String(order.orderNo), formatMoney(Number(order.grandTotal))), related: { resource: SO, recordId: order.id } });
 }
 
 export function onHoldApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
   if (!order || !SO_BEFORE_DISPATCH.includes(String(order.status))) return;
-  patchRecordIn(ctx, SO, order.id, { status: 'on_hold', statusBeforeHold: order.status, holdReason: a.reason }, `Put on hold (${a.id}): ${a.reason}`);
-  notifyOwner(ctx, order, `${order.orderNo} is on hold`, 'exception');
+  patchRecordIn(ctx, SO, order.id, { status: 'on_hold', statusBeforeHold: order.status, holdReason: a.reason }, N.heldLog(a.id, a.reason));
+  notifyOwner(ctx, order, N.held(String(order.orderNo)), 'exception');
 }
 
 export function onResumeApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
   if (!order || order.status !== 'on_hold') return;
   const back = String(order.statusBeforeHold || 'confirmed');
-  patchRecordIn(ctx, SO, order.id, { status: back, statusBeforeHold: null, holdReason: null }, `Resumed (${a.id}) → ${back.replace(/_/g, ' ')}`);
-  notifyOwner(ctx, order, `${order.orderNo} resumed`);
+  patchRecordIn(ctx, SO, order.id, { status: back, statusBeforeHold: null, holdReason: null }, N.resumedLog(a.id, statusLabel(back)));
+  notifyOwner(ctx, order, N.resumed(String(order.orderNo)));
 }
 
 export function onCancelApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
   if (!order || !(SO_BEFORE_DISPATCH.includes(String(order.status)) || order.status === 'on_hold')) return;
-  patchRecordIn(ctx, SO, order.id, { status: 'cancelled', cancelReason: a.reason }, `Cancelled (${a.id}): ${a.reason}`);
-  withdrawPending(ctx, order.id, APPROVAL, 'order cancelled');
-  notifyOwner(ctx, order, `${order.orderNo} was cancelled`, 'exception');
+  patchRecordIn(ctx, SO, order.id, { status: 'cancelled', cancelReason: a.reason }, N.cancelledLog(a.id, a.reason));
+  withdrawPending(ctx, order.id, APPROVAL, L.orders.approvals.withdrawnCancelled);
+  notifyOwner(ctx, order, N.cancelled(String(order.orderNo)), 'exception');
 }
 
 // ---------------------------------------------------------------- hold / resume / cancel (FR-058)
 
 export function requestStatusChange(actor: Actor, id: string, kind: 'hold' | 'resume' | 'cancel', reason: string): Approval {
   const text = reason.trim();
-  if (text.length < 5) throw new ServiceError('validation', 'Give a reason of at least 5 characters.', { fieldErrors: { reason: 'At least 5 characters' } });
+  if (text.length < 5) throw new ServiceError('validation', E.reasonMin, { fieldErrors: { reason: E.reasonMinField } });
   return commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
-    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', `Sales order ${id} was not found.`);
+    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
     requireUpdatable(actor, order);
     const status = String(order.status);
-    if (kind === 'hold' && !SO_BEFORE_DISPATCH.includes(status)) throw new ServiceError('invalid_state', 'Only orders that are not yet dispatched can be put on hold.');
-    if (kind === 'cancel' && !(SO_BEFORE_DISPATCH.includes(status) || status === 'on_hold')) throw new ServiceError('invalid_state', 'Dispatched, delivered or completed orders cannot be cancelled.');
-    if (kind === 'resume' && status !== 'on_hold') throw new ServiceError('invalid_state', 'Only orders on hold can be resumed.');
+    if (kind === 'hold' && !SO_BEFORE_DISPATCH.includes(status)) throw new ServiceError('invalid_state', E.holdOnlyBeforeDispatch);
+    if (kind === 'cancel' && !(SO_BEFORE_DISPATCH.includes(status) || status === 'on_hold')) throw new ServiceError('invalid_state', E.cancelNotAllowed);
+    if (kind === 'resume' && status !== 'on_hold') throw new ServiceError('invalid_state', E.resumeOnlyHold);
     const ctx = ctxOf(d, actor);
     const mgr = orderManagerLevel(ctx, order);
     // Cancellation always reaches the division head (or management above them).
     const levels = kind === 'cancel' && mgr.capability === MANAGER_LEVEL.capability ? [mgr, L2] : [mgr];
     const type = kind === 'hold' ? HOLD : kind === 'resume' ? RESUME : CANCEL;
-    return requestApprovalIn(ctx, { type, resource: SO, recordId: id, reason: text, summary: `${kind === 'hold' ? 'Hold' : kind === 'resume' ? 'Resume' : 'Cancel'} ${order.orderNo}`, amount: Number(order.grandTotal), divisionIds: [String(order.divisionId)], levels });
+    return requestApprovalIn(ctx, { type, resource: SO, recordId: id, reason: text, summary: L.orders.approvals.statusSummary(kind, String(order.orderNo)), amount: Number(order.grandTotal), divisionIds: [String(order.divisionId)], levels });
   });
 }
 
-// ---------------------------------------------------------------- ERP (FR-057, simulated)
+// ---------------------------------------------------------------- ERP (SO-09 / FR-057, simulated)
 
-export function syncFromErp(actor: Actor, id: string): RecordData {
-  if (!can(actor, 'orders.erp')) throw new ServiceError('forbidden', 'Only Accounts, Import/SCM or an administrator can sync from the ERP.');
+/** "Push to ERP": sends the approved order to the ERP and receives invoice number, date and e-way bill reference. */
+export function pushToErp(actor: Actor, id: string): RecordData {
+  if (!can(actor, 'orders.erp')) throw new ServiceError('forbidden', E.erpForbidden);
   return commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
-    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', `Sales order ${id} was not found.`);
-    if (['pending_approval', 'cancelled'].includes(String(order.status))) throw new ServiceError('invalid_state', 'Only approved orders exist in the ERP.');
+    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
+    if (['pending_approval', 'cancelled'].includes(String(order.status))) throw new ServiceError('invalid_state', E.erpNotApproved);
     const ctx = ctxOf(d, actor);
     const patch: Record<string, unknown> = { erpPushedAt: order.erpPushedAt ?? nowIso() };
     if (!order.invoiceNo) {
@@ -610,7 +616,7 @@ export function syncFromErp(actor: Actor, id: string): RecordData {
       patch.invoiceDate = todayKey();
       patch.ewayBill = String(Math.floor(100000000000 + Math.abs(hash(order.id)) % 899999999999));
     }
-    return patchRecordIn(ctx, SO, id, patch, 'Invoice number, date and e-way bill received from the ERP (simulated)');
+    return patchRecordIn(ctx, SO, id, patch, N.erpLog);
   });
 }
 
@@ -640,55 +646,55 @@ export interface ScheduleRow {
 
 export function saveSchedule(actor: Actor, id: string, schedule: ScheduleRow[]) {
   const errors: string[] = [];
-  if (!schedule.length) errors.push('Add at least one milestone.');
+  if (!schedule.length) errors.push(E.scheduleAddOne);
   schedule.forEach((s, i) => {
-    if (!s.label.trim()) errors.push(`Row ${i + 1}: label is required.`);
-    if (!(s.percent > 0)) errors.push(`Row ${i + 1}: share must be greater than 0%.`);
-    if (!s.dueDate) errors.push(`Row ${i + 1}: due date is required.`);
+    if (!s.label.trim()) errors.push(E.scheduleLabel(i + 1));
+    if (!(s.percent > 0)) errors.push(E.scheduleShare(i + 1));
+    if (!s.dueDate) errors.push(E.scheduleDue(i + 1));
   });
   const total = round2(schedule.reduce((t, s) => t + (Number(s.percent) || 0), 0));
-  if (Math.abs(total - 100) > 0.01) errors.push(`Milestones must total 100% (now ${total}%).`);
+  if (Math.abs(total - 100) > 0.01) errors.push(E.scheduleTotal(total));
   if (errors.length) throw new ServiceError('validation', errors.join(' '));
   commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
-    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', `Sales order ${id} was not found.`);
+    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
     requireUpdatable(actor, order);
-    if (['completed', 'cancelled'].includes(String(order.status))) throw new ServiceError('invalid_state', 'The payment schedule of a closed order cannot change.');
-    if (schedule.some((s) => s.dueDate < String(order.orderDate))) throw new ServiceError('validation', 'Due dates cannot be before the order date.');
+    if (['completed', 'cancelled'].includes(String(order.status))) throw new ServiceError('invalid_state', E.scheduleClosed);
+    if (schedule.some((s) => s.dueDate < String(order.orderDate))) throw new ServiceError('validation', E.scheduleBeforeOrder);
     const ctx = ctxOf(d, actor);
     const existing = milestonesOf(d, id);
     const kept = new Set(schedule.map((s) => s.id).filter(Boolean));
     const receivedRemoved = existing.filter((m) => !kept.has(m.id) && Number(m.receivedAmount) > 0);
-    if (receivedRemoved.length) throw new ServiceError('invalid_state', `“${receivedRemoved[0].label}” already has receipts and cannot be removed.`);
+    if (receivedRemoved.length) throw new ServiceError('invalid_state', E.scheduleHasReceipts(String(receivedRemoved[0].label)));
     d.records.paymentMilestones = rows(d, 'paymentMilestones').filter((m) => m.salesOrderId !== id || kept.has(m.id));
     writeSchedule(ctx, order, schedule);
     milestonesOf(d, id).forEach((m) => {
-      if (Number(m.receivedAmount) > Number(m.amount) + 0.01) throw new ServiceError('validation', `“${m.label}” would be lower than the amount already received.`);
+      if (Number(m.receivedAmount) > Number(m.amount) + 0.01) throw new ServiceError('validation', E.scheduleBelowReceived(String(m.label)));
       const st = milestoneStatus(m);
       if (st !== m.status) patchRecordIn(ctx, 'paymentMilestones', m.id, { status: st });
     });
-    appendAudit(d, actor, { action: 'salesOrder.schedule', resource: SO, recordId: id, summary: `Payment schedule set: ${schedule.map((s) => `${s.label} ${s.percent}%`).join(', ')}`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'salesOrder.schedule', resource: SO, recordId: id, summary: N.scheduleLog(schedule.map((s) => `${s.label} ${s.percent}%`).join(', ')), correlationId: ctx.correlationId });
   });
 }
 
 /** Receipt from the ERP (simulated: Accounts enters what the ERP reported). Moves the order to payment received. */
 export function recordReceipt(actor: Actor, milestoneId: string, amount: number, receivedAt: string) {
-  if (!can(actor, 'orders.receipts')) throw new ServiceError('forbidden', 'Only Accounts or an administrator record ERP receipts.');
-  if (!(amount > 0)) throw new ServiceError('validation', 'Enter an amount greater than zero.', { fieldErrors: { amount: 'Must be greater than zero' } });
-  if (!receivedAt || receivedAt > todayKey()) throw new ServiceError('validation', 'Receipt date cannot be in the future.', { fieldErrors: { receivedAt: 'Not in the future' } });
+  if (!can(actor, 'orders.receipts')) throw new ServiceError('forbidden', E.receiptsForbidden);
+  if (!(amount > 0)) throw new ServiceError('validation', E.amountPositive, { fieldErrors: { amount: E.amountPositiveField } });
+  if (!receivedAt || receivedAt > todayKey()) throw new ServiceError('validation', E.receiptFuture, { fieldErrors: { receivedAt: E.notInFuture } });
   commit((d) => {
     const m = rows(d, 'paymentMilestones').find((x) => x.id === milestoneId);
-    if (!m) throw new ServiceError('not_found', 'Milestone not found.');
+    if (!m) throw new ServiceError('not_found', E.milestoneNotFound);
     const order = rows(d, SO).find((x) => x.id === m.salesOrderId);
-    if (!order || ['pending_approval', 'cancelled'].includes(String(order.status))) throw new ServiceError('invalid_state', 'Receipts can only be recorded on approved orders.');
+    if (!order || ['pending_approval', 'cancelled'].includes(String(order.status))) throw new ServiceError('invalid_state', E.receiptsApprovedOnly);
     const remaining = round2(Number(m.amount) - (Number(m.receivedAmount) || 0));
-    if (amount > remaining + 0.01) throw new ServiceError('validation', `At most ${formatMoney(remaining)} is outstanding on this milestone.`, { fieldErrors: { amount: `At most ${formatMoney(remaining)}` } });
+    if (amount > remaining + 0.01) throw new ServiceError('validation', E.receiptMax(formatMoney(remaining)), { fieldErrors: { amount: E.receiptMaxField(formatMoney(remaining)) } });
     const ctx = ctxOf(d, actor);
     const updated = { ...m, receivedAmount: round2((Number(m.receivedAmount) || 0) + amount), receivedAt };
-    patchRecordIn(ctx, 'paymentMilestones', m.id, { receivedAmount: updated.receivedAmount, receivedAt, status: milestoneStatus(updated) }, `Receipt ${formatMoney(amount)} from ERP (simulated)`);
+    patchRecordIn(ctx, 'paymentMilestones', m.id, { receivedAmount: updated.receivedAmount, receivedAt, status: milestoneStatus(updated) }, N.receiptLog(formatMoney(amount)));
     if (order.status === 'payment_pending' && paymentStatusAfterApproval(d, order.id) === 'payment_received') {
-      patchRecordIn(ctx, SO, order.id, { status: 'payment_received' }, 'Advance received → payment received');
-      notifyOwner(ctx, order, `Advance received on ${order.orderNo}`);
+      patchRecordIn(ctx, SO, order.id, { status: 'payment_received' }, N.advanceLog);
+      notifyOwner(ctx, order, N.advanceReceived(String(order.orderNo)));
     }
   });
 }
@@ -718,14 +724,14 @@ export function runPaymentReminders(actor: Actor): { reminded: number; overdue: 
       const stale = !last || last <= addDays(today, -7);
       if (!(dueSoon && !last) && !(isOverdue && stale)) return;
       const outstanding = formatMoney(round2(Number(m.amount) - (Number(m.receivedAmount) || 0)));
-      notifyOwner(ctx, order, isOverdue ? `Overdue: ${m.label} ${outstanding} on ${order.orderNo}` : `Due ${m.dueDate}: ${m.label} ${outstanding} on ${order.orderNo}`, 'reminder');
+      notifyOwner(ctx, order, isOverdue ? N.overdue(String(m.label), outstanding, String(order.orderNo)) : N.dueOn(String(m.dueDate), String(m.label), outstanding, String(order.orderNo)), 'reminder');
       if (isOverdue) {
         const mgr = userOfStaff(managerOf(order.ownerId, d.records));
-        if (mgr) notify(d, { userId: mgr.id, workspaceId: order.workspaceId, kind: 'reminder', title: `Team overdue: ${m.label} ${outstanding} on ${order.orderNo}`, link: { resource: SO, recordId: order.id } });
+        if (mgr) notify(d, { userId: mgr.id, workspaceId: order.workspaceId, kind: 'reminder', title: N.teamOverdue(String(m.label), outstanding, String(order.orderNo)), link: { resource: SO, recordId: order.id } });
         const c = customerContact(d, order.customerId);
-        if (c.whatsapp) queueMessage(ctx, { channel: 'whatsapp', to: c.whatsapp, body: `Reminder from True Colors: ${m.label} of ${outstanding} for order ${order.orderNo} was due on ${m.dueDate}. Please ignore if already paid.`, related: { resource: SO, recordId: order.id } });
+        if (c.whatsapp) queueMessage(ctx, { channel: 'whatsapp', to: c.whatsapp, body: N.reminderWhatsapp(String(m.label), outstanding, String(order.orderNo), String(m.dueDate)), related: { resource: SO, recordId: order.id } });
       }
-      patchRecordIn(ctx, 'paymentMilestones', m.id, { lastReminderAt: nowIso() }, isOverdue ? 'Overdue reminder sent' : 'Due reminder sent');
+      patchRecordIn(ctx, 'paymentMilestones', m.id, { lastReminderAt: nowIso() }, isOverdue ? N.overdueReminderLog : N.dueReminderLog);
       reminded++;
     });
   });
@@ -746,20 +752,20 @@ export interface DispatchInput {
 }
 
 export function recordDispatch(actor: Actor, id: string, input: DispatchInput): RecordData {
-  if (!can(actor, 'orders.dispatch')) throw new ServiceError('forbidden', 'Only Import/SCM, coordinators or an administrator record dispatches.');
+  if (!can(actor, 'orders.dispatch')) throw new ServiceError('forbidden', E.dispatchForbidden);
   const e: Record<string, string> = {};
-  if (!input.dispatchDate) e.dispatchDate = 'Dispatch date is required';
-  else if (input.dispatchDate > todayKey()) e.dispatchDate = 'Dispatch date cannot be in the future';
-  if (!input.transporter?.trim()) e.transporter = 'Transporter is required';
-  if (!input.lrNumber?.trim()) e.lrNumber = 'LR number is required';
-  if (input.ewayBill && !/^[0-9]{12}$/.test(input.ewayBill)) e.ewayBill = 'E-way bill numbers have 12 digits';
-  if (!input.expectedDelivery) e.expectedDelivery = 'Expected delivery is required';
-  else if (input.dispatchDate && input.expectedDelivery < input.dispatchDate) e.expectedDelivery = 'Cannot be before the dispatch date';
-  if (Object.keys(e).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: e });
+  if (!input.dispatchDate) e.dispatchDate = E.dispatchDateRequired;
+  else if (input.dispatchDate > todayKey()) e.dispatchDate = E.dispatchDateFuture;
+  if (!input.transporter?.trim()) e.transporter = E.transporterRequired;
+  if (!input.lrNumber?.trim()) e.lrNumber = E.lrRequired;
+  if (input.ewayBill && !/^[0-9]{12}$/.test(input.ewayBill)) e.ewayBill = E.ewayDigits;
+  if (!input.expectedDelivery) e.expectedDelivery = E.expectedRequired;
+  else if (input.dispatchDate && input.expectedDelivery < input.dispatchDate) e.expectedDelivery = E.expectedBeforeDispatch;
+  if (Object.keys(e).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: e });
   return commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
-    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', `Sales order ${id} was not found.`);
-    if (order.status !== 'ready_for_dispatch') throw new ServiceError('invalid_state', 'Only orders marked “Ready for dispatch” can be dispatched.');
+    if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
+    if (order.status !== 'ready_for_dispatch') throw new ServiceError('invalid_state', E.dispatchOnlyReady);
     const ctx = ctxOf(d, actor);
     const dsp = insertRecordIn(ctx, 'dispatches', {
       salesOrderId: id,
@@ -775,14 +781,14 @@ export function recordDispatch(actor: Actor, id: string, input: DispatchInput): 
       expectedDelivery: input.expectedDelivery,
       status: 'in_transit',
     });
-    patchRecordIn(ctx, SO, id, { status: 'dispatched' }, `Dispatched via ${dsp.transporter}, LR ${dsp.lrNumber}`);
-    notifyOwner(ctx, order, `${order.orderNo} dispatched — expected ${input.expectedDelivery}`);
+    patchRecordIn(ctx, SO, id, { status: 'dispatched' }, N.dispatchedLog(String(dsp.transporter), String(dsp.lrNumber)));
+    notifyOwner(ctx, order, N.dispatched(String(order.orderNo), input.expectedDelivery));
     if (input.notifyCustomer) {
       const c = customerContact(d, order.customerId);
-      const body = `Your order ${order.orderNo} has been dispatched on ${input.dispatchDate} via ${dsp.transporter} (LR ${dsp.lrNumber}${dsp.ewayBill ? `, e-way bill ${dsp.ewayBill}` : ''}). Expected delivery: ${input.expectedDelivery}.`;
+      const body = N.intimation(String(order.orderNo), input.dispatchDate, String(dsp.transporter), String(dsp.lrNumber), dsp.ewayBill ? String(dsp.ewayBill) : '', input.expectedDelivery);
       if (c.whatsapp) queueMessage(ctx, { channel: 'whatsapp', to: c.whatsapp, body, related: { resource: SO, recordId: id } });
-      if (c.email) queueMessage(ctx, { channel: 'email', to: c.email, subject: `Dispatch intimation — ${order.orderNo}`, body, related: { resource: SO, recordId: id } });
-      if (!c.whatsapp && !c.email) appendAudit(d, actor, { action: 'dispatch.intimation_skipped', resource: SO, recordId: id, summary: 'No customer contact has WhatsApp or email consent — intimation not sent', correlationId: ctx.correlationId });
+      if (c.email) queueMessage(ctx, { channel: 'email', to: c.email, subject: N.intimationSubject(String(order.orderNo)), body, related: { resource: SO, recordId: id } });
+      if (!c.whatsapp && !c.email) appendAudit(d, actor, { action: 'dispatch.intimation_skipped', resource: SO, recordId: id, summary: N.intimationSkipped, correlationId: ctx.correlationId });
     }
     return dsp;
   });
@@ -791,25 +797,25 @@ export function recordDispatch(actor: Actor, id: string, input: DispatchInput): 
 const ALLOWED_POD = /\.(pdf|jpe?g|png)$/i;
 
 export function confirmDelivery(actor: Actor, dispatchId: string, input: { actualDelivery: string; podFileName: string; podFileSize?: number; podPhotoName?: string }): { installationId?: string } {
-  if (!can(actor, 'orders.dispatch')) throw new ServiceError('forbidden', 'Only Import/SCM, coordinators or an administrator confirm deliveries.');
+  if (!can(actor, 'orders.dispatch')) throw new ServiceError('forbidden', E.deliveryForbidden);
   return commit((d) => {
     const dsp = rows(d, 'dispatches').find((x) => x.id === dispatchId);
-    if (!dsp) throw new ServiceError('not_found', 'Dispatch not found.');
-    if (dsp.status === 'delivered') throw new ServiceError('invalid_state', 'This dispatch is already delivered.');
+    if (!dsp) throw new ServiceError('not_found', E.dispatchNotFound);
+    if (dsp.status === 'delivered') throw new ServiceError('invalid_state', E.alreadyDelivered);
     const e: Record<string, string> = {};
-    if (!input.actualDelivery) e.actualDelivery = 'Delivery date is required';
-    else if (input.actualDelivery > todayKey()) e.actualDelivery = 'Delivery date cannot be in the future';
-    else if (input.actualDelivery < String(dsp.dispatchDate)) e.actualDelivery = 'Cannot be before the dispatch date';
-    if (!input.podFileName?.trim()) e.podFileName = 'Upload the signed proof of delivery';
-    else if (!ALLOWED_POD.test(input.podFileName)) e.podFileName = 'Upload a PDF, JPG or PNG file';
-    else if ((input.podFileSize ?? 0) > getPolicies().maxFileMb * 1024 * 1024) e.podFileName = `File is larger than ${getPolicies().maxFileMb} MB`;
-    if (Object.keys(e).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: e });
+    if (!input.actualDelivery) e.actualDelivery = E.deliveryDateRequired;
+    else if (input.actualDelivery > todayKey()) e.actualDelivery = E.deliveryDateFuture;
+    else if (input.actualDelivery < String(dsp.dispatchDate)) e.actualDelivery = E.expectedBeforeDispatch;
+    if (!input.podFileName?.trim()) e.podFileName = E.podRequired;
+    else if (!ALLOWED_POD.test(input.podFileName)) e.podFileName = E.fileType;
+    else if ((input.podFileSize ?? 0) > getPolicies().maxFileMb * 1024 * 1024) e.podFileName = E.fileSize(getPolicies().maxFileMb);
+    if (Object.keys(e).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: e });
     const order = rows(d, SO).find((x) => x.id === dsp.salesOrderId);
-    if (!order || order.status !== 'dispatched') throw new ServiceError('invalid_state', 'The order is not in “Dispatched”.');
+    if (!order || order.status !== 'dispatched') throw new ServiceError('invalid_state', E.notDispatched);
     const ctx = ctxOf(d, actor);
-    patchRecordIn(ctx, 'dispatches', dsp.id, { status: 'delivered', actualDelivery: input.actualDelivery, podFileName: input.podFileName.trim(), podPhotoName: input.podPhotoName?.trim() || null }, 'Delivery confirmed with signed POD');
-    patchRecordIn(ctx, SO, order.id, { status: 'delivered', deliveredAt: input.actualDelivery }, `Delivered on ${input.actualDelivery}`);
-    notifyOwner(ctx, order, `${order.orderNo} delivered`);
+    patchRecordIn(ctx, 'dispatches', dsp.id, { status: 'delivered', actualDelivery: input.actualDelivery, podFileName: input.podFileName.trim(), podPhotoName: input.podPhotoName?.trim() || null }, N.deliveredLog);
+    patchRecordIn(ctx, SO, order.id, { status: 'delivered', deliveredAt: input.actualDelivery }, N.deliveredOn(input.actualDelivery));
+    notifyOwner(ctx, order, N.delivered(String(order.orderNo)));
     let installationId: string | undefined;
     if (order.orderKind === 'machine') installationId = createInstallationJob(ctx, order);
     return { installationId };
@@ -819,7 +825,7 @@ export function confirmDelivery(actor: Actor, dispatchId: string, input: { actua
 /** BR-26: delivery of a machine order creates the installation job (installed module's resource). */
 export function createInstallationJob(ctx: HookContext, order: RecordData): string | undefined {
   if (!hasResource('installations')) {
-    appendAudit(ctx.d, ctx.actor, { action: 'installation.skipped', actorType: 'workflow', resource: SO, recordId: order.id, summary: 'Installation module not available — job not created', correlationId: ctx.correlationId });
+    appendAudit(ctx.d, ctx.actor, { action: 'installation.skipped', actorType: 'workflow', resource: SO, recordId: order.id, summary: N.installationSkipped, correlationId: ctx.correlationId });
     return undefined;
   }
   const exists = rows(ctx.d, 'installations').find((i) => i.salesOrderId === order.id);
@@ -834,7 +840,79 @@ export function createInstallationJob(ctx: HookContext, order: RecordData): stri
   const planners = [...employeesWithRole('coordinator', String(order.divisionId), ctx.d.records), ...employeesWithRole('service_head', String(order.divisionId), ctx.d.records)];
   planners.forEach((e) => {
     const u = userOfStaff(e.id);
-    if (u) notify(ctx.d, { userId: u.id, workspaceId: order.workspaceId, kind: 'assignment', title: `Installation job ${job.id} created for ${order.orderNo} — assign an engineer`, link: { resource: 'installations', recordId: job.id } });
+    if (u) notify(ctx.d, { userId: u.id, workspaceId: order.workspaceId, kind: 'assignment', title: N.installationCreated(job.id, String(order.orderNo)), link: { resource: 'installations', recordId: job.id } });
   });
   return job.id;
+}
+
+// ---------------------------------------------------------------- Order Processing page (SO-08 / FR-056)
+
+export interface ProcessingInput {
+  poToPrincipalNo: string;
+  poToPrincipalDate: string;
+  shipmentEta: string;
+  customsStatus: string;
+  machineReady: boolean;
+  pdiDone: boolean;
+  processingNotes?: string;
+}
+
+export interface ProcessingRow {
+  order: RecordData;
+  /** Shipment ETA is in the past and the order is not ready for dispatch yet. */
+  etaPassed: boolean;
+  /** The actor may edit processing fields on this order (Import / SCM, admin). */
+  canEdit: boolean;
+}
+
+/** Sales orders the actor can read that are approved and not yet dispatched (plus Hold). */
+export function processingBoard(actor: Actor): ProcessingRow[] {
+  const res = getResource(SO);
+  const today = todayKey();
+  const mayProcess = can(actor, 'orders.process');
+  return rows(getDb(), SO)
+    .filter((o) => SO_PROCESSING_STATUSES.includes(String(o.status)) && canReadRecord(actor, res, o))
+    .map((order) => ({
+      order,
+      etaPassed: !!order.shipmentEta && String(order.shipmentEta) < today && order.status !== 'ready_for_dispatch',
+      canEdit: mayProcess && canUpdateRecord(actor, res, order),
+    }))
+    .sort((a, b) => String(a.order.shipmentEta ?? '9999').localeCompare(String(b.order.shipmentEta ?? '9999')) || String(a.order.orderDate).localeCompare(String(b.order.orderDate)));
+}
+
+/** Field-level validation of an Order Processing update (empty object = valid). */
+export function validateProcessing(order: RecordData, input: ProcessingInput): Record<string, string> {
+  const e: Record<string, string> = {};
+  const no = input.poToPrincipalNo?.trim() ?? '';
+  if (no.length > 40) e.poToPrincipalNo = E.maxChars(40);
+  if (input.poToPrincipalDate) {
+    if (input.poToPrincipalDate > todayKey()) e.poToPrincipalDate = E.principalDateFuture;
+    else if (input.poToPrincipalDate < String(order.orderDate)) e.poToPrincipalDate = E.principalDateBeforeOrder;
+    if (!no) e.poToPrincipalNo = E.principalNoRequired;
+  }
+  if (input.shipmentEta && input.poToPrincipalDate && input.shipmentEta < input.poToPrincipalDate) e.shipmentEta = E.etaBeforePo;
+  if (!(CUSTOMS_STATUSES as readonly string[]).includes(input.customsStatus)) e.customsStatus = E.customsInvalid;
+  if (input.pdiDone && !input.machineReady) e.pdiDone = E.pdiNeedsReady;
+  if (order.orderKind === 'machine' && input.machineReady && !['cleared', 'not_applicable'].includes(input.customsStatus)) e.machineReady = E.readyNeedsCustoms;
+  if ((input.processingNotes ?? '').length > 1000) e.processingNotes = E.maxChars(1000);
+  return e;
+}
+
+/** Import / SCM updates the processing fields of one sales order (optimistic version check). */
+export function updateProcessing(actor: Actor, id: string, input: ProcessingInput, version: number): RecordData {
+  if (!can(actor, 'orders.process')) throw new ServiceError('forbidden', E.processForbidden);
+  const order = getOrder(actor, id);
+  if (!SO_PROCESSING_STATUSES.includes(String(order.status))) throw new ServiceError('invalid_state', E.processNotEditable(statusLabel(order.status)));
+  const errors = validateProcessing(order, input);
+  if (Object.keys(errors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: errors });
+  const patch = {
+    poToPrincipalNo: input.poToPrincipalNo.trim() || null,
+    poToPrincipalDate: input.poToPrincipalDate || null,
+    shipmentEta: input.shipmentEta || null,
+    customsStatus: input.customsStatus,
+    machineReady: !!input.machineReady,
+    pdiDone: !!input.pdiDone,
+    ...(input.processingNotes !== undefined ? { processingNotes: input.processingNotes.trim() || null } : {}),
+  };
+  return updateRecord(actor, SO, id, patch, version).record;
 }

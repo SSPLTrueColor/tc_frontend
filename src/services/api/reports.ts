@@ -1,4 +1,5 @@
 /** Async report services (simulated network boundary) and audited CSV export. */
+import { L } from '../../constants/labels';
 import { nowMs } from '../../lib/clock';
 import { todayKey } from '../../lib/dates';
 import { uid } from '../../lib/ids';
@@ -17,7 +18,7 @@ export const listReports = (actor: Actor) => reportsFor(actor);
 /** Runs a report over role-scoped data. Synchronous engine op — call through useServiceQuery / call(). */
 export function runReport(actor: Actor, reportId: string, filters: ReportFilters): ReportResult {
   const def = getReport(reportId);
-  if (!def || !reportsFor(actor).includes(def)) throw new ServiceError('not_found', 'This report does not exist or your role cannot open it.');
+  if (!def || !reportsFor(actor).includes(def)) throw new ServiceError('not_found', L.reports.errors.notFound);
   return def.compute(loadDataset(actor), filters, { actor, today: todayKey(), nowMs: nowMs() });
 }
 
@@ -26,11 +27,11 @@ export const canExportReports = (actor: Actor) => can(actor, 'reports.export');
 /** CSV of the rows on screen (already scope-filtered). Role-restricted and written to the audit log (ADM-07). */
 export function exportReport(actor: Actor, reportId: string, result: ReportResult, filters: ReportFilters): string {
   const def = getReport(reportId);
-  if (!def) throw new ServiceError('not_found', 'Unknown report.');
-  if (!canExportReports(actor)) throw new ServiceError('forbidden', `${actor.role.label} cannot export reports.`);
+  if (!def) throw new ServiceError('not_found', L.reports.errors.unknown);
+  if (!canExportReports(actor)) throw new ServiceError('forbidden', L.reports.errors.cannotExport(actor.role.label));
   const header = result.columns.map((c) => csvCell(c.label)).join(',');
   const body = result.rows.map((r) => result.columns.map((c) => csvCell(formatCell(c, r[c.key]))).join(','));
-  const range = filters.from || filters.to ? ` (${filters.from ?? '…'} to ${filters.to ?? '…'})` : '';
-  commit((d) => appendAudit(d, actor, { action: 'export', summary: `Exported report "${def.title}"${range}: ${result.rows.length} rows`, correlationId: uid('cor') }));
+  const range = filters.from || filters.to ? L.reports.audit.range(filters.from ?? '…', filters.to ?? '…') : '';
+  commit((d) => appendAudit(d, actor, { action: 'export', summary: L.reports.audit.exported(def.title, range, result.rows.length), correlationId: uid('cor') }));
   return [header, ...body].join('\n');
 }

@@ -14,11 +14,16 @@ import { Button } from '../../../components/primitives/Button';
 import { ErrorState, Skeleton, useToast } from '../../../components/primitives/feedback';
 import { PageHeader } from '../../../components/shell/PageHeader';
 import { organization } from '../../../domain/pack';
+import { L } from '../../../constants/labels';
+import { resourcePath } from '../../../lib/routes';
+
+const S = L.service;
+const P = S.pages.jobCard;
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
-const dt = (v: unknown) => (v ? formatDateTime(s(v)) : 'N/A');
+const dt = (v: unknown) => (v ? formatDateTime(s(v)) : S.sla.chips.not_applicable);
 
-/** FR-082: printable service job card (browser "Save as PDF"). */
+/** Service Job Card (FR-082, SRV-08): printable (browser "Save as PDF"). */
 export function JobCardPage() {
   const { recordId = '' } = useParams();
   const actor = useActor();
@@ -27,8 +32,8 @@ export function JobCardPage() {
   if (q.error)
     return (
       <div className="page">
-        <PageHeader title="Job card" />
-        <ErrorState title="Job card not available" onRetry={q.retry}>
+        <PageHeader title={L.nav.pages.jobCard.title} />
+        <ErrorState title={P.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       </div>
@@ -36,7 +41,7 @@ export function JobCardPage() {
   if (!q.data)
     return (
       <div className="page">
-        <PageHeader title="Job card" />
+        <PageHeader title={L.nav.pages.jobCard.title} />
         <Skeleton rows={10} />
       </div>
     );
@@ -46,27 +51,27 @@ export function JobCardPage() {
   return (
     <div className="page">
       <PageHeader
-        title={`Job card ${t.id}`}
-        description="Generated automatically when the ticket is resolved and sent to the customer with the feedback link. Use Print → Save as PDF for a copy."
+        title={P.title(t.id)}
+        description={P.description}
         actions={
           <span className="row-gap no-print">
-            <Link className="btn btn-secondary" to={`/tickets?peek=${t.id}`}>
-              <span className="btn-label">Back to ticket</span>
+            <Link className="btn btn-secondary" to={resourcePath(actor.workspaceId, 'tickets', { peek: t.id })}>
+              <span className="btn-label">{S.actions.backToTicket}</span>
             </Link>
             <Button
               icon="send"
-              disabledReason={t.resolvedAt ? undefined : 'Sent once the ticket is resolved'}
+              disabledReason={t.resolvedAt ? undefined : P.sendDisabled}
               onClick={() =>
                 serviceApi
                   .resendJobCard(actor, t.id)
-                  .then(() => toast('Job card sent to the customer (see Message outbox)'))
+                  .then(() => toast(S.toasts.jobCardSent))
                   .catch((e) => toast(errorMessage(e), 'danger'))
               }
             >
-              Send to customer
+              {S.actions.sendToCustomer}
             </Button>
             <Button variant="primary" icon="download" onClick={() => window.print()}>
-              Print / PDF
+              {S.actions.printPdf}
             </Button>
           </span>
         }
@@ -75,59 +80,63 @@ export function JobCardPage() {
         <header className="row-gap" style={{ justifyContent: 'space-between' }}>
           <div>
             <strong>{organization.name}</strong>
-            <div className="muted small">Service job card</div>
+            <div className="muted small">{P.docTitle}</div>
           </div>
           <div className="mono">{t.id}</div>
         </header>
-        <h2>Customer & machine</h2>
+        <h2>{P.customerMachine}</h2>
         <dl className="detail-list">
           <div className="detail-row">
-            <dt>Customer</dt>
+            <dt>{S.fields.tickets.customerId}</dt>
             <dd>{customerName(t.customerId)}</dd>
           </div>
           <div className="detail-row">
-            <dt>Contact</dt>
-            <dd>{t.contactId ? recordTitle('contacts', t.contactId) : 'N/A'}</dd>
+            <dt>{P.contact}</dt>
+            <dd>{t.contactId ? recordTitle('contacts', t.contactId) : S.sla.chips.not_applicable}</dd>
           </div>
           <div className="detail-row">
-            <dt>Machine</dt>
-            <dd>{machine ? `${s(machine.serialNo)} · ${s(machine.model)}` : 'N/A'}</dd>
+            <dt>{S.fields.tickets.machineId}</dt>
+            <dd>{machine ? `${s(machine.serialNo)} · ${s(machine.model)}` : S.sla.chips.not_applicable}</dd>
           </div>
           <div className="detail-row">
-            <dt>Coverage</dt>
+            <dt>{S.fields.tickets.coverage}</dt>
             <dd>{masterLabel('coverage', t.coverage)}</dd>
           </div>
         </dl>
-        <h2>Complaint</h2>
+        <h2>{P.complaint}</h2>
         <dl className="detail-list">
           <div className="detail-row">
-            <dt>Reported</dt>
-            <dd>
-              {dt(t.reportedAt)} via {masterLabel('ticketChannel', t.channel)}
-            </dd>
+            <dt>{S.fields.tickets.reportedAt}</dt>
+            <dd>{P.reportedVia(dt(t.reportedAt), masterLabel('ticketChannel', t.channel))}</dd>
           </div>
           <div className="detail-row">
-            <dt>Category</dt>
+            <dt>{P.category}</dt>
             <dd>
               {masterLabel('complaintCategory', t.category)}
-              {t.subCategory ? ` / ${masterLabel('complaintSubCategory', t.subCategory)}` : ''} · {masterLabel('ticketType', t.ticketType)} · {masterLabel('ticketPriority', t.priority)}
+              {t.subCategory ? ` / ${masterLabel('complaintSubCategory', t.subCategory)}` : ''}
             </dd>
           </div>
           <div className="detail-row">
-            <dt>Description</dt>
+            <dt>{P.typePriority}</dt>
+            <dd>
+              {masterLabel('ticketType', t.ticketType)} · {masterLabel('ticketPriority', t.priority)}
+            </dd>
+          </div>
+          <div className="detail-row">
+            <dt>{S.fields.tickets.description}</dt>
             <dd>{s(t.description)}</dd>
           </div>
         </dl>
-        <h2>Visits</h2>
+        <h2>{P.visits}</h2>
         {visits.length ? (
           <table className="mini-table">
             <thead>
               <tr>
-                <th scope="col">Engineer</th>
-                <th scope="col">Check-in / out</th>
-                <th scope="col">Diagnosis & work</th>
-                <th scope="col">Parts & readings</th>
-                <th scope="col">Sign-off</th>
+                <th scope="col">{P.colEngineer}</th>
+                <th scope="col">{P.colInOut}</th>
+                <th scope="col">{P.colWork}</th>
+                <th scope="col">{P.colParts}</th>
+                <th scope="col">{P.colSignOff}</th>
               </tr>
             </thead>
             <tbody>
@@ -147,33 +156,33 @@ export function JobCardPage() {
                     {v.workDone ? (
                       <>
                         <br />
-                        <strong>Work:</strong> {s(v.workDone)}
+                        <strong>{P.work}</strong> {s(v.workDone)}
                       </>
                     ) : null}
                   </td>
                   <td className="small">
-                    {s(v.partsUsed) || 'None'}
-                    {v.printCounter ? ` · counter ${s(v.printCounter)} m²` : ''}
-                    {v.inkUsedMl ? ` · ink ${s(v.inkUsedMl)} ml` : ''}
+                    {s(v.partsUsed) || P.none}
+                    {v.printCounter ? P.counter(s(v.printCounter)) : ''}
+                    {v.inkUsedMl ? P.ink(s(v.inkUsedMl)) : ''}
                   </td>
-                  <td className="small">{v.signedOffAt ? `${masterLabel('signOffMethod', v.signOffMethod)} · ${dt(v.signedOffAt)}` : 'N/A'}</td>
+                  <td className="small">{v.signedOffAt ? `${masterLabel('signOffMethod', v.signOffMethod)} · ${dt(v.signedOffAt)}` : S.sla.chips.not_applicable}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          <p className="muted">No visits recorded.</p>
+          <p className="muted">{P.noVisits}</p>
         )}
-        <h2>Resolution</h2>
-        <p>{s(t.resolution) || 'Not resolved yet.'}</p>
+        <h2>{P.resolution}</h2>
+        <p>{s(t.resolution) || P.notResolved}</p>
         {t.chargeableStatus && t.chargeableStatus !== 'none' ? (
           <p>
-            Chargeable: {masterLabel('chargeableStatus', t.chargeableStatus)}
-            {t.chargeableAmount ? ` · ${formatMoney(Number(t.chargeableAmount))} + GST` : ''}
+            {P.chargeable(masterLabel('chargeableStatus', t.chargeableStatus))}
+            {t.chargeableAmount ? P.plusGst(formatMoney(Number(t.chargeableAmount))) : ''}
           </p>
         ) : null}
         <p className="muted small">
-          Responded {dt(t.respondedAt)} · on site {dt(t.arrivedAt)} · resolved {dt(t.resolvedAt)}
+          {P.timeline(dt(t.respondedAt), dt(t.arrivedAt), dt(t.resolvedAt))}
         </p>
       </article>
     </div>

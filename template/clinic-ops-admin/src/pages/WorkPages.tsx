@@ -7,8 +7,8 @@ import { can, perm } from '../services/authz';
 import { getDb } from '../services/db';
 import { listNotifications, markAllRead, markNotification, snoozeNotification } from '../services/collab';
 import { useActor, useRevision } from '../services/hooks';
-import { getResource, getUser } from '../services/registry';
-import { queryRecords, transitionRecord } from '../services/runtime';
+import { getResource, getUser, masterLabel, masterValue } from '../services/registry';
+import { displayText, queryRecords, transitionRecord } from '../services/runtime';
 import { ServiceError } from '../services/types';
 import { decideApproval, listApprovals } from '../services/workflow';
 import { Button } from '../components/primitives/Button';
@@ -19,6 +19,8 @@ import { ConflictPanel, FormBody, QuickCreateDialog, useRecordForm, useUnsavedGu
 import { RecordInspector } from '../components/resource/RecordInspector';
 import { PageHeader } from '../components/shell/PageHeader';
 import { InfoTip } from '../components/primitives/InfoTip';
+import { Icon } from '../components/primitives/Icon';
+import { EmptyValue } from '../components/primitives/display';
 
 // ---------------------------------------------------------------- Day schedule
 
@@ -330,30 +332,98 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
     navigate(`${wsBase(form.actor.workspaceId)}/${form.res.module}/${resKey}?peek=${out.record.id}`);
   };
   return (
-    <div className="page">
+    <div className="page fp-page">
       <PageHeader
         title={recordId ? `Edit ${form.res.label.toLowerCase()} ${recordId}` : `New ${form.res.label.toLowerCase()}`}
         description="Full-page editor. Totals are calculated; payments are recorded separately after issuing."
-        crumbs={[{ label: form.res.labelPlural, to: back }, { label: recordId ?? 'New' }]}
+        onBack={guard.requestClose}
       />
-      <div className="full-form panel">
-        <FormBody form={form}>
-          <ConflictPanel form={form} onOverride={() => void save(false)} />
-        </FormBody>
-        <div className="full-form-bar">
-          <Button onClick={guard.requestClose}>Cancel</Button>
-          <span className="spacer" />
-          <Button loading={form.submitting} onClick={() => void save(false)}>
-            Save draft
-          </Button>
-          {form.res.lifecycle && (
-            <Button variant="primary" loading={form.submitting} onClick={() => void save(true)}>
-              Save & issue
+      {/* Add and edit share one design: form card (left) + live summary card (right) */}
+      <div className="fp-layout">
+        <div className="full-form panel fp-main">
+          <FormBody form={form}>
+            <ConflictPanel form={form} onOverride={() => void save(false)} />
+          </FormBody>
+          <div className="full-form-bar">
+            <Button onClick={guard.requestClose}>Cancel</Button>
+            <span className="spacer" />
+            <Button loading={form.submitting} onClick={() => void save(false)}>
+              Save draft
             </Button>
-          )}
+            {form.res.lifecycle && (
+              <Button variant="primary" icon="file-text" loading={form.submitting} onClick={() => void save(true)}>
+                Save & issue
+              </Button>
+            )}
+          </div>
         </div>
+        <FormSummary form={form} recordId={recordId} />
       </div>
       {guard.dialog}
     </div>
+  );
+}
+
+/** Live summary beside a full-page form: status, key fields, line items, totals and a short note. */
+function FormSummary({ form, recordId }: { form: ReturnType<typeof useRecordForm>; recordId?: string }) {
+  const v = form.values;
+  const res = form.res;
+  const items = (v.lineItems as { serviceCode?: string; qty?: number; unitPrice?: number }[] | undefined) ?? [];
+  const subtotal = items.reduce((t, li) => t + Math.round((Number(li.qty) || 0) * (Number(li.unitPrice) || 0) * 100), 0) / 100;
+  const statusField = res.fields.find((f) => f.key === 'status');
+  const sv = statusField?.master ? masterValue(statusField.master, (form.loaded?.record?.status as string) ?? 'draft') : undefined;
+  const show = ['patientId', 'payer', 'issueDate', 'dueDate'].map((k) => res.fields.find((f) => f.key === k)).filter((f): f is NonNullable<typeof f> => !!f);
+  return (
+    <aside className="panel fp-summary" aria-label={`${res.label} summary`}>
+      <h2 className="fp-summary-title">{res.label} summary</h2>
+      {sv && <StatusChip label={sv.label} tone={sv.tone} />}
+      <dl className="fp-sum-list">
+        {show.map((f) => (
+          <div key={f.key} className="fp-sum-row">
+            <dt>{f.label}</dt>
+            <dd>{displayText(f, v[f.key], form.actor) || <EmptyValue />}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="fp-sum-section">
+        <strong>Line items ({items.length})</strong>
+        {items.map((li, i) => (
+          <div key={i} className="fp-sum-item">
+            <span>
+              <span>{li.serviceCode ? masterLabel('serviceCode', li.serviceCode) : `Line ${i + 1}`}</span>
+              <span className="muted">
+                Qty: {li.qty || 0} × {formatMoney(Number(li.unitPrice) || 0)}
+              </span>
+            </span>
+            <span>{formatMoney((Number(li.qty) || 0) * (Number(li.unitPrice) || 0))}</span>
+          </div>
+        ))}
+      </div>
+      <dl className="fp-sum-list fp-sum-totals">
+        <div className="fp-sum-row">
+          <dt>Subtotal</dt>
+          <dd>{formatMoney(subtotal)}</dd>
+        </div>
+        <div className="fp-sum-row">
+          <dt>Tax</dt>
+          <dd>{formatMoney(0)}</dd>
+        </div>
+        <div className="fp-sum-row">
+          <dt>Adjustments</dt>
+          <dd>{formatMoney(0)}</dd>
+        </div>
+      </dl>
+      <div className="fp-sum-total">
+        <span>Total due</span>
+        <span>{formatMoney(subtotal)}</span>
+      </div>
+      <div className="fp-sum-note">
+        <Icon name="info" size={16} />
+        <span>
+          <strong>Payment & invoicing</strong>
+          <span>{recordId ? 'Changes stay in draft until you issue the invoice.' : 'This invoice will be saved as a draft. Issue it when it is ready to send.'}</span>
+        </span>
+      </div>
+    </aside>
   );
 }

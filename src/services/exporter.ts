@@ -8,6 +8,7 @@ import { commit } from './db';
 import { appendAudit } from './ledger';
 import { displayText } from './runtime';
 import { ServiceError } from './types';
+import { L } from '../constants/labels';
 import { uid } from '../lib/ids';
 
 /** Spreadsheet formula-injection guard. */
@@ -36,9 +37,9 @@ export function buildCsv(actor: Actor, res: ResourceDefinition, rows: RecordData
 }
 
 export function exportCsv(actor: Actor, res: ResourceDefinition, rows: RecordData[], columns: string[]): string {
-  if (!perm(actor, res.key).export) throw new ServiceError('forbidden', `Your role cannot export ${res.labelPlural.toLowerCase()}.`);
+  if (!perm(actor, res.key).export) throw new ServiceError('forbidden', L.common.errors.cannotExport(res.labelPlural.toLowerCase()));
   const csv = buildCsv(actor, res, rows, columns);
-  commit((d) => appendAudit(d, actor, { action: 'export', resource: res.key, summary: `Exported ${rows.length} ${res.labelPlural.toLowerCase()} to CSV`, correlationId: uid('cor') }));
+  commit((d) => appendAudit(d, actor, { action: 'export', resource: res.key, summary: L.common.audit.exported(rows.length, res.labelPlural.toLowerCase()), correlationId: uid('cor') }));
   return csv;
 }
 

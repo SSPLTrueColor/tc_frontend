@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { L } from '../../constants/labels';
+import { resourcePath } from '../../lib/routes';
 import { todayKey } from '../../lib/dates';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { call, errorMessage } from '../../services/api/client';
@@ -18,6 +20,8 @@ import { InfoTip } from '../../components/primitives/InfoTip';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 
+const X = L.admin.importExport;
+
 /** FR-125 / FR-136 / ADM-07: CSV templates, validated import with preview, role-restricted and audited export. */
 export function ImportExportPage() {
   const actor = useActor();
@@ -31,13 +35,13 @@ export function ImportExportPage() {
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  if (!can(actor, 'data.export') && !can(actor, 'data.import')) return <NoAccess what="import and export" />;
-  const header = <PageHeader title="Import / export" description="Download a CSV template, fill it in Excel and import it. Every row is checked with the same rules as the forms before anything is saved. Imports and exports are written to the audit log." />;
+  if (!can(actor, 'data.export') && !can(actor, 'data.import')) return <NoAccess what={X.noAccessWhat} />;
+  const header = <PageHeader title={L.nav.pages.bulkImportExport.title} description={X.description} />;
   if (lists.error)
     return (
       <div className="page">
         {header}
-        <ErrorState title="Could not load record types" onRetry={lists.retry}>
+        <ErrorState title={X.loadError} onRetry={lists.retry}>
           {lists.error}
         </ErrorState>
       </div>
@@ -59,11 +63,11 @@ export function ImportExportPage() {
     setError('');
     setResult(null);
     if (f.size > getPolicies().maxFileMb * 1024 * 1024) {
-      setError(`The file is larger than ${getPolicies().maxFileMb} MB.`);
+      setError(X.tooLarge(getPolicies().maxFileMb));
       return;
     }
     if (!/\.csv$/i.test(f.name)) {
-      setError('Save the sheet as CSV (comma separated) and choose that file.');
+      setError(X.notCsv);
       return;
     }
     setBusy('preview');
@@ -83,21 +87,21 @@ export function ImportExportPage() {
       <div className="cat-grid">
         <section className="panel">
           <h2 className="panel-title dialog-title-row">
-            Import
-            <InfoTip text="Dates as DD-MM-YYYY, choices by their label, several values separated by ; and related records by ID or name. Up to 1,000 rows per file." label="About the import format" />
+            {X.import}
+            <InfoTip text={X.importTip} label={X.importTipLabel} />
           </h2>
           {!can(actor, 'data.import') || !importable.length ? (
-            <InlineAlert tone="info">Your role cannot import records. Ask the CRM administrator.</InlineAlert>
+            <InlineAlert tone="info">{X.cannotImport}</InlineAlert>
           ) : (
             <div className="cat-stack">
               <div className="form-field">
                 <label className="field-label" htmlFor="imp-res">
-                  Record type
+                  {L.admin.common.recordType}
                 </label>
                 <SelectMenu
                   id="imp-res"
                   block
-                  label="Record type to import"
+                  label={X.importType}
                   value={impKey}
                   options={importable.map((r) => ({ value: r.key, label: r.label }))}
                   onChange={(v) => {
@@ -113,13 +117,13 @@ export function ImportExportPage() {
                   icon="download"
                   onClick={() => {
                     downloadText(`${impKey}-import-template.csv`, templateCsv(actor, impKey));
-                    toast('Template downloaded');
+                    toast(X.templateDownloaded);
                   }}
                 >
-                  Download template
+                  {X.downloadTemplate}
                 </Button>
                 <Button variant="primary" icon="arrow-up" loading={busy === 'preview'} onClick={() => fileRef.current?.click()}>
-                  Choose CSV file…
+                  {X.chooseFile}
                 </Button>
                 <input
                   ref={fileRef}
@@ -143,18 +147,18 @@ export function ImportExportPage() {
         </section>
         <section className="panel">
           <h2 className="panel-title dialog-title-row">
-            Export
-            <InfoTip text="Exports everything your role can see for that record type. Masked and hidden fields stay masked. Each export is audited." label="About export" />
+            {X.export}
+            <InfoTip text={X.exportTip} label={X.exportTipLabel} />
           </h2>
           {!exportable.length ? (
-            <InlineAlert tone="info">Your role cannot export records.</InlineAlert>
+            <InlineAlert tone="info">{X.cannotExport}</InlineAlert>
           ) : (
             <div className="cat-stack">
               <div className="form-field">
                 <label className="field-label" htmlFor="exp-res">
-                  Record type
+                  {L.admin.common.recordType}
                 </label>
-                <SelectMenu id="exp-res" block label="Record type to export" value={expKey} options={exportable.map((r) => ({ value: r.key, label: r.label }))} onChange={setExp} />
+                <SelectMenu id="exp-res" block label={X.exportType} value={expKey} options={exportable.map((r) => ({ value: r.key, label: r.label }))} onChange={setExp} />
               </div>
               <div>
                 <Button
@@ -170,7 +174,7 @@ export function ImportExportPage() {
                         return { csv: exportCsv(actor, res, rows, columns), n: rows.length };
                       });
                       downloadText(`${expKey}-${todayKey()}.csv`, csv.csv);
-                      toast(`Exported ${csv.n} ${res.labelPlural.toLowerCase()}`);
+                      toast(X.exported(csv.n, res.labelPlural.toLowerCase()));
                     } catch (e) {
                       toast(errorMessage(e), 'danger');
                     } finally {
@@ -178,7 +182,7 @@ export function ImportExportPage() {
                     }
                   }}
                 >
-                  Export CSV
+                  {X.exportCsv}
                 </Button>
               </div>
             </div>
@@ -187,9 +191,9 @@ export function ImportExportPage() {
       </div>
 
       {result && (
-        <InlineAlert tone={result.failed.length ? 'warning' : 'success'} title={`Imported ${result.created.length} record(s)`}>
-          {result.failed.length ? `${result.failed.length} row(s) failed: ${result.failed.slice(0, 3).map((f) => `line ${f.line} — ${f.message}`).join('; ')}` : 'All valid rows were saved.'}{' '}
-          {result.created.length > 0 && <Link to={`/${preview?.resource ?? impKey}`}>Open {getResource(preview?.resource ?? impKey).labelPlural.toLowerCase()}</Link>}
+        <InlineAlert tone={result.failed.length ? 'warning' : 'success'} title={X.importedTitle(result.created.length)}>
+          {result.failed.length ? X.failedRows(result.failed.length, result.failed.slice(0, 3).map((f) => X.failedLine(f.line, f.message)).join('; ')) : X.allSaved}{' '}
+          {result.created.length > 0 && <Link to={resourcePath(actor.workspaceId, preview?.resource ?? impKey)}>{X.openList(getResource(preview?.resource ?? impKey).labelPlural)}</Link>}
         </InlineAlert>
       )}
 
@@ -197,21 +201,21 @@ export function ImportExportPage() {
         <section className="panel">
           <div className="panel-head">
             <h2 className="panel-title">
-              Preview · {getResource(preview.resource).labelPlural}{' '}
-              <Badge tone="success">{valid.length} ready</Badge> {invalid.length > 0 && <Badge tone="danger">{invalid.length} with errors</Badge>}
+              {X.previewTitle(getResource(preview.resource).labelPlural)}{' '}
+              <Badge tone="success">{X.ready(valid.length)}</Badge> {invalid.length > 0 && <Badge tone="danger">{X.withErrors(invalid.length)}</Badge>}
             </h2>
             <span className="row-gap">
-              <Button onClick={() => setPreview(null)}>Discard</Button>
+              <Button onClick={() => setPreview(null)}>{X.discard}</Button>
               <Button
                 variant="primary"
                 loading={busy === 'import'}
-                disabledReason={!valid.length ? 'No valid rows to import' : result ? 'Already imported' : undefined}
+                disabledReason={!valid.length ? X.noValidRows : result ? X.alreadyImported : undefined}
                 onClick={async () => {
                   setBusy('import');
                   try {
                     const r = await runCsvImport(actor, preview);
                     setResult(r);
-                    toast(`Imported ${r.created.length} record(s)`, r.failed.length ? 'info' : 'success');
+                    toast(X.imported(r.created.length), r.failed.length ? 'info' : 'success');
                   } catch (e) {
                     toast(errorMessage(e), 'danger');
                   } finally {
@@ -219,21 +223,21 @@ export function ImportExportPage() {
                   }
                 }}
               >
-                Import {valid.length} valid row(s)
+                {X.importRows(valid.length)}
               </Button>
             </span>
           </div>
-          {preview.unknownColumns.length > 0 && <InlineAlert tone="warning">Ignored columns: {preview.unknownColumns.join(', ')}.</InlineAlert>}
+          {preview.unknownColumns.length > 0 && <InlineAlert tone="warning">{X.ignoredColumns(preview.unknownColumns.join(', '))}</InlineAlert>}
           {!preview.rows.length ? (
-            <EmptyState icon="list" title="No data rows">
-              The file only has a header row.
+            <EmptyState icon="list" title={X.noRowsTitle}>
+              {X.noRowsBody}
             </EmptyState>
           ) : (
             <div className="table-scroll">
               <table className="mini-table">
                 <thead>
                   <tr>
-                    <th scope="col">Line</th>
+                    <th scope="col">{X.line}</th>
                     {preview.columns
                       .filter((c) => c.field)
                       .map((c) => (
@@ -241,7 +245,7 @@ export function ImportExportPage() {
                           {c.field!.label}
                         </th>
                       ))}
-                    <th scope="col">Problems</th>
+                    <th scope="col">{X.problems}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -253,12 +257,12 @@ export function ImportExportPage() {
                         .map((c) => (
                           <td key={c.header}>{r.values[c.field!.key] === undefined ? <EmptyValue /> : displayText(c.field!, r.values[c.field!.key], actor) || <EmptyValue />}</td>
                         ))}
-                      <td className={r.errors.length ? 'cat-errors' : 'muted'}>{r.errors.length ? r.errors.join('; ') : 'Ready'}</td>
+                      <td className={r.errors.length ? 'cat-errors' : 'muted'}>{r.errors.length ? r.errors.join('; ') : X.readyCell}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {preview.rows.length > 200 && <p className="muted small">Showing the first 200 of {preview.rows.length} rows.</p>}
+              {preview.rows.length > 200 && <p className="muted small">{X.firstRows(200, preview.rows.length)}</p>}
             </div>
           )}
         </section>

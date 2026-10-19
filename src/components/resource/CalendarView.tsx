@@ -12,6 +12,7 @@ import { Button, IconButton } from '../primitives/Button';
 import { StatusChip } from '../primitives/feedback';
 import { DatePicker } from '../primitives/DatePicker';
 import { InfoTip } from '../primitives/InfoTip';
+import { L } from '../../constants/labels';
 
 const DAY_START = 7;
 const DAY_END = 19;
@@ -20,7 +21,7 @@ const INACTIVE = ['cancelled', 'no_show'];
 
 /**
  * Resource-timeline day calendar driven by `resource.calendar` metadata.
- * Lanes = related records (rooms / clinicians). Click an empty slot to book.
+ * Lanes = related records (e.g. demo machines, engineers). Click an empty slot to add an entry.
  */
 export function CalendarView({
   res,
@@ -75,17 +76,17 @@ export function CalendarView({
   const header = (
     <div className="cal-toolbar">
       <div className="cal-nav">
-        <IconButton icon="chevron-left" label="Previous day" onClick={() => setDate(addDays(date, -1))} />
+        <IconButton icon="chevron-left" label={L.common.list.previousDay} onClick={() => setDate(addDays(date, -1))} />
         <Button onClick={() => setDate(todayKey())} disabled={date === todayKey()}>
-          Today
+          {L.common.actions.today}
         </Button>
-        <IconButton icon="chevron-right" label="Next day" onClick={() => setDate(addDays(date, 1))} />
-        <DatePicker label="Go to date" value={date} onChange={(v) => v && setDate(v)} clearable={false} />
+        <IconButton icon="chevron-right" label={L.common.list.nextDay} onClick={() => setDate(addDays(date, 1))} />
+        <DatePicker label={L.common.list.goToDate} value={date} onChange={(v) => v && setDate(v)} clearable={false} />
         <strong className="cal-date">{formatWeekday(date)}</strong>
-        {onCreateAt && <InfoTip text="Click an empty slot to book it. Rooms under maintenance are not bookable." label="About the calendar" />}
+        {onCreateAt && <InfoTip text={L.common.list.calendarAbout} label={L.common.list.calendarAboutLabel} />}
       </div>
       <div className="cal-nav">
-        <div className="segmented" role="radiogroup" aria-label="Group lanes by">
+        <div className="segmented" role="radiogroup" aria-label={L.common.list.groupLanesBy}>
           {cal.lanes.map((l, i) => (
             <button key={l.field} type="button" role="radio" aria-checked={i === laneIdx} className={cx('seg-btn', i === laneIdx && 'is-on')} onClick={() => setLaneIdx(i)}>
               {l.label}
@@ -93,7 +94,7 @@ export function CalendarView({
           ))}
         </div>
         <label className="check">
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> Show cancelled
+          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> {L.common.list.showCancelled}
         </label>
       </div>
     </div>
@@ -118,7 +119,7 @@ export function CalendarView({
               </button>
             </li>
           ))}
-          {!sorted.length && <li className="muted agenda-empty">No bookings on this day.</li>}
+          {!sorted.length && <li className="muted agenda-empty">{L.common.list.noEntriesDay}</li>}
         </ul>
       </div>
     );
@@ -156,7 +157,7 @@ export function CalendarView({
                         type="button"
                         className="cal-slot"
                         style={{ top: (h - DAY_START + m / 60) * HOUR_PX, height: HOUR_PX / 2 }}
-                        aria-label={onCreateAt ? `Book ${l.label} at ${formatTime(start)}` : `${l.label} ${formatTime(start)}`}
+                        aria-label={onCreateAt ? L.common.list.addAt(l.label, formatTime(start)) : `${l.label} ${formatTime(start)}`}
                         disabled={!onCreateAt || l.note !== ''}
                         tabIndex={-1}
                         onClick={() => onCreateAt?.({ [cal.startField]: start, ...(l.id ? { [lane.field]: l.id } : {}) })}

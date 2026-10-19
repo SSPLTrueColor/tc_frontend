@@ -5,6 +5,8 @@ import { createEvent, deleteOccurrence, findOverlaps, listCalendarItems, occurre
 import { setClockOffset } from '../lib/clock';
 import { istNow } from '../lib/clock';
 import { addDays } from '../lib/dates';
+import { EVENT_TYPES } from '../domain/modules/calendar';
+import { masterLabel } from '../services/registry';
 
 describe('calendar', () => {
   beforeEach(() => {
@@ -70,5 +72,14 @@ describe('calendar', () => {
     if (mgr) expect(mgr.editable).toBe(false);
     const own = items.find((i) => i.source === 'event' && i.assigneeId === actorFor('u_karan', 'tc').staffId);
     expect(own?.editable).toBe(true);
+  });
+
+  it('uses the GLOSSARY C-15 event types for seed and derived items', () => {
+    expect([...EVENT_TYPES]).toEqual(['meeting', 'demo', 'follow_up', 'field_visit', 'service_visit', 'internal']);
+    getDb().records.calendarEvents.forEach((e) => expect(EVENT_TYPES as readonly string[]).toContain(String(e.eventType)));
+    listCalendarItems(actorFor('u_rahul', 'tc')).forEach((i) => expect(EVENT_TYPES as readonly string[]).toContain(i.type));
+    expect(EVENT_TYPES.map((k) => masterLabel('calEventType', k))).toEqual(['Meeting', 'Demo', 'Follow-up', 'Field Visit', 'Service Visit', 'Internal']);
+    expect(masterLabel('calRecurrence', 'none')).toBe('Does Not Repeat');
+    expect(masterLabel('calLinkType', 'tickets')).toBe('Service Ticket');
   });
 });

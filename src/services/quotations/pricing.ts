@@ -1,9 +1,10 @@
 /**
- * Quotation pricing (FR-038, BR-16, BR-19). PURE: imports only from src/lib, so the editor, the
+ * Quotation pricing (FR-038, BR-16, BR-19). PURE: imports only from src/lib and the label constants, so the editor, the
  * quotation hooks and the seed share one calculation without import cycles. The editor uses it
  * for a live preview and the hooks re-run it on every save, so stored totals never come from the UI.
  * Price-list lookup (BR-15) lives in workflow.ts (`applyPriceList`) because it reads the store.
  */
+import { L } from '../../constants/labels';
 import { validateHsnSac } from '../../lib/validators';
 
 export interface QuoteLine {
@@ -143,18 +144,19 @@ export function computeTotals(lines: QuoteLine[], placeOfSupply: string, freight
 /** Field-level checks for each line (returned as "Line n: …" messages). */
 export function validateLines(lines: QuoteLine[]): string[] {
   const errors: string[] = [];
+  const M = L.quotations.lineErrors;
   lines.forEach((l, i) => {
-    const n = `Line ${i + 1}`;
-    if (!l.productId && !String(l.description ?? '').trim()) errors.push(`${n}: choose a product or enter a description`);
-    if (!Number.isInteger(Number(l.qty)) || Number(l.qty) < 1) errors.push(`${n}: quantity must be a whole number of at least 1`);
-    if (!(Number(l.listPrice) >= 0)) errors.push(`${n}: list price must be zero or more`);
+    const err = (m: string) => errors.push(`${M.line(i + 1)}: ${m}`);
+    if (!l.productId && !String(l.description ?? '').trim()) err(M.productOrDescription);
+    if (!Number.isInteger(Number(l.qty)) || Number(l.qty) < 1) err(M.quantity);
+    if (!(Number(l.listPrice) >= 0)) err(M.listPrice);
     const pct = Number(l.discountPct) || 0;
-    if (pct < 0 || pct > 100) errors.push(`${n}: discount must be between 0 and 100%`);
+    if (pct < 0 || pct > 100) err(M.discountRange);
     const amt = Number(l.discountAmt) || 0;
-    if (amt < 0) errors.push(`${n}: discount amount cannot be negative`);
-    if (amt > (Number(l.qty) || 0) * (Number(l.listPrice) || 0)) errors.push(`${n}: discount cannot exceed the line value`);
-    if (!GST_RATES.includes(Number(l.gstRate))) errors.push(`${n}: GST rate must be one of ${GST_RATES.join(', ')}%`);
-    if (!l.hsnSac || validateHsnSac(String(l.hsnSac))) errors.push(`${n}: enter a valid HSN or SAC code`);
+    if (amt < 0) err(M.discountNegative);
+    if (amt > (Number(l.qty) || 0) * (Number(l.listPrice) || 0)) err(M.discountExceeds);
+    if (!GST_RATES.includes(Number(l.gstRate))) err(M.gstRate(GST_RATES.join(', ')));
+    if (!l.hsnSac || validateHsnSac(String(l.hsnSac))) err(M.hsnSac);
   });
   return errors;
 }

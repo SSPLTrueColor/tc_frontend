@@ -1,8 +1,9 @@
 /** Shared display atoms: the empty-value placeholder and the date/time text. */
 import { formatDate, formatWeekdayFull } from '../../lib/dates';
+import { L } from '../../constants/labels';
 
 /** The ONE way to show a missing value: small icon + italic "N/A" in light muted text. */
-export function EmptyValue({ label = 'Not available' }: { label?: string }) {
+export function EmptyValue({ label = L.common.states.notAvailable }: { label?: string }) {
   return (
     <span className="empty-value" aria-label={label}>
       <span aria-hidden="true">N/A</span>

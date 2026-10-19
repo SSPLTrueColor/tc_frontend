@@ -8,13 +8,18 @@ import { Button } from '../components/primitives/Button';
 import { Avatar, InlineAlert } from '../components/primitives/feedback';
 import { InfoTip } from '../components/primitives/InfoTip';
 import { SelectMenu } from '../components/primitives/SelectMenu';
+import { L } from '../constants/labels';
+import { ROUTES } from '../constants/routes';
+
+const G = L.common.login;
+const rolePosition = (roleLabel: string, title: string) => L.common.account.rolePosition(roleLabel, title);
 
 /** Simulated sign-in (COM-01, NFR-07): pick a demo user; Admin and Management confirm a displayed one-time code. */
 export function LoginPage() {
   useRevision();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/dashboard';
+  const from = (location.state as { from?: string } | null)?.from ?? ROUTES.dashboard;
   const [userId, setUserId] = useState(demoUsers[0].id);
   const [otp, setOtp] = useState<string | null>(null);
   const [code, setCode] = useState('');
@@ -24,7 +29,7 @@ export function LoginPage() {
   const role = appRoles.find((r) => r.id === user.roleId)!;
 
   useEffect(() => {
-    document.title = 'Sign in · True Color CRM';
+    document.title = G.docTitle;
   }, []);
   // Already signed in (e.g. back button): go straight to the app.
   useEffect(() => {
@@ -53,7 +58,7 @@ export function LoginPage() {
           </span>
           <div>
             <h1 className="login-title">{organization.name}</h1>
-            <p className="muted">Sales & Service CRM · prototype</p>
+            <p className="muted">{G.subtitle}</p>
           </div>
         </div>
         {!otp ? (
@@ -70,16 +75,16 @@ export function LoginPage() {
             <div className="form-field span-all">
               <span className="field-label-row">
                 <label className="field-label" htmlFor="login-user">
-                  Sign in as
+                  {G.signInAs}
                 </label>
-                <InfoTip text="No passwords in this prototype: pick a demo user to see the CRM as their role. Every sign-in is written to the audit log." label="About demo sign-in" />
+                <InfoTip text={G.about} label={G.aboutLabel} />
               </span>
               <SelectMenu
                 id="login-user"
                 block
-                label="Demo user"
+                label={G.demoUser}
                 value={userId}
-                options={demoUsers.map((u) => ({ value: u.id, label: `${u.name} — ${appRoles.find((r) => r.id === u.roleId)?.label}` }))}
+                options={demoUsers.map((u) => ({ value: u.id, label: G.option(u.name, rolePosition(appRoles.find((r) => r.id === u.roleId)?.label ?? u.roleId, u.title)) }))}
                 onChange={(v) => {
                   setUserId(v);
                   setError('');
@@ -89,13 +94,13 @@ export function LoginPage() {
             <div className="login-user span-all">
               <Avatar name={user.name} size={32} />
               <span>
-                <strong>{user.title}</strong>
+                <strong>{rolePosition(role.label, user.title)}</strong>
                 <span className="muted small"> · {role.description}</span>
               </span>
             </div>
             {needsOtp(userId) && (
-              <InlineAlert tone="info" title="Two-step sign-in">
-                {role.label} accounts confirm a one-time code after choosing the user.
+              <InlineAlert tone="info" title={G.twoStep}>
+                {G.twoStepBody(role.label)}
               </InlineAlert>
             )}
             {error && (
@@ -104,7 +109,7 @@ export function LoginPage() {
               </p>
             )}
             <Button type="submit" variant="primary" size="default" loading={busy} className="span-all">
-              Continue
+              {G.continue}
             </Button>
           </form>
         ) : (
@@ -115,12 +120,13 @@ export function LoginPage() {
               run(() => verifyOtp(userId, code));
             }}
           >
-            <InlineAlert tone="info" title="Simulated one-time code">
-              A live system would send this by SMS to {user.name}. Your code is <strong className="mono">{otp}</strong>.
+            <InlineAlert tone="info" title={G.simulatedCode}>
+              {G.codeSentPre(user.name)}
+              <strong className="mono">{otp}</strong>.
             </InlineAlert>
             <div className="form-field span-all">
               <label className="field-label" htmlFor="login-otp">
-                One-time code <span className="req">*</span>
+                {G.oneTimeCode} <span className="req">*</span>
               </label>
               <input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} aria-invalid={!!error || undefined} autoFocus />
             </div>
@@ -137,15 +143,15 @@ export function LoginPage() {
                   setError('');
                 }}
               >
-                Back
+                {L.common.actions.back}
               </Button>
-              <Button type="submit" variant="primary" loading={busy} disabledReason={code.length !== 6 ? 'Enter the 6-digit code' : undefined}>
-                Verify and sign in
+              <Button type="submit" variant="primary" loading={busy} disabledReason={code.length !== 6 ? G.enterCode : undefined}>
+                {G.verify}
               </Button>
             </div>
           </form>
         )}
-        <p className="muted small login-foot">Demo data only · stored in this browser · nothing is sent.</p>
+        <p className="muted small login-foot">{G.foot}</p>
       </div>
     </main>
   );

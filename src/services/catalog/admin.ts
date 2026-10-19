@@ -1,4 +1,5 @@
 /** Administration reads: organisation structure (FR-119) and owned-open-records check (BR-53). */
+import { L } from '../../constants/labels';
 import { appPack } from '../../domain/pack';
 import type { RecordData } from '../../metadata/types';
 import { type Actor, can } from '../authz';
@@ -15,7 +16,7 @@ export interface OwnedOpen {
   count: number;
 }
 
-/** Open records an employee owns in every resource with an owner field (generic — new modules count automatically). */
+/** Open records a user owns in every resource with an owner field (generic — new modules count automatically). */
 export function ownedOpenRecords(staffId: string, store = getDb().records): OwnedOpen[] {
   const out: OwnedOpen[] = [];
   for (const def of appPack.resources) {
@@ -42,7 +43,7 @@ export interface Organisation {
 }
 
 export function getOrganisation(actor: Actor): Organisation {
-  if (!can(actor, 'org.view')) throw new ServiceError('forbidden', 'Your role cannot view the organisation structure.');
+  if (!can(actor, 'org.view')) throw new ServiceError('forbidden', L.admin.organisation.forbidden);
   const emps = (getDb().records.employees ?? []).filter((e) => e.workspaceId === actor.workspaceId);
   const active = emps.filter((e) => e.status !== 'inactive');
   const divisions = activeMasterValues('division').map((d) => {

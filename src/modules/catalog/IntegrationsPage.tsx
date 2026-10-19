@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { errorMessage } from '../../services/api/client';
 import { captureLead, receiveMessage, runErpSync } from '../../services/api/catalog';
@@ -13,13 +14,10 @@ import { Badge, EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { byTime, SortPicker, type SortDir, usePaged } from './kit';
 
-const ACTION_LABEL: Record<string, string> = {
-  'integration.lead_captured': 'Lead captured',
-  'integration.lead_duplicate': 'Duplicate enquiry',
-  'integration.erp_sync': 'ERP sync',
-  'integration.message_ticket': 'Message → ticket',
-};
+const I = L.admin.integrations;
+const ACTION_LABEL: Record<string, string> = Object.fromEntries(Object.entries(I.actions).map(([k, v]) => [`integration.${k}`, v]));
 
 /** BRD §6 integrations, simulated: lead capture webhooks, ERP sync, WhatsApp/email to ticket. */
 export function IntegrationsPage() {
@@ -27,8 +25,12 @@ export function IntegrationsPage() {
   const toast = useToast();
   const [source, setSource] = useState<string>(LEAD_CHANNELS[0].key);
   const [busy, setBusy] = useState('');
+  const [logType, setLogType] = useState('');
+  const [sort, setSort] = useState<SortDir>('desc');
   const log = useServiceQuery(() => integrationLog(actor), [actor.user.id]);
-  if (!can(actor, 'integrations.manage')) return <NoAccess what="integrations" />;
+  const logRows = byTime((log.data ?? []).filter((a) => !logType || a.action === logType), (a) => a.at, sort);
+  const paged = usePaged(logRows);
+  if (!can(actor, 'integrations.manage')) return <NoAccess what={I.noAccessWhat} />;
 
   const run = async (key: string, op: () => Promise<{ message: string; outcome?: string }>) => {
     setBusy(key);
@@ -44,98 +46,104 @@ export function IntegrationsPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Integrations" description="Simulated connections from BRD §6. Each button fabricates what the external system would send and runs it through the real CRM rules. Nothing leaves this browser." />
+      <PageHeader title={L.nav.pages.integrations.title} description={I.description} />
       <div className="cat-cards">
         <section className="panel">
           <h2 className="panel-title dialog-title-row">
-            Lead capture
-            <InfoTip text="Website forms, Meta lead ads, Google Ads and IndiaMART post enquiries to the CRM. Each is checked for duplicates on mobile and email, then auto-assigned to the least-loaded sales owner in the division." label="About lead capture" />
+            {I.leadCapture}
+            <InfoTip text={I.leadCaptureTip} label={L.admin.common.about(I.leadCapture)} />
           </h2>
-          <p className="muted small">LEAD-03, LEAD-04 · webhook / API</p>
+          <p className="muted small">{I.leadCaptureRefs}</p>
           <div className="row-gap">
-            <SelectMenu label="Lead source" value={source} options={LEAD_CHANNELS.map((c) => ({ value: c.key, label: c.label }))} onChange={setSource} />
+            <SelectMenu label={I.leadSource} value={source} options={LEAD_CHANNELS.map((c) => ({ value: c.key, label: c.label }))} onChange={setSource} />
             <Button variant="primary" loading={busy === 'lead'} onClick={() => run('lead', () => captureLead(actor, source))}>
-              Simulate incoming lead
+              {I.simulateLead}
             </Button>
           </div>
         </section>
         <section className="panel">
           <h2 className="panel-title dialog-title-row">
-            ERP
-            <InfoTip text="Pulls credit limit, outstanding and overdue amounts per customer and main-store spares stock. The live system would also push approved sales orders and receive invoices." label="About ERP sync" />
+            {I.erp}
+            <InfoTip text={I.erpTip} label={L.admin.common.about(I.erp)} />
           </h2>
-          <p className="muted small">CUS-09, SPR-02, SO-09 · scheduled sync</p>
+          <p className="muted small">{I.erpRefs}</p>
           <Button variant="primary" loading={busy === 'erp'} onClick={() => run('erp', async () => {
             const r = await runErpSync(actor);
-            return { message: `ERP sync done: ${r.customers} customer balance(s), ${r.spares} spare-part stock level(s).` };
+            return { message: I.erpDone(r.customers, r.spares) };
           })}>
-            Sync from ERP now
+            {I.erpSync}
           </Button>
         </section>
         <section className="panel">
           <h2 className="panel-title dialog-title-row">
-            WhatsApp & email to ticket
-            <InfoTip text="A customer contact messages the service number or mailbox; the CRM identifies them and logs a service ticket (SRV-01)." label="About message to ticket" />
+            {I.messageTicket}
+            <InfoTip text={I.messageTicketTip} label={L.admin.common.about(I.messageTicket)} />
           </h2>
-          <p className="muted small">SRV-01 · WhatsApp Business API / email-to-ticket</p>
+          <p className="muted small">{I.messageTicketRefs}</p>
           <div className="row-gap">
             <Button loading={busy === 'wa'} onClick={() => run('wa', () => receiveMessage(actor, 'whatsapp'))}>
-              Simulate WhatsApp
+              {I.simulateWhatsapp}
             </Button>
             <Button loading={busy === 'mail'} onClick={() => run('mail', () => receiveMessage(actor, 'email'))}>
-              Simulate email
+              {I.simulateEmail}
             </Button>
           </div>
         </section>
         <section className="panel">
-          <h2 className="panel-title">Not connected in this prototype</h2>
+          <h2 className="panel-title">{I.notConnected}</h2>
           <ul className="plain-list bullets small">
-            <li>Zoho CRM migration — one-time data load (not applicable to a frontend prototype).</li>
-            <li>Google / Outlook calendar sync — needs OAuth and a server.</li>
-            <li>Maps — locations are stored as coordinates; no map tiles are loaded.</li>
-            <li>E-signature — sign-offs use an on-screen one-time code.</li>
+            {I.notConnectedItems.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
           </ul>
         </section>
       </div>
       <section className="panel">
-        <h2 className="panel-title">Integration log</h2>
+        <h2 className="panel-title">{I.log}</h2>
+        <div className="toolbar">
+          <SelectMenu label={I.filterType} value={logType} options={[{ value: '', label: I.allTypes }, ...Object.entries(ACTION_LABEL).map(([value, label]) => ({ value, label }))]} onChange={setLogType} />
+          <SortPicker value={sort} onChange={setSort} />
+        </div>
         {log.error ? (
-          <ErrorState title="Could not load the log" onRetry={log.retry}>
+          <ErrorState title={I.logError} onRetry={log.retry}>
             {log.error}
           </ErrorState>
         ) : !log.data ? (
           <Skeleton rows={4} />
-        ) : !log.data.length ? (
-          <EmptyState icon="activity" title="No integration runs yet">
-            Use the buttons above to simulate inbound data.
+        ) : !logRows.length ? (
+          <EmptyState icon="activity" title={I.logEmptyTitle}>
+            {I.logEmptyBody}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
-              <thead>
-                <tr>
-                  <th scope="col">When</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Result</th>
-                  <th scope="col">Record</th>
-                </tr>
-              </thead>
-              <tbody>
-                {log.data.slice(0, 100).map((a) => (
-                  <tr key={a.id}>
-                    <td className="nowrap">
-                      <DateText value={a.at} />
-                    </td>
-                    <td>
-                      <Badge tone={a.action.endsWith('duplicate') ? 'warning' : 'neutral'}>{ACTION_LABEL[a.action] ?? a.action}</Badge>
-                    </td>
-                    <td>{a.summary}</td>
-                    <td>{a.resource && a.recordId ? <Link to={recordPeekPath(actor.workspaceId, a.resource, a.recordId)}>{a.recordId}</Link> : <EmptyValue />}</td>
+          <>
+            <div className="table-scroll">
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{I.columns.when}</th>
+                    <th scope="col">{I.columns.type}</th>
+                    <th scope="col">{I.columns.result}</th>
+                    <th scope="col">{I.columns.record}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {paged.shown.map((a) => (
+                    <tr key={a.id}>
+                      <td className="nowrap">
+                        <DateText value={a.at} />
+                      </td>
+                      <td>
+                        <Badge tone={a.action.endsWith('duplicate') ? 'warning' : 'neutral'}>{ACTION_LABEL[a.action] ?? a.action}</Badge>
+                      </td>
+                      <td>{a.summary}</td>
+                      <td>{a.resource && a.recordId ? <Link to={recordPeekPath(actor.workspaceId, a.resource, a.recordId)}>{a.recordId}</Link> : <EmptyValue />}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {paged.footer(I.runs)}
+          </>
         )}
       </section>
     </div>

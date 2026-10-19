@@ -50,4 +50,13 @@ describe('role dashboard', () => {
     expect(karan.family).toBe('sales');
     expect(admin.family).toBe('company');
   });
+
+  it('drills down only to current routes (no legacy paths)', () => {
+    const legacy = /^\/(inbox|renewals|dispatch-board|orders|visits|leaderboard|scorecard|targets\/achievement|opportunities\/forecast|consumables)(\/|\?|$)/;
+    for (const u of demoUsers) {
+      const d = dashboardFor(actorFor(u.id, 'tc'), resolveRange('30d'));
+      const links = [...d.kpis.map((k) => k.to), ...d.alerts.map((a) => a.to), ...d.agenda.map((a) => a.to), d.trend.to, d.pipe.to, d.board.to].filter(Boolean) as string[];
+      links.forEach((l) => expect(l, `${u.id} ${l}`).not.toMatch(legacy));
+    }
+  });
 });

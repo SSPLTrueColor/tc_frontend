@@ -5,6 +5,8 @@ import { DateText, EmptyValue } from '../../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, Skeleton, StatusChip } from '../../../components/primitives/feedback';
 import type { RecordExtensionProps } from '../../../components/resource/extensions';
 import { QuickCreateDialog } from '../../../components/resource/RecordForm';
+import { L } from '../../../constants/labels';
+import { ROUTES } from '../../../constants/routes';
 import { useServiceQuery } from '../../../hooks/useServiceQuery';
 import { formatDate } from '../../../lib/dates';
 import { formatMoney } from '../../../lib/format';
@@ -14,12 +16,16 @@ import { byId, contractRateFor, listPriceFor } from '../../../services/lookups';
 import { masterValue } from '../../../services/registry';
 import { recordTitle } from '../../../services/runtime';
 
+const T = L.spares.ticketTab;
+const CT = L.consumables.customerTab;
+const B = L.spares.banners;
+
 const chip = (master: string, key: unknown) => {
   const v = masterValue(master, key);
   return v ? <StatusChip label={v.label} tone={v.tone} /> : <EmptyValue />;
 };
 
-/** Ticket → "Parts" tab: requisitions raised for the ticket and a "Request part" shortcut (SPR-03). */
+/** Service Ticket → "Parts Used" tab: Spares Requisitions raised for the ticket and the "Raise Requisition" action (SPR-03/04). */
 export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
   const [open, setOpen] = useState(false);
   const q = useServiceQuery(() => api.requisitionsForTicket(actor, record.id), [actor.user.id, record.id]);
@@ -28,16 +34,16 @@ export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
   return (
     <div className="sp-stack">
       <div className="toolbar">
-        <span className="muted small">Parts requested for this ticket</span>
+        <span className="muted small">{T.intro}</span>
         <span className="spacer" />
         {canCreate && (
-          <Button icon="plus" onClick={() => setOpen(true)} disabledReason={closed ? 'Parts can only be requested on an open ticket' : undefined}>
-            Request part
+          <Button icon="plus" onClick={() => setOpen(true)} disabledReason={closed ? T.closedReason : undefined}>
+            {L.spares.actions.raiseRequisition}
           </Button>
         )}
       </div>
       {q.error ? (
-        <ErrorState title="Could not load parts" onRetry={q.retry}>
+        <ErrorState title={T.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       ) : !q.data ? (
@@ -46,12 +52,12 @@ export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
         <table className="mini-table">
           <thead>
             <tr>
-              <th scope="col">Requisition</th>
-              <th scope="col">Part</th>
+              <th scope="col">{T.cols.requisition}</th>
+              <th scope="col">{T.cols.part}</th>
               <th scope="col" className="num">
-                Qty
+                {T.cols.qty}
               </th>
-              <th scope="col">Status</th>
+              <th scope="col">{T.cols.status}</th>
             </tr>
           </thead>
           <tbody>
@@ -68,8 +74,8 @@ export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
           </tbody>
         </table>
       ) : (
-        <EmptyState icon="blocks" title="No parts requested">
-          Request a part when the repair needs one; the ticket waits for parts until it arrives.
+        <EmptyState icon="blocks" title={T.empty}>
+          {T.emptyBody}
         </EmptyState>
       )}
       <QuickCreateDialog open={open} resKey="requisitions" initial={{ ticketId: record.id }} onClose={() => setOpen(false)} onCreated={() => setOpen(false)} />
@@ -77,12 +83,12 @@ export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
   );
 }
 
-/** Customer 360 → "Consumables" tab (CON-01 / FR-098): machines, consumables orders, rate contracts, samples, reorder status. */
+/** Customer 360° → "Consumables" tab (CON-01 / FR-098): machines, consumables orders, rate contracts, samples, reorder status. */
 export function CustomerConsumablesTab({ actor, record }: RecordExtensionProps) {
   const q = useServiceQuery(() => api.customerConsumables(actor, record.id), [actor.user.id, record.id]);
   if (q.error)
     return (
-      <ErrorState title="Could not load consumables" onRetry={q.retry}>
+      <ErrorState title={CT.loadError} onRetry={q.retry}>
         {q.error}
       </ErrorState>
     );
@@ -91,18 +97,18 @@ export function CustomerConsumablesTab({ actor, record }: RecordExtensionProps) 
   return (
     <div className="sp-stack">
       {c.leaking && (
-        <InlineAlert tone="warning" title="Consumables leakage">
-          {c.machines.length} machine(s) installed but no consumables order {c.lastOrderDate ? `since ${formatDate(c.lastOrderDate)}` : 'yet'}. <Link to="/consumables/leakage">See leakage list</Link>
+        <InlineAlert tone="warning" title={CT.leakageTitle}>
+          {CT.leakage(c.machines.length, c.lastOrderDate ? formatDate(c.lastOrderDate) : null)} <Link to={ROUTES.leakageList}>{CT.leakageLink}</Link>
         </InlineAlert>
       )}
       {c.reorder && (
         <p className="small">
-          Reorder expected around <strong>{formatDate(c.reorder.dueDate)}</strong> (every ~{c.reorder.avgIntervalDays} days){' '}
-          <Badge tone={c.reorder.state === 'missed' ? 'danger' : c.reorder.state === 'due' ? 'warning' : 'neutral'}>{c.reorder.state === 'missed' ? 'Missed' : c.reorder.state === 'due' ? 'Due' : 'Upcoming'}</Badge>
+          {CT.reorder} <strong>{formatDate(c.reorder.dueDate)}</strong> {CT.every(c.reorder.avgIntervalDays)}{' '}
+          <Badge tone={c.reorder.state === 'missed' ? 'danger' : c.reorder.state === 'due' ? 'warning' : 'neutral'}>{L.consumables.pages.reorderPrediction.states[c.reorder.state]}</Badge>
         </p>
       )}
       <section>
-        <h3 className="panel-title">Installed machines</h3>
+        <h3 className="panel-title">{CT.machines}</h3>
         {c.machines.length ? (
           <ul className="plain-list">
             {c.machines.map((m) => (
@@ -112,11 +118,11 @@ export function CustomerConsumablesTab({ actor, record }: RecordExtensionProps) 
             ))}
           </ul>
         ) : (
-          <p className="muted small">Non-machine customer — consumables only.</p>
+          <p className="muted small">{CT.nonMachine}</p>
         )}
       </section>
       <section>
-        <h3 className="panel-title">Consumables orders ({c.orderCount})</h3>
+        <h3 className="panel-title">{CT.orders(c.orderCount)}</h3>
         {c.orders.length ? (
           <table className="mini-table">
             <tbody>
@@ -134,62 +140,62 @@ export function CustomerConsumablesTab({ actor, record }: RecordExtensionProps) 
             </tbody>
           </table>
         ) : (
-          <p className="muted small">No consumables orders yet.</p>
+          <p className="muted small">{CT.noOrders}</p>
         )}
       </section>
       <section>
-        <h3 className="panel-title">Valid rate contracts</h3>
+        <h3 className="panel-title">{CT.contracts}</h3>
         {c.contracts.length ? (
           <ul className="plain-list">
             {c.contracts.map((r) => (
               <li key={r.id}>
-                <Link to={recordPeekPath(actor.workspaceId, 'rateContracts', r.id)}>{r.id}</Link> · {recordTitle('products', r.productId, actor)} @ {formatMoney(Number(r.rate))} until {formatDate(String(r.validTo))}
+                <Link to={recordPeekPath(actor.workspaceId, 'rateContracts', r.id)}>{r.id}</Link> · {CT.contractLine(recordTitle('products', r.productId, actor), formatMoney(Number(r.rate)), formatDate(String(r.validTo)))}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted small">No valid rate contract — price list applies.</p>
+          <p className="muted small">{CT.noContracts}</p>
         )}
       </section>
       <section>
-        <h3 className="panel-title">Samples & trials ({c.samples.length})</h3>
+        <h3 className="panel-title">{CT.samples(c.samples.length)}</h3>
         {c.samples.length ? (
           <ul className="plain-list">
             {c.samples.slice(0, 6).map((s) => (
               <li key={s.id}>
-                <Link to={recordPeekPath(actor.workspaceId, 'sampleDispatches', s.id)}>{s.id}</Link> · {recordTitle('products', s.productId, actor)} {chip('sampleStatus', s.status)}
+                <Link to={recordPeekPath(actor.workspaceId, 'sampleDispatches', s.id)}>{s.id}</Link> · {recordTitle('products', s.productId, actor)} {chip('sampleDispatchStatus', s.status)}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="muted small">No samples sent.</p>
+          <p className="muted small">{CT.noSamples}</p>
         )}
       </section>
     </div>
   );
 }
 
-/** Requisition banner: stock shortage and the suggested consumption basis. */
+/** Spares Requisition banner: stock shortage and the suggested consumption basis. */
 export function RequisitionBanner({ record }: RecordExtensionProps) {
   const part = byId('spareParts', record.partId);
   if (!part) return null;
   const stock = Number(part.stockMain ?? 0);
   if (['requested', 'approved'].includes(String(record.status)) && stock < Number(record.qty))
     return (
-      <InlineAlert tone="warning" title="Short at main store">
-        {String(part.partNo)}: {stock} in stock, {String(record.qty)} requested. SCM has been notified of the import requirement.
+      <InlineAlert tone="warning" title={B.shortTitle}>
+        {B.short(String(part.partNo), stock, String(record.qty))}
       </InlineAlert>
     );
   if (record.status === 'consumed' && record.defectiveReturn === 'pending')
     return (
-      <InlineAlert tone="warning" title="Defective part pending">
-        The failed {String(part.partNo)} must be returned to the store{part.returnable ? ' for the OEM claim' : ''}.
+      <InlineAlert tone="warning" title={B.defectiveTitle}>
+        {B.defective(String(part.partNo), !!part.returnable)}
       </InlineAlert>
     );
   return null;
 }
 
-/** Rate contract banner: contract rate versus today's list price (BR-41 overrides the price list while valid). */
+/** Rate Contract banner: contract rate versus today's list price (BR-41 overrides the price list while valid). */
 export function RateContractBanner({ record }: RecordExtensionProps) {
   const lp = record.productId ? listPriceFor(String(record.productId)) : null;
   const effective = record.customerId && record.productId ? contractRateFor(String(record.customerId), String(record.productId)) : null;
@@ -197,9 +203,8 @@ export function RateContractBanner({ record }: RecordExtensionProps) {
   const rate = Number(record.rate);
   const pct = lp.listPrice ? Math.round(((lp.listPrice - rate) / lp.listPrice) * 1000) / 10 : 0;
   return (
-    <InlineAlert tone={pct > 15 ? 'warning' : 'info'} title={`List price ${formatMoney(lp.listPrice)}`}>
-      Contract rate {formatMoney(rate)} is {pct >= 0 ? `${pct}% below` : `${-pct}% above`} list.{' '}
-      {effective !== null ? `Quotations and orders for this customer use ${formatMoney(effective)} today.` : 'This contract is not in force today.'}
+    <InlineAlert tone={pct > 15 ? 'warning' : 'info'} title={L.consumables.banners.listPrice(formatMoney(lp.listPrice))}>
+      {L.consumables.banners.rate(formatMoney(rate), pct)} {effective !== null ? L.consumables.banners.inForce(formatMoney(effective)) : L.consumables.banners.notInForce}
     </InlineAlert>
   );
 }
@@ -208,8 +213,8 @@ export function RateContractBanner({ record }: RecordExtensionProps) {
 export function SparePartBanner({ record }: RecordExtensionProps) {
   if (Number(record.stockMain ?? 0) >= Number(record.minLevel ?? 0) || !Number(record.minLevel)) return null;
   return (
-    <InlineAlert tone={record.critical ? 'danger' : 'warning'} title="Below minimum level">
-      Stock {String(record.stockMain ?? 0)}, minimum {String(record.minLevel)}. Suggested import: {Math.max(0, Number(record.minLevel) * 2 - Number(record.stockMain ?? 0))}.
+    <InlineAlert tone={record.critical ? 'danger' : 'warning'} title={B.belowMinTitle}>
+      {B.belowMin(String(record.stockMain ?? 0), String(record.minLevel), Math.max(0, Number(record.minLevel) * 2 - Number(record.stockMain ?? 0)))}
     </InlineAlert>
   );
 }

@@ -7,6 +7,7 @@
 import { now as clockNow, nowIso } from '../lib/clock';
 import { SEED_REVISION, seedApp } from '../mocks/seed';
 import type { Db, DemoSettings, PersonalSettings } from './types';
+import { L } from '../constants/labels';
 
 export const STORAGE_KEY = 'tc.crm.db.v1';
 export const SEED = 2627;
@@ -24,6 +25,7 @@ export const defaultSettings = (): PersonalSettings => ({
   pins: [],
   favorites: [],
   palette: 'violet',
+  formLayout: 'simple',
   customPalettes: [],
   recents: [],
   defaultViews: {},
@@ -81,7 +83,7 @@ function persist() {
     localStorage.setItem(STORAGE_KEY, lastGood);
     persistError = null;
   } catch (e) {
-    persistError = e instanceof Error ? e.message : 'Local storage write failed';
+    persistError = e instanceof Error ? e.message : L.common.errors.storageWrite;
   }
 }
 
@@ -140,7 +142,7 @@ export const exportDbJson = () => JSON.stringify(db, null, 2);
 /** Restore from an export. Rejects files from another schema version. */
 export function importDbJson(text: string) {
   const parsed = JSON.parse(text) as Db;
-  if (parsed.schemaVersion !== SCHEMA_VERSION || !parsed.records) throw new Error('This file is not a True Colors CRM export for this version.');
+  if (parsed.schemaVersion !== SCHEMA_VERSION || !parsed.records) throw new Error(L.common.errors.badImport);
   db = parsed;
   persist();
   emit();

@@ -1,13 +1,16 @@
+import { ROUTES } from '../../constants/routes';
 import type { AppRoute } from '../types';
-import { QuoteComparePage } from './QuoteComparePage';
+import { CompareVersionsPage } from './CompareVersionsPage';
+import { PendingApprovalsPage } from './PendingApprovalsPage';
+import { QuotationPdfPage } from './QuotationPdfPage';
 import { QuoteEditorPage } from './QuoteEditorPage';
-import { QuotePrintPage } from './QuotePrintPage';
 import './quotations.css';
 
-/** Quotations pages beyond the generic list (/quotations) and record views. */
+/** Quotations pages beyond the generic list and record views (old /quotations/:id/print redirects centrally). */
 export const routes: AppRoute[] = [
-  { path: '/quotations/new', element: <QuoteEditorPage /> },
-  { path: '/quotations/:recordId/edit', element: <QuoteEditorPage /> },
-  { path: '/quotations/:recordId/print', element: <QuotePrintPage /> },
-  { path: '/quotations/:recordId/compare', element: <QuoteComparePage /> },
+  { path: ROUTES.quotationPendingApprovals, element: <PendingApprovalsPage /> },
+  { path: ROUTES.quotationNew, element: <QuoteEditorPage /> },
+  { path: ROUTES.quotationEdit, element: <QuoteEditorPage /> },
+  { path: ROUTES.quotationPdf, element: <QuotationPdfPage /> },
+  { path: ROUTES.quotationCompare, element: <CompareVersionsPage /> },
 ];

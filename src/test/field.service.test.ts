@@ -1,6 +1,8 @@
 import { actorFor } from '../services/authz';
 import { createDb, __setDb, getDb } from '../services/db';
-import { checkIn, checkOut, grantLocationConsent, logVisit, myDay } from '../services/field/field';
+import { checkIn, checkOut, grantLocationConsent, leaderboard, logVisit, myDay, routeFor, routePeople } from '../services/field/field';
+import { L } from '../constants/labels';
+import { ROUTES, slugOf, toPath } from '../constants/routes';
 import { createRecord, transitionRecord } from '../services/runtime';
 import { decideApproval } from '../services/workflow';
 import '../domain/extensions/index';
@@ -45,7 +47,7 @@ describe('field service', () => {
     expect(claim.amount).toBe(200);
     transitionRecord(karan, 'expenseClaims', claim.id, 'submitted', claim.version);
     const apr = getDb().approvals.find((a) => a.recordId === claim.id)!;
-    expect(apr.levels.map((l) => l.label)).toEqual(['Reporting manager', 'Accounts']);
+    expect(apr.levels.map((l) => l.label)).toEqual([L.field.approvals.reportingManager, L.roles.accounts.label]);
     decideApproval(actorFor('u_rohan', 'tc'), apr.id, 'approved', '', apr.version);
     const again = getDb().approvals.find((a) => a.id === apr.id)!;
     decideApproval(actorFor('u_swati', 'tc'), apr.id, 'approved', 'OK', again.version);
@@ -59,5 +61,31 @@ describe('field service', () => {
     const apr = getDb().approvals.find((a) => a.recordId === leave.id)!;
     decideApproval(actorFor('u_rohan', 'tc'), apr.id, 'approved', '', apr.version);
     expect(getDb().records.attendance.find((a) => a.employeeId === karan.staffId && a.date === d)?.status).toBe('leave');
+  });
+
+  it('Route Map people are scoped by role; routes outside scope are refused', () => {
+    const date = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const karan = actorFor('u_karan', 'tc');
+    const own = routePeople(karan, date);
+    expect(own.map((r) => r.employee.id)).toEqual([karan.staffId]);
+    const admin = actorFor('u_rahul', 'tc');
+    const everyone = routePeople(admin, date);
+    expect(everyone.length).toBeGreaterThan(own.length);
+    const other = everyone.find((r) => r.employee.id !== karan.staffId)!;
+    expect(() => routeFor(karan, other.employee.id, date)).toThrow(L.field.errors.routeUnavailable);
+    expect(routeFor(admin, other.employee.id, date).employee.id).toBe(other.employee.id);
+  });
+
+  it('leaderboard badges are label keys', () => {
+    const board = leaderboard(actorFor('u_rahul', 'tc'), null, new Date().toISOString().slice(0, 8) + '01');
+    board.ranking.flatMap((r) => r.badges).forEach((b) => expect(L.targets.badges[b]).toBeTruthy());
+  });
+
+  it('field force URLs follow the glossary', () => {
+    expect(slugOf('regularisations')).toBe('attendance-regularisation');
+    expect(slugOf('leaves')).toBe('leave-applications');
+    expect(slugOf('fieldVisits')).toBe(ROUTES.fieldVisits.slice(1));
+    expect(slugOf('beatPlans')).toBe(ROUTES.beatPlan.slice(1));
+    expect(toPath(ROUTES.routeMapFor, { userId: 'E-1' }, { date: '2026-10-01' })).toBe('/route-map/E-1?date=2026-10-01');
   });
 });

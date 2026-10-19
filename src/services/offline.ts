@@ -5,6 +5,7 @@
  * The queue lives in this tab only (a real app would persist it on the device).
  */
 import { ServiceError } from './types';
+import { L } from '../constants/labels';
 
 export interface QueuedWrite {
   id: number;
@@ -56,7 +57,7 @@ export function setOffline(next: boolean): SyncResult | null {
       w.run();
       result.synced.push(w.label);
     } catch (e) {
-      result.conflicts.push({ label: w.label, message: e instanceof ServiceError || e instanceof Error ? e.message : 'Could not sync' });
+      result.conflicts.push({ label: w.label, message: e instanceof ServiceError || e instanceof Error ? e.message : L.common.shell.offline.couldNotSync });
     }
   }
   emit();

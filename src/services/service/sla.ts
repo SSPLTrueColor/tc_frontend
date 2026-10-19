@@ -9,12 +9,13 @@
  */
 import { addMinutes, parseLocal } from '../../lib/dates';
 import type { Policies } from '../policies';
+import { L } from '../../constants/labels';
 
 export type Clock = 'response' | 'arrival' | 'resolution';
 export const CLOCKS: Clock[] = ['response', 'arrival', 'resolution'];
 export const DUE_FIELD: Record<Clock, string> = { response: 'responseDueAt', arrival: 'arrivalDueAt', resolution: 'resolutionDueAt' };
 export const MET_FIELD: Record<Clock, string> = { response: 'respondedAt', arrival: 'arrivedAt', resolution: 'resolvedAt' };
-export const CLOCK_LABEL: Record<Clock, string> = { response: 'Response', arrival: 'On-site arrival', resolution: 'Resolution' };
+export const CLOCK_LABEL: Record<Clock, string> = L.service.sla.clocks;
 
 const minutesBetween = (a: string, b: string) => Math.round((parseLocal(b).getTime() - parseLocal(a).getTime()) / 60000);
 

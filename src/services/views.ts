@@ -7,6 +7,9 @@ import { collectFields } from './filter';
 import { appendAudit } from './ledger';
 import { getResource } from './registry';
 import { ServiceError } from './types';
+import { L } from '../constants/labels';
+
+const E = L.common.errors;
 
 export function systemViews(resource: string): ViewDefinition[] {
   const res = getResource(resource);
@@ -50,14 +53,14 @@ export function unavailableViewFields(actor: Actor, v: ViewDefinition): string[]
 }
 
 export function saveView(actor: Actor, input: Omit<ViewDefinition, 'id' | 'ownerId' | 'order' | 'resourceVersion'> & { id?: string }): ViewDefinition {
-  if (!input.name.trim()) throw new ServiceError('validation', 'Name the view.');
-  if (!canCreateScope(actor, input.scope)) throw new ServiceError('forbidden', `Your role cannot share views with the ${input.scope === 'org' ? 'organization' : 'team'}.`);
+  if (!input.name.trim()) throw new ServiceError('validation', E.nameView);
+  if (!canCreateScope(actor, input.scope)) throw new ServiceError('forbidden', E.cannotShare(input.scope === 'org'));
   const res = getResource(input.resource);
   return commit((d) => {
     if (input.id) {
       const idx = d.views.findIndex((v) => v.id === input.id);
-      if (idx < 0) throw new ServiceError('not_found', 'View not found.');
-      if (!canManageView(actor, d.views[idx])) throw new ServiceError('forbidden', 'You cannot modify this view.');
+      if (idx < 0) throw new ServiceError('not_found', E.viewNotFound);
+      if (!canManageView(actor, d.views[idx])) throw new ServiceError('forbidden', E.cannotModifyView);
       d.views[idx] = { ...d.views[idx], ...input, id: d.views[idx].id, resourceVersion: res.version };
       return d.views[idx];
     }
@@ -65,7 +68,7 @@ export function saveView(actor: Actor, input: Omit<ViewDefinition, 'id' | 'owner
     const view: ViewDefinition = { ...input, id: uid('view'), ownerId: actor.user.id, order, resourceVersion: res.version, workspaceId: actor.workspaceId };
     d.views.push(view);
     if (view.scope !== 'personal') {
-      appendAudit(d, actor, { action: 'view.shared', resource: input.resource, summary: `Shared view "${view.name}" with ${view.scope}`, correlationId: uid('cor') });
+      appendAudit(d, actor, { action: 'view.shared', resource: input.resource, summary: L.common.audit.viewShared(view.name, view.scope), correlationId: uid('cor') });
     }
     return view;
   });
@@ -75,7 +78,7 @@ export function deleteView(actor: Actor, id: string) {
   commit((d) => {
     const v = d.views.find((x) => x.id === id);
     if (!v) return;
-    if (!canManageView(actor, v)) throw new ServiceError('forbidden', 'You cannot delete this view.');
+    if (!canManageView(actor, v)) throw new ServiceError('forbidden', E.cannotDeleteView);
     d.views = d.views.filter((x) => x.id !== id);
     Object.values(d.settings).forEach((s) => {
       Object.entries(s.defaultViews).forEach(([r, vid]) => vid === id && delete s.defaultViews[r]);

@@ -1,0 +1,51 @@
+/*
+ * Demo Machine Calendar: one template palette colour per demo machine (same --ev-* contract as
+ * src/modules/calendar/calendar.css, whose FullCalendar theme this page reuses).
+ */
+.dm-c0 {
+  --ev-solid: var(--s-accent);
+  --ev-fg: var(--s-accent-text);
+  --ev-bg: var(--s-accent-subtle);
+}
+.dm-c1 {
+  --ev-solid: var(--s-info);
+  --ev-fg: var(--s-info);
+  --ev-bg: var(--s-info-bg);
+}
+.dm-c2 {
+  --ev-solid: var(--s-success);
+  --ev-fg: var(--s-success);
+  --ev-bg: var(--s-success-bg);
+}
+.dm-c3 {
+  --ev-solid: var(--s-warning);
+  --ev-fg: var(--s-warning);
+  --ev-bg: var(--s-warning-bg);
+}
+.dm-c4 {
+  --ev-solid: var(--s-danger);
+  --ev-fg: var(--s-danger);
+  --ev-bg: var(--s-danger-bg);
+}
+.dm-busy {
+  --ev-solid: var(--s-text-muted);
+  --ev-fg: var(--s-text-secondary);
+  --ev-bg: var(--s-sunken);
+}
+.dm-machine {
+  align-items: flex-start;
+}
+.dm-machine-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.dm-machine-name {
+  overflow-wrap: anywhere;
+}
+.dm-machine-meta {
+  color: var(--s-text-muted);
+}
+.dm-machine .cal-swatch {
+  margin-top: 3px;
+}

@@ -11,14 +11,16 @@ import { recordPeekPath } from '../../lib/routes';
 import type { Actor } from '../../services/authz';
 import { canReadResource } from '../../services/authz';
 import { getDb } from '../../services/db';
-import { getResource, masterValue } from '../../services/registry';
+import { getMaster, getResource, masterValue } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
 import { isEmpty } from '../../services/validation';
 import { Icon } from '../primitives/Icon';
+import { isDragClick } from '../../lib/dragGuard';
 import { MaskedField, StatusChip } from '../primitives/feedback';
 import { DateText, EmptyValue } from '../primitives/display';
 import { OverflowChips } from '../primitives/OverflowChips';
 import { AvatarStack, ImageTile, PersonChip } from '../primitives/People';
+import { L } from '../../constants/labels';
 
 /** Subtitle of a related person (e.g. their role), from `personSubtitle`. */
 export function personSubtitle(field: FieldDefinition, resource: string, id: unknown): string | undefined {
@@ -28,6 +30,9 @@ export function personSubtitle(field: FieldDefinition, resource: string, id: unk
   if (!row || !f) return undefined;
   return f.master ? masterValue(f.master, row[f.key])?.label : String(row[f.key] ?? '');
 }
+
+/** Durations (min / h / days) get a clock icon like other time values. */
+const isTimeUnit = (u?: string) => !!u && /^(min|mins|minutes|h|hrs|hours|days?)$/i.test(u);
 
 /** Photo of a related record (e.g. a staff member) when the target resource has an image field. */
 export function photoOf(resource: string, id: unknown): string | null {
@@ -41,7 +46,17 @@ export function MasterChip({ master, value, plain }: { master: string; value: un
   const mv: MasterValue | undefined = masterValue(master, value);
   if (!mv) return isEmpty(value) ? <EmptyValue /> : <span>{String(value)}</span>;
   const label = mv.active ? mv.label : `${mv.label} (inactive)`;
-  if (plain) return <span>{label}</span>;
+  if (plain) {
+    // Box only where it carries meaning: masters whose values have colours → outlined chip in the value's colour;
+    // masters with no colours (booking channel, role, department…) → plain text, no box.
+    const meaningful = getMaster(master).values.some((x) => (x.tone ?? 'neutral') !== 'neutral');
+    if (!meaningful) return <span>{label}</span>;
+    return (
+      <span className={cx('ref-chip', `tone-${mv.tone ?? 'neutral'}`)} data-tooltip={label}>
+        <span className="chip-label">{label}</span>
+      </span>
+    );
+  }
   return <StatusChip label={label} tone={mv.tone ?? 'neutral'} />;
 }
 
@@ -69,9 +84,9 @@ export function FieldValue({
   if (access === 'mask') {
     if (isEmpty(value)) return <EmptyValue />;
     return (
-      <span className="restricted" data-tooltip="Restricted for your role">
+      <span className="restricted" data-tooltip={L.common.states.restrictedForRole}>
         <Icon name="lock" size={12} />
-        {value === RESTRICTED ? 'Restricted' : String(value)}
+        {value === RESTRICTED ? L.common.states.restricted : String(value)}
       </span>
     );
   }
@@ -79,17 +94,31 @@ export function FieldValue({
 
   switch (field.type) {
     case 'master':
-      return <MasterChip master={field.master!} value={value} plain={!STATUS_LIKE.has(field.key) && masterValue(field.master!, value)?.tone === 'neutral'} />;
+      // Status-like masters = filled status pill; every other master value = Attio "domain-style" outlined chip
+      return <MasterChip master={field.master!} value={value} plain={!STATUS_LIKE.has(field.key)} />;
     case 'multimaster':
       return <OverflowChips items={(value as string[]).map((k) => masterValue(field.master!, k)?.label ?? k)} label={field.label} />;
     case 'relation': {
       const target = field.relation!.resource;
       const title = recordTitle(target, value, actor);
       const exists = getDb().records[target]?.some((r) => r.id === value);
-      const body = rich && field.display === 'person' ? <PersonChip name={title} src={photoOf(target, value)} subtitle={personSubtitle(field, target, value)} /> : title;
+      // Icon before the value wherever one fits (person for staff, the related resource's icon otherwise)
+      const valueIcon = target === 'staff' ? 'f-person' : getResource(target).icon;
+      const body =
+        rich && field.display === 'person' ? (
+          <PersonChip name={title} src={photoOf(target, value)} subtitle={personSubtitle(field, target, value)} />
+        ) : (
+          <span className="value-with-icon">
+            <Icon name={valueIcon} size={14} className="value-icon" />
+            <span className="value-text">{title}</span>
+          </span>
+        );
       if (!linkRelations || !exists || !canReadResource(actor, target)) return <span>{body}</span>;
       return (
-        <Link className="rel-link" to={recordPeekPath(actor.workspaceId, target, String(value))} onClick={(e) => e.stopPropagation()}>
+        <Link className="rel-link" to={recordPeekPath(actor.workspaceId, target, String(value))} onClick={(e) => {
+          e.stopPropagation();
+          if (isDragClick(e)) e.preventDefault(); // selecting text never navigates
+        }}>
           {body}
         </Link>
       );
@@ -104,7 +133,8 @@ export function FieldValue({
     case 'date': {
       const overdue = /due|bookBy/i.test(field.key + field.label) && String(value) < todayKey();
       return (
-        <span className={cx('date-cell', overdue && 'text-danger')}>
+        <span className={cx('date-cell value-with-icon', overdue && 'text-danger')}>
+          <Icon name="calendar" size={14} className="value-icon" />
           <DateText value={String(value)} />
           {overdue && <span className="sr-only"> (overdue)</span>}
           {overdue && <Icon name="alert" size={12} className="inline-icon" />}
@@ -112,14 +142,27 @@ export function FieldValue({
       );
     }
     case 'datetime':
-      return <DateText value={String(value)} showTime />;
+      return (
+        <span className="value-with-icon">
+          <Icon name="calendar-clock" size={14} className="value-icon" />
+          <DateText value={String(value)} showTime />
+        </span>
+      );
     case 'money':
-      return <span className="num">{formatMoney(Number(value))}</span>;
+      return (
+        <span className="num value-with-icon">
+          <Icon name="f-money" size={14} className="value-icon" />
+          <span>{formatMoney(Number(value))}</span>
+        </span>
+      );
     case 'number':
       return (
-        <span className="num">
-          {String(value)}
-          {field.unit && <span className="muted"> {field.unit}</span>}
+        <span className={cx('num', isTimeUnit(field.unit) && 'value-with-icon')}>
+          {isTimeUnit(field.unit) && <Icon name="f-datetime" size={14} className="value-icon" />}
+          <span>
+            {String(value)}
+            {field.unit && <span className="muted"> {field.unit}</span>}
+          </span>
         </span>
       );
     case 'progress': {
@@ -137,7 +180,7 @@ export function FieldValue({
       return (
         <span className="bool">
           <Icon name={value ? 'check' : 'x'} size={14} />
-          {value ? 'Yes' : 'No'}
+          {value ? L.common.actions.yes : L.common.actions.no}
         </span>
       );
     case 'identifier':

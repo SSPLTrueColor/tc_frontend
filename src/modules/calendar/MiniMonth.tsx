@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { L } from '../../constants/labels';
 import { addDays } from '../../lib/dates';
 import { cx } from '../../lib/format';
 import { IconButton } from '../../components/primitives/Button';
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+const MM = L.calendar.miniMonth;
+const MONTHS = MM.months;
+const WEEKDAYS = MM.weekdays;
 
 const ym = (d: string) => d.slice(0, 7);
 const shiftMonth = (month: string, n: number) => {
@@ -35,14 +37,14 @@ export function MiniMonth({ selected, today, marked, onPick }: { selected: strin
     if (ym(selected) !== month) setMonth(ym(selected));
   }
   return (
-    <div className="mini-month" aria-label="Pick a date">
+    <div className="mini-month" aria-label={MM.label}>
       <div className="mini-month-head">
         <strong>
           {MONTHS[+month.slice(5, 7) - 1]} {month.slice(0, 4)}
         </strong>
         <span className="spacer" />
-        <IconButton icon="chevron-left" label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))} />
-        <IconButton icon="chevron-right" label="Next month" onClick={() => setMonth(shiftMonth(month, 1))} />
+        <IconButton icon="chevron-left" label={MM.previous} onClick={() => setMonth(shiftMonth(month, -1))} />
+        <IconButton icon="chevron-right" label={MM.next} onClick={() => setMonth(shiftMonth(month, 1))} />
       </div>
       <div className="mini-month-grid" role="grid">
         {WEEKDAYS.map((d) => (
@@ -57,7 +59,7 @@ export function MiniMonth({ selected, today, marked, onPick }: { selected: strin
               key={day}
               type="button"
               className={cx('mini-month-day', ym(day) !== month && 'is-outside', day === today && 'is-today', day === selected && 'is-selected')}
-              aria-label={`${+day.slice(8, 10)} ${MONTHS[+day.slice(5, 7) - 1]} ${day.slice(0, 4)}${marked.has(day) ? ', has events' : ''}`}
+              aria-label={`${+day.slice(8, 10)} ${MONTHS[+day.slice(5, 7) - 1]} ${day.slice(0, 4)}${marked.has(day) ? MM.hasEvents : ''}`}
               aria-current={day === today ? 'date' : undefined}
               onClick={() => onPick(day)}
             >

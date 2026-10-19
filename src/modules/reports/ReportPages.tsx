@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { L } from '../../constants/labels';
+import { ROUTES } from '../../constants/routes';
 import { addDays, todayKey } from '../../lib/dates';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { call, errorMessage } from '../../services/api/client';
@@ -9,6 +11,7 @@ import { useActor } from '../../services/hooks';
 import { activeMasterValues } from '../../services/registry';
 import { queryRecords } from '../../services/runtime';
 import { getReport, REPORT_GROUPS } from '../../services/reports/catalog';
+import { reportPath } from '../../services/reports/helpers';
 import type { ReportDef, ReportFilters } from '../../services/reports/types';
 import { Button } from '../../components/primitives/Button';
 import { DateRangePicker } from '../../components/primitives/DateRangePicker';
@@ -24,21 +27,21 @@ export function ReportsCatalogPage({ group }: { group?: string }) {
   const [q, setQ] = useState('');
   const query = useServiceQuery(() => listReports(actor).map((r) => ({ id: r.id, title: r.title, group: r.group, fr: r.fr, description: r.description })), [actor.user.id]);
   const groups = REPORT_GROUPS.filter((g) => !group || g.id === group);
-  const title = group ? `Reports · ${REPORT_GROUPS.find((g) => g.id === group)?.label ?? group}` : 'Reports';
+  const title = group ? REPORT_GROUPS.find((g) => g.id === group)?.label ?? group : L.nav.pages.reports.title;
   const needle = q.trim().toLowerCase();
   return (
     <div className="page">
-      <PageHeader title={title} description="Every report reads the records your role can see, with the same row scope as the lists. Open a report to filter, sort, chart and export it." />
+      <PageHeader title={title} description={L.reports.catalog.description} />
       <div className="rep-toolbar">
-        <input type="search" className="input input-compact" placeholder="Search reports" aria-label="Search reports" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" className="input input-compact" placeholder={L.reports.catalog.search} aria-label={L.reports.catalog.search} value={q} onChange={(e) => setQ(e.target.value)} />
         {group && (
-          <Link to="/reports" className="link small">
-            All reports
+          <Link to={ROUTES.reports} className="link small">
+            {L.reports.catalog.allReports}
           </Link>
         )}
       </div>
       {query.error ? (
-        <ErrorState title="Could not load reports" onRetry={query.retry}>
+        <ErrorState title={L.reports.catalog.loadError} onRetry={query.retry}>
           {query.error}
         </ErrorState>
       ) : !query.data ? (
@@ -47,7 +50,7 @@ export function ReportsCatalogPage({ group }: { group?: string }) {
         (() => {
           const visible = query.data.filter((r) => !needle || `${r.title} ${r.description} ${r.fr.join(' ')}`.toLowerCase().includes(needle));
           const shown = groups.map((g) => ({ g, items: visible.filter((r) => r.group === g.id) })).filter((x) => x.items.length);
-          if (!shown.length) return <EmptyState icon="search" title={needle ? 'No reports match' : 'No reports for your role'}>{needle ? 'Try another word.' : 'Your role cannot read the records these reports use.'}</EmptyState>;
+          if (!shown.length) return <EmptyState icon="search" title={needle ? L.reports.catalog.noMatchTitle : L.reports.catalog.noReportsTitle}>{needle ? L.reports.catalog.noMatchBody : L.reports.catalog.noReportsBody}</EmptyState>;
           return (
             <div className="rep-groups">
               {shown.map(({ g, items }) => (
@@ -57,7 +60,7 @@ export function ReportsCatalogPage({ group }: { group?: string }) {
                     <span className="muted small">{items.length}</span>
                   </div>
                   {items.map((r) => (
-                    <Link key={r.id} to={`/reports/${r.id}`} className="rep-card">
+                    <Link key={r.id} to={reportPath(r.id)} className="rep-card">
                       <span className="rep-card-title">{r.title}</span>
                       <span className="muted small">{r.description}</span>
                       <span className="rep-frs">
@@ -117,9 +120,9 @@ function ReportViewer({ reportId }: { reportId: string }) {
   const people = useServiceQuery(() => queryRecords(actor, 'employees', { sort: [{ field: 'fullName', dir: 'asc' }] }).rows.filter((e) => e.status !== 'inactive').map((e) => ({ value: e.id, label: String(e.fullName) })), [actor.user.id]);
   useEffect(() => setSearch(''), [reportId]);
 
-  if (!def) return <NoAccess what="this report" />;
+  if (!def) return <NoAccess what={L.reports.viewer.noAccess} />;
   const allowed = listReports(actor).some((r) => r.id === def.id);
-  if (!allowed) return <NoAccess what={def.title.toLowerCase()} />;
+  if (!allowed) return <NoAccess what={def.title} />;
 
   const doExport = async () => {
     if (!result.data) return;
@@ -127,7 +130,7 @@ function ReportViewer({ reportId }: { reportId: string }) {
     try {
       const csv = await call(() => exportReport(actor, def.id, result.data!, filters));
       downloadText(`${def.id}-${todayKey()}.csv`, csv);
-      toast(`Exported ${result.data.rows.length} rows (logged in the audit trail)`);
+      toast(L.reports.viewer.exported(result.data.rows.length));
     } catch (e) {
       toast(errorMessage(e), 'danger');
     } finally {
@@ -139,49 +142,49 @@ function ReportViewer({ reportId }: { reportId: string }) {
     <div className="page">
       <PageHeader
         title={def.title}
-        description={`${def.description} Covers ${def.fr.join(', ')}.`}
+        description={L.reports.viewer.covers(def.description, def.fr.join(', '))}
         actions={
           <>
-            <Link to={`/reports/${def.group}`} className="btn btn-secondary">
-              <span className="btn-label">More reports: {REPORT_GROUPS.find((g) => g.id === def.group)?.label}</span>
+            <Link to={reportPath(def.group)} className="btn btn-secondary">
+              <span className="btn-label">{L.reports.viewer.moreReports(REPORT_GROUPS.find((g) => g.id === def.group)?.label ?? '')}</span>
             </Link>
-            <Button icon="download" loading={exporting} onClick={doExport} disabledReason={!canExportReports(actor) ? `${actor.role.label} cannot export reports` : !result.data?.rows.length ? 'Nothing to export' : undefined}>
-              Export CSV
+            <Button icon="download" loading={exporting} onClick={doExport} disabledReason={!canExportReports(actor) ? L.reports.viewer.cannotExport(actor.role.label) : !result.data?.rows.length ? L.reports.viewer.nothingToExport : undefined}>
+              {L.reports.viewer.exportCsv}
             </Button>
           </>
         }
       />
-      <div className="rep-toolbar" role="group" aria-label="Report filters">
+      <div className="rep-toolbar" role="group" aria-label={L.reports.viewer.filters}>
         {def.filters.date && (
           <>
-            <span className="muted small">{def.dateLabel ?? 'Date'}</span>
+            <span className="muted small">{def.dateLabel ?? L.reports.viewer.date}</span>
             <span className="rep-date">
-              <DateRangePicker label={def.dateLabel ?? 'Date range'} value={{ from: filters.from, to: filters.to }} onChange={(v) => set({ from: v.from, to: v.to })} />
+              <DateRangePicker label={def.dateLabel ?? L.reports.viewer.dateRange} value={{ from: filters.from, to: filters.to }} onChange={(v) => set({ from: v.from, to: v.to })} />
             </span>
           </>
         )}
         {def.filters.division && (
-          <SelectMenu label="Division" value={filters.division ?? ''} options={[{ value: '', label: 'All divisions' }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => set({ division: v || undefined })} />
+          <SelectMenu label={L.reports.viewer.division} value={filters.division ?? ''} options={[{ value: '', label: L.reports.viewer.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => set({ division: v || undefined })} />
         )}
         {def.filters.owner && (
-          <SelectMenu label="Person" searchable value={filters.owner ?? ''} options={[{ value: '', label: 'Everyone I can see' }, ...(people.data ?? [])]} onChange={(v) => set({ owner: v || undefined })} />
+          <SelectMenu label={L.reports.viewer.user} searchable value={filters.owner ?? ''} options={[{ value: '', label: L.reports.viewer.everyone }, ...(people.data ?? [])]} onChange={(v) => set({ owner: v || undefined })} />
         )}
-        {def.groupOptions && <SelectMenu label="Group by" value={filters.group ?? ''} options={def.groupOptions} onChange={(v) => set({ group: v })} />}
-        <input type="search" className="input input-compact" placeholder="Search rows" aria-label="Search rows" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <InfoTip text="Figures use only records your role can see (own / team / division / company), the same as the lists." label="About report scope" />
+        {def.groupOptions && <SelectMenu label={L.reports.viewer.groupBy} value={filters.group ?? ''} options={def.groupOptions} onChange={(v) => set({ group: v })} />}
+        <input type="search" className="input input-compact" placeholder={L.reports.viewer.searchRows} aria-label={L.reports.viewer.searchRows} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <InfoTip text={L.reports.viewer.scopeInfo} label={L.reports.viewer.scopeInfoLabel} />
       </div>
       {result.error ? (
-        <ErrorState title="Could not run this report" onRetry={result.retry}>
+        <ErrorState title={L.reports.viewer.runError} onRetry={result.retry}>
           {result.error}
         </ErrorState>
       ) : !result.data ? (
         <Skeleton rows={10} />
       ) : (
         <>
-          {result.data.kpis && <KpiTiles tiles={result.data.kpis} label={`${def.title} headline figures`} />}
+          {result.data.kpis && <KpiTiles tiles={result.data.kpis} label={L.reports.viewer.headlineFigures(def.title)} />}
           {result.data.rows.length === 0 ? (
-            <EmptyState icon="search" title="No rows for this selection">
-              Widen the date range or clear a filter.
+            <EmptyState icon="search" title={L.reports.viewer.emptyTitle}>
+              {L.reports.viewer.emptyBody}
             </EmptyState>
           ) : (
             <div className={result.data.chart ? 'dash-grid' : undefined}>

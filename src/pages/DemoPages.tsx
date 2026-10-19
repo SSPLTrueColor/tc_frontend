@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { L } from '../constants/labels';
 import { Link } from 'react-router-dom';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { getClockOffset, now } from '../lib/clock';
@@ -19,21 +20,25 @@ import { InfoTip } from '../components/primitives/InfoTip';
 import { Dialog } from '../components/primitives/overlay';
 import { SelectMenu } from '../components/primitives/SelectMenu';
 import { PageHeader } from '../components/shell/PageHeader';
+import { byTime, SortPicker, type SortDir, usePaged } from '../modules/catalog/kit';
 
+const DC = L.admin.demoControls;
+const DT = L.admin.dataTransfer;
+const O = L.admin.outbox;
 const LATENCY = [
-  { value: '0-0', label: 'Off (instant)' },
-  { value: '100-300', label: 'Fast (0.1–0.3 s)' },
-  { value: '300-800', label: 'Realistic (0.3–0.8 s)' },
-  { value: '1000-2500', label: 'Slow 4G (1–2.5 s)' },
+  { value: '0-0', label: DC.latencyOptions.off },
+  { value: '100-300', label: DC.latencyOptions.fast },
+  { value: '300-800', label: DC.latencyOptions.realistic },
+  { value: '1000-2500', label: DC.latencyOptions.slow },
 ];
 const FAILURE = [
-  { value: 0, label: 'Never' },
-  { value: 0.1, label: '1 in 10 calls' },
-  { value: 0.3, label: '3 in 10 calls' },
+  { value: 0, label: DC.failureOptions.never },
+  { value: 0.1, label: DC.failureOptions.one },
+  { value: 0.3, label: DC.failureOptions.three },
 ];
-const IDLE = [5, 15, 30, 60].map((m) => ({ value: m, label: `${m} minutes` }));
+const IDLE = [5, 15, 30, 60].map((m) => ({ value: m, label: DC.minutes(m) }));
 
-/** Admin demo controls (Settings): simulated clock, latency, failures, idle timeout. */
+/** System Administrator demo controls (Demo Settings): simulated clock, latency, failures, idle timeout. */
 export function DemoControls() {
   useRevision();
   const actor = useActor();
@@ -42,40 +47,40 @@ export function DemoControls() {
   const offsetDays = Math.round(getClockOffset() / 86_400_000);
   const shift = (days: number) => {
     shiftClock(actor, days);
-    toast(days === 0 ? 'Clock is back to real time' : `Clock moved to ${formatDateTime(now().toISOString())}`, 'info');
+    toast(days === 0 ? DC.clockReset : DC.clockMoved(formatDateTime(now().toISOString())), 'info');
   };
   return (
     <section className="panel">
       <h2 className="panel-title dialog-title-row">
-        Demo controls
-        <InfoTip text="Only for demonstrations. Time-based rules (SLAs, expiry, reminders, overdue lists) read the simulated clock; screens wait the simulated network delay." label="About demo controls" />
+        {DC.title}
+        <InfoTip text={DC.tip} label={DC.tipLabel} />
       </h2>
       <dl className="detail-list">
         <div className="detail-row">
-          <dt>Simulated now</dt>
+          <dt>{DC.now}</dt>
           <dd>
             {formatDateTime(now().toISOString())}
-            {offsetDays !== 0 && <Badge tone="warning">{offsetDays > 0 ? `+${offsetDays}` : offsetDays} days</Badge>}
+            {offsetDays !== 0 && <Badge tone="warning">{DC.days(offsetDays)}</Badge>}
           </dd>
         </div>
       </dl>
       <div className="row-gap">
-        <Button onClick={() => shift(1)}>+1 day</Button>
-        <Button onClick={() => shift(7)}>+7 days</Button>
-        <Button onClick={() => shift(30)}>+30 days</Button>
-        <Button onClick={() => shift(0)} disabledReason={offsetDays === 0 && getClockOffset() === 0 ? 'Already real time' : undefined}>
-          Back to real time
+        <Button onClick={() => shift(1)}>{DC.plusDays(1)}</Button>
+        <Button onClick={() => shift(7)}>{DC.plusDays(7)}</Button>
+        <Button onClick={() => shift(30)}>{DC.plusDays(30)}</Button>
+        <Button onClick={() => shift(0)} disabledReason={offsetDays === 0 && getClockOffset() === 0 ? DC.alreadyRealTime : undefined}>
+          {DC.realTime}
         </Button>
       </div>
       <div className="form-grid">
         <div className="form-field">
           <label className="field-label" htmlFor="demo-latency">
-            Network delay
+            {DC.latency}
           </label>
           <SelectMenu
             id="demo-latency"
             block
-            label="Network delay"
+            label={DC.latency}
             value={`${demo.latencyMin}-${demo.latencyMax}`}
             options={LATENCY}
             onChange={(v) => {
@@ -86,15 +91,15 @@ export function DemoControls() {
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="demo-failure">
-            Simulated failures
+            {DC.failures}
           </label>
-          <SelectMenu id="demo-failure" block label="Simulated failures" value={demo.failureRate} options={FAILURE} onChange={(v) => updateDemoSettings(actor, { failureRate: v })} />
+          <SelectMenu id="demo-failure" block label={DC.failures} value={demo.failureRate} options={FAILURE} onChange={(v) => updateDemoSettings(actor, { failureRate: v })} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="demo-idle">
-            Sign out after inactivity
+            {DC.idle}
           </label>
-          <SelectMenu id="demo-idle" block label="Sign out after inactivity" value={demo.idleTimeoutMin} options={IDLE} onChange={(v) => updateDemoSettings(actor, { idleTimeoutMin: v })} />
+          <SelectMenu id="demo-idle" block label={DC.idle} value={demo.idleTimeoutMin} options={IDLE} onChange={(v) => updateDemoSettings(actor, { idleTimeoutMin: v })} />
         </div>
       </div>
     </section>
@@ -113,13 +118,13 @@ export function DataTransfer() {
         icon="download"
         onClick={() => {
           downloadText(`truecolors-crm-demo-${todayKey()}.json`, exportDbJson(), 'application/json');
-          toast('All demo data exported');
+          toast(DT.exported);
         }}
       >
-        Export all data
+        {DT.export}
       </Button>
       <Button icon="arrow-up" onClick={() => fileRef.current?.click()}>
-        Import data…
+        {DT.import}
       </Button>
       <input
         ref={fileRef}
@@ -131,7 +136,7 @@ export function DataTransfer() {
           e.target.value = '';
           if (!f) return;
           if (f.size > 15 * 1024 * 1024) {
-            toast('That file is larger than 15 MB', 'danger');
+            toast(DT.tooLarge, 'danger');
             return;
           }
           f.text().then((t) => {
@@ -145,12 +150,12 @@ export function DataTransfer() {
         onClose={() => setPending(null)}
         size="sm"
         role="alertdialog"
-        title="Replace all demo data?"
-        description="Everything in this browser is replaced by the file’s contents, including the signed-in user and settings."
+        title={DT.replaceTitle}
+        description={DT.replaceDescription}
         footer={
           <>
             <Button onClick={() => setPending(null)} data-autofocus>
-              Cancel
+              {L.admin.common.cancel}
             </Button>
             <Button
               variant="danger"
@@ -158,18 +163,18 @@ export function DataTransfer() {
                 try {
                   importDbJson(pending ?? '');
                   setPending(null);
-                  toast('Demo data imported');
+                  toast(DT.imported);
                 } catch (e) {
-                  setError(e instanceof Error ? e.message : 'Import failed');
+                  setError(e instanceof Error ? e.message : DT.importFailed);
                 }
               }}
             >
-              Replace data
+              {DT.replace}
             </Button>
           </>
         }
       >
-        <p className="muted">Export the current data first if you may need it again.</p>
+        <p className="muted">{DT.exportFirst}</p>
         {error && (
           <p className="field-error" role="alert">
             {error}
@@ -180,68 +185,82 @@ export function DataTransfer() {
   );
 }
 
-const CHANNEL_LABEL: Record<OutboxMessage['channel'], string> = { email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS', push: 'App push' };
+const CHANNEL_LABEL: Record<OutboxMessage['channel'], string> = O.channels;
 
-/** Simulated outbound messages (COM-03, §6 WhatsApp / email). */
+/** Sent Messages (Simulated): outbound messages (COM-03, §6 WhatsApp / email). */
 export function OutboxPage() {
   const actor = useActor();
   const [channel, setChannel] = useState('');
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<SortDir>('desc');
   const query = useServiceQuery(() => listOutbox(actor), [actor.user.id]);
-  if (!can(actor, 'outbox.view')) return <NoAccess what="the message outbox" />;
-  const rows = (query.data ?? []).filter((m) => (!channel || m.channel === channel) && (!q || `${m.to} ${m.subject ?? ''} ${m.body}`.toLowerCase().includes(q.toLowerCase())));
+  const all = query.data ?? [];
+  const rows = byTime(
+    all.filter((m) => (!channel || m.channel === channel) && (!q || `${m.to} ${m.subject ?? ''} ${m.body}`.toLowerCase().includes(q.toLowerCase()))),
+    (m) => m.createdAt,
+    sort,
+  );
+  const paged = usePaged(rows);
+  if (!can(actor, 'outbox.view')) return <NoAccess what={O.noAccessWhat} />;
   return (
     <div className="page">
-      <PageHeader title="Message outbox" description="Every email, WhatsApp, SMS and push message the live system would send. Nothing leaves this browser." />
+      <PageHeader title={L.nav.pages.sentMessages.title} description={O.description} />
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder="Search recipient or text" aria-label="Search messages" value={q} onChange={(e) => setQ(e.target.value)} />
-        <SelectMenu label="Filter by channel" value={channel} options={[{ value: '', label: 'All channels' }, ...Object.entries(CHANNEL_LABEL).map(([value, label]) => ({ value, label }))]} onChange={setChannel} />
-        <span className="toolbar-count muted">{rows.length} messages</span>
+        <input type="search" className="input input-compact" placeholder={O.searchPlaceholder} aria-label={O.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SelectMenu label={O.filterChannel} value={channel} options={[{ value: '', label: O.allChannels }, ...Object.entries(CHANNEL_LABEL).map(([value, label]) => ({ value, label }))]} onChange={setChannel} />
+        <SortPicker value={sort} onChange={setSort} />
       </div>
       <div className="content-surface">
         {query.error ? (
-          <ErrorState title="Could not load messages" onRetry={query.retry}>
+          <ErrorState title={O.loadError} onRetry={query.retry}>
             {query.error}
           </ErrorState>
         ) : !query.data ? (
           <Skeleton rows={6} />
         ) : rows.length ? (
-          <div className="table-scroll">
-            <table className="mini-table">
-              <thead>
-                <tr>
-                  <th scope="col">When</th>
-                  <th scope="col">Channel</th>
-                  <th scope="col">To</th>
-                  <th scope="col">Message</th>
-                  <th scope="col">Record</th>
-                  <th scope="col">Sent by</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.slice(0, 300).map((m) => (
-                  <tr key={m.id}>
-                    <td className="nowrap">
-                      <DateText value={m.createdAt} showTime />
-                    </td>
-                    <td>
-                      <Badge tone="neutral">{CHANNEL_LABEL[m.channel]}</Badge>
-                    </td>
-                    <td>{m.to}</td>
-                    <td>
-                      {m.subject && <strong>{m.subject} · </strong>}
-                      {m.body}
-                    </td>
-                    <td>{m.related ? <Link to={recordPeekPath(actor.workspaceId, m.related.resource, m.related.recordId)}>{m.related.recordId}</Link> : <EmptyValue />}</td>
-                    <td>{getUser(m.createdBy)?.name ?? m.createdBy}</td>
+          <>
+            <div className="table-scroll">
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{O.columns.when}</th>
+                    <th scope="col">{O.columns.channel}</th>
+                    <th scope="col">{O.columns.to}</th>
+                    <th scope="col">{O.columns.message}</th>
+                    <th scope="col">{O.columns.record}</th>
+                    <th scope="col">{O.columns.sentBy}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {paged.shown.map((m) => (
+                    <tr key={m.id}>
+                      <td className="nowrap">
+                        <DateText value={m.createdAt} showTime />
+                      </td>
+                      <td>
+                        <Badge tone="neutral">{CHANNEL_LABEL[m.channel]}</Badge>
+                      </td>
+                      <td>{m.to}</td>
+                      <td>
+                        {m.subject && <strong>{m.subject} · </strong>}
+                        {m.body}
+                      </td>
+                      <td>{m.related ? <Link to={recordPeekPath(actor.workspaceId, m.related.resource, m.related.recordId)}>{m.related.recordId}</Link> : <EmptyValue />}</td>
+                      <td>{getUser(m.createdBy)?.name ?? m.createdBy}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {paged.footer(O.messages)}
+          </>
+        ) : all.length ? (
+          <EmptyState icon="search" title={O.noMatchTitle}>
+            {O.noMatchBody}
+          </EmptyState>
         ) : (
-          <EmptyState icon="send" title="No messages yet">
-            Sending a quotation, dispatch update or feedback link records the message here.
+          <EmptyState icon="send" title={O.emptyTitle}>
+            {O.emptyBody}
           </EmptyState>
         )}
       </div>

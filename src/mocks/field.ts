@@ -1,6 +1,6 @@
 /**
- * Field & performance demo data: 30 days of attendance (late, early, half-day, absent, on tour,
- * leave), tracked routes, ~150 field visits, beat plans, expense claims in every status, leave and
+ * Field Force and Targets & Recognition demo data: 30 days of attendance (late, early, half-day, absent, on tour,
+ * leave), tracked routes, ~150 field visits, beat plans, expense claims in every status, leave applications and
  * regularisation requests, and targets for the current month / quarter / financial year.
  * Labels are built locally — the registry is not available while the store is being seeded.
  */
@@ -9,8 +9,9 @@ import { addDays, startOfWeek } from '../lib/dates';
 import type { Approval } from '../services/types'; // type-only: erased at runtime
 import { attendanceMetrics, conveyanceAmount, expenseLimit, isOfficeRole, managerLevel, OFFICE, periodStartFor, type Point, routeDistanceKm, TERRITORY_CENTRES } from '../domain/modules/field/rules';
 import type { SeedContext } from './context';
+import { L } from '../constants/labels';
 
-export const rev = 1;
+export const rev = 2;
 
 /** Default shift and conveyance policy (same values as services/policies.ts defaults; seeds must not import services). */
 const SHIFT = { start: '09:30', end: '18:30', graceMin: 15, halfDayHours: 4.5 };
@@ -21,7 +22,7 @@ const isSunday = (d: string) => new Date(`${d}T12:00:00`).getDay() === 0;
 const PURPOSE = ['prospecting', 'follow_up', 'demo', 'collection'];
 const SITES = ['Shree Balaji Prints', 'Navkar Textile Mills', 'Kalpana Creations', 'Ganpati Label House', 'Metro Paper Traders', 'Rajlaxmi Fabrics', 'Sai Krupa Digital', 'Vardhman Print Hub'];
 const LABEL = {
-  metric: { order_value: 'Order value (₹)', quantity: 'Quantity (units)', collections: 'Collections (₹)', new_customers: 'New customers', activities: 'Activities logged' } as Record<string, string>,
+  metric: L.targets.masters.targetMetric.values as Record<string, string>,
   division: { TX: 'Textile', INK: 'Ink', POD: 'Commercial – POD', LBL: 'Commercial – Label', PPR: 'Paper', FAB: 'Fabric' } as Record<string, string>,
 };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -80,7 +81,7 @@ export function seed(ctx: SeedContext): void {
     leaves.push({ ...ctx.base(Math.max(1, Math.round((Date.parse(today) - Date.parse(from)) / 86_400_000) + 3), u.id), id, employeeId: ctx.staff(u.id), leaveType: type, fromDate: from, toDate: to, reason, status, decisionNote: status === 'rejected' ? 'Month-end closing — please reschedule' : '' });
     if (status === 'approved') for (let d = from; d <= to; d = addDays(d, 1)) leaveDays.set(`${ctx.staff(u.id)}:${d}`, new Set());
     if (status === 'pending') {
-      const ok = addApproval({ type: 'leave.request', resource: 'leaves', recordId: id, requestedBy: u.id, requestedAt: ctx.base(1).createdAt, reason, summary: `Leave ${from} to ${to} · ${u.name}`, divisionIds: u.divisions, levels: [managerLevel(u.roleId)] });
+      const ok = addApproval({ type: 'leave.request', resource: 'leaves', recordId: id, requestedBy: u.id, requestedAt: ctx.base(1).createdAt, reason, summary: L.field.approvals.leaveSummary((L.field.masters.leaveType.values as Record<string, string>)[type], from, to, u.name), divisionIds: u.divisions, levels: [managerLevel(u.roleId)] });
       if (!ok) leaves[leaves.length - 1].status = 'approved';
     }
   };
@@ -160,7 +161,7 @@ export function seed(ctx: SeedContext): void {
           activities.push({
             ...base,
             id: ctx.nextId('activities', 'ACT'),
-            subject: `${purpose === 'service' ? 'Service' : purpose === 'follow_up' ? 'Follow-up' : purpose[0].toUpperCase() + purpose.slice(1)} visit — ${site.siteLabel}`,
+            subject: L.field.audit.visitSubject((L.field.masters.visitPurpose.values as Record<string, string>)[purpose], site.siteLabel),
             activityType: 'visit',
             at: visit.checkOutAt,
             byId: staffId,
@@ -235,13 +236,13 @@ export function seed(ctx: SeedContext): void {
       const a = attendance.find((x) => x.employeeId === staffId && x.date === date);
       const m = attendanceMetrics({ checkInAt: reqIn, checkOutAt: reqOut, status: 'present' }, SHIFT);
       if (a) Object.assign(a, { checkInAt: reqIn, checkOutAt: reqOut, workMinutes: m.workMinutes, lateByMin: m.lateByMin, earlyByMin: m.earlyByMin, status: m.status, regularised: true });
-      else attendance.push({ ...ctx.base(back, uid), id: ctx.nextId('attendance', 'ATT'), employeeId: staffId, date, checkInAt: reqIn, checkOutAt: reqOut, workMinutes: m.workMinutes, lateByMin: 0, earlyByMin: 0, status: m.status, regularised: true, checkInPlace: 'Regularised (no GPS)', locationSource: 'regularisation' });
+      else attendance.push({ ...ctx.base(back, uid), id: ctx.nextId('attendance', 'ATT'), employeeId: staffId, date, checkInAt: reqIn, checkOutAt: reqOut, workMinutes: m.workMinutes, lateByMin: 0, earlyByMin: 0, status: m.status, regularised: true, checkInPlace: L.field.approvals.regularisedPlace, locationSource: 'regularisation' });
     }
-    if (status === 'pending' && !addApproval({ type: 'attendance.regularisation', resource: 'regularisations', recordId: id, requestedBy: uid, requestedAt: ctx.base(back).createdAt, reason, summary: `Attendance correction ${date} · ${u.name}`, divisionIds: u.divisions, levels: [managerLevel(u.roleId)] })) regs[regs.length - 1].status = 'approved';
+    if (status === 'pending' && !addApproval({ type: 'attendance.regularisation', resource: 'regularisations', recordId: id, requestedBy: uid, requestedAt: ctx.base(back).createdAt, reason, summary: L.field.approvals.regularisationSummary(date, u.name, reqIn.slice(11), reqOut.slice(11)), divisionIds: u.divisions, levels: [managerLevel(u.roleId)] })) regs[regs.length - 1].status = 'approved';
   };
-  addReg('u_farhan', 9, 'approved', 'Phone battery dead, could not check in at customer site');
+  addReg('u_farhan', 9, 'approved', 'Phone battery dead, could not check-in at customer site');
   addReg('u_ajay', 5, 'approved', 'App did not open in low network area (Ludhiana industrial area)');
-  addReg('u_imran', 7, 'rejected', 'Forgot to check in');
+  addReg('u_imran', 7, 'rejected', 'Forgot to check-in');
   addReg('u_karan', 2, 'pending', 'Checked in from customer site but GPS failed');
   addReg('u_meera', 3, 'pending', 'Network outage at office in the morning');
 
@@ -280,7 +281,7 @@ export function seed(ctx: SeedContext): void {
     const id = ctx.nextId('expenseClaims', 'EXP', 'fy', new Date(`${date}T12:00:00`));
     if (status === 'submitted') {
       const u = users.find((x) => x.id === userId)!;
-      const ok = addApproval({ type: 'expense.claim', resource: 'expenseClaims', recordId: id, requestedBy: userId, requestedAt: ctx.base(Math.max(0, back - 1)).createdAt, reason: String(v.justification ?? ''), summary: `${id} · ₹${Number(v.amount).toLocaleString('en-IN')} · ${u.name}`, amount: Number(v.amount), divisionIds: u.divisions, levels: [managerLevel(u.roleId), { capability: 'approve.finance', label: 'Accounts' }] });
+      const ok = addApproval({ type: 'expense.claim', resource: 'expenseClaims', recordId: id, requestedBy: userId, requestedAt: ctx.base(Math.max(0, back - 1)).createdAt, reason: String(v.justification ?? ''), summary: L.field.approvals.expenseSummary(id, (L.field.masters.expenseType.values as Record<string, string>)[String(v.expenseType)], `₹${Number(v.amount).toLocaleString('en-IN')}`, u.name), amount: Number(v.amount), divisionIds: u.divisions, levels: [managerLevel(u.roleId), { capability: 'approve.finance', label: L.roles.accounts.label }] });
       if (!ok) status = 'draft';
     }
     return { ...ctx.base(Math.max(0, back - 1), userId), id, employeeId: staffId, claimDate: date, status, exportedAt: status === 'exported' ? at(addDays(date, 3), 17 * 60) : null, ...v };
@@ -292,8 +293,9 @@ export function seed(ctx: SeedContext): void {
   const quarter = periodStartFor('quarter', today);
   const year = periodStartFor('year', today);
   const addTarget = (scopeType: string, staffId: string | null, divisionId: string, periodType: string, periodStart: string, metric: string, targetValue: number, owner = 'u_rahul') => {
-    const who = scopeType === 'division' ? LABEL.division[divisionId] : `${emp(staffId!)?.fullName ?? ''}${scopeType === 'team' ? ' (team)' : ''}`;
-    targets.push({ ...ctx.base(25, owner), id: ctx.nextId('targets', 'TGT'), name: `${who} · ${LABEL.metric[metric]} · ${periodText(periodType, periodStart)}`, scopeType, employeeId: staffId, divisionId, periodType, periodStart, metric, targetValue, productCategory: null });
+    const person = String(emp(staffId!)?.fullName ?? '');
+    const who = scopeType === 'division' ? LABEL.division[divisionId] : scopeType === 'team' ? L.targets.name.team(person) : person;
+    targets.push({ ...ctx.base(25, owner), id: ctx.nextId('targets', 'TGT'), name: L.targets.name.join([who, LABEL.metric[metric], periodText(periodType, periodStart)]), scopeType, employeeId: staffId, divisionId, periodType, periodStart, metric, targetValue, productCategory: null });
   };
   const lakh = (a: number, b: number) => rnd.int(a, b) * 100_000;
   for (const u of users.filter((x) => x.roleId === 'sales_exec')) {

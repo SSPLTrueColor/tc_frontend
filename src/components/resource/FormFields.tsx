@@ -3,7 +3,7 @@
  * Layout (sections/columns) is presentation only; validation and access come
  * from the resource schema + Authorization Service.
  */
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import type { FieldAccess, FieldDefinition, LineItemColumn, RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx, formatMoney } from '../../lib/format';
 import type { Actor } from '../../services/authz';
@@ -17,9 +17,12 @@ import { MultiSelectMenu } from '../primitives/MultiSelectMenu';
 import { DatePicker } from '../primitives/DatePicker';
 import { InfoTip } from '../primitives/InfoTip';
 import { ImageTile } from '../primitives/People';
+import { fieldIcon } from './fieldIcon';
 import { Button, IconButton } from '../primitives/Button';
+import { Menu, type MenuItem } from '../primitives/overlay';
 import { Icon } from '../primitives/Icon';
 import { FieldValue } from './FieldValue';
+import { L } from '../../constants/labels';
 
 type Values = Record<string, unknown>;
 
@@ -94,7 +97,7 @@ export function FieldInput({
         <label className="switch">
           <input id={id} type="checkbox" role="switch" checked={!!value} onChange={(e) => onChange(e.target.checked)} aria-describedby={describedBy} />
           <span className="switch-track" aria-hidden="true" />
-          <span>{value ? 'Yes' : 'No'}</span>
+          <span>{value ? L.common.actions.yes : L.common.actions.no}</span>
         </label>
       );
     case 'master': {
@@ -103,6 +106,7 @@ export function FieldInput({
       const current = getMaster(field.master!).values.find((v) => v.key === value);
       return (
         <SelectMenu
+          icon={fieldIcon(field)}
           id={id}
           block
           label={field.label}
@@ -110,9 +114,9 @@ export function FieldInput({
           invalid={invalid}
           describedBy={describedBy}
           disabled={field.masterParentField ? !parent : undefined}
-          placeholder={field.masterParentField && !parent ? 'Choose the parent value first' : 'Select…'}
+          placeholder={field.masterParentField && !parent ? L.common.form.chooseParentFirst : L.common.form.select}
           options={[
-            ...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: 'None' }] : []),
+            ...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []),
             ...(current && !current.active ? [{ value: current.key, label: `${current.label} (inactive)` }] : []),
             ...opts.map((o) => ({ value: o.key, label: o.label })),
           ]}
@@ -153,6 +157,7 @@ export function FieldInput({
       const dependent = field.relation?.filterBy && !values[field.relation.filterBy.fromField];
       return (
         <SelectMenu
+          icon={fieldIcon(field)}
           id={id}
           block
           label={field.label}
@@ -160,19 +165,38 @@ export function FieldInput({
           invalid={invalid}
           describedBy={describedBy}
           disabled={!!dependent || !opts.length}
-          placeholder={dependent ? 'Choose the related record first' : opts.length ? 'Select…' : 'No options available'}
-          options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: 'None' }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
+          placeholder={dependent ? L.common.form.chooseRelatedFirst : opts.length ? L.common.form.select : L.common.form.noOptions}
+          options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
           onChange={(v) => onChange(v || null)}
         />
       );
     }
     case 'lineitems':
       return <LineItemsEditor field={field} value={(value as Values[]) ?? []} onChange={onChange} id={id} />;
+    case 'email':
+    case 'phone':
+      // phone / email icon inside the input (same icon as in tables and details)
+      return (
+        <div className="input-affix has-start has-icon">
+          <span className="affix affix-start">
+            <Icon name={field.type === 'phone' ? 'f-phone' : 'f-email'} size={14} />
+          </span>
+          <input
+            {...common}
+            type={field.type === 'email' ? 'email' : 'tel'}
+            autoComplete="off"
+            maxLength={field.maxLength}
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={field.placeholder}
+          />
+        </div>
+      );
     default:
       return (
         <input
           {...common}
-          type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'}
+          type="text"
           autoComplete="off"
           maxLength={field.maxLength}
           value={String(value ?? '')}
@@ -208,10 +232,10 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
                 </th>
               ))}
               <th scope="col" className="num">
-                Amount
+                {L.common.form.amount}
               </th>
               <th scope="col">
-                <span className="sr-only">Row actions</span>
+                <span className="sr-only">{L.common.form.rowActions}</span>
               </th>
             </tr>
           </thead>
@@ -220,21 +244,27 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
               <tr key={i}>
                 {cols.map((c) => (
                   <td key={c.key}>
-                    <LineCell col={c} value={row[c.key]} onChange={(v) => set(i, c.key, v)} label={`Row ${i + 1} ${c.label}`} />
+                    <LineCell col={c} value={row[c.key]} onChange={(v) => set(i, c.key, v)} label={L.common.form.rowLabel(i + 1, c.label)} />
                   </td>
                 ))}
                 <td className="num">{formatMoney((Number(row.qty) || 0) * (Number(row.unitPrice) || 0))}</td>
                 <td className="li-actions">
-                  <IconButton icon="arrow-up" label={`Move row ${i + 1} up`} onClick={() => move(i, -1)} disabled={i === 0} />
-                  <IconButton icon="arrow-down" label={`Move row ${i + 1} down`} onClick={() => move(i, 1)} disabled={i === value.length - 1} />
-                  <IconButton icon="trash" label={`Remove row ${i + 1}`} onClick={() => onChange(value.filter((_, j) => j !== i))} />
+                  {/* one ⋯ menu per row (Move up / Move down / Remove) instead of three icons */}
+                  <RowMenu
+                    label={L.common.form.row(i + 1)}
+                    items={[
+                      { id: 'up', label: L.common.form.moveUpRow, icon: 'arrow-up', onSelect: () => move(i, -1), disabledReason: i === 0 ? L.common.form.alreadyFirst : undefined },
+                      { id: 'down', label: L.common.form.moveDownRow, icon: 'arrow-down', onSelect: () => move(i, 1), disabledReason: i === value.length - 1 ? L.common.form.alreadyLast : undefined },
+                      { id: 'rm', label: L.common.form.removeLine, icon: 'trash', danger: true, separatorBefore: true, onSelect: () => onChange(value.filter((_, j) => j !== i)) },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}
             {!value.length && (
               <tr>
                 <td colSpan={cols.length + 2} className="muted li-empty">
-                  No line items yet.
+                  {L.common.form.noLineItems}
                 </td>
               </tr>
             )}
@@ -243,7 +273,7 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
             <tr>
               <td colSpan={cols.length}>
                 <Button icon="plus" onClick={() => onChange([...value, { serviceCode: '', description: '', qty: 1, unitPrice: 0 }])}>
-                  Add line
+                  {L.common.form.addLine}
                 </Button>
               </td>
               <td className="num li-total">{formatMoney(totalCents / 100)}</td>
@@ -275,7 +305,18 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
       />
     );
   }
-  return <input className="input input-compact" aria-label={label} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+  return <input className="input input-compact" aria-label={label} placeholder={col.key === 'description' ? L.common.form.optionalDescription : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+}
+
+function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <IconButton ref={ref} icon="more" label={`${label} actions`} aria-haspopup="menu" onClick={() => setOpen((o) => !o)} />
+      <Menu open={open} onClose={() => setOpen(false)} anchor={ref} label={`${label} actions`} items={items} />
+    </>
+  );
 }
 
 /** Renders one field row with label, help, error association and access-aware read-only states. */
@@ -306,13 +347,14 @@ export function FormField({
     return (
       <div className={cx('form-field', wide && 'span-2')}>
         <span className="field-label" id={`${id}-label`}>
+          <Icon name={fieldIcon(field)} size={16} className="field-icon" />
           {field.label}
           {access === 'mask' && (
             <span className="field-flag">
               <Icon name="lock" size={12} /> Masked
             </span>
           )}
-          {access === 'view' && !field.computed && !field.readOnly && !field.system && <span className="field-flag">Read-only for your role</span>}
+          {access === 'view' && !field.computed && !field.readOnly && !field.system && <span className="field-flag">{L.common.form.readOnlyFlag}</span>}
         </span>
         <div className="field-readonly">
           <FieldValue field={field} value={record ? record[field.key] : values[field.key]} access={access} actor={actor} />
@@ -321,13 +363,14 @@ export function FormField({
     );
   }
   return (
-    <div className={cx('form-field', wide && 'span-2', error && 'has-error')} data-field={field.key}>
+    <div className={cx('form-field', wide && 'span-2', error && 'has-error')} data-field={field.key} data-type={field.type}>
       <span className="field-label-row">
         <label className="field-label" htmlFor={id} id={`${id}-label`}>
+          <Icon name={fieldIcon(field)} size={16} className="field-icon" />
           {field.label}
           {required ? <span className="req"> *</span> : <span className="optional"> (optional)</span>}
         </label>
-        {field.help && <InfoTip text={field.help} label={`About ${field.label}`} />}
+        {field.help && <InfoTip text={field.help} label={L.common.form.about(field.label)} />}
       </span>
       <FieldInput
         field={field}
@@ -363,7 +406,9 @@ export function FormSections({
   access,
   actor,
   record,
+  layout = 'simple',
 }: {
+  layout?: 'simple' | 'canvas';
   res: ResourceDefinition;
   sectionIds?: string[];
   fieldKeys?: string[];
@@ -378,6 +423,33 @@ export function FormSections({
     if (fieldKeys) return [{ id: 'quick', title: '', fields: fieldKeys, columns: 1 as const }];
     return res.form.sections.filter((s) => !sectionIds || sectionIds.includes(s.id));
   }, [res, sectionIds, fieldKeys]);
+  if (layout === 'canvas') {
+    // Canvas: the title field as a large borderless heading, then every field as an icon · label | value row
+    const all = sections.flatMap((s) => s.fields).map((k) => res.fields.find((f) => f.key === k)).filter((f): f is FieldDefinition => !!f && access[f.key] !== 'hide');
+    const title = all.find((f) => f.key === res.titleField && f.type === 'text' && access[f.key] === 'edit');
+    return (
+      <div className="form-canvas">
+        {title && (
+          <input
+            className={cx('canvas-title', errors[title.key] && 'is-invalid')}
+            aria-label={title.label}
+            placeholder={title.label}
+            value={String(values[title.key] ?? '')}
+            maxLength={title.maxLength}
+            onChange={(e) => setValue(title.key, e.target.value)}
+          />
+        )}
+        {title && errors[title.key] && <p className="field-error">{errors[title.key]}</p>}
+        <div className="canvas-rows">
+          {all
+            .filter((f) => f !== title)
+            .map((f) => (
+              <FormField key={f.key} field={f} access={access[f.key]} values={values} setValue={setValue} error={errors[f.key]} actor={actor} record={record} />
+            ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <>
       {sections.map((s) => {
@@ -406,7 +478,7 @@ export function ErrorSummary({ errors, res, message }: { errors: Record<string, 
   return (
     <div className="error-summary" role="alert" tabIndex={-1} data-error-summary>
       <strong>
-        <Icon name="alert" size={14} /> {message ?? 'Please fix the following:'}
+        <Icon name="alert" size={14} /> {message ?? L.common.form.fixFollowing}
       </strong>
       {keys.length > 0 && (
         <ul>
@@ -451,11 +523,11 @@ function ImageInput({ id, label, value, onChange, describedBy }: { id: string; l
             reader.readAsDataURL(file);
           }}
         />
-        {value ? 'Replace' : 'Upload'}
+        {value ? L.common.actions.replace : L.common.actions.upload}
       </label>
       {value && (
         <button type="button" className="multi-clear" onClick={() => onChange(null)}>
-          Remove
+          {L.common.actions.remove}
         </button>
       )}
     </span>

@@ -28,7 +28,8 @@ function code(fn: () => unknown): string | undefined {
 /** Next weekday (Mon–Fri) at least 20 days out, so seeded bookings never interfere. */
 function freeDay(): string {
   let d = addDays(todayKey(), 20);
-  while ([0, 6].includes(parseLocal(d).getDay())) d = addDays(d, 1);
+  // Tue–Fri: a weekday every test clinician works (Dr. Amara is off on Mondays) — keeps tests independent of today's weekday
+  while ([0, 1, 6].includes(parseLocal(d).getDay())) d = addDays(d, 1);
   return d;
 }
 

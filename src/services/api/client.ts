@@ -6,10 +6,11 @@
  */
 import { getDb } from '../db';
 import { ServiceError } from '../types';
+import { L } from '../../constants/labels';
 
 export class NetworkError extends Error {
   constructor() {
-    super('Could not reach the server. Check your connection and try again. (Simulated failure)');
+    super(L.common.errors.network);
   }
 }
 
@@ -27,4 +28,4 @@ export async function call<T>(op: () => T, opts: { fast?: boolean } = {}): Promi
   return op();
 }
 
-export const errorMessage = (e: unknown) => (e instanceof ServiceError || e instanceof NetworkError || e instanceof Error ? e.message : 'Something went wrong');
+export const errorMessage = (e: unknown) => (e instanceof ServiceError || e instanceof NetworkError || e instanceof Error ? e.message : L.common.errors.generic);

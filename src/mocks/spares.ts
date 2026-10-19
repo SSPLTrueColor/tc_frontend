@@ -1,7 +1,8 @@
 /**
- * Spares & consumables demo data: ~80 spare parts across the textile, POD and label machine
- * families (some below minimum), ~60 requisitions in every status linked to seeded tickets,
- * OEM warranty claims, ~30 customer rate contracts and ~25 sample / trial dispatches.
+ * Spare Parts (4.9) and Consumables (4.10) demo data: ~80 spare parts across the textile, POD and
+ * label machine families (some below minimum), ~60 Spares Requisitions in every status linked to
+ * seeded service tickets, Warranty Claims (OEM), ~30 customer Rate Contracts, ~25 Sample / Trial
+ * Dispatch records and ~40 Dealer / Distributor Orders (secondary sales, CON-06).
  * Upstream data (tickets, customers, products, machines) is optional — sections are skipped
  * when it is missing.
  */
@@ -10,7 +11,7 @@ import { addDays, toDateKey } from '../lib/dates';
 import type { SeedContext } from './context';
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 1;
+export const rev = 2;
 
 const FAMILIES = [
   { code: 'SUB', name: 'ChromaJet sublimation (Epson i3200)', head: 'Epson i3200-A1 print head', oem: 'epson', div: 'TX' },
@@ -44,6 +45,25 @@ const PARTS: [string, string, string, string, number, boolean, boolean, boolean]
 ];
 
 const COURIERS = ['Blue Dart', 'DTDC', 'Delhivery', 'Professional Couriers', 'Hand delivery'];
+
+/** End customers of dealers / distributors (secondary sales) — local print shops and processors. */
+const END_CUSTOMERS: [string, string][] = [
+  ['Shree Ganesh Digital Prints', 'Surat'],
+  ['Balaji Textile Printers', 'Ichalkaranji'],
+  ['Om Sai Sublimation Studio', 'Pune'],
+  ['Kaveri Fabric Processors', 'Erode'],
+  ['Laxmi Label Works', 'Bhiwandi'],
+  ['Annapurna Offset & Digital', 'Nagpur'],
+  ['Royal Garments Print Unit', 'Ludhiana'],
+  ['Sri Venkateswara Prints', 'Vijayawada'],
+  ['Maa Durga Flex & Digital', 'Asansol'],
+  ['Patel Sarees Printing House', 'Ahmedabad'],
+  ['Murugan Knit Prints', 'Tiruppur'],
+  ['Jain Packaging Labels', 'Indore'],
+  ['Nandini Book Printers', 'Mysuru'],
+  ['Kohinoor Digital Textiles', 'Jaipur'],
+  ['Saraswati Print Bureau', 'Kolkata'],
+];
 
 export function seed(ctx: SeedContext): void {
   const { rnd, today, now } = ctx;
@@ -149,7 +169,7 @@ export function seed(ctx: SeedContext): void {
       requisitions.push(r);
     });
 
-    // OEM warranty claims for consumed warranty parts with a returned defective part.
+    // Warranty Claims (OEM) for consumed warranty parts with a returned defective part.
     requisitions
       .filter((r) => r.status === 'consumed' && r.basis === 'warranty' && r.defectiveReturn === 'received')
       .slice(0, 12)
@@ -239,4 +259,44 @@ export function seed(ctx: SeedContext): void {
   }
   ctx.records.rateContracts = contracts;
   ctx.records.sampleDispatches = samples;
+
+  // ---------------------------------------------------------------- Dealer / Distributor Orders (~40, CON-06)
+  const dealerOrders: RecordData[] = [];
+  const dealers = customers.filter((c) => c.category === 'dealer' || c.category === 'distributor');
+  const sellable = (ctx.records.products ?? []).filter((p) => ['ink', 'paper', 'fabric', 'spares'].includes(String(p.productType)) && p.status !== 'inactive');
+  if (dealers.length && sellable.length) {
+    const UOM: Record<string, string> = { ink: 'L', paper: 'roll', fabric: 'm', spares: 'Nos' };
+    dealers.forEach((dl, di) => {
+      const divs = (dl.divisionIds as string[]) ?? [];
+      const match = sellable.filter((p) => divs.includes(String(p.divisionId)));
+      const pool = match.length ? match : sellable;
+      const n = rnd.int(6, 10);
+      for (let k = 0; k < n; k++) {
+        const p = rnd.pick(pool);
+        const type = String(p.productType);
+        const [endName, city] = END_CUSTOMERS[(di * 7 + k * 3) % END_CUSTOMERS.length];
+        const daysAgo = rnd.int(1, 180);
+        const list = priceOf(p.id) || rnd.int(800, 6000);
+        const status = daysAgo < 7 ? 'booked' : rnd.chance(0.06) ? 'cancelled' : 'delivered';
+        dealerOrders.push({
+          ...ctx.base(daysAgo),
+          id: ctx.nextId('dealerOrders', 'DO'),
+          dealerId: dl.id,
+          endCustomer: endName,
+          endCustomerCity: city,
+          productId: p.id,
+          qty: type === 'ink' ? rnd.pick([5, 10, 20, 40]) : type === 'paper' ? rnd.pick([2, 5, 10]) : type === 'fabric' ? rnd.pick([50, 100, 250]) : rnd.int(1, 4),
+          uom: UOM[type] ?? 'Nos',
+          rate: Math.round(list * (1.04 + rnd.next() * 0.12)),
+          orderDate: addDays(today, -daysAgo),
+          invoiceNo: `${String(dl.name).split(' ').map((w) => w[0]).join('').slice(0, 3).toUpperCase()}/INV-${1000 + dealerOrders.length}`,
+          status,
+          divisionId: p.divisionId ?? divs[0] ?? null,
+          ownerId: dl.ownerId ?? null,
+          notes: '',
+        });
+      }
+    });
+  }
+  ctx.records.dealerOrders = dealerOrders;
 }

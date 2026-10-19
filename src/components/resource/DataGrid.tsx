@@ -6,6 +6,7 @@ import { type Actor, canUpdateRecord, fieldAccessMap } from '../../services/auth
 import { getDb } from '../../services/db';
 import { displayText, recordTitle, updateRecord } from '../../services/runtime';
 import { ServiceError } from '../../services/types';
+import { masterValue } from '../../services/registry';
 import { IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
 import { useToast } from '../primitives/feedback';
@@ -15,12 +16,23 @@ import { FieldValue } from './FieldValue';
 import { LineItemsTable, lineItemsOf } from './LineItems';
 import { ImageTile } from '../primitives/People';
 import { isEmpty } from '../../services/validation';
+import { isDragClick } from '../../lib/dragGuard';
+import { L } from '../../constants/labels';
+
+const C = L.common;
+const LS = L.common.list;
 
 const INLINE_TYPES = new Set(['text', 'number', 'money', 'master', 'date', 'relation']);
 /** Row action icons (view, edit, more): column width fits exactly this many 30px icons. */
 const ROW_ACTION_ICONS = 3;
 const ACTIONS_W = ROW_ACTION_ICONS * 30 + (ROW_ACTION_ICONS - 1) * 2 + 16;
 const DEFAULT_W = 150;
+/**
+ * Virtualization rule: when a flat, one-line table renders more than this many rows, only the rows in
+ * (and just around) the viewport are in the DOM; spacer rows keep the scroll height exact.
+ */
+export const VIRTUAL_THRESHOLD = 100;
+const VIRTUAL_OVERSCAN = 12;
 
 export interface GridProps {
   res: ResourceDefinition;
@@ -80,7 +92,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [columns, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [columns, rows.length]);  
   const masterDetail = res.fields.some((f) => f.type === 'lineitems' && access[f.key] !== 'hide' && access[f.key] !== 'mask');
 
   // Pinned column offsets (sticky left after the select column).
@@ -112,11 +124,27 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
     const f = res.fields.find((x) => x.key === groupBy);
     const map = new Map<string, RecordData[]>();
     rows.forEach((r) => {
-      const label = f ? displayText(f, r[groupBy], actor) || 'Not set' : 'Not set';
+      const label = f ? displayText(f, r[groupBy], actor) || C.states.notSet : C.states.notSet;
       map.set(label, [...(map.get(label) ?? []), r]);
     });
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, rs]) => ({ key: label, label, rows: rs }));
   }, [rows, groupBy, res, actor]);
+
+  // ---- virtualization (flat one-line tables with many rows)
+  const virtual = !groupBy && rowLines === 1 && expanded.size === 0 && rows.length > VIRTUAL_THRESHOLD;
+  const [scroll, setScroll] = useState({ top: 0, height: 800 });
+  const [rowPx, setRowPx] = useState(density === 'compact' ? 35 : 41);
+  // Measures after every render on purpose (row height and viewport can change with any update); the guards stop loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (!virtual) return;
+    const el = wrapRef.current;
+    if (el && Math.abs(el.clientHeight - scroll.height) > 1) setScroll({ top: el.scrollTop, height: el.clientHeight });
+    const tr = tbodyRef.current?.querySelector<HTMLTableRowElement>('tr[data-row]');
+    if (tr && tr.offsetHeight > 0 && Math.abs(tr.offsetHeight - rowPx) > 0.5) setRowPx(tr.offsetHeight);
+  });
+  const vStart = virtual ? Math.max(0, Math.floor(scroll.top / rowPx) - VIRTUAL_OVERSCAN) : 0;
+  const vEnd = virtual ? Math.min(rows.length, Math.ceil((scroll.top + scroll.height) / rowPx) + VIRTUAL_OVERSCAN) : rows.length;
 
   const sortedKey = sort[0]?.field;
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
@@ -169,14 +197,21 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
   };
 
   return (
-    <div ref={wrapRef} onScroll={measureRight} className={cx('grid-wrap', density === 'compact' ? 'density-compact' : 'density-comfortable', rowLines > 1 && `rows-${rowLines}`, moreRight && 'has-more-right')}>
-      <table className="grid" aria-label={`${res.labelPlural} table`} aria-rowcount={rows.length}>
+    <div
+      ref={wrapRef}
+      onScroll={(e) => {
+        measureRight();
+        if (virtual) setScroll({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
+      }}
+      data-virtual={virtual || undefined}
+      className={cx('grid-wrap', density === 'compact' ? 'density-compact' : 'density-comfortable', rowLines > 1 && `rows-${rowLines}`, moreRight && 'has-more-right')}>
+      <table className="grid" aria-label={LS.tableAria(res.labelPlural)} aria-rowcount={rows.length + 1}>
         <thead>
           <tr>
             <th className="col-select sticky-left" style={{ left: 0 }} scope="col">
               <input
                 type="checkbox"
-                aria-label="Select all rows on this page"
+                aria-label={LS.selectAll}
                 checked={allSelected}
                 ref={(el) => el && (el.indeterminate = !allSelected && someSelected)}
                 onChange={() => onSelectedChange(allSelected ? new Set() : new Set(rows.map((r) => r.id)))}
@@ -184,7 +219,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
             </th>
             {masterDetail && (
               <th className="col-expand sticky-left" style={{ left: 40 }} scope="col">
-                <span className="sr-only">Expand</span>
+                <span className="sr-only">{LS.expand}</span>
               </th>
             )}
             {ordered.map((c) => {
@@ -204,18 +239,21 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                     <button type="button" className="th-btn" onClick={() => toggleSort(c.key)}>
                       <span className="th-label">{colLabel(res, c.key)}</span>
                       <Icon name={s ? (s.dir === 'asc' ? 'arrow-up' : 'arrow-down') : 'chevrons-up-down'} size={12} className={cx(!s && 'th-sort-idle')} />
+                      {/* column-type icon on the RIGHT end of the title cell (owner rule) */}
+                      <Icon name={fieldIcon(f)} size={14} className="th-type th-type-right" />
                     </button>
                   ) : (
                     <span className="th-label th-static">
                       {colLabel(res, c.key)}
                       {access[c.key] === 'mask' && <Icon name="lock" size={12} className="muted" />}
+                      <Icon name={fieldIcon(f)} size={14} className="th-type th-type-right" />
                     </span>
                   )}
                   <span
                     className="col-resize"
                     role="separator"
                     aria-orientation="vertical"
-                    aria-label={`Resize ${colLabel(res, c.key)} column`}
+                    aria-label={LS.resizeColumn(colLabel(res, c.key))}
                     aria-valuenow={w}
                     tabIndex={0}
                     onPointerDown={(e) => {
@@ -262,8 +300,13 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                   </td>
                 </tr>
               )}
+              {virtual && vStart > 0 && (
+                <tr className="virtual-spacer" aria-hidden="true" style={{ height: vStart * rowPx }}>
+                  <td colSpan={ordered.length + 2 + (masterDetail ? 1 : 0)} />
+                </tr>
+              )}
               {!collapsed.has(g.key) &&
-                g.rows.map((r) => {
+                (virtual ? g.rows.slice(vStart, vEnd) : g.rows).map((r) => {
                   const isOpen = expanded.has(r.id);
                   const raw = getDb().records[res.key].find((x) => x.id === r.id);
                   const rowCanEdit = !!raw && canUpdateRecord(actor, res, raw);
@@ -275,16 +318,20 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         className={cx(selected.has(r.id) && 'is-selected', activeId === r.id && 'is-active')}
                         aria-selected={selected.has(r.id)}
                         onKeyDown={(e) => onRowKey(e, r)}
-                        onClick={() => onOpen(r.id)}
+                        // selecting / copying text in a row must not open the record
+                        onClick={(e) => {
+                          if (isDragClick(e)) return;
+                          onOpen(r.id);
+                        }}
                       >
                         <td className="col-select sticky-left" style={{ left: 0 }} onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" aria-label={`Select ${recordTitle(res.key, r.id, actor)}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                          <input type="checkbox" aria-label={LS.selectRow(recordTitle(res.key, r.id, actor))} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
                         </td>
                         {masterDetail && (
                           <td className="col-expand sticky-left" style={{ left: 40 }} onClick={(e) => e.stopPropagation()}>
                             <IconButton
                               icon={isOpen ? 'chevron-down' : 'chevron-right'}
-                              label={isOpen ? 'Collapse details' : 'Expand line items'}
+                              label={isOpen ? LS.collapseDetails : LS.expandLineItems}
                               aria-expanded={isOpen}
                               onClick={() => {
                                 const n = new Set(expanded);
@@ -304,9 +351,14 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                             <td
                               key={c.key}
                               style={{ width: w, minWidth: w, maxWidth: w, left: c.pinned ? offsets[c.key] : undefined }}
-                              className={cx(c.pinned && 'sticky-left', f && ['money', 'number'].includes(f.type) && 'td-num', sortedKey === c.key && 'is-sorted', inline && 'is-editable', isEditing && 'is-editing')}
-                              onDoubleClick={(e) => {
-                                if (!inline) return;
+                              className={cx(c.pinned && 'sticky-left', f && ['money', 'number'].includes(f.type) && 'td-num', sortedKey === c.key && 'is-sorted', inline && 'is-editable', inline && f?.type === 'master' && 'is-choice', isEditing && 'is-editing')}
+                              // ClickUp-style: hovering an editable cell outlines it; a single click edits it in place
+                              onClick={(e) => {
+                                if (isDragClick(e)) {
+                                  e.stopPropagation();
+                                  return;
+                                }
+                                if (!inline || isEditing) return;
                                 e.stopPropagation();
                                 setEditing({ id: r.id, key: c.key });
                               }}
@@ -314,7 +366,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                               {isEditing && f ? (
                                 <InlineEditor res={res} actor={actor} field={f} record={r} onDone={() => setEditing(null)} />
                               ) : c.key === 'id' ? (
-                                <span className="mono">{r.id}</span>
+                                <IdCell id={r.id} onOpen={() => onOpen(r.id)} />
                               ) : f ? (
                                 <span className="cell">
                                   <RichCell res={res} actor={actor} field={f} record={r} access={access} lines={rowLines} />
@@ -322,13 +374,13 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                                     <button
                                       type="button"
                                       className="cell-edit"
-                                      aria-label={`Edit ${f.label}`}
+                                      aria-label={LS.editField(f.label)}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setEditing({ id: r.id, key: c.key });
                                       }}
                                     >
-                                      <Icon name="pencil" size={12} />
+                                      <Icon name={f && ['master', 'relation', 'date'].includes(f.type) ? 'chevron-down' : 'pencil'} size={14} />
                                     </button>
                                   )}
                                 </span>
@@ -338,15 +390,15 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         })}
                         <td className="col-actions sticky-right" style={{ width: ACTIONS_W, minWidth: ACTIONS_W, maxWidth: ACTIONS_W }} onClick={(e) => e.stopPropagation()}>
                           <span className="row-actions">
-                            <IconButton icon="eye" label={`View ${r.id}`} onClick={() => onOpen(r.id)} />
-                            <IconButton icon="pencil" label={`Edit ${r.id}`} onClick={() => onEdit(r.id)} disabledReason={rowCanEdit ? undefined : 'Read-only for your role'} />
+                            <IconButton icon="eye" label={LS.viewRow(r.id)} onClick={() => onOpen(r.id)} />
+                            <IconButton icon="pencil" label={LS.editRow(r.id)} onClick={() => onEdit(r.id)} disabledReason={rowCanEdit ? undefined : C.states.readOnlyForRole} />
                             <IconButton
                               icon="more"
-                              label={`More actions for ${r.id}`}
+                              label={LS.rowActions(r.id)}
                               aria-haspopup="menu"
                               onClick={(e) => {
                                 menuAnchor.current = e.currentTarget;
-                                setMenu({ row: r });
+                                setMenu((m) => (m?.row.id === r.id ? null : { row: r })); // click again closes
                               }}
                             />
                           </span>
@@ -356,7 +408,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         <tr className="detail-row-expanded">
                           <td colSpan={ordered.length + 3}>
                             <div className="detail-card" style={wrapW ? { width: Math.max(320, wrapW - 56 - ACTIONS_W - 12) } : undefined}>
-                              <LineItemsSummary res={res} record={r} title={`${res.label} line items`} />
+                              <LineItemsSummary res={res} record={r} title={LS.lineItems(res.label)} />
                             </div>
                           </td>
                         </tr>
@@ -364,14 +416,55 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                     </Fragment>
                   );
                 })}
+              {virtual && vEnd < rows.length && (
+                <tr className="virtual-spacer" aria-hidden="true" style={{ height: (rows.length - vEnd) * rowPx }}>
+                  <td colSpan={ordered.length + 2 + (masterDetail ? 1 : 0)} />
+                </tr>
+              )}
             </Fragment>
           ))}
         </tbody>
       </table>
-      {menu && <Menu open onClose={() => setMenu(null)} anchor={menuAnchor} label={`Actions for ${menu.row.id}`} items={rowMenu(menu.row)} />}
+      {menu && <Menu open onClose={() => setMenu(null)} anchor={menuAnchor} label={LS.actionsFor(menu.row.id)} items={rowMenu(menu.row)} />}
     </div>
   );
 }
+
+/** Record ID as a visible hyperlink (opens the record) + a copy button pinned to the cell's right edge. */
+function IdCell({ id, onOpen }: { id: string; onOpen: () => void }) {
+  const toast = useToast();
+  return (
+    <span className="id-cell">
+      <button
+        type="button"
+        className="id-link mono"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isDragClick(e)) return; // selecting the ID to copy it never opens the record
+          onOpen();
+        }}
+      >
+        {id}
+      </button>
+      <button
+        type="button"
+        className="cell-trail"
+        aria-label={LS.copyIdAria(id)}
+        data-tooltip={LS.copyId}
+        onClick={(e) => {
+          e.stopPropagation();
+          navigator.clipboard?.writeText(id).catch(() => {}); // clipboard may be blocked — never crash
+          toast(C.toasts.copiedId(id), 'info');
+        }}
+      >
+        <Icon name="copy" size={14} />
+      </button>
+    </span>
+  );
+}
+
+export { fieldIcon } from './fieldIcon';
+import { fieldIcon } from './fieldIcon';
 
 /**
  * Cell content for every row style: optional leading picture (image field or initials tile), the value,
@@ -424,18 +517,27 @@ function InlineEditor({ res, actor, field, record, onDone }: { res: ResourceDefi
     saving.current = true;
     try {
       updateRecord(actor, res.key, record.id, { [field.key]: v }, record.version);
-      toast(`${record.id}: ${field.label} updated`);
+      toast(C.toasts.fieldUpdated(record.id, field.label));
       onDone();
     } catch (e) {
-      const msg = e instanceof ServiceError ? e.fieldErrors?.[field.key] ?? e.message : 'Save failed';
+      const msg = e instanceof ServiceError ? e.fieldErrors?.[field.key] ?? e.message : C.toasts.saveFailed;
       setError(msg);
       toast(msg, 'danger');
       saving.current = false;
     }
   };
+  // One click: the cell click opened the editor — open its dropdown / calendar (or focus the input) right away
+  const boxRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    const trigger = el?.querySelector<HTMLElement>('.select-menu-trigger, .date-trigger');
+    if (trigger) trigger.click();
+    else el?.querySelector<HTMLInputElement>('input')?.focus();
+  }, []);
   return (
     <div
-      className="inline-editor"
+      ref={boxRef}
+      className={cx('inline-editor', field.type === 'master' && `is-pill tone-${masterValue(field.master!, value)?.tone ?? 'neutral'}`, field.type === 'master' && ['status', 'priority', 'urgency'].includes(field.key) && 'is-status', (field.type === 'relation' || field.type === 'date') && 'is-pill-plain')}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -473,12 +575,12 @@ function CardList({ res, actor, rows, onOpen, activeId, columns, selected, onSel
   const access = fieldAccessMap(actor, res);
   const extra = columns.filter((c) => !c.hidden && c.key !== res.titleField && c.key !== 'id' && access[c.key] && access[c.key] !== 'hide').slice(0, 3);
   return (
-    <ul className="card-list" aria-label={`${res.labelPlural} list`}>
+    <ul className="card-list" aria-label={LS.listAria(res.labelPlural)}>
       {rows.map((r) => (
         <li key={r.id} className={cx('card-row', activeId === r.id && 'is-active')}>
           <input
             type="checkbox"
-            aria-label={`Select ${r.id}`}
+            aria-label={LS.selectRow(r.id)}
             checked={selected.has(r.id)}
             onChange={() => {
               const n = new Set(selected);
@@ -509,11 +611,14 @@ function CardList({ res, actor, rows, onOpen, activeId, columns, selected, onSel
 }
 
 export function fieldWidth(res: ResourceDefinition, key: string) {
-  if (key === 'id') return 96;
+  if (key === 'id') return 176; // ID link + copy button fit our longer IDs (e.g. LD-2627-0001) without truncating
   const f = res.fields.find((x) => x.key === key);
   if (!f) return DEFAULT_W;
   if (f.width) return f.width;
-  if (f.type === 'date' || f.type === 'money' || f.type === 'number') return 120;
+  if (f.type === 'date') return 140;
+  if (f.type === 'email') return 330; // whole masked email + icons fit
+  if (f.type === 'phone') return 220; // calendar icon + "19 Oct, 2026"
+  if (f.type === 'money' || f.type === 'number') return 120;
   if (f.type === 'datetime') return 170;
   return DEFAULT_W;
 }

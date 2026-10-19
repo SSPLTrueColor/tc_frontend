@@ -14,7 +14,7 @@
   --ev-fg: var(--s-info);
   --ev-bg: var(--s-info-bg);
 }
-.ev-customer_visit {
+.ev-field_visit {
   --ev-solid: var(--s-success);
   --ev-fg: var(--s-success);
   --ev-bg: var(--s-success-bg);
@@ -24,7 +24,7 @@
   --ev-fg: var(--s-warning);
   --ev-bg: var(--s-warning-bg);
 }
-.ev-service {
+.ev-service_visit {
   --ev-solid: var(--s-danger);
   --ev-fg: var(--s-danger);
   --ev-bg: var(--s-danger-bg);

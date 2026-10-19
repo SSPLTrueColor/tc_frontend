@@ -7,6 +7,7 @@ import { commit, getDb } from './db';
 import { emitEvent, notify } from './ledger';
 import { getResource } from './registry';
 import { type Comment, ServiceError } from './types';
+import { L } from '../constants/labels';
 
 export function listComments(actor: Actor, resource: string, recordId: string): Comment[] {
   return getDb()
@@ -31,14 +32,14 @@ export function saveCommentDraft(actor: Actor, resource: string, recordId: strin
 
 export function addComment(actor: Actor, resource: string, recordId: string, body: string, idempotencyKey: string): Comment {
   const text = body.trim();
-  if (!text) throw new ServiceError('validation', 'Write a comment first.');
-  if (text.length > 2000) throw new ServiceError('validation', 'Comments are limited to 2000 characters.');
+  if (!text) throw new ServiceError('validation', L.common.comments.writeFirst);
+  if (text.length > 2000) throw new ServiceError('validation', L.common.comments.tooLong);
   const res = getResource(resource);
   return commit((d) => {
     const existing = d.comments.find((c) => c.id === d.idempotency[idempotencyKey]);
     if (existing) return existing;
     const record = d.records[resource]?.find((r) => r.id === recordId);
-    if (!record || !canReadRecord(actor, res, record)) throw new ServiceError('not_found', 'Record not found.');
+    if (!record || !canReadRecord(actor, res, record)) throw new ServiceError('not_found', L.common.form.notFound);
     const mentions = demoUsers.filter((u) => u.id !== actor.user.id && text.includes(`@${u.name}`)).map((u) => u.id);
     const comment: Comment = {
       id: uid('cmt'),
@@ -56,7 +57,7 @@ export function addComment(actor: Actor, resource: string, recordId: string, bod
     delete d.commentDrafts[draftKey(actor, resource, recordId)];
     emitEvent(d, actor, { eventType: 'comment.added', resourceId: res.id, recordId, correlationId: uid('cor'), idempotencyKey, payload: { commentId: comment.id, mentions } });
     // Payload minimization: notifications carry record ids, not comment text.
-    mentions.forEach((m) => notify(d, { userId: m, workspaceId: actor.workspaceId, kind: 'mention', title: `${actor.user.name} mentioned you on ${recordId}`, link: { resource, recordId } }));
+    mentions.forEach((m) => notify(d, { userId: m, workspaceId: actor.workspaceId, kind: 'mention', title: L.common.comments.mentioned(actor.user.name, recordId), link: { resource, recordId } }));
     return comment;
   });
 }

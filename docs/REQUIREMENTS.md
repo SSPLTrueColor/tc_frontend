@@ -26,16 +26,16 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-001 | CUS-01 | M | Company record: name, legal name, GSTIN (validated), PAN, industry/segment, category, website, divisions, territory/hub, owner | `/customers/new`, `/customers/:id/edit` | Built | Done (GSTIN format+checksum+state+PAN in hook) |
+| FR-001 | CUS-01 | M | Company record: name, legal name, GSTIN (validated), PAN, industry/segment, category, website, divisions, territory/hub, owner | `/companies/new`, `/companies/:id/edit` | Built | Done (GSTIN format+checksum+state+PAN in hook) |
 | FR-002 | CUS-02 | M | Multiple addresses (billing / shipping / installation site), each geo-tagged | Customer 360 → Addresses tab | Simulated (lat/long entered or mock "Use my location"; no map tiles) | Done — geo Simulated (`/addresses`, 360 Contacts & sites) |
 | FR-003 | CUS-03 | M | Multiple contacts: name, designation, department, mobile, WhatsApp, email, buying role, communication consent | Customer 360 → Contacts tab | Built | Done (consent; mobile or email required) |
 | FR-004 | CUS-04 | M | Configurable classification (Prospect, Active, Existing/Inactive, Dealer, Distributor) + segment tags | Customer form; `/admin/masters/customer-categories` | Built | Done |
-| FR-005 | CUS-05 | M | Contact pool (phone book, Excel/CSV, visiting-card OCR, manual) + "Convert to Lead" | `/contacts`, `/contacts/:id` | Simulated (CSV import real; phone book and OCR use sample data) | Done — phone book & OCR Simulated (`/contacts?view=v_ct_pool`, `/contacts/import`, Convert to lead) |
-| FR-006 | CUS-06 | M | Duplicate detection (GSTIN, mobile, email, fuzzy name) on create/import; admin merge with audit | Customer form warning; `/admin/duplicates` | Built | Done (blocking exact match, fuzzy ≥0.85 warning, `/admin/duplicates` merge) |
-| FR-007 | CUS-07 | M | Customer 360: leads, opps, quotes, orders, ERP payment status, machines, warranty/AMC, tickets, feedback, unified timeline | `/customers/:id` | Built (ERP figures from mock ERP service) | Done (360 tabs: Contacts & sites, Timeline, Sales, Machines & service, Account) |
+| FR-005 | CUS-05 | M | Contact pool (phone book, Excel/CSV, visiting-card OCR, manual) + "Convert to Lead" | `/contacts`, `/contacts/:id` | Simulated (CSV import real; phone book and OCR use sample data) | Done — phone book & OCR Simulated (`/contacts?view=v_ct_pool`, `/contact-pool/import`, Convert to lead) |
+| FR-006 | CUS-06 | M | Duplicate detection (GSTIN, mobile, email, fuzzy name) on create/import; admin merge with audit | Customer form warning; `/admin/duplicate-merge` | Built | Done (blocking exact match, fuzzy ≥0.85 warning, `/admin/duplicate-merge` merge) |
+| FR-007 | CUS-07 | M | Customer 360: leads, opps, quotes, orders, ERP payment status, machines, warranty/AMC, tickets, feedback, unified timeline | `/companies/:id` | Built (ERP figures from mock ERP service) | Done (360 tabs: Contacts & sites, Timeline, Sales, Machines & service, Account) |
 | FR-008 | CUS-08 | S | Parent–child group linkage; dealer → end-customer linkage | Customer form + 360 "Related" panel | Built | Done (cycle-safe) |
 | FR-009 | CUS-09 | S | Credit limit, outstanding, overdue read-only from ERP | Customer 360 header | Simulated (mock ERP) | Simulated (Refresh from ERP) |
-| FR-010 | CUS-10 | M | Bulk ownership transfer (accounts, open leads, opps, tasks) with history | `/admin/transfer` | Built | Done (`/admin/transfer`, preview + reason + audit) |
+| FR-010 | CUS-10 | M | Bulk ownership transfer (accounts, open leads, opps, tasks) with history | `/admin/ownership-transfer` | Built | Done (`/admin/ownership-transfer`, preview + reason + audit) |
 | FR-011 | CUS-11 | S | Key Account flag + one-page account plan | Customer 360 → Account plan tab | Built | Done (Account tab) |
 | FR-012 | CUS-12 | M | Reports: customer-wise sales, machine history, warranty expiry, AMC renewals due, dormant customers | `/reports/:reportId` | Built | Done (`/reports`: customer-sales, machine-history, warranty-expiry, amc-renewals-due, dormant-customers) |
 
@@ -49,13 +49,13 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-016 | LEAD-04 | S | IndiaMART lead API capture | `/admin/integrations` | Simulated | Simulated (`/admin/integrations` IndiaMART) |
 | FR-017 | LEAD-05 | S | Exhibition Excel import; visiting-card scan at stall | `/leads/import` | Simulated (CSV real; OCR sample cards) | Done — card scan Simulated (`/leads/import`) |
 | FR-018 | LEAD-06 | M | Product requirement: type, sub-type, dynamic spec fields per sub-type (Textile fields defined) | Lead form → Requirement section | Built (non-textile spec fields are placeholders, see Q-11) | Done (textile spec fields; placeholders for other sub-types, Q-11) |
-| FR-019 | LEAD-07 | M | Manual assignment (division-filtered) + rule-based auto-assign with round-robin; hierarchy visibility | Lead form/list bulk action; `/admin/assignment-rules` | Built | Done (`/assignmentRules`, round-robin, division-head fallback) |
-| FR-020 | LEAD-08 | M | First-contact SLA (default 24 h); escalation to manager; "Not attended leads" list | `/leads?view=not-attended`; dashboard widget | Built (SLA evaluated against the simulated clock) | Done (Not attended view, escalation sweep on simulated clock) |
+| FR-019 | LEAD-07 | M | Manual assignment (division-filtered) + rule-based auto-assign with round-robin; hierarchy visibility | Lead form/list bulk action; `/admin/lead-assignment-rules` | Built | Done (`/assignmentRules`, round-robin, division-head fallback) |
+| FR-020 | LEAD-08 | M | First-contact SLA (default 24 h); escalation to manager; "Not attended leads" list | `/not-attended-leads` | Built (SLA evaluated against the simulated clock) | Done (Not Attended Leads page: SLA age, escalated-to manager, Log Follow-up) |
 | FR-021 | LEAD-09 | M | Log call/email/WhatsApp/meeting; next follow-up date mandatory; reminders; overdue list | Lead detail → Activity; `/follow-ups` | Built (reminders = in-app + outbox log) | Done (Log activity + mandatory next follow-up, `/follow-ups`, reminders in-app + outbox) |
 | FR-022 | LEAD-10 | M | BANT-lite qualification; convert to Opportunity carrying data/history | Lead detail → Qualify dialog | Built | Done (Qualify → opportunity, lead read-only) |
 | FR-023 | LEAD-11 | M | Mandatory disqualify/loss reason from master; Nurture with re-contact date | Lead detail → status actions | Built | Done (disqualify reason, nurture date, manager-only reactivation) |
-| FR-024 | LEAD-12 | S | Referrer recorded; referrer notified on conversion; referral report | Lead form; `/reports/referrals` | Built (notification in-app) | Done (referrer notified on conversion) |
-| FR-025 | LEAD-13 | C | Rule-based lead scoring | Lead list column + `/admin/lead-scoring` | Built | Done (`/leadScoringRules`, 12 rules) |
+| FR-024 | LEAD-12 | S | Referrer recorded; referrer notified on conversion; referral report | Lead form; `/reports/referrals` | Built (notification in-app) | Done (Referral Report under Lead Reports) |
+| FR-025 | LEAD-13 | C | Rule-based lead scoring | Lead list column + `/admin/lead-scoring-rules` | Built | Done (`/leadScoringRules`, 12 rules) |
 | FR-026 | LEAD-14 | M | Reports: conversion % (month/user/product/source/campaign), ageing, first response, pending follow-ups, lost reasons, exec performance | `/reports/:reportId` | Built | Done (lead conversion, ageing, first response, pending follow-ups, lost leads, exec performance) |
 
 #### Opportunity & Pipeline (BRD 4.3)
@@ -68,7 +68,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-030 | OPP-04 | S | Demo booking (centre/site), demo-machine calendar, sample print request to Profiling, results/feedback | `/demos`, Opportunity → Demos tab | Built | Done (`/demos` calendar, double-booking blocked, `/sampleRequests` to Profiling) |
 | FR-031 | OPP-05 | M | Won enables "Generate Sales Order"; Lost needs reason + competitor/price | Opportunity status actions | Built | Done (Generate sales order gated on accepted quotation; Mark lost dialog) |
 | FR-032 | OPP-06 | M | Stagnation alert (no update in N days or past close date) | Opportunity list badge; notifications | Built | Done (stagnant flag, banner, daily sweep notifications) |
-| FR-033 | OPP-07 | S | Monthly/quarterly forecast (weighted + commit) by user/division/category | `/opportunities/forecast` | Built | Done (`/opportunities/forecast`, computed) |
+| FR-033 | OPP-07 | S | Monthly/quarterly forecast (weighted + commit) by user/division/category | `/sales-forecast` | Built | Done (`/sales-forecast`, computed) |
 | FR-034 | OPP-08 | S | Tasks & calendar for meetings/demos/follow-ups; two-way Google/Outlook sync | `/calendar` | Built (calendar) / N/A (external sync: needs OAuth + backend) | Done — `/calendar` on FullCalendar (month/week/day/agenda, drag-create, drag/resize reschedule, recurrence with this/all, overlap warning, IST, Monday start); Google/Outlook sync N/A |
 
 #### Quotation Management (BRD 4.4)
@@ -79,10 +79,10 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-036 | QUO-02 | M | Product selection from product & price master: model, configuration, accessories, options | Quotation editor → Lines | Built | Done (product picker, configuration lines) |
 | FR-037 | QUO-03 | M | Extra line types: RIP software, ink, consumables, spares kit, installation, training, ext. warranty, AMC | Quotation editor → Lines | Built | Done (12 line types) |
 | FR-038 | QUO-04 | M | Qty, list price, discount (% / amount), freight/insurance, GST (CGST+SGST vs IGST by place of supply, HSN/SAC), total, amount in words | Quotation editor → Totals | Built | Done (GST CGST+SGST/IGST, HSN/SAC, amount in words; totals recomputed server-side) |
-| FR-039 | QUO-05 | M | Price lists by division/product with validity; only authorised roles edit; sales cannot edit list price | `/price-lists`, `/price-lists/:id` | Built | Done (`/priceLists` Draft→Active→Expired, items tab, overlap rejected, division-head scope) |
+| FR-039 | QUO-05 | M | Price lists by division/product with validity; only authorised roles edit; sales cannot edit list price | `/admin/price-lists`, `/admin/price-lists/:id` | Built | Done (`/priceLists` Draft→Active→Expired, items tab, overlap rejected, division-head scope) |
 | FR-040 | QUO-06 | M | Discount approval matrix (thresholds by division/product, levels); approve/reject with comments; reminders | `/approvals`; `/admin/workflows/approvals` | Built (email-link approval simulated) | Done (BR-17 bands → approval levels, reminders, withdraw) |
 | FR-041 | QUO-07 | M | Commercial terms from templates, editable within permissions | Quotation editor → Terms; `/admin/masters/terms-templates` | Built | Done (`/termsTemplates` per division) |
-| FR-042 | QUO-08 | M | Branded PDF per division; attachments; send by email/WhatsApp with sent date logged | `/quotations/:id/print`; Send dialog | Simulated (print-to-PDF via browser; send logged to outbox) | Simulated (`/quotations/:id/print`, send via outbox with consent check) |
+| FR-042 | QUO-08 | M | Branded PDF per division; attachments; send by email/WhatsApp with sent date logged | `/quotations/:id/pdf`; Send dialog | Simulated (print-to-PDF via browser; send logged to outbox) | Simulated (`/quotations/:id/pdf`, send via outbox with consent check) |
 | FR-043 | QUO-09 | M | Versions R0, R1…; change log; side-by-side compare; only latest active | `/quotations/:id/compare` | Built | Done (revisions, `/quotations/:id/compare`) |
 | FR-044 | QUO-10 | M | Statuses incl. automatic Expired on validity end | Quotation list/detail | Built (expiry checked on load against the simulated clock) | Done (auto-expiry on simulated clock) |
 | FR-045 | QUO-11 | S | Customer acceptance by PO upload or electronic acceptance | Quotation → Mark accepted dialog | Simulated (file name stored, no real upload) | Simulated (PO file metadata or e-acceptance → opportunity Won) |
@@ -94,13 +94,13 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-049 | SO-01 | M | "Generate Sales Order" once opp Won; prefilled from accepted quotation | Opportunity/Quotation action → `/orders/new?quotation=` | Built | Done (`/orders/new?quotation=`, Won + accepted latest quotation only) |
+| FR-049 | SO-01 | M | "Generate Sales Order" once opp Won; prefilled from accepted quotation | Opportunity/Quotation action → `/sales-orders/new?quotation=` | Built | Done (`/sales-orders/new?quotation=`, Won + accepted latest quotation only) |
 | FR-050 | SO-02 | M | Auto order no., customer PO no./date, PO copy upload (mandatory), linked quotation | Order form | Simulated (upload stores file metadata only) | Simulated (PO no./date/file required; file metadata only) |
 | FR-051 | SO-03 | M | Editable SO; differences vs quotation highlighted; beyond tolerance re-triggers approval | Order form → "Changes vs quotation" panel | Built | Done (changes vs quotation highlighted; tolerance re-triggers approval) |
 | FR-052 | SO-04 | M | Approval by reporting manager + finance check on credit/advance; configurable multi-level matrix | `/approvals` | Built | Done (named reporting-manager approver + Accounts finance check) |
-| FR-053 | SO-05 | M | After approval, "Generate Sales Contract": all SO details + terms; per-division templates, versioned, PDF | `/orders/:id/contract`, `/orders/:id/contract/print` | Simulated (print-to-PDF) | Done (contract tab, versioned, `/orders/:id/contract/print`) |
+| FR-053 | SO-05 | M | After approval, "Generate Sales Contract": all SO details + terms; per-division templates, versioned, PDF | `/sales-orders/:id`, `/sales-orders/:id/contract/pdf` | Simulated (print-to-PDF) | Done (contract tab, versioned, `/sales-orders/:id/contract/pdf`) |
 | FR-054 | SO-06 | C | Customer e-signature of contract | Contract → "Send for e-sign" | Simulated (OTP shown on screen) | Simulated (on-screen OTP e-sign) |
-| FR-055 | SO-07 | M | Payment schedule (advance, milestones, balance, due dates); receipts/outstanding from ERP; reminders | Order → Payments tab | Simulated (receipts from mock ERP) | Done — receipts Simulated (payments tab, 100% schedule, `/orders/payments` reminders) |
+| FR-055 | SO-07 | M | Payment schedule (advance, milestones, balance, due dates); receipts/outstanding from ERP; reminders | Order → Payments tab | Simulated (receipts from mock ERP) | Done — receipts Simulated (payments tab, 100% schedule, `/payment-schedule` reminders) |
 | FR-056 | SO-08 | M | Import/SCM processing status: PO to principal, shipment ETA, customs, machine readiness, PDI | Order → Processing tab | Built | Done (Processing tab, SCM-only edit) |
 | FR-057 | SO-09 | M | Approved SO pushed to ERP; invoice no./date and e-way bill returned | Order → ERP panel | Simulated ("Sync from ERP" fills invoice data) | Simulated (ERP push + Sync from ERP) |
 | FR-058 | SO-10 | M | Hold / cancellation with reason and approval | Order status actions; `/approvals` | Built | Done (hold/resume/cancel with reason + approval) |
@@ -110,11 +110,11 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-060 | INS-01 | M | Dispatch details (date, transporter, LR, challan, invoice ref, e-way bill); intimation to customer | Order → Dispatch tab; `/dispatches` | Simulated (intimation to outbox) | Done — intimation Simulated (`/dispatches`, delayed view) |
+| FR-060 | INS-01 | M | Dispatch details (date, transporter, LR, challan, invoice ref, e-way bill); intimation to customer | Order → Dispatch tab; `/dispatch-delivery` | Simulated (intimation to outbox) | Done — intimation Simulated (`/dispatch-delivery`, delayed view) |
 | FR-061 | INS-02 | M | Expected vs actual delivery; confirmation with photo and signed POD | Dispatch detail | Simulated (photo = file metadata) | Done (POD required; machine delivery → installation job) |
 | FR-062 | INS-03 | M | Site readiness checklist shared with customer, engineer-verified before scheduling | Installation → Readiness tab | Built | Done (7-item readiness checklist, shared with customer, gates Site ready) |
 | FR-063 | INS-04 | M | Sales-to-Service handover form | Installation → Handover tab | Built | Done (handover form required before start) |
-| FR-064 | INS-05 | M | Installation job auto-created on delivery; engineer assignment, schedule, customer notification | `/installations`, `/installations/:id` | Built (notification to outbox) | Done (auto-created from delivery; assignment + notifications) |
+| FR-064 | INS-05 | M | Installation job auto-created on delivery; engineer assignment, schedule, customer notification | `/installation-jobs`, `/installation-jobs/:id` | Built (notification to outbox) | Done (auto-created from delivery; assignment + notifications) |
 | FR-065 | INS-06 | M | Job card: checklist, trial results, parameters, photos/videos, training, customer sign-off (OTP/signature) | Installation → Job card tab | Simulated (OTP shown on screen; signature pad on canvas) | Simulated (job card; photos as file metadata; OTP / canvas signature sign-off) |
 | FR-066 | INS-07 | M | On sign-off: installed-base record, warranty start, PM schedule generated | Automatic (service layer) | Built | Done (sign-off → machine, warranty, PM visits, training, SO completed in one commit) |
 | FR-067 | INS-08 | S | Training records and re-training requests per customer | Customer 360 → Training tab | Built | Done (`/trainingRecords`, Customer 360 Training tab) |
@@ -123,11 +123,11 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-068 | IB-01 | M | Machine record: model, serial, configuration, software version, site, dates, SO ref, current owner (resale/relocation) | `/machines`, `/machines/:id` | Built | Done (`/machines`, relocation/transfer with ownership history) |
+| FR-068 | IB-01 | M | Machine record: model, serial, configuration, software version, site, dates, SO ref, current owner (resale/relocation) | `/installed-base`, `/installed-base/:id` | Built | Done (`/installed-base`, relocation/transfer with ownership history) |
 | FR-069 | IB-02 | S | Component serials (print heads) with replacement history | Machine → Components tab | Built | Done (Components tab with replacement history) |
 | FR-070 | IB-03 | M | Warranty type, dates, coverage, exclusions; auto check on ticket creation | Machine → Warranty tab; ticket form banner | Built | Done (`/warranties`, coverage banner on machine) |
-| FR-071 | IB-04 | M | AMC/CMC contracts: number, type, validity, machines, PM visits, SLA terms, value, billing schedule | `/contracts`, `/contracts/:id` | Built | Done (`/amcContracts`, AMC/26-27/0001, activation generates PM visits; one machine per contract) |
-| FR-072 | IB-05 | M | Reminders at 90/60/30 days; renewal quotation; renewal pipeline; lost-renewal reasons | `/renewals` | Built | Done (`/renewals`, 90/60/30 reminders, renewal opportunity, renew/lost/expire) |
+| FR-071 | IB-04 | M | AMC/CMC contracts: number, type, validity, machines, PM visits, SLA terms, value, billing schedule | `/amc-cmc-contracts`, `/amc-cmc-contracts/:id` | Built | Done (`/amcContracts`, AMC/26-27/0001, activation generates PM visits; one machine per contract) |
+| FR-072 | IB-05 | M | Reminders at 90/60/30 days; renewal quotation; renewal pipeline; lost-renewal reasons | `/renewal-pipeline` | Built | Done (`/renewal-pipeline`, 90/60/30 reminders, renewal opportunity, renew/lost/expire) |
 | FR-073 | IB-06 | S | Usage readings (print counters, ink consumption) per visit | Machine → Readings tab; ticket job card | Built | Done (Readings tab) |
 | FR-074 | IB-07 | M | Reports: warranty expiry, AMC due/renewed/lost, machines without contract, base by model/region | `/reports/:reportId` | Built | Done (warranty expiry, AMC status/renewal %, machines without contract, installed base) |
 
@@ -135,14 +135,14 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-075 | SRV-01 | M | Channels: phone (coordinator), WhatsApp, email, customer portal, engineer app; auto number; identify by mobile/serial | `/tickets/new` (channel field); `/portal/new-ticket` | Built (coordinator + engineer) / Simulated (WhatsApp/email "incoming" generator; minimal portal page) | Done — WhatsApp/email Simulated (coordinator, engineer app, public `/portal/new-ticket`) |
+| FR-075 | SRV-01 | M | Channels: phone (coordinator), WhatsApp, email, customer portal, engineer app; auto number; identify by mobile/serial | `/service-tickets/new` (channel field); `/customer-portal/log-ticket` | Built (coordinator + engineer) / Simulated (WhatsApp/email "incoming" generator; minimal portal page) | Done — WhatsApp/email Simulated (coordinator, engineer app, public `/customer-portal/log-ticket`) |
 | FR-076 | SRV-02 | M | Ticket details incl. category/sub-category, priority, media; warranty/AMC status shown | Ticket form/detail | Built | Done (category → sub-category, coverage banner) |
 | FR-077 | SRV-03 | M | Ticket types (Breakdown, Installation, PM, Remote, Training, Relocation, Chargeable, Spare-only) | Ticket form | Built | Done |
-| FR-078 | SRV-04 | M | Priority Critical/High/Medium/Low; SLA targets per priority × contract type | Ticket form; `/admin/sla` | Built | Done (SLA targets from `/admin/policies`) |
-| FR-079 | SRV-05 | M | Manual assignment + suggestions (territory, skill, availability, workload); engineer calendar and map | `/dispatch-board` | Built (map = territory grid, no tiles) | Done (`/dispatch-board`: suggestions by skill, territory, workload, leave; territory grid, no map tiles) |
+| FR-078 | SRV-04 | M | Priority Critical/High/Medium/Low; SLA targets per priority × contract type | Ticket form; `/admin/sla-matrix` | Built | Done (SLA targets from `/admin/workflows`) |
+| FR-079 | SRV-05 | M | Manual assignment + suggestions (territory, skill, availability, workload); engineer calendar and map | `/engineer-calendar` | Built (map = territory grid, no tiles) | Done (`/engineer-calendar`: suggestions by skill, territory, workload, leave; territory grid, no map tiles) |
 | FR-080 | SRV-06 | M | Engineer app flow: accept, travel, geo check-in, diagnosis, work, parts, photos, check-out, OTP/signature; offline sync | `/my-jobs`, `/my-jobs/:id` (mobile layout) | Simulated (GPS mock; offline toggle queues writes) | Done — GPS & photos Simulated (`/my-jobs`, offline queue) |
 | FR-081 | SRV-07 | M | Remote support record; convert to site visit | Ticket → Remote session panel | Built | Done (remote session, convert to site visit) |
-| FR-082 | SRV-08 | M | Job card PDF auto-generated and sent | `/tickets/:id/job-card` | Simulated (print view + outbox) | Simulated (`/tickets/:id/job-card` print + outbox) |
+| FR-082 | SRV-08 | M | Job card PDF auto-generated and sent | `/service-tickets/:id/job-card` | Simulated (print view + outbox) | Simulated (`/service-tickets/:id/job-card` print + outbox) |
 | FR-083 | SRV-09 | M | SLA clocks (response, arrival, resolution); pause on Waiting for Customer; escalation matrix + alerts | Ticket detail SLA panel; notifications | Built (simulated clock) | Done (response/arrival/resolution clocks, pause only waiting-for-customer, escalation sweep) |
 | FR-084 | SRV-10 | M | Chargeable service quotation, customer approval, billing request to ERP | Ticket → Chargeable tab | Simulated (ERP request logged) | Done — ERP billing Simulated (quote → customer approval → billing request) |
 | FR-085 | SRV-11 | M | PM schedule per contract, model checklist, due/overdue, completion | `/pm-schedule` | Built | Done (`/pm-schedule`) |
@@ -157,60 +157,60 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-092 | SPR-01 | M | Spares master (part no., description, models, HSN, price, warranty applicability) synced from ERP | `/spares` | Simulated (seeded as "from ERP", read-only) | Simulated (`/spareParts` synced from ERP; min level/critical editable) |
-| FR-093 | SPR-02 | M | Main-store stock visibility | `/spares` stock column | Simulated (mock ERP stock) | Simulated (main-store stock, Sync stock from ERP, `/spares/stock-alerts`) |
-| FR-094 | SPR-03 | M | Requisition from ticket; approval; store issue with courier details; receipt acknowledgement | `/requisitions`, `/requisitions/:id` | Built | Done (`/requisitions`, ticket Parts tab; service-head approval, store issue, receipt; ticket waiting_parts) |
+| FR-092 | SPR-01 | M | Spares master (part no., description, models, HSN, price, warranty applicability) synced from ERP | `/spare-parts` | Simulated (seeded as "from ERP", read-only) | Simulated (`/spare-parts` synced from ERP; min level/critical editable) |
+| FR-093 | SPR-02 | M | Main-store stock visibility | `/spare-parts` stock column | Simulated (mock ERP stock) | Simulated (main-store stock, Sync stock from ERP, `/minimum-level-alerts`) |
+| FR-094 | SPR-03 | M | Requisition from ticket; approval; store issue with courier details; receipt acknowledgement | `/spares-requisitions`, `/requisitions/:id` | Built | Done (`/spares-requisitions`, ticket Parts tab; service-head approval, store issue, receipt; ticket waiting_parts) |
 | FR-095 | SPR-04 | M | Consumption against ticket/machine (warranty or chargeable); defective return tracking | Requisition detail; ticket parts panel | Built | Done (warranty/chargeable consumption, defective & unused returns) |
-| FR-096 | SPR-05 | S | OEM warranty claims (claim no., status) | `/warranty-claims` | Built | Done (`/warrantyClaims`) |
-| FR-097 | SPR-06 | S | Minimum-level alerts; import requirement visibility to SCM | `/spares?view=below-min`; notifications | Built | Done (below-min view + alerts to store/SCM) |
+| FR-096 | SPR-05 | S | OEM warranty claims (claim no., status) | `/oem-warranty-claims` | Built | Done (`/warrantyClaims`) |
+| FR-097 | SPR-06 | S | Minimum-level alerts; import requirement visibility to SCM | `/spare-parts?view=below-min`; notifications | Built | Done (below-min view + alerts to store/SCM) |
 
 #### Consumables & Repeat Business (BRD 4.10)
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
 | FR-098 | CON-01 | M | Consumables customers linked to machines where applicable; non-machine customers too | Customer 360 → Consumables tab | Built | Done (Customer 360 Consumables tab) |
-| FR-099 | CON-02 | M | Quick repeat order from previous order; customer rate contracts with validity | `/rate-contracts`; Order → "Repeat" action | Built | Done (`/rateContracts`; repeat order `/orders/new?repeatOf=` uses rate contract → price list) |
-| FR-100 | CON-03 | M | Leakage list: machine customers not buying company consumables | `/consumables/leakage` | Built | Done (`/consumables/leakage`) |
-| FR-101 | CON-04 | S | Reorder prediction; due reminder; missed-reorder alert | `/consumables/reorders` | Built (average interval rule) | Done (`/consumables/reorders`, due/missed, reminders) |
-| FR-102 | CON-05 | S | Sample/trial dispatch tracking with results | `/consumables/samples` | Built | Done (`/sampleDispatches`) |
-| FR-103 | CON-06 | C | Dealer/distributor orders and secondary sales | `/consumables/dealer-sales` | Deferred (Could; no data model for secondary sales in BRD, see Q-24) | Deferred (Q-24: no data source for secondary sales) |
+| FR-099 | CON-02 | M | Quick repeat order from previous order; customer rate contracts with validity | `/rate-contracts`; Order → "Repeat" action | Built | Done (`/rateContracts`; repeat order `/sales-orders/new?repeatOf=` uses rate contract → price list) |
+| FR-100 | CON-03 | M | Leakage list: machine customers not buying company consumables | `/leakage-list` | Built | Done (`/leakage-list`) |
+| FR-101 | CON-04 | S | Reorder prediction; due reminder; missed-reorder alert | `/reorder-prediction` | Built (average interval rule) | Done (`/reorder-prediction`, due/missed, reminders) |
+| FR-102 | CON-05 | S | Sample/trial dispatch tracking with results | `/sample-trial-dispatch` | Built | Done (`/sampleDispatches`) |
+| FR-103 | CON-06 | C | Dealer/distributor orders and secondary sales | `/dealer-orders` | Deferred (Could; no data model for secondary sales in BRD, see Q-24) | Simulated (Dealer / Distributor Orders with mock secondary sales, validation and role scope; GLOSSARY D-6) |
 
 #### Field Force: Attendance, Visits & Expenses (BRD 4.11)
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
 | FR-104 | ATT-01 | M | Check-in/out with time, GPS, optional selfie; status (present, half-day, leave, on tour) | `/attendance` | Simulated (browser geolocation if allowed, else mock; selfie = camera-free placeholder) | Done — GPS & selfie Simulated (`/attendance` one-tap check-in/out) |
-| FR-105 | ATT-02 | M | Geo-fenced office attendance; mock-GPS detection | `/attendance`; `/admin/geofences` | Simulated (distance check against office coordinates; "mock location" demo toggle) | Simulated (office geofence, mock-GPS block) |
-| FR-106 | ATT-03 | M | Working hours, late entry, early exit per shift policy | `/attendance/team` | Built | Done (`/attendance/team`, shift policy) |
+| FR-105 | ATT-02 | M | Geo-fenced office attendance; mock-GPS detection | `/attendance`; `/admin/configurable-rules` | Simulated (distance check against office coordinates; "mock location" demo toggle) | Simulated (office geofence, mock-GPS block) |
+| FR-106 | ATT-03 | M | Working hours, late entry, early exit per shift policy | `/team-attendance` | Built | Done (`/team-attendance`, shift policy) |
 | FR-107 | ATT-04 | M | Regularisation request with reason + manager approval | `/attendance` → Regularise; `/approvals` | Built | Done (regularisation approval) |
-| FR-108 | ATT-05 | M | Field visits: customer/site, purpose, geo check-in/out, remarks, next action, linked record | `/visits`, `/visits/:id` | Simulated (GPS) | Done (`/visits`, 3-tap log, linked to records & timeline) |
-| FR-109 | ATT-06 | S | Weekly beat plan; manager planned vs actual | `/visits/plan` | Built | Done (`/visits/plan`, planned vs actual) |
-| FR-110 | ATT-07 | S | Location tracking between check-in/out; route map; distance | `/attendance/:userId/route` | Simulated (seeded GPS points drawn as SVG polyline) | Simulated (`/attendance/:staffId/route`, SVG route + km) |
-| FR-111 | ATT-08 | S | T&E claims: distance-based conveyance, bill upload, limits, approval, export | `/expenses`, `/expenses/:id` | Built (upload = metadata) | Done — bill upload Simulated (manager → Accounts approval, payroll CSV export) |
-| FR-112 | ATT-09 | C | Leave application/approval or HRMS integration | `/leaves` | Built (HRMS: N/A) | Done (`/leaves`; HRMS N/A) |
-| FR-113 | ATT-10 | M | Reports: daily/monthly attendance, visit reports, exception dashboard | `/reports/:reportId`; `/attendance/exceptions` | Built | Done (`/attendance/exceptions` + attendance daily/monthly, field visits reports) |
+| FR-108 | ATT-05 | M | Field visits: customer/site, purpose, geo check-in/out, remarks, next action, linked record | `/field-visits`, `/field-visits/:id` | Simulated (GPS) | Done (`/field-visits`, 3-tap log, linked to records & timeline) |
+| FR-109 | ATT-06 | S | Weekly beat plan; manager planned vs actual | `/beat-plan` | Built | Done (`/beat-plan`, planned vs actual) |
+| FR-110 | ATT-07 | S | Location tracking between check-in/out; route map; distance | `/route-map/:userId` | Simulated (seeded GPS points drawn as SVG polyline) | Simulated (`/route-map/:userId`, SVG route + km) |
+| FR-111 | ATT-08 | S | T&E claims: distance-based conveyance, bill upload, limits, approval, export | `/expense-claims`, `/expense-claims/:id` | Built (upload = metadata) | Done — bill upload Simulated (manager → Accounts approval, payroll CSV export) |
+| FR-112 | ATT-09 | C | Leave application/approval or HRMS integration | `/leave-applications` | Built (HRMS: N/A) | Done (`/leave-applications`; HRMS N/A) |
+| FR-113 | ATT-10 | M | Reports: daily/monthly attendance, visit reports, exception dashboard | `/reports/:reportId`; `/exception-dashboard` | Built | Done (`/exception-dashboard` + attendance daily/monthly, field visits reports) |
 
 #### Targets, Performance & Recognition (BRD 4.12)
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
 | FR-114 | TGT-01 | M | Targets by user/team/division/category, monthly/quarterly/annual, multiple metrics | `/targets` | Built | Done (`/targets`) |
-| FR-115 | TGT-02 | M | Achievement auto-calculated from orders and payments; target vs actual with drill-down | `/targets/achievement` | Built | Done (`/targets/achievement`, computed, drill-down) |
-| FR-116 | TGT-03 | M | Weekly activity scorecard per role | `/scorecard` | Built | Done (`/scorecard`) |
-| FR-117 | TGT-04 | S | Leaderboards and recognition within division | `/leaderboard` | Built | Done (`/leaderboard`, Deal of the Month, badges) |
-| FR-118 | TGT-05 | C | Incentive rules or achievement export | `/targets/achievement` → Export | Built (export only; incentive rules Deferred, see Q-25) | Done (export only; incentive rules Deferred, Q-25) |
+| FR-115 | TGT-02 | M | Achievement auto-calculated from orders and payments; target vs actual with drill-down | `/target-vs-actual` | Built | Done (`/target-vs-actual`, computed, drill-down) |
+| FR-116 | TGT-03 | M | Weekly activity scorecard per role | `/activity-scorecard` | Built | Done (`/activity-scorecard`) |
+| FR-117 | TGT-04 | S | Leaderboards and recognition within division | `/leaderboards` | Built | Done (`/leaderboards`, Deal of the Month, badges) |
+| FR-118 | TGT-05 | C | Incentive rules or achievement export | `/target-vs-actual` → Export | Built (export only; incentive rules Deferred, see Q-25) | Done (export only; incentive rules Deferred, Q-25) |
 
 #### Administration & Configuration (BRD 4.14)
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-119 | ADM-01 | M | Configurable hierarchy (divisions, departments, managers) drives visibility and approvals | `/admin/organisation` | Built | Done (`/admin/organisation`) |
-| FR-120 | ADM-02 | M | Permissions at module, record (own/team/division/all), field and action level | `/admin/roles`, `/admin/roles/:id` | Built | Partial — read-only matrix + effective-access preview (`/admin/access`); editing roles Deferred (needs a server-side authorization service) |
-| FR-121 | ADM-03 | M | Masters (products & prices, types/specs, territories, industries, sources, lost reasons, complaint categories, checklists, T&C, GST/HSN) | `/admin/masters`, `/admin/masters/:master` | Built | Partial — masters via Configuration studio (`/admin/studio`); catalog masters added |
-| FR-122 | ADM-04 | M | Configurable workflows and approval matrices | `/admin/workflows` | Built (limited to statuses/thresholds/approver levels defined here) | Done (`/admin/policies`: thresholds, approvers, SLA matrix, escalation; approval engine) |
-| FR-123 | ADM-05 | M | Custom fields and form layouts per division | `/admin/custom-fields` | Built (custom fields render on Customer, Lead, Opportunity, Ticket forms) | Partial — custom fields via Configuration studio (`/admin/studio`); per-division form layouts Deferred |
+| FR-119 | ADM-01 | M | Configurable hierarchy (divisions, departments, managers) drives visibility and approvals | `/admin/organisation-hierarchy` | Built | Done (`/admin/organisation-hierarchy`) |
+| FR-120 | ADM-02 | M | Permissions at module, record (own/team/division/all), field and action level | `/admin/roles-permissions` | Built | Done (editable role × record scopes, flags and field access; applied at runtime, audited, Reset to Default) |
+| FR-121 | ADM-03 | M | Masters (products & prices, types/specs, territories, industries, sources, lost reasons, complaint categories, checklists, T&C, GST/HSN) | `/admin/masters` | Built | Done (Masters page; Product & Price Master under Administration) |
+| FR-122 | ADM-04 | M | Configurable workflows and approval matrices | `/admin/workflows` | Built (limited to statuses/thresholds/approver levels defined here) | Done (`/admin/workflows`: thresholds, approvers, SLA matrix, escalation; approval engine) |
+| FR-123 | ADM-05 | M | Custom fields and form layouts per division | `/admin/custom-fields` | Built (custom fields render on Customer, Lead, Opportunity, Ticket forms) | Done (custom fields + per-division form layouts: section order / hide, applied by every form) |
 | FR-124 | ADM-06 | M | Notification templates for email, WhatsApp, SMS, in-app | `/admin/notification-templates` | Built (templates fill the outbox) | Done (`/notificationTemplates`, 14 templates) |
-| FR-125 | ADM-07 | M | Bulk import/export with templates and validation; export role-restricted and logged | `/admin/import-export` | Built (CSV) | Done (`/admin/import-export`, CSV templates + row validation) |
+| FR-125 | ADM-07 | M | Bulk import/export with templates and validation; export role-restricted and logged | `/admin/bulk-import-export` | Built (CSV) | Done (`/admin/bulk-import-export`, CSV templates + row validation) |
 | FR-126 | ADM-08 | M | User lifecycle: create, deactivate, transfer records on exit | `/admin/users`, `/admin/users/:id` | Built | Done (employees; deactivation blocked while owning open records — BR-53) |
 | FR-127 | ADM-09 | M | Any further configuration arising after implementation | — | N/A (contractual, open-ended) | — |
 | FR-128 | ADM-10 | M | Developer support when self-configuration is not possible | — | N/A (contractual) | — |
@@ -221,16 +221,16 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 |---|---|---|---|---|---|---|
 | FR-129 | COM-01 | M | Role and hierarchy based access (see §2) | All screens; sign-in + role switcher | Built (in-browser enforcement, not a security boundary) | Done (simulated sign-in, role switcher, Own/Team/Division/All scopes in every module) |
 | FR-130 | COM-02 | M | Single customer and machine record shared by all modules | Data model (§4) | Built | Done (one shared store; all modules reference the same customer and machine records) |
-| FR-131 | COM-03 | M | Notifications: follow-ups, approvals, dues, SLA breaches, expiries via in-app/push/email/WhatsApp | Bell + `/notifications`; `/admin/outbox` | Built (in-app) / Simulated (push/email/WhatsApp to outbox) | Done — push/email/WhatsApp Simulated (in-app bell + inbox; outbox) |
+| FR-131 | COM-03 | M | Notifications: follow-ups, approvals, dues, SLA breaches, expiries via in-app/push/email/WhatsApp | Bell + `/notifications`; `/admin/sent-messages` | Built (in-app) / Simulated (push/email/WhatsApp to outbox) | Done — push/email/WhatsApp Simulated (in-app bell + inbox; outbox) |
 | FR-132 | COM-04 | M | Documents attached to records with version history and size limits | "Documents" tab on records | Simulated (metadata only, size limit validated; no file bytes stored beyond small previews) | Partial — file metadata (PO, POD, photos, bills) on records with size limits; generic Documents tab with version history Deferred |
-| FR-133 | COM-05 | M | Full activity timeline on customer, lead, opportunity, machine | "Timeline" tab on those records | Built | Done (Activity/Timeline tabs, Customer 360 timeline) |
+| FR-133 | COM-05 | M | Full activity timeline on customer, lead, opportunity, machine | "Activity History" tab on those records | Built | Done (Activity/Timeline tabs, Customer 360 timeline) |
 | FR-134 | COM-06 | M | Global search (customer, contact, mobile, GSTIN, serial, quote/order/ticket ID); saved filters | Ctrl K palette; saved views on lists | Built | Done (Ctrl K search across resources; saved views on every list) |
-| FR-135 | COM-07 | M | Android/iOS apps; offline for attendance, visits, job cards; camera, GPS, voice | Responsive web + `/my-jobs`, `/attendance`, `/visits` | Simulated (responsive web, offline toggle, Web Speech API where supported); native apps N/A | Simulated (responsive web at 390 px, offline queue, voice dictation; native apps N/A) |
-| FR-136 | COM-08 | M | Excel import/export, templates, validation, role-restricted, logged | `/admin/import-export`; list "Export" buttons | Built (CSV) | Done (CSV import/export, role-restricted, audited) |
-| FR-137 | COM-09 | M | Audit trail: create/change (old/new), approvals, exports, logins, deletes | `/admin/audit`; record History tab | Built | Done (all creates, edits, status changes, approvals, exports, sign-ins) |
+| FR-135 | COM-07 | M | Android/iOS apps; offline for attendance, visits, job cards; camera, GPS, voice | Responsive web + `/my-jobs`, `/attendance`, `/field-visits` | Simulated (responsive web, offline toggle, Web Speech API where supported); native apps N/A | Simulated (responsive web at 390 px, offline queue, voice dictation; native apps N/A) |
+| FR-136 | COM-08 | M | Excel import/export, templates, validation, role-restricted, logged | `/admin/bulk-import-export`; list "Export" buttons | Built (CSV) | Done (CSV import/export, role-restricted, audited) |
+| FR-137 | COM-09 | M | Audit trail: create/change (old/new), approvals, exports, logins, deletes | `/admin/audit-trail`; record History tab | Built | Done (all creates, edits, status changes, approvals, exports, sign-ins) |
 | FR-138 | COM-10 | M | Soft delete → recycle bin; restore/permanent delete by admin | `/admin/recycle-bin` | Built | Done (`/admin/recycle-bin`) |
 | FR-139 | COM-11 | M | INR, lakh/crore, DD-MM-YYYY, IST, Indian states, GST rules | Global formatters | Built | Done |
-| FR-140 | COM-12 | M | In-app help, video tutorials, tool-tips, first-login walkthrough per role | Help drawer; tour overlay | Built (videos: placeholder cards) | Partial — help drawer + ⓘ tooltips; first-login walkthrough and video tutorials Deferred |
+| FR-140 | COM-12 | M | In-app help, video tutorials, tool-tips, first-login walkthrough per role | Help drawer; guided tour | Built (videos: placeholder cards) | Done — first-login guided tour per role (re-open from Help); video tutorials Deferred (no content source) |
 
 #### Integrations (BRD 6) — no BRD IDs; numbered here
 
@@ -240,8 +240,8 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-142 | §6 Zoho | M | One-time migration from Zoho CRM | — | N/A (data migration, backend) | — |
 | FR-143 | §6 Web/Meta/Google | M | Automatic lead capture | `/admin/integrations` | Simulated (same as FR-015) | Simulated (same as FR-015) |
 | FR-144 | §6 IndiaMART | S | Automatic lead capture | `/admin/integrations` | Simulated (same as FR-016) | Simulated (same as FR-016) |
-| FR-145 | §6 WhatsApp | M | Two-way WhatsApp: quotes, reminders, updates, feedback links, ticket logging | `/admin/outbox`; "Simulate incoming WhatsApp" | Simulated | Simulated (incoming WhatsApp → ticket; outbound in outbox) |
-| FR-146 | §6 Email | M | Send/receive mail, email-to-ticket, calendar sync | `/admin/outbox`; "Simulate incoming email" | Simulated (calendar sync N/A) | Simulated (incoming email → ticket); calendar sync N/A |
+| FR-145 | §6 WhatsApp | M | Two-way WhatsApp: quotes, reminders, updates, feedback links, ticket logging | `/admin/sent-messages`; "Simulate incoming WhatsApp" | Simulated | Simulated (incoming WhatsApp → ticket; outbound in outbox) |
+| FR-146 | §6 Email | M | Send/receive mail, email-to-ticket, calendar sync | `/admin/sent-messages`; "Simulate incoming email" | Simulated (calendar sync N/A) | Simulated (incoming email → ticket); calendar sync N/A |
 | FR-147 | §6 Maps | M | Geo-tagging, routes, distance, map views | Map panels | Simulated (coordinates + SVG plots; no tile provider since no new libraries) | Simulated (coordinates, geo check-in, SVG route and territory grid; no map tiles) |
 | FR-148 | §6 E-sign | C | E-signature for contracts and sign-offs | Contract, job card | Simulated (same as FR-054) | Simulated (on-screen OTP e-sign for contracts and sign-offs) |
 
@@ -311,7 +311,7 @@ Visibility follows the hierarchy: **Own** → **Team** (own + direct and indirec
 
 ### 2.2 Permission matrix (proposed)
 
-Appendix B is blank in the BRD ("to be provided at the time of development"). This is a **proposed** matrix for the prototype. It will be implemented as configuration in `/admin/roles` so True Colors can change it.
+Appendix B is blank in the BRD ("to be provided at the time of development"). This is a **proposed** matrix for the prototype. It will be implemented as configuration in `/admin/roles-permissions` so True Colors can change it.
 
 Legend: **C** create, **E** edit, **V** view, **A** approve, **D** delete (soft), **X** export. Scope: Own / Team / Div / All. — = no access.
 
@@ -338,103 +338,117 @@ Approval levels (QUO-06, SO-04): Level 1 Sales manager → Level 2 Division head
 - Service tickets: sales managers and sales executives see their **division's** tickets read-only (tickets are owned by the assigned engineer, so "own customers" cannot be expressed as a row scope yet). Accounts and Store can read all tickets.
 - Installed base (machines, installations, warranties): sales roles see their **division** rather than only their own customers, for the same reason.
 - Sales-order approval level 1 goes to the owner's **named reporting manager** (moving up one level when the manager is the requester); quotation discount approvals use capability levels (approve.l1/l2/l3) filtered by division.
-- Business policies (`/admin/policies`) are editable by Admin only.
+- Business policies (`/admin/workflows`) are editable by Admin only.
 
 ---
 
 ## 3. Modules → screens → routes
 
-Flat routes (no org/workspace prefix). Every resource list is `/<resource>`, with `?view=`, `?peek=<id>` (side panel), `/new`, `/<id>` and `/<id>/edit`. Every list route supports search, filter, sort, pagination and saved views. Every detail route has a Timeline / History tab where relevant.
+Names and routes follow `docs/GLOSSARY.md` (approved 19-10-2026): one sidebar module per BRD §4 module, page names exactly as in the BRD, routes in kebab-case of the BRD name. Paths live in `src/constants/routes.ts`, labels in `src/constants/labels.ts`, the sidebar in `src/domain/sidebar.ts`. Every old route redirects to its new one (`LEGACY_REDIRECTS`).
 
-| # | Module (sidebar) | Screen | Route | Covers |
-|---|---|---|---|---|
-| 0 | Shell | Sign in (simulated, pick demo user + MFA OTP for admin/management) | `/login` | FR-129, NFR-07 |
-| 0 | Shell | Role dashboard (today's plan, reminders, KPIs) | `/dashboard` | FR-149, NFR-22 |
-| 0 | Shell | Work inbox: notifications, approvals (discount, SO, hold/cancel, regularisation, expense, requisition, KB article), my tasks | `/inbox` (`?tab=notifications\|approvals\|tasks`) | FR-131, 040, 052, 058, 107, 111 |
-| 0 | Shell | Tasks (calls, meetings, visits, demos, follow-ups) | `/tasks`, `/tasks/:id` | FR-021, 034 |
-| 0 | Shell | Calendar (tasks, demos, meetings, PM visits) | `/calendar` | FR-034 |
-| 0 | Shell | Follow-ups due / overdue | `/follow-ups` | FR-021 |
-| 1 | Customers | Customer list | `/customers` | FR-001–012 |
-| 1 | Customers | New / edit customer | `/customers/new`, `/customers/:id/edit` | FR-001, 004, 006 |
-| 1 | Customers | Customer 360 (Overview, Contacts, Addresses, Timeline, Sales, Machines, Tickets, Consumables, Training, Account plan, Documents) | `/customers/:id` | FR-002, 003, 007–011, 067, 098 |
-| 1 | Customers | Contact pool | `/contacts` | FR-005 |
-| 1 | Customers | Contact detail | `/contacts/:id` | FR-005 |
-| 2 | Sales | Leads list (views: All, Mine, Not attended, Nurture due) | `/leads` | FR-013–026 |
-| 2 | Sales | New lead | `/leads/new` | FR-013, 014, 018 |
-| 2 | Sales | Lead detail | `/leads/:id` | FR-019–024 |
-| 2 | Sales | Lead import | `/leads/import` | FR-017 |
-| 2 | Sales | Pipeline (Kanban / list) | `/opportunities` | FR-029 |
-| 2 | Sales | New opportunity | `/opportunities/new` | FR-027 |
-| 2 | Sales | Opportunity detail | `/opportunities/:id` | FR-027, 030–032 |
-| 2 | Sales | Forecast | `/opportunities/forecast` | FR-033 |
-| 2 | Sales | Demos & samples | `/demos` | FR-030 |
-| 3 | Quotations | Quotation list | `/quotations` | FR-035–048 |
-| 3 | Quotations | New / edit quotation (editor) | `/quotations/new`, `/quotations/:id/edit` | FR-035–041, 046, 047 |
-| 3 | Quotations | Quotation detail | `/quotations/:id` | FR-042–045 |
-| 3 | Quotations | Version compare | `/quotations/:id/compare` | FR-043 |
-| 3 | Quotations | Print / PDF view | `/quotations/:id/print` | FR-042 |
-| 3 | Quotations | Price lists | `/price-lists`, `/price-lists/:id` | FR-039 |
-| 4 | Orders | Sales order list (views: Backlog, Payment overdue, Delayed) | `/orders` | FR-049–059 |
-| 4 | Orders | New order from quotation / repeat order | `/orders/new` | FR-049–051, 099 |
-| 4 | Orders | Order detail (Details, Changes vs quote, Payments, Processing, ERP, Dispatch, Contract) | `/orders/:id` | FR-052, 055–058, 060 |
-| 4 | Orders | Sales contract + print | `/orders/:id/contract`, `/orders/:id/contract/print` | FR-053, 054 |
-| 4 | Orders | Dispatches | `/dispatches` | FR-060, 061 |
-| 5 | Installations | Installation jobs | `/installations` | FR-062–066 |
-| 5 | Installations | Installation detail (Readiness, Handover, Job card, Sign-off) | `/installations/:id` | FR-062–066 |
-| 6 | Installed base | Machines | `/machines` | FR-068–074 |
-| 6 | Installed base | Machine detail (Warranty, Contracts, Components, Readings, Tickets, Timeline) | `/machines/:id` | FR-068–070, 073 |
-| 6 | Installed base | AMC / CMC contracts | `/contracts`, `/contracts/:id` | FR-071 |
-| 6 | Installed base | Renewals pipeline | `/renewals` | FR-072 |
-| 7 | Service | Tickets (views: Open, SLA at risk, Breached, Repeat) | `/tickets` | FR-075–091 |
-| 7 | Service | New ticket | `/tickets/new` | FR-075–078 |
-| 7 | Service | Ticket detail (SLA, Visits, Remote, Parts, Chargeable, Feedback, Timeline) | `/tickets/:id` | FR-079–089 |
-| 7 | Service | Job card print | `/tickets/:id/job-card` | FR-082 |
-| 7 | Service | Dispatch board (engineer calendar + territory map) | `/dispatch-board` | FR-079 |
-| 7 | Service | PM schedule | `/pm-schedule` | FR-085 |
-| 7 | Service | Knowledge base | `/knowledge-base`, `/knowledge-base/:id` | FR-090 |
-| 7 | Service | Engineer: My jobs (mobile layout) | `/my-jobs`, `/my-jobs/:id` | FR-080, 088 |
-| 7 | Service | Customer feedback (public, no shell) | `/feedback/:token` | FR-086 |
-| 7 | Service | Customer portal: raise ticket (public, no shell) | `/portal/new-ticket` | FR-075 |
-| 8 | Spares | Spares & stock | `/spares` | FR-092, 093, 097 |
-| 8 | Spares | Requisitions | `/requisitions`, `/requisitions/:id` | FR-094, 095 |
-| 8 | Spares | OEM warranty claims | `/warranty-claims` | FR-096 |
-| 9 | Consumables | Rate contracts | `/rate-contracts` | FR-099 |
-| 9 | Consumables | Reorders due / missed | `/consumables/reorders` | FR-101 |
-| 9 | Consumables | Leakage list | `/consumables/leakage` | FR-100 |
-| 9 | Consumables | Samples & trials | `/consumables/samples` | FR-102 |
-| 10 | Field force | My attendance (check-in/out, regularise) | `/attendance` | FR-104, 105, 107 |
-| 10 | Field force | Team attendance + exceptions | `/attendance/team`, `/attendance/exceptions` | FR-106, 113 |
-| 10 | Field force | Route map | `/attendance/:userId/route` | FR-110 |
-| 10 | Field force | Visits | `/visits`, `/visits/:id` | FR-108 |
-| 10 | Field force | Beat plan | `/visits/plan` | FR-109 |
-| 10 | Field force | Expenses | `/expenses`, `/expenses/:id` | FR-111 |
-| 10 | Field force | Leaves | `/leaves` | FR-112 |
-| 11 | Performance | Targets | `/targets` | FR-114 |
-| 11 | Performance | Achievement | `/targets/achievement` | FR-115, 118 |
-| 11 | Performance | Scorecard | `/scorecard` | FR-116 |
-| 11 | Performance | Leaderboard | `/leaderboard` | FR-117 |
-| 12 | Reports | Report catalogue | `/reports` | FR-012, 026, 048, 059, 074, 091, 113 |
-| 12 | Reports | Report viewer (filters, table, chart, export) | `/reports/:reportId` | same |
-| 13 | Admin | Employees (users, roles, reporting manager, divisions) | `/employees`, `/employees/:id` | FR-126 |
-| 13 | Admin | Organisation (divisions, departments, hierarchy, territories) | `/admin/organisation` | FR-119 |
-| 13 | Admin | Roles & permissions | `/admin/access` | FR-120 |
-| 13 | Admin | Configuration studio (masters, custom fields, publish history) | `/admin/studio` | FR-121, 123 |
-| 13 | Admin | Event trace | `/admin/events` | FR-137 |
-| 13 | Admin | Masters | `/admin/masters`, `/admin/masters/:master` | FR-121 |
-| 13 | Admin | Workflows & approval matrices | `/admin/workflows`, `/admin/workflows/:workflow` | FR-028, 040, 122 |
-| 13 | Admin | SLA configuration | `/admin/sla` | FR-078, 083 |
-| 13 | Admin | Assignment rules / lead scoring | `/admin/assignment-rules`, `/admin/lead-scoring` | FR-019, 025 |
-| 13 | Admin | Custom fields | `/admin/custom-fields` | FR-123 |
-| 13 | Admin | Notification templates | `/admin/notification-templates` | FR-124 |
-| 13 | Admin | Outbox (simulated email/WhatsApp/SMS/push) | `/admin/outbox` | FR-131, 145, 146 |
-| 13 | Admin | Integrations (ERP sync, simulate incoming leads/messages) | `/admin/integrations` | FR-015, 016, 141–146 |
-| 13 | Admin | Import / export | `/admin/import-export` | FR-125, 136 |
-| 13 | Admin | Duplicates & merge | `/admin/duplicates` | FR-006 |
-| 13 | Admin | Ownership transfer | `/admin/transfer` | FR-010 |
-| 13 | Admin | Geofences | `/admin/geofences` | FR-105 |
-| 13 | Admin | Audit log | `/admin/audit` | FR-137 |
-| 13 | Admin | Recycle bin | `/admin/recycle-bin` | FR-138 |
-| 13 | Admin | Settings (simulated clock, offline toggle, reset demo data, export/import all data) | `/admin/settings` | NFR-12, 15, 18 |
+Every resource list is `/<slug>` with `?view=`, `?peek=<id>` (side panel), `/new`, `/<id>` and `/<id>/edit`, and supports search, filter, sort, pagination and saved views. Every sidebar item below maps to a BRD section, and every BRD page is reachable from the sidebar (verified in the browser, 102 sidebar destinations).
+
+| # | Sidebar module (BRD module) | Page | Route | BRD section | FR |
+|---|---|---|---|---|---|
+| 0 | — (shell) | Sign in (simulated, MFA OTP for System Administrator / Management) | `/login` | COM-01, §7 Security | FR-129, NFR-07 |
+| 1 | Dashboard (4.13 Dashboards & Reports) | Dashboard | `/dashboard` | 4.13, §1.3 | FR-149, NFR-22 |
+| 1 | Dashboard | Notifications & Approvals (tabs Notifications, Approvals, My Tasks) | `/notifications` | COM-03, QUO-06, SO-04 | FR-131, FR-040, FR-052 |
+| 1 | Dashboard | Tasks & Calendar | `/calendar` | OPP-08 | FR-034 |
+| 1 | Dashboard | Tasks · Activity History · Calendar Events | `/tasks`, `/activity-history`, `/calendar-events` | OPP-08, COM-05 | FR-021, FR-034, FR-133 |
+| 2 | Customers & Contacts (4.1 Customer & Contact Master) | Companies | `/companies` | CUS-01, CUS-04, CUS-08 | FR-001, FR-004, FR-008 |
+| 2 | Customers & Contacts | Customer 360° View (Overview, Contacts, Sites, Leads, Opportunities, Quotations, Sales Orders, Payment Status, Installed Machines, Warranty & AMC, Service Tickets, Feedback, Consumables, Training Records, Key Account Plan, Activity History, Documents) | `/companies/:id` | CUS-07, CUS-09, CUS-11 | FR-007, FR-009, FR-011, FR-067, FR-098, FR-132 |
+| 2 | Customers & Contacts | Contacts | `/contacts` | CUS-03 | FR-003 |
+| 2 | Customers & Contacts | Contact Pool | `/contact-pool` | CUS-05 | FR-005 |
+| 2 | Customers & Contacts | Import Contacts | `/contact-pool/import` | CUS-05 | FR-005 |
+| 2 | Customers & Contacts | Sites | `/sites` | CUS-02 | FR-002 |
+| 3 | Leads (4.2 Lead Management) | Leads · New Lead · lead record (Convert to Opportunity, Nurture, Disqualify) | `/leads`, `/leads/new`, `/leads/:id` | LEAD-01–LEAD-13 | FR-013–FR-025 |
+| 3 | Leads | Not Attended Leads | `/not-attended-leads` | LEAD-08 | FR-020 |
+| 3 | Leads | Follow-ups | `/follow-ups` | LEAD-09 | FR-021 |
+| 3 | Leads | Import Leads | `/leads/import` | LEAD-05 | FR-017 |
+| 4 | Opportunities & Pipeline (4.3 Opportunity & Pipeline Management) | Pipeline (Kanban / list) | `/pipeline` | OPP-03 | FR-029 |
+| 4 | Opportunities & Pipeline | Opportunities | `/opportunities` | OPP-01, OPP-02, OPP-05, OPP-06 | FR-027, FR-028, FR-031, FR-032 |
+| 4 | Opportunities & Pipeline | Sales Forecast | `/sales-forecast` | OPP-07 | FR-033 |
+| 4 | Opportunities & Pipeline | Demos · Demo Machines · Sample Print Requests | `/demos`, `/demo-machines`, `/sample-print-requests` | OPP-04 | FR-030 |
+| 4 | Opportunities & Pipeline | Demo Machine Calendar | `/demo-machine-calendar` | OPP-04 | FR-030 |
+| 5 | Quotations (4.4 Quotation Management) | Quotations · quotation record (Line Items, Pricing & GST, Commercial Terms, Approval, Versions, ROI / Payback Calculator, Documents) | `/quotations`, `/quotations/:id` | QUO-01–QUO-13 | FR-035–FR-047 |
+| 5 | Quotations | Quotation editor | `/quotations/new`, `/quotations/:id/edit` | QUO-01–QUO-07, QUO-12 | FR-035–FR-041, FR-046 |
+| 5 | Quotations | Compare Versions | `/quotations/:id/compare` | QUO-09 | FR-043 |
+| 5 | Quotations | Quotation PDF | `/quotations/:id/pdf` | QUO-08 | FR-042 |
+| 5 | Quotations | Pending Approvals | `/quotations/pending-approvals` | QUO-06, QUO-14 | FR-040, FR-048 |
+| 6 | Sales Orders & Contracts (4.5 Sales Order & Sales Contract) | Sales Orders · sales order record (Changes vs Quotation, Approval, Payment Schedule, Order Processing, ERP Invoice, Dispatch & Delivery, Sales Contract, Hold / Cancellation) | `/sales-orders`, `/sales-orders/new`, `/sales-orders/:id`, `/sales-orders/:id/edit` | SO-01–SO-04, SO-09, SO-10 | FR-049–FR-052, FR-057, FR-058 |
+| 6 | Sales Orders & Contracts | Sales Contracts · Sales Contract PDF | `/sales-contracts`, `/sales-orders/:id/contract/pdf` | SO-05, SO-06 | FR-053, FR-054 |
+| 6 | Sales Orders & Contracts | Payment Schedule | `/payment-schedule` | SO-07 | FR-055 |
+| 6 | Sales Orders & Contracts | Order Processing | `/order-processing` | SO-08 | FR-056 |
+| 7 | Dispatch & Installation (4.6 Dispatch, Delivery, Installation & Commissioning) | Dispatch & Delivery | `/dispatch-delivery` | INS-01, INS-02 | FR-060, FR-061 |
+| 7 | Dispatch & Installation | Installation Jobs (Site Readiness Checklist, Sales-to-Service Handover, Job Card, Customer Sign-off) | `/installation-jobs` | INS-03–INS-07 | FR-062–FR-066 |
+| 7 | Dispatch & Installation | Training Records | `/training-records` | INS-08 | FR-067 |
+| 8 | Installed Base & AMC (4.7 Installed Base, Warranty & AMC) | Installed Base (machine record: Warranty, AMC / CMC, Component Serial Numbers, Usage Readings, Service Tickets, Resale / Relocation History) | `/installed-base` | IB-01 | FR-068 |
+| 8 | Installed Base & AMC | Warranties | `/warranties` | IB-03 | FR-070 |
+| 8 | Installed Base & AMC | AMC / CMC Contracts (Create Renewal Quotation) | `/amc-cmc-contracts` | IB-04 | FR-071 |
+| 8 | Installed Base & AMC | Renewals | `/renewal-pipeline` | IB-05 | FR-072 |
+| 8 | Installed Base & AMC | Component Serial Numbers · Machine Usage Readings · Resale / Relocation History | `/component-serial-numbers`, `/machine-usage-readings`, `/resale-relocation-history` | IB-02, IB-06, IB-01 | FR-069, FR-073, FR-068 |
+| 9 | Service Tickets (4.8 Service Ticket Management) | Service Tickets · Log Ticket · ticket record (SLA Tracking, Site Visits, Remote Support, Parts Used, Chargeable Service, Customer Feedback) | `/service-tickets`, `/service-tickets/new`, `/service-tickets/:id` | SRV-01–SRV-15 | FR-075–FR-089 |
+| 9 | Service Tickets | Engineer Calendar & Map | `/engineer-calendar` | SRV-05 | FR-079 |
+| 9 | Service Tickets | My Jobs | `/my-jobs`, `/my-jobs/:id` | SRV-06, SRV-14 | FR-080, FR-088 |
+| 9 | Service Tickets | Site Visits | `/site-visits` | SRV-06, SRV-07 | FR-080, FR-081 |
+| 9 | Service Tickets | PM Schedule (records `/pm-visits/:id`) | `/pm-schedule` | SRV-11 | FR-085 |
+| 9 | Service Tickets | Knowledge Base (records `/knowledge-articles/:id`) | `/knowledge-base` | SRV-16 | FR-090 |
+| 9 | Service Tickets | Service Job Card | `/service-tickets/:id/job-card` | SRV-08 | FR-082 |
+| 9 | — (public, no sidebar) | Customer Feedback · Customer Portal – Log Ticket | `/feedback/:token`, `/customer-portal/log-ticket` | SRV-12, SRV-01 | FR-086, FR-075 |
+| 10 | Spare Parts (4.9 Spare Parts & Engineer Stock) | Spare Parts Master | `/spare-parts` | SPR-01 | FR-092 |
+| 10 | Spare Parts | Main Store Stock | `/main-store-stock` | SPR-02 | FR-093 |
+| 10 | Spare Parts | Engineer Stock | `/engineer-stock` | 4.9 (module title) | FR-093, FR-095 |
+| 10 | Spare Parts | Spares Requisitions | `/spares-requisitions` | SPR-03, SPR-04, Appendix A | FR-094, FR-095 |
+| 10 | Spare Parts | Warranty Claims (OEM) | `/oem-warranty-claims` | SPR-05 | FR-096 |
+| 10 | Spare Parts | Minimum-Level Alerts | `/minimum-level-alerts` | SPR-06 | FR-097 |
+| 11 | Consumables (4.10 Consumables & Repeat Business) | Repeat Orders | `/repeat-orders` | CON-02 | FR-099 |
+| 11 | Consumables | Rate Contracts | `/rate-contracts` | CON-02 | FR-099 |
+| 11 | Consumables | Leakage List | `/leakage-list` | CON-03 | FR-100 |
+| 11 | Consumables | Reorder Prediction | `/reorder-prediction` | CON-04 | FR-101 |
+| 11 | Consumables | Sample / Trial Dispatch | `/sample-trial-dispatch` | CON-05 | FR-102 |
+| 11 | Consumables | Dealer / Distributor Orders | `/dealer-orders` | CON-06 | FR-103 |
+| 12 | Field Force (4.11 Field Force: Attendance, Visits & Expenses) | Attendance (Check-in / Check-out) | `/attendance` | ATT-01, ATT-02, ATT-04 | FR-104, FR-105, FR-107 |
+| 12 | Field Force | Team Attendance | `/team-attendance` | ATT-03, ATT-10 | FR-106, FR-113 |
+| 12 | Field Force | Exception Dashboard | `/exception-dashboard` | ATT-10 | FR-113 |
+| 12 | Field Force | Route Map | `/route-map`, `/route-map/:userId` | ATT-07 | FR-110 |
+| 12 | Field Force | Field Visits | `/field-visits` | ATT-05 | FR-108 |
+| 12 | Field Force | Beat Plan | `/beat-plan` | ATT-06 | FR-109 |
+| 12 | Field Force | Attendance Regularisation | `/attendance-regularisation` | ATT-04 | FR-107 |
+| 12 | Field Force | Expense Claims · Payroll Export | `/expense-claims`, `/expense-claims/payroll-export` | ATT-08 | FR-111 |
+| 12 | Field Force | Leave Applications | `/leave-applications` | ATT-09 | FR-112 |
+| 13 | Targets & Recognition (4.12 Targets, Performance & Recognition) | Targets | `/targets` | TGT-01 | FR-114 |
+| 13 | Targets & Recognition | Target vs Actual | `/target-vs-actual` | TGT-02, TGT-05 | FR-115, FR-118 |
+| 13 | Targets & Recognition | Weekly Activity Scorecard | `/activity-scorecard` | TGT-03 | FR-116 |
+| 13 | Targets & Recognition | Leaderboards & Recognition | `/leaderboards` | TGT-04 | FR-117 |
+| 14 | Reports (4.13 Dashboards & Reports) | All Reports · report viewer | `/reports`, `/reports/:reportId` | 4.13 | FR-149 |
+| 14 | Reports | KPIs & CRM Adoption | `/reports/kpis` | Appendix C, §9.3 | FR-149, NFR-23 |
+| 14 | Reports | Customer Reports | `/reports/customers` | CUS-12 | FR-012 |
+| 14 | Reports | Lead Reports (incl. Referral Report `/reports/referrals`) | `/reports/leads` | LEAD-14, LEAD-12 | FR-026, FR-024 |
+| 14 | Reports | Quotation Reports | `/reports/quotations` | QUO-14 | FR-048 |
+| 14 | Reports | Sales Order Reports | `/reports/sales-orders` | SO-11 | FR-059 |
+| 14 | Reports | Installed Base Reports | `/reports/installed-base` | IB-07 | FR-074 |
+| 14 | Reports | Service Reports | `/reports/service` | SRV-17 | FR-091 |
+| 14 | Reports | Field Force Reports | `/reports/field-force` | ATT-10 | FR-113 |
+| 15 | Administration (4.14 Administration & Configuration) | Organisation Hierarchy | `/admin/organisation-hierarchy` | ADM-01 | FR-119 |
+| 15 | Administration | Users | `/admin/users` | ADM-08 | FR-126 |
+| 15 | Administration | Roles & Permissions (editable) | `/admin/roles-permissions` | ADM-02 | FR-120 |
+| 15 | Administration | Masters | `/admin/masters` | ADM-03 | FR-121 |
+| 15 | Administration | Product & Price Master · Price Lists · Price List Items | `/admin/products`, `/admin/price-lists`, `/admin/price-list-items` | QUO-02, QUO-05, ADM-03 | FR-036, FR-039, FR-121 |
+| 15 | Administration | Terms & Conditions Templates | `/admin/terms-templates` | QUO-07, ADM-03 | FR-041 |
+| 15 | Administration | Custom Fields & Form Layouts (per division) | `/admin/custom-fields` | ADM-05 | FR-123 |
+| 15 | Administration | Workflows & Approval Matrices | `/admin/workflows` | ADM-04, QUO-06, SO-04 | FR-122 |
+| 15 | Administration | SLA Matrix | `/admin/sla-matrix` | SRV-04, SRV-09 | FR-078, FR-083 |
+| 15 | Administration | Configurable Rules | `/admin/configurable-rules` | ADM-04 | FR-122 |
+| 15 | Administration | Lead Assignment Rules · Lead Scoring Rules | `/admin/lead-assignment-rules`, `/admin/lead-scoring-rules` | LEAD-07, LEAD-13 | FR-019, FR-025 |
+| 15 | Administration | Notification Templates | `/admin/notification-templates` | ADM-06 | FR-124 |
+| 15 | Administration | Bulk Import / Export | `/admin/bulk-import-export` | ADM-07, COM-08 | FR-125, FR-136 |
+| 15 | Administration | Duplicate Detection & Merge | `/admin/duplicate-merge` | CUS-06 | FR-006 |
+| 15 | Administration | Bulk Ownership Transfer | `/admin/ownership-transfer` | CUS-10, ADM-08 | FR-010 |
+| 15 | Administration | Integrations | `/admin/integrations` | §6 | FR-015, FR-016, FR-141–FR-146 |
+| 15 | Administration | Audit Trail (incl. System Events view `?view=events`) | `/admin/audit-trail` | COM-09 | FR-137 |
+| 15 | Administration | Recycle Bin | `/admin/recycle-bin` | COM-10 | FR-138 |
+| 15 | Administration | Sent Messages (Simulated) | `/admin/sent-messages` | COM-03 (simulated outbox) | FR-131, FR-145, FR-146 |
+| 15 | Administration | Demo Settings (simulated clock, offline toggle, reset demo data) | `/admin/demo-settings` | NFR simulation (§6 of this file) | NFR-12, NFR-15, NFR-18 |
 
 ---
 

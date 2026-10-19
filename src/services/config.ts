@@ -13,6 +13,10 @@ import { appendAudit, emitEvent } from './ledger';
 import { allResources, getMaster, getResource } from './registry';
 import { type ConfigDraft, ServiceError } from './types';
 import { systemViews } from './views';
+import { L } from '../constants/labels';
+
+const E = L.common.errors;
+const CI = L.common.configIssues;
 
 export interface ConfigIssue {
   severity: 'error' | 'warning';
@@ -20,7 +24,7 @@ export interface ConfigIssue {
 }
 
 function requirePublisher(actor: Actor) {
-  if (!can(actor, 'config.publish')) throw new ServiceError('forbidden', 'Your role cannot change configuration.');
+  if (!can(actor, 'config.publish')) throw new ServiceError('forbidden', E.configOnly);
 }
 
 export function getDraft(): ConfigDraft | null {
@@ -41,7 +45,7 @@ export function ensureDraft(actor: Actor): ConfigDraft {
 export function setDraftMaster(actor: Actor, master: MasterDefinition) {
   requirePublisher(actor);
   commit((d) => {
-    if (!d.config.draft) throw new ServiceError('invalid_state', 'Start a draft first.');
+    if (!d.config.draft) throw new ServiceError('invalid_state', E.startDraft);
     d.config.draft.masters[master.key] = JSON.parse(JSON.stringify(master));
     d.config.draft.updatedAt = nowIso();
   });
@@ -82,7 +86,7 @@ export function addDraftField(actor: Actor, spec: NewFieldSpec) {
     capabilities: { list: spec.type !== 'longtext', sort: spec.type !== 'longtext', filter: true, search: spec.type === 'text', form: true, export: true },
   };
   commit((d) => {
-    if (!d.config.draft) throw new ServiceError('invalid_state', 'Start a draft first.');
+    if (!d.config.draft) throw new ServiceError('invalid_state', E.startDraft);
     d.config.draft.newFields.push({ resource: spec.resource, field });
     d.config.draft.updatedAt = nowIso();
   });
@@ -112,15 +116,15 @@ export function validateDraft(draft: ConfigDraft): ConfigIssue[] {
     const published = getMaster(m.key);
     const keys = new Set<string>();
     m.values.forEach((v) => {
-      if (!/^[a-z][a-z0-9_]{1,39}$/.test(v.key)) issues.push({ severity: 'error', message: `${m.label}: key "${v.key}" must be lowercase snake_case.` });
-      if (keys.has(v.key)) issues.push({ severity: 'error', message: `${m.label}: duplicate key "${v.key}".` });
+      if (!/^[a-z][a-z0-9_]{1,39}$/.test(v.key)) issues.push({ severity: 'error', message: CI.keySnake(m.label, v.key) });
+      if (keys.has(v.key)) issues.push({ severity: 'error', message: CI.duplicateKey(m.label, v.key) });
       keys.add(v.key);
-      if (!v.label.trim()) issues.push({ severity: 'error', message: `${m.label}: value "${v.key}" needs a label.` });
+      if (!v.label.trim()) issues.push({ severity: 'error', message: CI.needsLabel(m.label, v.key) });
     });
     published.values.forEach((pv) => {
-      if (!keys.has(pv.key)) issues.push({ severity: 'error', message: `${m.label}: value "${pv.label}" cannot be removed — deactivate it instead (keys are immutable).` });
+      if (!keys.has(pv.key)) issues.push({ severity: 'error', message: CI.cannotRemove(m.label, pv.label) });
     });
-    if (!m.values.some((v) => v.active)) issues.push({ severity: 'error', message: `${m.label}: at least one value must remain active.` });
+    if (!m.values.some((v) => v.active)) issues.push({ severity: 'error', message: CI.oneActive(m.label) });
 
     const newlyInactive = m.values.filter((v) => !v.active && published.values.find((p) => p.key === v.key)?.active);
     for (const v of newlyInactive) {
@@ -135,14 +139,14 @@ export function validateDraft(draft: ConfigDraft): ConfigIssue[] {
         // Defaults and saved-view filters referencing the value are breaking dependencies.
         res.fields
           .filter((f) => f.master === m.key && f.defaultValue === v.key)
-          .forEach((f) => issues.push({ severity: 'error', message: `${m.label}: "${v.label}" is the default for ${res.label} › ${f.label}. Choose another default before deactivating.` }));
+          .forEach((f) => issues.push({ severity: 'error', message: CI.isDefault(m.label, v.label, res.label, f.label) }));
       }
-      if (usage) issues.push({ severity: 'warning', message: `${m.label}: ${usage} existing record(s) use "${v.label}". They keep it; it will no longer be selectable.` });
+      if (usage) issues.push({ severity: 'warning', message: CI.inUse(m.label, usage, v.label) });
       allViews.forEach((view) => {
         const res = getResource(view.resource);
         const masterFields = res.fields.filter((f) => f.master === m.key).map((f) => f.key);
         const uses = JSON.stringify(view.filter).includes(`"value":"${v.key}"`) && collectFields(view.filter).some((k) => masterFields.includes(k));
-        if (uses) issues.push({ severity: 'error', message: `${m.label}: saved view "${view.name}" (${res.labelPlural}) filters on "${v.label}". Update that view first.` });
+        if (uses) issues.push({ severity: 'error', message: CI.viewFilters(m.label, view.name, res.labelPlural, v.label) });
       });
     }
   }
@@ -151,17 +155,17 @@ export function validateDraft(draft: ConfigDraft): ConfigIssue[] {
   for (const { resource, field } of draft.newFields) {
     const res = getResource(resource);
     const id = `${resource}.${field.key}`;
-    if (!/^[a-z][a-zA-Z0-9]{1,39}$/.test(field.key)) issues.push({ severity: 'error', message: `${res.label}: field key "${field.key}" must be camelCase letters/digits.` });
-    if (res.fields.some((f) => f.key === field.key) || seen.has(id)) issues.push({ severity: 'error', message: `${res.label}: a field with key "${field.key}" already exists.` });
+    if (!/^[a-z][a-zA-Z0-9]{1,39}$/.test(field.key)) issues.push({ severity: 'error', message: CI.fieldKey(res.label, field.key) });
+    if (res.fields.some((f) => f.key === field.key) || seen.has(id)) issues.push({ severity: 'error', message: CI.fieldExists(res.label, field.key) });
     seen.add(id);
-    if (!field.label) issues.push({ severity: 'error', message: `${res.label}: new field needs a label.` });
-    if (field.type === 'master' && !field.master) issues.push({ severity: 'error', message: `${res.label} › ${field.label}: choose a master list.` });
+    if (!field.label) issues.push({ severity: 'error', message: CI.fieldLabel(res.label) });
+    if (field.type === 'master' && !field.master) issues.push({ severity: 'error', message: CI.chooseMaster(res.label, field.label) });
     const count = (d.records[resource] ?? []).length;
     if (field.required && field.defaultValue === undefined && count > 0) {
-      issues.push({ severity: 'error', message: `${res.label} › ${field.label}: required on ${count} existing records — provide a default value.` });
+      issues.push({ severity: 'error', message: CI.requiredDefault(res.label, field.label, count) });
     }
   }
-  if (!Object.keys(draft.masters).length && !draft.newFields.length) issues.push({ severity: 'warning', message: 'The draft has no changes.' });
+  if (!Object.keys(draft.masters).length && !draft.newFields.length) issues.push({ severity: 'warning', message: CI.noChanges });
   return issues;
 }
 
@@ -187,9 +191,9 @@ export function draftSummary(draft: ConfigDraft): string[] {
 export function publishDraft(actor: Actor) {
   requirePublisher(actor);
   const draft = getDraft();
-  if (!draft) throw new ServiceError('invalid_state', 'Nothing to publish.');
+  if (!draft) throw new ServiceError('invalid_state', E.nothingToPublish);
   const issues = validateDraft(draft);
-  if (issues.some((i) => i.severity === 'error')) throw new ServiceError('validation', 'Fix validation errors before publishing.');
+  if (issues.some((i) => i.severity === 'error')) throw new ServiceError('validation', E.fixBeforePublish);
   const summary = draftSummary(draft);
   commit((d) => {
     for (const m of Object.values(draft.masters)) {
@@ -206,7 +210,7 @@ export function publishDraft(actor: Actor) {
     d.config.history.unshift({ id: uid('cfg'), version: d.config.version, publishedAt: nowIso(), publishedBy: actor.user.id, summary });
     d.config.draft = null;
     const correlationId = uid('cor');
-    appendAudit(d, actor, { action: 'config.published', summary: `Published configuration v${d.config.version}: ${summary.length} change(s)`, correlationId });
+    appendAudit(d, actor, { action: 'config.published', summary: L.common.audit.configPublished(d.config.version, summary.length), correlationId });
     emitEvent(d, actor, { eventType: 'config.published', correlationId, payload: { version: d.config.version, changes: summary.length } });
   });
 }

@@ -1,4 +1,4 @@
-/* Reports & overview — module styles on top of the template's .chart / .stats / .panel classes (tokens only). */
+/* Reports & dashboard — module styles on top of the template's .chart / .stats / .panel classes (tokens only). */
 .rb-rows {
   display: grid;
   gap: 6px;
@@ -175,7 +175,7 @@ button.rb-row:hover {
   }
 }
 
-/* ---------------------------------------------------------------- One-screen overview */
+/* ---------------------------------------------------------------- One-screen dashboard */
 .dash-page > .stats {
   margin-bottom: 12px;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

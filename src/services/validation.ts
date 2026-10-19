@@ -3,6 +3,9 @@ import { todayKey } from '../lib/dates';
 import { validateFormat } from '../lib/validators';
 import { getDb } from './db';
 import { activeMasterValues, getMaster } from './registry';
+import { L } from '../constants/labels';
+
+const V = L.common.form.v;
 
 export function isEmpty(v: unknown) {
   return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
@@ -33,22 +36,22 @@ export const isRequired = (f: FieldDefinition, values: Record<string, unknown>) 
 
 function validateLineItems(f: FieldDefinition, value: unknown): string | undefined {
   const rows = (value as Record<string, unknown>[] | undefined) ?? [];
-  if (f.required && rows.length === 0) return 'Add at least one line item';
+  if (f.required && rows.length === 0) return V.addLine;
   for (let i = 0; i < rows.length; i++) {
     for (const col of f.lineItemColumns ?? []) {
       const msg = validateCell(col, rows[i][col.key]);
-      if (msg) return `Row ${i + 1}: ${col.label} — ${msg}`;
+      if (msg) return V.lineRow(i + 1, col.label, msg);
     }
   }
   return undefined;
 }
 
 function validateCell(col: LineItemColumn, v: unknown): string | undefined {
-  if (col.required && isEmpty(v)) return 'required';
+  if (col.required && isEmpty(v)) return V.lineRequired;
   if ((col.type === 'number' || col.type === 'money') && !isEmpty(v)) {
     const n = Number(v);
-    if (Number.isNaN(n)) return 'must be a number';
-    if (col.min !== undefined && n < col.min) return `must be at least ${col.min}`;
+    if (Number.isNaN(n)) return V.lineNumber;
+    if (col.min !== undefined && n < col.min) return V.lineMin(col.min);
   }
   return undefined;
 }
@@ -66,7 +69,7 @@ export function validateValues(res: ResourceDefinition, values: Record<string, u
     if (!isVisible(f, values)) continue;
     const v = values[f.key];
     if (isRequired(f, values) && isEmpty(v)) {
-      errors[f.key] = `${f.label} is required`;
+      errors[f.key] = V.requiredField(f.label);
       continue;
     }
     if (isEmpty(v)) continue;
@@ -84,7 +87,7 @@ export function validateField(f: FieldDefinition, v: unknown, values: Record<str
     case 'email':
     case 'phone': {
       const s = String(v);
-      if (f.maxLength && s.length > f.maxLength) return `Must be ${f.maxLength} characters or fewer`;
+      if (f.maxLength && s.length > f.maxLength) return V.maxChars(f.maxLength);
       if (f.pattern && !new RegExp(f.pattern.regex).test(s)) return f.pattern.message;
       if (f.format) return validateFormat(f.format, s);
       return undefined;
@@ -92,17 +95,17 @@ export function validateField(f: FieldDefinition, v: unknown, values: Record<str
     case 'number':
     case 'money': {
       const n = Number(v);
-      if (Number.isNaN(n)) return 'Must be a number';
-      if (f.min !== undefined && n < f.min) return `Must be at least ${f.min}`;
-      if (f.max !== undefined && n > f.max) return `Must be at most ${f.max}`;
+      if (Number.isNaN(n)) return V.number;
+      if (f.min !== undefined && n < f.min) return V.min(f.min);
+      if (f.max !== undefined && n > f.max) return V.max(f.max);
       return undefined;
     }
     case 'date':
     case 'datetime': {
       const s = String(v);
-      if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return 'Enter a valid date';
-      if (f.dateRule === 'past' && s.slice(0, 10) > todayKey()) return 'Date cannot be in the future';
-      if (f.dateRule === 'future' && s.slice(0, 10) < todayKey()) return 'Date cannot be in the past';
+      if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return V.date;
+      if (f.dateRule === 'past' && s.slice(0, 10) > todayKey()) return V.notFuture;
+      if (f.dateRule === 'future' && s.slice(0, 10) < todayKey()) return V.notPast;
       if (f.compare) {
         const other = values[f.compare.field];
         if (!isEmpty(other)) {
@@ -116,28 +119,28 @@ export function validateField(f: FieldDefinition, v: unknown, values: Record<str
     case 'master': {
       const parent = f.masterParentField ? values[f.masterParentField] : undefined;
       const exists = getMaster(f.master!).values.find((x) => x.key === v);
-      if (!exists) return 'Unknown value';
-      if (f.masterParentField && exists.parent !== parent) return 'Not valid for the selected parent value';
+      if (!exists) return V.unknownValue;
+      if (f.masterParentField && exists.parent !== parent) return V.invalidForParent;
       return undefined;
     }
     case 'multimaster': {
       const keys = new Set(activeMasterValues(f.master!).map((x) => x.key));
       const all = new Set(getMaster(f.master!).values.map((x) => x.key));
-      return (v as string[]).every((k) => all.has(k) || keys.has(k)) ? undefined : 'Unknown value';
+      return (v as string[]).every((k) => all.has(k) || keys.has(k)) ? undefined : V.unknownValue;
     }
     case 'people': {
       const ids = new Set((getDb().records[f.relation!.resource] ?? []).map((r) => r.id));
-      return Array.isArray(v) && (v as string[]).every((id) => ids.has(id)) ? undefined : 'Selected person no longer exists';
+      return Array.isArray(v) && (v as string[]).every((id) => ids.has(id)) ? undefined : V.personGone;
     }
     case 'image':
-      return typeof v === 'string' && /^(data:image\/|https?:\/\/)/.test(v) ? undefined : 'Not a valid image';
+      return typeof v === 'string' && /^(data:image\/|https?:\/\/)/.test(v) ? undefined : V.image;
     case 'relation': {
       const rows = getDb().records[f.relation!.resource] ?? [];
       const target = rows.find((r) => r.id === v);
-      if (!target) return 'Selected record no longer exists';
+      if (!target) return V.recordGone;
       if (f.relation?.filterBy) {
         const expected = values[f.relation.filterBy.fromField];
-        if (!isEmpty(expected) && target[f.relation.filterBy.field] !== expected) return 'Does not belong to the selected record';
+        if (!isEmpty(expected) && target[f.relation.filterBy.field] !== expected) return V.wrongParent;
       }
       return undefined;
     }
@@ -154,7 +157,7 @@ export function inactiveMasterErrors(res: ResourceDefinition, patch: Record<stri
   for (const f of res.fields) {
     if (f.type !== 'master' || !(f.key in patch) || isEmpty(patch[f.key])) continue;
     const mv = getMaster(f.master!).values.find((x) => x.key === patch[f.key]);
-    if (mv && !mv.active) errors[f.key] = `"${mv.label}" has been deactivated`;
+    if (mv && !mv.active) errors[f.key] = V.deactivated(mv.label);
   }
   return errors;
 }

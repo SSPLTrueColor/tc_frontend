@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { L } from '../constants/labels';
 import { addDays, todayKey } from '../lib/dates';
 import { cx } from '../lib/format';
 import { useServiceQuery } from '../hooks/useServiceQuery';
@@ -15,13 +16,8 @@ import { AgendaCard, AlertsCard, BoardCard, CardSkeleton, FeedCard, KpiCard, Kpi
 import '../modules/reports/reports.css';
 import '../modules/dashboard/dashboard.css';
 
-const PRESETS: { id: RangeKey; label: string }[] = [
-  { id: 'today', label: 'Today' },
-  { id: '7d', label: '7D' },
-  { id: '30d', label: '30D' },
-  { id: 'month', label: 'This month' },
-  { id: 'custom', label: 'Custom' },
-];
+const D = L.dashboard;
+const PRESETS: { id: RangeKey; label: string }[] = (['today', '7d', '30d', 'month', 'custom'] as const).map((id) => ({ id, label: D.range.presets[id] }));
 const isRangeKey = (v: string | null): v is RangeKey => PRESETS.some((p) => p.id === v);
 
 /**
@@ -75,17 +71,17 @@ export function DashboardPage() {
     if (!item.taskId) return;
     try {
       await call(() => transitionRecord(actor, 'tasks', item.taskId!, 'done', item.taskVersion ?? 1));
-      toast(`${item.taskId} completed`);
+      toast(D.page.taskCompleted(item.taskId));
     } catch (e) {
       toast(errorMessage(e), 'danger');
     }
   };
 
-  const header = <PageHeader title={`Good day, ${first}`} description={`${actor.role.label} dashboard${q.data ? ` · ${q.data.headline}` : ''}. Every figure is computed from the records you can see and opens the list behind it.`} />;
+  const header = <PageHeader title={L.nav.pages.dashboard.title} description={D.page.description(D.page.greeting(first), actor.role.label, q.data?.headline)} />;
 
   const bar = (
-    <div className="dash2-bar" role="group" aria-label="Date range">
-      <div className="segmented" role="radiogroup" aria-label="Date range presets">
+    <div className="dash2-bar" role="group" aria-label={D.range.group}>
+      <div className="segmented" role="radiogroup" aria-label={D.range.presetsGroup}>
         {PRESETS.map((p) => (
           <button key={p.id} type="button" role="radio" aria-checked={key === p.id} className={cx('seg-btn', key === p.id && 'is-on')} onClick={() => setRange(p.id)}>
             {p.label}
@@ -94,11 +90,11 @@ export function DashboardPage() {
       </div>
       {key === 'custom' && (
         <span className="rep-date">
-          <DateRangePicker label="Custom date range" value={{ from: range.from, to: range.to }} onChange={setCustom} />
+          <DateRangePicker label={D.range.custom} value={{ from: range.from, to: range.to }} onChange={setCustom} />
         </span>
       )}
       <span className="dash2-bar-note">
-        {range.label} · compared with the {range.days === 1 ? 'day' : `${range.days} days`} before
+        {D.range.compared(range.label, range.days)}
       </span>
     </div>
   );
@@ -108,7 +104,7 @@ export function DashboardPage() {
       <div className="page dash2">
         {header}
         {bar}
-        <ErrorState title="Could not load your dashboard" onRetry={q.retry}>
+        <ErrorState title={D.page.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       </div>
@@ -141,7 +137,7 @@ export function DashboardPage() {
     <div className="page dash2">
       {header}
       {bar}
-      <section className="dash2-kpis" style={{ ['--n' as string]: d.kpis.length }} aria-label="Key figures">
+      <section className="dash2-kpis" style={{ ['--n' as string]: d.kpis.length }} aria-label={D.page.keyFigures}>
         {d.kpis.map((k) => (
           <KpiCard key={k.id} kpi={k} />
         ))}

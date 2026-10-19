@@ -17,6 +17,10 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { FormSections } from '../../components/resource/FormFields';
 import { initialValues } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { L } from '../../constants/labels';
+
+const T = L.leads.pages.newLead;
+const A = L.leads.actions;
 
 type Values = Record<string, unknown>;
 const EMPTY_COMPANY: NewCompanyInput = { name: '', city: '', state: '', territoryId: '', gstin: '', industry: '' };
@@ -51,7 +55,7 @@ export function NewLeadPage() {
   );
   const dupCompanies = companyMode === 'new' && company.name.trim().length >= 4 ? findDuplicateCustomers(company.name, company.gstin) : [];
 
-  if (!perm(actor, 'leads').create) return <NoAccess what="creating leads" />;
+  if (!perm(actor, 'leads').create) return <NoAccess what={T.noAccess} />;
 
   const save = async () => {
     const newCompany = companyMode === 'new' ? company : null;
@@ -62,18 +66,19 @@ export function NewLeadPage() {
     const client = validateValues(res, { ...values, status: 'new' }, editable);
     setErrors(client);
     if (Object.keys(client).length) {
-      setMessage('Please fix the highlighted fields.');
+      setMessage(T.fixFields);
       return;
     }
     setBusy(true);
     setMessage('');
     try {
       const out = await leadsApi.create(actor, values, newCompany, newContact);
-      toast(`Lead ${out.record.id} created`);
+      toast(T.created(out.record.id));
       navigate(recordPeekPath(actor.workspaceId, 'leads', out.record.id));
     } catch (e) {
       if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
       setMessage(errorMessage(e));
+      toast(errorMessage(e), 'danger');
     } finally {
       setBusy(false);
     }
@@ -84,47 +89,48 @@ export function NewLeadPage() {
   return (
     <div className="page">
       <PageHeader
-        title="New lead"
-        description="Only company, contact, division, source, product interest and the next follow-up date are required. Everything else can be added later."
+        title={T.title}
+        description={T.description}
         actions={
           <>
-            <Button onClick={() => navigate(resourcePath(actor.workspaceId, 'leads'))}>Cancel</Button>
-            <Button variant="primary" loading={busy} onClick={save} disabledReason={partyReady ? undefined : 'Needs the Customers module'}>
-              Create lead
+            <Button onClick={() => navigate(resourcePath(actor.workspaceId, 'leads'))}>{A.cancel}</Button>
+            <Button variant="primary" loading={busy} onClick={save} disabledReason={partyReady ? undefined : T.needsCustomers}>
+              {A.createLead}
             </Button>
           </>
         }
       />
       <div className="content-surface record-form">
         {!partyReady && (
-          <InlineAlert tone="warning" title="Companies are not available yet">
-            Leads belong to a company and a contact person. The Customers module is not published in this build, so leads cannot be created here yet.
+          <InlineAlert tone="warning" title={T.customersMissingTitle}>
+            {T.customersMissingBody}
           </InlineAlert>
         )}
         {message && (
-          <InlineAlert tone="danger" title="Not saved">
+          <InlineAlert tone="danger" title={T.notSavedTitle}>
             {message}
           </InlineAlert>
         )}
         {(dupLeads.visible.length > 0 || dupLeads.hidden > 0) && (
-          <InlineAlert tone="warning" title="Possible duplicate">
-            An open lead already exists for this company or contact in this division:{' '}
+          <InlineAlert tone="warning" title={T.duplicateTitle}>
+            {T.duplicateIntro}
             {dupLeads.visible.map((l, i) => (
               <span key={l.id}>
                 {i > 0 && ', '}
                 <Link to={recordPeekPath(actor.workspaceId, 'leads', l.id)}>{l.id}</Link>
               </span>
             ))}
-            {dupLeads.hidden > 0 && ` ${dupLeads.hidden} lead(s) owned by another team`}. You can still create this lead.
+            {dupLeads.hidden > 0 && T.duplicateHidden(dupLeads.hidden)}
+            {T.duplicateOutro}
           </InlineAlert>
         )}
 
         <fieldset className="form-section">
-          <legend className="sr-only">Company and contact</legend>
+          <legend className="sr-only">{T.customerAndContact}</legend>
           <div className="form-grid">
             <div className="form-field span-all">
-              <span className="field-label">Company</span>
-              <div className="segmented" role="radiogroup" aria-label="Company">
+              <span className="field-label">{T.customer}</span>
+              <div className="segmented" role="radiogroup" aria-label={T.customer}>
                 {(['existing', 'new'] as const).map((m) => (
                   <button
                     key={m}
@@ -137,7 +143,7 @@ export function NewLeadPage() {
                       if (m === 'new') setContactMode('new');
                     }}
                   >
-                    {m === 'existing' ? 'Existing company' : '+ New company'}
+                    {m === 'existing' ? A.existingCustomer : A.newCustomer}
                   </button>
                 ))}
               </div>
@@ -145,36 +151,36 @@ export function NewLeadPage() {
             {companyMode === 'existing' ? (
               <div className="form-field">
                 <label className="field-label" htmlFor="nl-cust">
-                  Company <span className="req">*</span>
+                  {T.customer} <span className="req">*</span>
                 </label>
-                <SelectMenu id="nl-cust" block searchable label="Company" value={(values.customerId as string) ?? ''} invalid={!!errors.customerId} options={customers.map((c) => ({ value: c.id, label: `${String(c.name)} · ${c.id}` }))} onChange={(v) => setValue('customerId', v)} placeholder={customers.length ? 'Search companies…' : 'No companies yet'} />
+                <SelectMenu id="nl-cust" block searchable label={T.customer} value={(values.customerId as string) ?? ''} invalid={!!errors.customerId} options={customers.map((c) => ({ value: c.id, label: `${String(c.name)} · ${c.id}` }))} onChange={(v) => setValue('customerId', v)} placeholder={customers.length ? T.customerSearch : T.noCustomers} />
                 {err('customerId')}
               </div>
             ) : (
               <>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nc-name">
-                    Company name <span className="req">*</span>
+                    {T.companyName} <span className="req">*</span>
                   </label>
                   <input id="nc-name" className="input" maxLength={120} value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} aria-invalid={!!errors['company.name'] || undefined} />
                   {err('company.name')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nc-city">
-                    City <span className="req">*</span>
+                    {T.city} <span className="req">*</span>
                   </label>
                   <input id="nc-city" className="input" maxLength={60} value={company.city} onChange={(e) => setCompany({ ...company, city: e.target.value })} />
                   {err('company.city')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nc-state">
-                    State <span className="req">*</span>
+                    {T.state} <span className="req">*</span>
                   </label>
                   <SelectMenu
                     id="nc-state"
                     block
                     searchable
-                    label="State"
+                    label={T.state}
                     value={company.state}
                     options={activeMasterValues('state').map((s) => ({ value: s.key, label: s.label }))}
                     onChange={(v) => setCompany({ ...company, state: v, territoryId: activeMasterValues('territory').find((t) => t.parent === v)?.key ?? company.territoryId })}
@@ -183,20 +189,20 @@ export function NewLeadPage() {
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nc-terr">
-                    Territory / hub <span className="req">*</span>
+                    {T.territory} <span className="req">*</span>
                   </label>
-                  <SelectMenu id="nc-terr" block label="Territory" value={company.territoryId} options={activeMasterValues('territory').map((s) => ({ value: s.key, label: s.label }))} onChange={(v) => setCompany({ ...company, territoryId: v })} />
+                  <SelectMenu id="nc-terr" block label={T.territory} value={company.territoryId} options={activeMasterValues('territory').map((s) => ({ value: s.key, label: s.label }))} onChange={(v) => setCompany({ ...company, territoryId: v })} />
                   {err('company.territoryId')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nc-gstin">
-                    GSTIN <span className="optional">(optional)</span>
+                    {T.gstin} <span className="optional">{T.optional}</span>
                   </label>
                   <input id="nc-gstin" className="input" maxLength={15} value={company.gstin} onChange={(e) => setCompany({ ...company, gstin: e.target.value.toUpperCase() })} />
                 </div>
                 {dupCompanies.length > 0 && (
                   <div className="span-all">
-                    <InlineAlert tone="warning" title="This company may already exist">
+                    <InlineAlert tone="warning" title={T.customerExistsTitle}>
                       {dupCompanies.slice(0, 3).map((c) => (
                         <Button
                           key={c.id}
@@ -206,7 +212,7 @@ export function NewLeadPage() {
                             setValue('customerId', c.id);
                           }}
                         >
-                          Use {String(c.name)} ({c.id})
+                          {A.pickCustomer(String(c.name), c.id)}
                         </Button>
                       ))}
                     </InlineAlert>
@@ -218,14 +224,14 @@ export function NewLeadPage() {
               <div className="form-field">
                 <span className="field-label-row">
                   <label className="field-label" htmlFor="nl-contact">
-                    Contact person <span className="req">*</span>
+                    {T.contactPerson} <span className="req">*</span>
                   </label>
                   <button type="button" className="link small" onClick={() => setContactMode(contactMode === 'existing' ? 'new' : 'existing')}>
-                    {contactMode === 'existing' ? '+ New contact' : 'Pick existing'}
+                    {contactMode === 'existing' ? A.newContact : A.pickExisting}
                   </button>
                 </span>
                 {contactMode === 'existing' && (
-                  <SelectMenu id="nl-contact" block label="Contact person" value={(values.contactId as string) ?? ''} invalid={!!errors.contactId} options={contacts.map((c) => ({ value: c.id, label: `${String(c.name)}${c.designation ? ` · ${String(c.designation)}` : ''}` }))} onChange={(v) => setValue('contactId', v)} placeholder={values.customerId ? (contacts.length ? 'Select…' : 'No contacts — add a new one') : 'Pick the company first'} disabled={!values.customerId} />
+                  <SelectMenu id="nl-contact" block label={T.contactPerson} value={(values.contactId as string) ?? ''} invalid={!!errors.contactId} options={contacts.map((c) => ({ value: c.id, label: `${String(c.name)}${c.designation ? ` · ${String(c.designation)}` : ''}` }))} onChange={(v) => setValue('contactId', v)} placeholder={values.customerId ? (contacts.length ? T.contactSelect : T.contactNone) : T.contactPickCustomer} disabled={!values.customerId} />
                 )}
                 {contactMode === 'existing' && err('contactId')}
               </div>
@@ -234,27 +240,27 @@ export function NewLeadPage() {
               <>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-name">
-                    Contact name <span className="req">*</span>
+                    {T.contactName} <span className="req">*</span>
                   </label>
                   <input id="nk-name" className="input" maxLength={80} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} />
                   {err('contact.name')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-desig">
-                    Designation <span className="optional">(optional)</span>
+                    {T.designation} <span className="optional">{T.optional}</span>
                   </label>
                   <input id="nk-desig" className="input" maxLength={80} value={contact.designation} onChange={(e) => setContact({ ...contact, designation: e.target.value })} />
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-mobile">
-                    Mobile
+                    {T.mobile}
                   </label>
                   <input id="nk-mobile" className="input" inputMode="tel" maxLength={16} value={contact.mobile} onChange={(e) => setContact({ ...contact, mobile: e.target.value })} />
                   {err('contact.mobile')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-email">
-                    Email
+                    {T.email}
                   </label>
                   <input id="nk-email" className="input" type="email" maxLength={120} value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} />
                   {err('contact.email')}
@@ -264,16 +270,16 @@ export function NewLeadPage() {
             {ownerEditable && (
               <div className="form-field">
                 <label className="field-label" htmlFor="nl-owner">
-                  Owner <span className="optional">(optional — auto-assign)</span>
+                  {T.owner} <span className="optional">{T.ownerOptional}</span>
                 </label>
                 <SelectMenu
                   id="nl-owner"
                   block
                   searchable
-                  label="Owner"
+                  label={T.owner}
                   value={(values.ownerId as string) ?? ''}
                   invalid={!!errors.ownerId}
-                  options={[{ value: '', label: 'Assign automatically' }, ...owners.map((e) => ({ value: e.id, label: `${String(e.fullName)} · ${String(e.designation)}` }))]}
+                  options={[{ value: '', label: T.assignAuto }, ...owners.map((e) => ({ value: e.id, label: `${String(e.fullName)} · ${String(e.designation)}` }))]}
                   onChange={(v) => setValue('ownerId', v || null)}
                 />
                 {err('ownerId')}
@@ -283,7 +289,7 @@ export function NewLeadPage() {
         </fieldset>
         <FormSections res={res} fieldKeys={['divisionId', 'nextFollowUpAt']} values={values} setValue={setValue} errors={errors} access={access} actor={actor} />
         <FormSections res={res} sectionIds={['source', 'need', 'bant', 'where']} values={values} setValue={setValue} errors={errors} access={access} actor={actor} />
-        {!!values.customerId && companyMode === 'existing' && <p className="muted small">Company: {safeTitle('customers', values.customerId, actor)}</p>}
+        {!!values.customerId && companyMode === 'existing' && <p className="muted small">{T.customerLine(safeTitle('customers', values.customerId, actor))}</p>}
       </div>
     </div>
   );

@@ -16,11 +16,18 @@ import { MultiSelectMenu } from '../primitives/MultiSelectMenu';
 import { DatePicker } from '../primitives/DatePicker';
 import { DateRangePicker } from '../primitives/DateRangePicker';
 import { InfoTip } from '../primitives/InfoTip';
+import { fieldIcon } from './fieldIcon';
 import { ServiceError } from '../../services/types';
+import { L } from '../../constants/labels';
 
-const canCreateScopeLabel = (s: ViewScope) => (s === 'team' ? 'requires team sharing permission' : 'requires organization sharing permission');
+const C = L.common;
+const LS = L.common.list;
+const V = L.common.views;
 
-const TYPE_ICON: Record<ViewType, string> = { table: 'list', board: 'board', calendar: 'calendar' };
+const canCreateScopeLabel = (s: ViewScope) => (s === 'team' ? V.needsTeamSharing : V.needsOrgSharing);
+
+/** One framed icon family for view types (table · board · calendar) — consistent size and weight everywhere. */
+export const TYPE_ICON: Record<ViewType, string> = { table: 'table', board: 'board', calendar: 'calendar-days' };
 
 // ---------------------------------------------------------------- View Bar
 
@@ -55,9 +62,9 @@ export function ViewBar({
     if (!active) return;
     try {
       saveView(actor, { ...working, id: active.id, name: active.name, scope: active.scope });
-      toast(`View "${active.name}" updated`);
+      toast(V.updated(active.name));
     } catch (e) {
-      toast(e instanceof ServiceError ? e.message : 'Could not save view', 'danger');
+      toast(e instanceof ServiceError ? e.message : V.couldNotSave, 'danger');
     }
   };
 
@@ -91,7 +98,7 @@ export function ViewBar({
     if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 8);
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 8;
     measure();
-  }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId]);  
 
   // One sliding underline: it glides from the old tab to the newly selected one (smooth transition).
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -110,57 +117,59 @@ export function ViewBar({
   }, [activeId, views.length, dirty]);
 
   const menuView = views.find((v) => v.id === menuFor);
-  const manageReason = (v: ViewDefinition) => (isSystemView(v) ? 'Built-in views cannot be changed — duplicate instead' : canManageView(actor, v) ? undefined : 'You do not own this shared view');
+  const manageReason = (v: ViewDefinition) => (isSystemView(v) ? V.builtIn : canManageView(actor, v) ? undefined : V.notOwner);
 
   return (
-    <div className="viewbar" role="navigation" aria-label={`${res.labelPlural} views`}>
+    <div className="viewbar" role="navigation" aria-label={V.viewsAria(res.labelPlural)}>
       <div className={cx('viewbar-scroll-wrap', edges.left && 'fade-left', edges.right && 'fade-right')}>
       <div ref={scrollRef} className="viewbar-scroll" onScroll={measure}>
-        <div ref={tabsRef} className="viewbar-tabs" role="tablist" aria-label="Saved views">
+        <div ref={tabsRef} className="viewbar-tabs" role="tablist" aria-label={V.savedViews}>
           {ink && <span className="view-tab-ink" aria-hidden="true" style={{ transform: `translateX(${ink.left + 4}px)`, width: Math.max(0, ink.width - 8) }} />}
           {views.map((v) => (
             <div key={v.id} className={cx('view-tab', v.id === activeId && 'is-active')} data-view-id={v.id}>
-              <button type="button" role="tab" aria-selected={v.id === activeId} className="view-tab-btn" onClick={() => onSelect(v.id)} data-tooltip={`${v.name} · ${v.scope === 'personal' ? 'only you' : v.scope === 'team' ? 'shared with team' : 'organization'}`}>
+              {/* Click a tab to open it; click the ACTIVE tab again to open its options (no ⋮, no unsaved dot — owner rule) */}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={v.id === activeId}
+                aria-haspopup={v.id === activeId ? 'menu' : undefined}
+                aria-expanded={v.id === activeId ? menuFor === v.id : undefined}
+                className="view-tab-btn"
+                onClick={(e) => {
+                  if (v.id !== activeId) return onSelect(v.id);
+                  menuAnchor.current = e.currentTarget;
+                  setMenuFor((cur) => (cur === v.id ? null : v.id));
+                }}
+                data-tooltip={v.id === activeId ? V.tabTipActive(v.name) : V.tabTipScope(v.name, v.scope === 'personal' ? V.scopeOnlyYou : v.scope === 'team' ? V.scopeTeam : V.scopeOrg)}
+              >
                 <Icon name={TYPE_ICON[v.type]} size={14} />
                 <span>{v.name}</span>
                 {settings.defaultViews[res.key] === v.id && <Icon name="star" size={12} className="muted" />}
-                {v.id === activeId && dirty && <span className="dirty-dot" aria-label="unsaved changes" />}
-              </button>
-              <button
-                type="button"
-                className="view-tab-menu"
-                aria-label={`Options for view ${v.name}`}
-                aria-haspopup="menu"
-                onClick={(e) => {
-                  menuAnchor.current = e.currentTarget;
-                  setMenuFor(v.id);
-                }}
-              >
-                <Icon name="more-vertical" size={14} />
+                {v.id === activeId && dirty && <span className="sr-only">{V.unsavedSr}</span>}
               </button>
             </div>
           ))}
         </div>
       </div>
       </div>
-      <button ref={addRef} type="button" className={cx('view-add', dialog?.anchor === 'add' && 'is-open')} aria-label="Add view" data-tooltip="Add view" aria-haspopup="dialog" aria-expanded={dialog?.anchor === 'add'} onClick={() => setDialog(dialog?.anchor === 'add' ? null : { mode: 'create', anchor: 'add' })}>
+      <button ref={addRef} type="button" className={cx('view-add', dialog?.anchor === 'add' && 'is-open')} aria-label={V.addView} data-tooltip={V.addView} aria-haspopup="dialog" aria-expanded={dialog?.anchor === 'add'} onClick={() => setDialog(dialog?.anchor === 'add' ? null : { mode: 'create', anchor: 'add' })}>
         <Icon name="plus" size={16} />
       </button>
       {dirty && (
         <>
-          <Button ref={dirtyRef} variant="ghost" iconRight="chevron-down" onClick={() => setDirtyOpen(true)} aria-haspopup="menu" className="viewbar-unsaved">
-            Unsaved
+          <Button ref={dirtyRef} variant="ghost" iconRight="chevron-down" onClick={() => setDirtyOpen((o) => !o)} aria-haspopup="menu" className="viewbar-unsaved">
+            {V.unsaved}
           </Button>
           <Menu
             open={dirtyOpen}
             onClose={() => setDirtyOpen(false)}
             anchor={dirtyRef}
-            label="Unsaved view changes"
+            label={V.unsavedChanges}
             align="start"
             items={[
-              ...(active && !isSystemView(active) && canManageView(actor, active) ? [{ id: 'save', label: `Save to “${active.name}”`, icon: 'check', onSelect: saveCurrent }] : []),
-              { id: 'saveas', label: 'Save as new view…', icon: 'plus', onSelect: () => setDialog({ mode: 'create', anchor: 'dirty' }) },
-              { id: 'reset', label: 'Reset changes', icon: 'reset', onSelect: onReset },
+              ...(active && !isSystemView(active) && canManageView(actor, active) ? [{ id: 'save', label: V.saveTo(active.name), icon: 'check', onSelect: saveCurrent }] : []),
+              { id: 'saveas', label: V.saveAsNew, icon: 'plus', onSelect: () => setDialog({ mode: 'create', anchor: 'dirty' }) },
+              { id: 'reset', label: V.resetChanges, icon: 'reset', onSelect: onReset },
             ]}
           />
         </>
@@ -173,50 +182,50 @@ export function ViewBar({
           open={!!menuFor}
           onClose={() => setMenuFor(null)}
           anchor={menuAnchor}
-          label="View options"
+          label={V.options}
           align="start"
           items={[
-            { id: 'rename', label: 'Rename', icon: 'pencil', onSelect: () => setDialog({ mode: 'rename', view: menuView, anchor: 'menu' }), disabledReason: manageReason(menuView) },
-            { id: 'dup', label: 'Duplicate', icon: 'copy', onSelect: () => setDialog({ mode: 'duplicate', view: menuView, anchor: 'menu' }) },
+            { id: 'rename', label: V.rename, icon: 'pencil', onSelect: () => setDialog({ mode: 'rename', view: menuView, anchor: 'menu' }), disabledReason: manageReason(menuView) },
+            { id: 'dup', label: V.duplicate, icon: 'copy', onSelect: () => setDialog({ mode: 'duplicate', view: menuView, anchor: 'menu' }) },
             {
               id: 'default',
-              label: settings.defaultViews[res.key] === menuView.id ? 'Unset as my default' : 'Set as my default',
+              label: settings.defaultViews[res.key] === menuView.id ? V.unsetDefault : V.setDefault,
               icon: 'star',
               onSelect: () => {
                 const dv = { ...settings.defaultViews };
                 if (dv[res.key] === menuView.id) delete dv[res.key];
                 else dv[res.key] = menuView.id;
                 updateSettings(actor.user.id, { defaultViews: dv });
-                toast('Default view updated');
+                toast(V.defaultUpdated);
               },
             },
-            { id: 'left', label: 'Move left', icon: 'chevron-left', onSelect: () => moveView(actor, menuView.id, -1), disabledReason: manageReason(menuView) },
-            { id: 'right', label: 'Move right', icon: 'chevron-right', onSelect: () => moveView(actor, menuView.id, 1), disabledReason: manageReason(menuView) },
+            { id: 'left', label: V.moveLeft, icon: 'chevron-left', onSelect: () => moveView(actor, menuView.id, -1), disabledReason: manageReason(menuView) },
+            { id: 'right', label: V.moveRight, icon: 'chevron-right', onSelect: () => moveView(actor, menuView.id, 1), disabledReason: manageReason(menuView) },
             {
               id: 'link',
-              label: 'Copy link to view',
+              label: V.copyLink,
               icon: 'copy',
               onSelect: () => {
-                void navigator.clipboard?.writeText(window.location.href);
-                toast('Link copied — recipients still need access');
+                navigator.clipboard?.writeText(window.location.href).catch(() => {}); // clipboard may be blocked — never crash
+                toast(V.linkCopied);
               },
             },
             {
               id: 'delete',
-              label: 'Delete view',
+              label: V.deleteView,
               icon: 'trash',
               danger: true,
               separatorBefore: true,
               disabledReason: manageReason(menuView),
               onSelect: () =>
                 confirmDelete({
-                  title: `Delete view "${menuView.name}"?`,
-                  message: 'The view and its saved filters, columns and sort are removed for everyone it is shared with. Records are not affected.',
-                  confirmLabel: 'Delete view',
+                  title: V.deleteTitle(menuView.name),
+                  message: V.deleteBody,
+                  confirmLabel: V.deleteView,
                   onConfirm: () => {
                     deleteView(actor, menuView.id);
                     onSelect(views[0].id);
-                    toast(`View "${menuView.name}" deleted`);
+                    toast(V.deleted(menuView.name));
                   },
                 }),
             },
@@ -261,7 +270,7 @@ function SaveViewDialog({
   onClose: () => void;
   onSaved: (v: ViewDefinition) => void;
 }) {
-  const [name, setName] = useState(mode === 'rename' ? view!.name : mode === 'duplicate' ? `${view!.name} (copy)` : '');
+  const [name, setName] = useState(mode === 'rename' ? view!.name : mode === 'duplicate' ? V.copyOf(view!.name) : '');
   const [scope, setScope] = useState<ViewScope>(mode === 'rename' ? view!.scope : 'personal');
   const [type, setType] = useState<ViewType>(mode === 'create' ? working.type : view!.type);
   const [error, setError] = useState('');
@@ -280,34 +289,34 @@ function SaveViewDialog({
       });
       onSaved(v);
     } catch (e) {
-      setError(e instanceof ServiceError ? e.message : 'Could not save view');
+      setError(e instanceof ServiceError ? e.message : V.couldNotSave);
     }
   };
-  const title = mode === 'rename' ? 'Rename view' : mode === 'duplicate' ? 'Duplicate view' : 'New view';
+  const title = mode === 'rename' ? V.titleRename : mode === 'duplicate' ? V.titleDuplicate : V.titleNew;
   // Anchored panel (same pattern as Columns), not a centred modal.
   return (
     <Popover open onClose={onClose} anchor={anchor} label={title} width={340} className="view-form-pop">
       <div className="pop-head">
         <span className="dialog-title-row">
           <strong>{title}</strong>
-          {mode === 'create' && <InfoTip text="Saves the current filters, sort, columns, grouping and density." label="About new views" />}
+          {mode === 'create' && <InfoTip text={V.newAbout} label={V.newAboutLabel} />}
         </span>
       </div>
       <div className="form-grid view-form">
         <div className="form-field">
           <label className="field-label" htmlFor="view-name">
-            Name <span className="req">*</span>
+            {V.name} <span className="req">*</span>
           </label>
           <input id="view-name" className="input input-compact" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} data-autofocus onKeyDown={(e) => e.key === 'Enter' && name.trim() && submit()} />
         </div>
         {mode !== 'rename' && (
           <fieldset className="form-field">
-            <legend className="field-label">Layout</legend>
+            <legend className="field-label">{V.layout}</legend>
             <div className="segmented">
               {types.map((t) => (
                 <label key={t} className={cx('seg', type === t && 'is-on')}>
                   <input type="radio" name="vtype" value={t} checked={type === t} onChange={() => setType(t)} />
-                  <Icon name={TYPE_ICON[t]} size={14} /> {t[0].toUpperCase() + t.slice(1)}
+                  <Icon name={TYPE_ICON[t]} size={14} /> {V.types[t] ?? t}
                 </label>
               ))}
             </div>
@@ -315,16 +324,16 @@ function SaveViewDialog({
         )}
         <fieldset className="form-field">
           <legend className="field-label field-label-row">
-            Who can see it
-            <InfoTip text="Shared views share the definition only — each person still sees only the records their role allows." label="About view sharing" />
+            {V.whoCanSee}
+            <InfoTip text={V.shareAbout} label={V.shareAboutLabel} />
           </legend>
           {(['personal', 'team', 'org'] as ViewScope[]).map((s) => {
             const allowed = canCreateScope(actor, s);
             return (
-              <label key={s} className={cx('radio', !allowed && 'is-disabled')} data-tooltip={allowed ? undefined : `Not available: ${canCreateScopeLabel(s)}`}>
+              <label key={s} className={cx('radio', !allowed && 'is-disabled')} data-tooltip={allowed ? undefined : V.notAvailable(canCreateScopeLabel(s))}>
                 <input type="radio" name="scope" value={s} checked={scope === s} disabled={!allowed} onChange={() => setScope(s)} />
                 <span>
-                  {s === 'personal' ? 'Only me' : s === 'team' ? 'My team' : 'Whole organization'}
+                  {s === 'personal' ? V.onlyMe : s === 'team' ? V.myTeam : V.wholeOrg}
                 </span>
               </label>
             );
@@ -333,9 +342,9 @@ function SaveViewDialog({
         {error && <p className="field-error">{error}</p>}
       </div>
       <div className="pop-foot-actions">
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{C.actions.cancel}</Button>
         <Button variant="primary" onClick={submit} disabled={!name.trim()}>
-          Save view
+          {V.saveView}
         </Button>
       </div>
     </Popover>
@@ -403,14 +412,14 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
   const setRange = (key: string, r: { from?: string; to?: string }) =>
     replace(key, ['gte', 'lte'], [...(r.from ? [newCondition(key, 'gte', r.from)] : []), ...(r.to ? [newCondition(key, 'lte', r.to)] : [])]);
   const managed = new Set([status?.key, ...choices.map((f) => f.key), ...dates.map((f) => f.key)]);
-  const others = conds.filter((c) => !(managed.has(c.field) && QUICK_OPS.includes(c.operator))).length;
+  const extraConds = conds.filter((c) => !(managed.has(c.field) && QUICK_OPS.includes(c.operator)));
 
   const statusValues = status ? activeMasterValues(status.master!) : [];
   const optionsFor = (f: FieldDefinition) =>
     f.type === 'boolean'
       ? [
-          { value: 'true', label: 'Yes' },
-          { value: 'false', label: 'No' },
+          { value: 'true', label: C.actions.yes },
+          { value: 'false', label: C.actions.no },
         ]
       : f.type === 'master'
         ? activeMasterValues(f.master!).map((o) => ({ value: o.key, label: o.label }))
@@ -425,71 +434,99 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
         onClick={() => (open ? close() : openPanel())}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={n ? `Filters, ${n} active` : 'Filters'}
+        aria-label={n ? LS.filtersActive(n) : LS.filters}
         className={cx(open && 'is-open')}
       >
-        Filters
+        {LS.filters}
         {n > 0 && <span className="btn-dot" aria-hidden="true" />}
       </Button>
-      <Popover open={open} onClose={close} anchor={ref} label="Filters" width={mode === 'quick' ? 320 : 480} className="filter-pop" align="end">
+      <Popover open={open} onClose={close} anchor={ref} label={LS.filters} width={mode === 'quick' ? 440 : 480} className="filter-pop" align="end">
         {mode === 'quick' ? (
-          <div className="qf">
+          <div className="qf qf-rows">
+            {/* Owner reference: "Create view"-style property list — icon + label on the left, control on the right */}
+            <div className="qf-title">
+              <Icon name="filter" size={16} />
+              <strong>{LS.filter}</strong>
+            </div>
             {status && (
               <div className="qf-field">
                 <span className="qf-label" id="qf-status">
+                  <Icon name={fieldIcon(status)} size={16} className="qf-icon" />
                   {status.label}
                 </span>
-                {statusValues.length <= 3 ? (
-                  <div className="segmented qf-seg" role="radiogroup" aria-labelledby="qf-status">
-                    {[{ key: '', label: 'All' }, ...statusValues].map((o) => {
-                      const sel = valuesOf(status.key);
-                      const on = o.key === '' ? sel.length === 0 : sel.length === 1 && sel[0] === o.key;
-                      return (
-                        <button key={o.key || 'all'} type="button" role="radio" aria-checked={on} className={cx('seg-btn', on && 'is-on')} onClick={() => setEq(status.key, o.key)}>
-                          {o.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <MultiSelectMenu block label={status.label} emptyLabel="All" values={valuesOf(status.key)} options={statusValues.map((o) => ({ value: o.key, label: o.label }))} onChange={(vs) => setIn(status.key, vs)} />
-                )}
+                <MultiSelectMenu block label={status.label} emptyLabel={LS.allOf(status.label.toLowerCase())} values={valuesOf(status.key)} options={statusValues.map((o) => ({ value: o.key, label: o.label }))} onChange={(vs) => setIn(status.key, vs)} />
               </div>
             )}
             {choices.map((f) => (
               <div key={f.key} className="qf-field">
-                <span className="qf-label">{f.label}</span>
+                <span className="qf-label">
+                  <Icon name={fieldIcon(f)} size={16} className="qf-icon" />
+                  {f.label}
+                </span>
                 {f.type === 'boolean' ? (
                   <SelectMenu
                     block
                     label={f.label}
                     value={eqOf(f.key) === undefined ? '' : String(eqOf(f.key))}
-                    options={[{ value: '', label: 'All' }, ...optionsFor(f)]}
+                    options={[{ value: '', label: LS.all }, ...optionsFor(f)]}
                     onChange={(v) => setEq(f.key, v === '' ? '' : v === 'true')}
                   />
                 ) : (
-                  <MultiSelectMenu block label={f.label} emptyLabel="All" values={valuesOf(f.key)} options={optionsFor(f)} onChange={(vs) => setIn(f.key, vs)} />
+                  <MultiSelectMenu block label={f.label} emptyLabel={LS.all} values={valuesOf(f.key)} options={optionsFor(f)} onChange={(vs) => setIn(f.key, vs)} />
                 )}
               </div>
             ))}
-            {dates.length > 0 && <div className="qf-sep" />}
             {dates.map((f) => (
               <div key={f.key} className="qf-field">
-                <span className="qf-label">{f.label}</span>
+                <span className="qf-label">
+                  <Icon name={fieldIcon(f)} size={16} className="qf-icon" />
+                  {f.label}
+                </span>
                 <DateRangePicker label={f.label} value={rangeOf(f.key)} onChange={(r) => setRange(f.key, r)} />
               </div>
             ))}
-            <button type="button" className="link qf-advanced" onClick={() => setMode('advanced')}>
-              Advanced conditions{others > 0 ? ` (${others} more)` : ''}
-            </button>
+            {/* Conditions box: extra conditions on any field, combined with AND */}
+            <span className="qf-sub">{LS.conditions}</span>
+            <div className="qf-conds">
+              <div className="qf-match">
+                <span className="muted">{LS.matchRowsBy}</span>
+                <span className="qf-and">{LS.and}</span>
+                <button type="button" className="link qf-advanced" onClick={() => setMode('advanced')}>
+                  {V.useOrGroups}
+                </button>
+              </div>
+              {extraConds.length === 0 && <p className="muted qf-empty">{LS.noFiltersYet}</p>}
+              {extraConds.map((c) => (
+                <ConditionRow
+                  key={c.id}
+                  res={res}
+                  actor={actor}
+                  cond={c}
+                  fields={filterableFields(res, actor)}
+                  onChange={(x) => setDraft((d) => ({ ...d, children: d.children.map((y) => (y.id === c.id ? x : y)) }))}
+                  onRemove={() => setDraft((d) => ({ ...d, children: d.children.filter((y) => y.id !== c.id) }))}
+                />
+              ))}
+              <Button
+                variant="ghost"
+                icon="plus"
+                className="qf-addfilter"
+                onClick={() => {
+                  const f = filterableFields(res, actor).find((x) => !managed.has(x.key)) ?? filterableFields(res, actor)[0];
+                  if (f) setDraft((d) => ({ ...d, join: 'and', children: [...d.children, newCondition(f.key, operatorsFor(f)[0])] }));
+                }}
+              >
+                {V.addFilter}
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="qf-adv">
             <div className="pop-head">
-              <strong>Advanced conditions</strong>
+              <strong>{LS.advanced}</strong>
               {quickCompatible(draft) && (
                 <button type="button" className="link" onClick={() => setMode('quick')}>
-                  Simple filters
+                  {V.simpleFilters}
                 </button>
               )}
             </div>
@@ -499,12 +536,16 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
         <div className="qf-foot">
           <Button
             variant="ghost"
+            className="qf-clear"
             onClick={() => {
               onChange(newGroup('and'));
               close();
             }}
           >
-            Clear
+            {C.actions.clearAll}
+          </Button>
+          <Button variant="ghost" onClick={close}>
+            {C.actions.cancel}
           </Button>
           <Button
             variant="primary"
@@ -513,7 +554,7 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
               close();
             }}
           >
-            Apply
+            {V.apply}
           </Button>
         </div>
       </Popover>
@@ -532,16 +573,16 @@ function GroupEditor({ res, actor, group, onChange, depth, onRemove }: { res: Re
   return (
     <div className={cx('filter-group', depth > 0 && 'is-nested')}>
       {group.children.length > 1 && (
-        <div className="filter-join" role="radiogroup" aria-label="Match">
-          <span className="muted">Match</span>
+        <div className="filter-join" role="radiogroup" aria-label={LS.match}>
+          <span className="muted">{LS.match}</span>
           {(['and', 'or'] as const).map((j) => (
             <button key={j} type="button" role="radio" aria-checked={group.join === j} className={cx('seg-btn', group.join === j && 'is-on')} onClick={() => onChange({ ...group, join: j })}>
-              {j === 'and' ? 'All (AND)' : 'Any (OR)'}
+              {j === 'and' ? V.joinAll : V.joinAny}
             </button>
           ))}
         </div>
       )}
-      {group.children.length === 0 && <p className="muted filter-empty">No conditions — showing all records you can access.</p>}
+      {group.children.length === 0 && <p className="muted filter-empty">{LS.noConditions}</p>}
       {group.children.map((c) =>
         c.kind === 'group' ? (
           <GroupEditor key={c.id} res={res} actor={actor} group={c} depth={depth + 1} onChange={(g) => update(c.id, g)} onRemove={() => update(c.id, null)} />
@@ -558,16 +599,16 @@ function GroupEditor({ res, actor, group, onChange, depth, onRemove }: { res: Re
             if (f) onChange({ ...group, children: [...group.children, newCondition(f.key, operatorsFor(f)[0])] });
           }}
         >
-          Add condition
+          {LS.addCondition}
         </Button>
         {depth === 0 && (
           <Button variant="ghost" icon="plus" onClick={() => onChange({ ...group, children: [...group.children, { ...newGroup('or'), children: fields[0] ? [newCondition(fields[0].key, operatorsFor(fields[0])[0])] : [] }] })}>
-            Add group
+            {LS.addGroup}
           </Button>
         )}
         {onRemove && (
           <Button variant="ghost" icon="trash" onClick={onRemove}>
-            Remove group
+            {V.removeGroup}
           </Button>
         )}
       </div>
@@ -583,9 +624,9 @@ function ConditionRow({ res, actor, cond, fields, onChange, onRemove }: { res: R
     <div className="filter-row">
       <SelectMenu
         block
-        label="Field"
+        label={LS.field}
         value={cond.field}
-        options={[...(unavailable ? [{ value: cond.field, label: 'Unavailable field' }] : []), ...fields.map((f) => ({ value: f.key, label: f.label }))]}
+        options={[...(unavailable ? [{ value: cond.field, label: LS.unavailableField }] : []), ...fields.map((f) => ({ value: f.key, label: f.label }))]}
         onChange={(k) => {
           const f = res.fields.find((x) => x.key === k)!;
           onChange({ ...cond, field: f.key, operator: operatorsFor(f)[0], value: undefined });
@@ -593,15 +634,15 @@ function ConditionRow({ res, actor, cond, fields, onChange, onRemove }: { res: R
       />
       <SelectMenu
         block
-        label="Operator"
+        label={LS.operator}
         value={cond.operator}
         disabled={unavailable}
         options={ops.map((o) => ({ value: o, label: OPERATOR_LABELS[o] }))}
         onChange={(o) => onChange({ ...cond, operator: o as FilterCondition['operator'] })}
       />
       {field && !VALUELESS.includes(cond.operator) ? <ValueInput field={field} actor={actor} value={cond.value} onChange={(v) => onChange({ ...cond, value: v })} /> : <span className="filter-novalue" />}
-      <IconButton icon="x" label="Remove condition" onClick={onRemove} />
-      {unavailable && <p className="field-help span-all">This condition references a field you cannot query; it is ignored.</p>}
+      <IconButton icon="x" label={LS.removeCondition} onClick={onRemove} />
+      {unavailable && <p className="field-help span-all">{LS.conditionIgnored}</p>}
     </div>
   );
 }
@@ -609,32 +650,32 @@ function ConditionRow({ res, actor, cond, fields, onChange, onRemove }: { res: R
 function ValueInput({ field, actor, value, onChange }: { field: FieldDefinition; actor: Actor; value: unknown; onChange: (v: unknown) => void }) {
   const cls = 'input input-compact';
   if (field.type === 'master' || field.type === 'multimaster') {
-    return <SelectMenu block label="Value" placeholder="Choose…" value={String(value ?? '')} options={activeMasterValues(field.master!).map((o) => ({ value: o.key, label: o.label }))} onChange={(v) => onChange(v)} />;
+    return <SelectMenu block label={LS.value} placeholder={LS.choose} value={String(value ?? '')} options={activeMasterValues(field.master!).map((o) => ({ value: o.key, label: o.label }))} onChange={(v) => onChange(v)} />;
   }
   if (field.type === 'relation') {
     const opts = relationOptions(actor, { ...field, relation: { ...field.relation!, filterBy: undefined } }, {});
-    return <SelectMenu block label="Value" placeholder="Choose…" value={String(value ?? '')} options={opts.map((o) => ({ value: o.id, label: o.label }))} onChange={(v) => onChange(v)} />;
+    return <SelectMenu block label={LS.value} placeholder={LS.choose} value={String(value ?? '')} options={opts.map((o) => ({ value: o.id, label: o.label }))} onChange={(v) => onChange(v)} />;
   }
   if (field.type === 'boolean') {
     return (
       <SelectMenu
         block
-        label="Value"
-        placeholder="Choose…"
+        label={LS.value}
+        placeholder={LS.choose}
         value={value === undefined || value === '' ? '' : String(value)}
         options={[
-          { value: 'true', label: 'Yes' },
-          { value: 'false', label: 'No' },
+          { value: 'true', label: C.actions.yes },
+          { value: 'false', label: C.actions.no },
         ]}
         onChange={(v) => onChange(v === 'true')}
       />
     );
   }
   if (field.type === 'date' || field.type === 'datetime') {
-    return <DatePicker block label="Value" value={(value as string) || ''} onChange={(v) => onChange(v ?? '')} />;
+    return <DatePicker block label={LS.value} value={(value as string) || ''} onChange={(v) => onChange(v ?? '')} />;
   }
   const type = ['number', 'money', 'progress'].includes(field.type) ? 'number' : 'text';
-  return <input className={cls} aria-label="Value" type={type} value={String(value ?? '')} onChange={(e) => onChange(type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)} />;
+  return <input className={cls} aria-label={LS.value} type={type} value={String(value ?? '')} onChange={(e) => onChange(type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)} />;
 }
 
 // ---------------------------------------------------------------- Column manager
@@ -668,7 +709,7 @@ export function ColumnManager({
   const known = new Set(columns.map((c) => c.key));
   const all: ColumnState[] = [...columns.filter((c) => c.key === 'id' || available.some((f) => f.key === c.key)), ...available.filter((f) => !known.has(f.key)).map((f) => ({ key: f.key, hidden: true }))];
   if (!known.has('id')) all.push({ key: 'id', hidden: true });
-  const label = (k: string) => (k === 'id' ? 'ID' : res.fields.find((f) => f.key === k)?.label ?? k);
+  const label = (k: string) => (k === 'id' ? V.id : res.fields.find((f) => f.key === k)?.label ?? k);
   const shown = all.filter((c) => label(c.key).toLowerCase().includes(q.toLowerCase()));
   const move = (key: string, d: -1 | 1) => {
     const i = all.findIndex((c) => c.key === key);
@@ -681,17 +722,16 @@ export function ColumnManager({
   const groupable = available.filter((f) => ['master', 'relation', 'boolean'].includes(f.type) && queryableField(actor, res, f));
   return (
     <>
-      <Button ref={ref} icon="columns" iconRight={open ? 'chevron-up' : 'chevron-down'} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog" className={cx(open && 'is-open')}>
-        Columns
-      </Button>
-      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Column manager" width={320} align="end">
+      {/* icon-only, at the right end of the tools line (owner rule) */}
+      <IconButton ref={ref} icon="columns" label={LS.columnsAria} aria-expanded={open} aria-haspopup="dialog" pressed={open} className={cx('tools-icon-btn', open && 'is-open')} onClick={() => setOpen((o) => !o)} />
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label={LS.columnManager} width={320} align="end">
         <div className="pop-head">
-          <strong>Columns</strong>
+          <strong>{LS.columns}</strong>
           <Button variant="ghost" icon="reset" onClick={onReset}>
-            Reset
+            {LS.resetColumns}
           </Button>
         </div>
-        <input className="input input-compact" placeholder="Search fields" aria-label="Search fields" value={q} onChange={(e) => setQ(e.target.value)} data-autofocus />
+        <input className="input input-compact" placeholder={LS.searchFields} aria-label={LS.searchFields} value={q} onChange={(e) => setQ(e.target.value)} data-autofocus />
         <ul className="col-list">
           {shown.map((c) => (
             <li key={c.key} className="col-item">
@@ -700,32 +740,32 @@ export function ColumnManager({
                 {label(c.key)}
               </label>
               <span className="colmgr-actions">
-                <IconButton icon={c.pinned ? 'pin-off' : 'pin'} label={c.pinned ? `Unpin ${label(c.key)}` : `Pin ${label(c.key)} left`} pressed={!!c.pinned} onClick={() => onChange(all.map((x) => (x.key === c.key ? { ...x, pinned: !x.pinned } : x)))} />
-                <IconButton icon="arrow-up" label={`Move ${label(c.key)} up`} onClick={() => move(c.key, -1)} />
-                <IconButton icon="arrow-down" label={`Move ${label(c.key)} down`} onClick={() => move(c.key, 1)} />
+                <IconButton icon={c.pinned ? 'pin-off' : 'pin'} label={c.pinned ? LS.unpinColumn(label(c.key)) : LS.pinLeft(label(c.key))} pressed={!!c.pinned} onClick={() => onChange(all.map((x) => (x.key === c.key ? { ...x, pinned: !x.pinned } : x)))} />
+                <IconButton icon="arrow-up" label={LS.moveUp(label(c.key))} onClick={() => move(c.key, -1)} />
+                <IconButton icon="arrow-down" label={LS.moveDown(label(c.key))} onClick={() => move(c.key, 1)} />
               </span>
             </li>
           ))}
         </ul>
         <div className="pop-section">
           <label className="field-label" htmlFor="group-by">
-            Group rows by
+            {LS.groupBy}
           </label>
           <SelectMenu
             id="group-by"
             block
-            label="Group rows by"
+            label={LS.groupBy}
             value={groupBy ?? ''}
-            options={[{ value: '', label: 'No grouping' }, ...groupable.map((f) => ({ value: f.key, label: f.label }))]}
+            options={[{ value: '', label: LS.noGrouping }, ...groupable.map((f) => ({ value: f.key, label: f.label }))]}
             onChange={(v) => onGroupBy(v || undefined)}
           />
         </div>
         <div className="pop-section">
-          <span className="field-label">Density</span>
+          <span className="field-label">{LS.density}</span>
           <div className="segmented">
             {(['compact', 'comfortable'] as const).map((d) => (
               <button key={d} type="button" className={cx('seg-btn', density === d && 'is-on')} aria-pressed={density === d} onClick={() => onDensity(d)}>
-                {d === 'compact' ? 'Compact' : 'Comfortable'}
+                {d === 'compact' ? LS.compact : LS.comfortable}
               </button>
             ))}
           </div>

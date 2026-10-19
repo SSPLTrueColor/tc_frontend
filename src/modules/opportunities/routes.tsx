@@ -1,7 +1,12 @@
 import type { AppRoute } from '../types';
-import { ForecastPage } from './ForecastPage';
+import { ROUTES } from '../../constants/routes';
+import { DemoMachineCalendarPage } from './DemoMachineCalendarPage';
+import { PipelinePage } from './PipelinePage';
+import { SalesForecastPage } from './SalesForecastPage';
 
-/** Opportunities module pages (lists for opportunities, demos and sample requests are routed automatically). */
+/** Opportunities & Pipeline pages (lists for opportunities, demos, sample print requests and demo machines are routed automatically). */
 export const routes: AppRoute[] = [
-  { path: '/opportunities/forecast', element: <ForecastPage /> },
+  { path: ROUTES.pipeline, element: <PipelinePage /> },
+  { path: ROUTES.salesForecast, element: <SalesForecastPage /> },
+  { path: ROUTES.demoMachineCalendar, element: <DemoMachineCalendarPage /> },
 ];

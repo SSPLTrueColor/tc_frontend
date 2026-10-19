@@ -4,6 +4,7 @@
  * runs it through the same hand-off helpers the live integration would use. Every run is audited
  * with an `integration.*` action so the log below can list it.
  */
+import { L } from '../../constants/labels';
 import { appPack } from '../../domain/pack';
 import { nowLocal, todayKey, addDays } from '../../lib/dates';
 import { nowIso } from '../../lib/clock';
@@ -18,17 +19,12 @@ import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn } from '../runtime';
 import { type AuditEntry, ServiceError } from '../types';
 
-export const LEAD_CHANNELS = [
-  { key: 'website', label: 'Website form' },
-  { key: 'meta_ads', label: 'Meta lead ads' },
-  { key: 'google_ads', label: 'Google Ads' },
-  { key: 'indiamart', label: 'IndiaMART' },
-] as const;
+export const LEAD_CHANNELS = (['website', 'meta_ads', 'google_ads', 'indiamart'] as const).map((key) => ({ key, label: L.admin.integrations.channels[key] }));
 
 const has = (resKey: string) => appPack.resources.some((r) => r.key === resKey);
 
 function requireIntegrations(actor: Actor) {
-  if (!can(actor, 'integrations.manage')) throw new ServiceError('forbidden', 'Only administrators can run integrations.');
+  if (!can(actor, 'integrations.manage')) throw new ServiceError('forbidden', L.admin.integrations.forbidden);
 }
 
 /** First active key of a field's master, preferring the given keys (masters of other modules may change). */
@@ -80,7 +76,7 @@ export interface LeadCaptureResult {
 export function simulateIncomingLead(actor: Actor, source: string): LeadCaptureResult {
   requireIntegrations(actor);
   if (!has('leads') || !has('customers') || !has('contacts')) {
-    return { outcome: 'skipped', message: 'Lead capture needs the Customers and Leads modules, which are not available yet.' };
+    return { outcome: 'skipped', message: L.admin.integrations.leadNeedsModules };
   }
   const name = `${rand(FIRST)} ${rand(LAST)}`;
   const place = rand(CITIES);
@@ -97,14 +93,14 @@ export function simulateIncomingLead(actor: Actor, source: string): LeadCaptureR
     if (contact) {
       const openLead = (d.records.leads ?? []).find((l) => l.contactId === contact.id && ['new', 'contacted', 'nurture'].includes(String(l.status)));
       if (openLead) {
-        appendAudit(d, actor, { action: 'integration.lead_duplicate', actorType: 'system', resource: 'leads', recordId: openLead.id, summary: `${label}: duplicate enquiry from ${contact.name} matched open lead ${openLead.id} (no new lead)`, correlationId: ctx.correlationId });
+        appendAudit(d, actor, { action: 'integration.lead_duplicate', actorType: 'system', resource: 'leads', recordId: openLead.id, summary: L.admin.integrations.duplicateAudit(label, String(contact.name), openLead.id), correlationId: ctx.correlationId });
         const owner = userOfStaff(openLead.ownerId);
-        if (owner) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: `Repeat ${label} enquiry from ${contact.name} on ${openLead.id}`, link: { resource: 'leads', recordId: openLead.id } });
-        return { outcome: 'duplicate', message: `Duplicate of ${openLead.id} (${String(contact.name)}) — no new lead created.`, leadId: openLead.id };
+        if (owner) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: L.admin.integrations.repeatNotice(label, String(contact.name), openLead.id), link: { resource: 'leads', recordId: openLead.id } });
+        return { outcome: 'duplicate', message: L.admin.integrations.duplicateMessage(openLead.id, String(contact.name)), leadId: openLead.id };
       }
     }
     const ownerId = pickOwner(d, interest.division);
-    if (!ownerId) return { outcome: 'skipped', message: `No active sales owner in ${interest.division}.` };
+    if (!ownerId) return { outcome: 'skipped', message: L.admin.integrations.noOwner(interest.division) };
     let customerId = contact?.customerId ? String(contact.customerId) : '';
     if (!customerId) {
       const company: RecordData = insertRecordIn(ctx, 'customers', {
@@ -126,7 +122,7 @@ export function simulateIncomingLead(actor: Actor, source: string): LeadCaptureR
       contactId,
       divisionId: interest.division,
       sourceId: source,
-      campaign: `${label} – ${new Date().toLocaleString('en-IN', { month: 'short' })} campaign`,
+      campaign: L.admin.integrations.campaign(label, new Date().toLocaleString('en-IN', { month: 'short' })),
       productType: interest.productType,
       subType: interest.subType,
       requirement: interest.text,
@@ -134,10 +130,10 @@ export function simulateIncomingLead(actor: Actor, source: string): LeadCaptureR
       status: pick('leads', 'status', ['new']),
       nextFollowUpAt: addDays(todayKey(), 1),
     });
-    appendAudit(d, actor, { action: 'integration.lead_captured', actorType: 'system', resource: 'leads', recordId: lead.id, summary: `${label}: new lead ${lead.id} from ${name}, assigned to ${userOfStaff(ownerId)?.name ?? ownerId}`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'integration.lead_captured', actorType: 'system', resource: 'leads', recordId: lead.id, summary: L.admin.integrations.capturedAudit(label, lead.id, name, userOfStaff(ownerId)?.name ?? ownerId), correlationId: ctx.correlationId });
     const owner = userOfStaff(ownerId);
-    if (owner) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'assignment', title: `New ${label} lead ${lead.id} assigned to you`, link: { resource: 'leads', recordId: lead.id } });
-    return { outcome: 'created', message: `Lead ${lead.id} created from ${label} and assigned to ${owner?.name ?? ownerId}.`, leadId: lead.id };
+    if (owner) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'assignment', title: L.admin.integrations.capturedNotice(label, lead.id), link: { resource: 'leads', recordId: lead.id } });
+    return { outcome: 'created', message: L.admin.integrations.capturedMessage(lead.id, label, owner?.name ?? ownerId), leadId: lead.id };
   });
 }
 
@@ -156,18 +152,18 @@ export function syncFromErp(actor: Actor): { customers: number; spares: number }
         const creditLimit = c.creditLimit ? Number(c.creditLimit) : (seed % 20 + 5) * 100000;
         const outstanding = Math.round(((seed * (Date.now() % 97)) % 60) / 100 * creditLimit);
         const overdue = seed % 3 === 0 ? Math.round(outstanding * 0.35) : 0;
-        patchRecordIn(ctx, 'customers', c.id, { creditLimit, outstanding, overdue, erpSyncedAt: at }, 'ERP sync: credit limit, outstanding and overdue');
+        patchRecordIn(ctx, 'customers', c.id, { creditLimit, outstanding, overdue, erpSyncedAt: at }, L.admin.integrations.erpCustomerNote);
         customers++;
       }
     }
     if (has('spareParts')) {
       for (const sp of d.records.spareParts ?? []) {
         const stock = Math.max(0, Number(sp.stockMain ?? 10) + Math.round((Math.random() - 0.5) * 6));
-        patchRecordIn(ctx, 'spareParts', sp.id, { stockMain: stock }, 'ERP sync: main-store stock');
+        patchRecordIn(ctx, 'spareParts', sp.id, { stockMain: stock }, L.admin.integrations.erpStockNote);
         spares++;
       }
     }
-    appendAudit(d, actor, { action: 'integration.erp_sync', actorType: 'system', summary: `ERP sync (simulated): ${customers} customer balances, ${spares} spare-part stock levels updated`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'integration.erp_sync', actorType: 'system', summary: L.admin.integrations.erpAudit(customers, spares), correlationId: ctx.correlationId });
     return { customers, spares };
   });
 }
@@ -175,10 +171,10 @@ export function syncFromErp(actor: Actor): { customers: number; spares: number }
 /** Inbound WhatsApp / email from a known customer contact → service ticket (SRV-01). */
 export function simulateIncomingMessage(actor: Actor, channel: 'whatsapp' | 'email'): { outcome: 'created' | 'skipped'; message: string; ticketId?: string } {
   requireIntegrations(actor);
-  if (!has('tickets')) return { outcome: 'skipped', message: 'Message-to-ticket needs the Service module, which is not available yet.' };
+  if (!has('tickets')) return { outcome: 'skipped', message: L.admin.integrations.ticketNeedsModule };
   const db = getDb().records;
   const contacts = (db.contacts ?? []).filter((c) => c.customerId);
-  if (!contacts.length) return { outcome: 'skipped', message: 'No customer contacts exist yet to send a message from.' };
+  if (!contacts.length) return { outcome: 'skipped', message: L.admin.integrations.noContacts };
   // Prefer a customer with an installed machine; otherwise a consumables customer (machine optional there, Q-13).
   const machines = (db.machines ?? []).filter((m) => contacts.some((c) => c.customerId === m.customerId));
   const CONSUMABLES = ['INK', 'PPR', 'FAB'];
@@ -191,11 +187,12 @@ export function simulateIncomingMessage(actor: Actor, channel: 'whatsapp' | 'ema
     division = String(machine.divisionId ?? '');
   } else {
     const consumable = contacts.filter((c) => ((db.customers ?? []).find((x) => x.id === c.customerId)?.divisionIds as string[] | undefined)?.some((d) => CONSUMABLES.includes(d)));
-    if (!consumable.length) return { outcome: 'skipped', message: 'No customer with an installed machine or a consumables account to message from.' };
+    if (!consumable.length) return { outcome: 'skipped', message: L.admin.integrations.noMachineCustomer };
     contact = rand(consumable);
     division = ((db.customers ?? []).find((x) => x.id === contact!.customerId)?.divisionIds as string[]).find((d) => CONSUMABLES.includes(d)) ?? 'INK';
   }
-  const text = rand(['Machine showing head-strike error since morning, production stopped.', 'Colour banding on prints, please send engineer.', 'Need help with RIP software licence after PC change.', 'Ink not flowing in channel 3, nozzle check failing.']);
+  const text = rand(L.admin.integrations.messageTexts);
+  const channelName = L.admin.integrations.channelName[channel];
   return commit((d) => {
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     try {
@@ -205,16 +202,16 @@ export function simulateIncomingMessage(actor: Actor, channel: 'whatsapp' | 'ema
         machineId: machine?.id,
         channel: pick('tickets', 'channel', [channel]),
         reportedAt: nowLocal(),
-        description: `${channel === 'whatsapp' ? 'WhatsApp' : 'Email'} from ${String(contact.name)}: ${text}`,
+        description: L.admin.integrations.ticketDescription(channelName, String(contact.name), text),
         category: pick('tickets', 'category', []),
         ticketType: pick('tickets', 'ticketType', ['breakdown']),
-        priority: pick('tickets', 'priority', [text.includes('stopped') ? 'critical' : 'medium']),
+        priority: pick('tickets', 'priority', [text === L.admin.integrations.messageTexts[0] ? 'critical' : 'medium']),
         divisionId: division,
       });
-      appendAudit(d, actor, { action: 'integration.message_ticket', actorType: 'system', resource: 'tickets', recordId: t.id, summary: `Inbound ${channel} from ${String(contact.name)} logged as ticket ${t.id}`, correlationId: ctx.correlationId });
-      return { outcome: 'created' as const, message: `Ticket ${t.id} logged from ${channel === 'whatsapp' ? 'WhatsApp' : 'email'}.`, ticketId: t.id };
+      appendAudit(d, actor, { action: 'integration.message_ticket', actorType: 'system', resource: 'tickets', recordId: t.id, summary: L.admin.integrations.ticketAudit(channelName, String(contact.name), t.id), correlationId: ctx.correlationId });
+      return { outcome: 'created' as const, message: L.admin.integrations.ticketMessage(t.id, channelName), ticketId: t.id };
     } catch (e) {
-      return { outcome: 'skipped' as const, message: e instanceof Error ? e.message : 'Could not create the ticket.' };
+      return { outcome: 'skipped' as const, message: e instanceof Error ? e.message : L.admin.integrations.ticketFailed };
     }
   });
 }

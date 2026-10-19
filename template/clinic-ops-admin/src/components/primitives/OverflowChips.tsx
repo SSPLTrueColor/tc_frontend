@@ -43,13 +43,13 @@ export function OverflowChips({ items, label, tone, interactive = true }: { item
       {/* invisible copy used only to measure chip widths */}
       <span ref={measure} className="overflow-chips-measure" aria-hidden="true">
         {items.map((t) => (
-          <span key={t} className="tag">
+          <span key={t} className="tag assoc-chip">
             {t}
           </span>
         ))}
       </span>
       {items.slice(0, fit).map((t) => (
-        <span key={t} className="tag">
+        <span key={t} className="tag assoc-chip">
           {t}
         </span>
       ))}

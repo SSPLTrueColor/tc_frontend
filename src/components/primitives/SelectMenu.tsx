@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { cx } from '../../lib/format';
 import { Icon } from './Icon';
 import { Popover } from './overlay';
+import { L } from '../../constants/labels';
 
 export interface SelectMenuOption<T extends string | number> {
   value: T;
@@ -21,14 +22,17 @@ export function SelectMenu<T extends string | number>({
   onChange,
   label,
   id,
-  placeholder = 'Select…',
+  placeholder = L.common.pickers.select,
   disabled,
   invalid,
   describedBy,
   block,
   className,
   searchable,
+  icon,
 }: {
+  /** Optional leading icon inside the trigger (shown in full-page forms). */
+  icon?: string;
   value: T | '' | null | undefined;
   options: SelectMenuOption<T>[];
   onChange: (v: T) => void;
@@ -111,6 +115,7 @@ export function SelectMenu<T extends string | number>({
           }
         }}
       >
+        {icon && <Icon name={icon} size={14} className="trigger-icon" />}
         <span className="select-menu-value">{current?.label ?? placeholder}</span>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} />
       </button>
@@ -118,8 +123,8 @@ export function SelectMenu<T extends string | number>({
         {withSearch && (
           <input
             className="input input-compact select-menu-search"
-            placeholder="Search…"
-            aria-label={`Search ${label}`}
+            placeholder={L.common.pickers.search}
+            aria-label={L.common.pickers.searchIn(label)}
             value={q}
             data-autofocus
             onChange={(e) => {
@@ -156,7 +161,7 @@ export function SelectMenu<T extends string | number>({
               {o.value === value && <Icon name="check" size={14} />}
             </li>
           ))}
-          {!shown.length && <li className="select-menu-empty muted">No matches</li>}
+          {!shown.length && <li className="select-menu-empty muted">{L.common.states.noMatches}</li>}
         </ul>
       </Popover>
     </>

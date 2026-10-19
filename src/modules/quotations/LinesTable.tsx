@@ -1,13 +1,16 @@
+import { L } from '../../constants/labels';
 import { formatMoney } from '../../lib/format';
 import { masterLabel } from '../../services/registry';
 import { lineAmounts, type QuoteLine, type QuoteTotals } from '../../services/quotations/pricing';
 import { EmptyValue } from '../../components/primitives/display';
 
+const T = L.quotations;
 const pct = (n: number) => `${Math.round(n * 100) / 100}%`;
 
-/** Read-only line items (Lines tab, print view). Landed cost only when `showMargin`. */
+/** Read-only line items (Line Items tab, Quotation PDF). Landed cost only when `showMargin`. */
 export function LinesTable({ lines, showMargin, compact }: { lines: QuoteLine[]; showMargin?: boolean; compact?: boolean }) {
-  if (!lines.length) return <p className="muted">No line items.</p>;
+  const H = T.lineTable;
+  if (!lines.length) return <p className="muted">{H.empty}</p>;
   return (
     <div className="table-scroll">
       <table className="mini-table qt-lines">
@@ -16,26 +19,26 @@ export function LinesTable({ lines, showMargin, compact }: { lines: QuoteLine[];
             <th scope="col" className="col-n">
               #
             </th>
-            <th scope="col">Item</th>
-            {!compact && <th scope="col">HSN / SAC</th>}
+            <th scope="col">{H.item}</th>
+            {!compact && <th scope="col">{H.hsnSac}</th>}
             <th scope="col" className="num">
-              Qty
+              {H.qty}
             </th>
             <th scope="col" className="num">
-              List price
+              {H.listPrice}
             </th>
             <th scope="col" className="num">
-              Discount
+              {H.discount}
             </th>
             <th scope="col" className="num">
-              Net
+              {H.net}
             </th>
             <th scope="col" className="num">
-              GST
+              {H.gst}
             </th>
             {showMargin && (
               <th scope="col" className="num">
-                Landed cost
+                {H.landedCost}
               </th>
             )}
           </tr>
@@ -66,8 +69,11 @@ export function LinesTable({ lines, showMargin, compact }: { lines: QuoteLine[];
   );
 }
 
-/** Totals block: gross, discount, freight, insurance, taxable, CGST/SGST or IGST, total, words. */
-export function TotalsBlock({ t, showMargin }: { t: Pick<QuoteTotals, 'subtotal' | 'discountTotal' | 'freight' | 'insurance' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'grandTotal' | 'amountInWords' | 'landedCostTotal' | 'marginPct'>; showMargin?: boolean }) {
+type TotalsInput = Pick<QuoteTotals, 'subtotal' | 'discountTotal' | 'freight' | 'insurance' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'grandTotal' | 'amountInWords' | 'landedCostTotal' | 'marginPct'>;
+
+/** Totals block: list value, discount, freight, insurance, taxable, CGST/SGST or IGST, total, words. */
+export function TotalsBlock({ t, showMargin }: { t: TotalsInput; showMargin?: boolean }) {
+  const X = T.totals;
   const row = (label: string, value: number | null | undefined, strong = false) => (
     <div className="detail-row">
       <dt>{label}</dt>
@@ -76,31 +82,83 @@ export function TotalsBlock({ t, showMargin }: { t: Pick<QuoteTotals, 'subtotal'
   );
   return (
     <dl className="detail-list qt-totals">
-      {row('Gross value', t.subtotal)}
-      {Number(t.discountTotal) > 0 && row('Discount', -Number(t.discountTotal))}
-      {Number(t.freight) > 0 && row('Freight', t.freight)}
-      {Number(t.insurance) > 0 && row('Insurance', t.insurance)}
-      {row('Taxable value', t.taxable)}
-      {Number(t.igst) > 0 ? row('IGST', t.igst) : (
+      {row(X.listValue, t.subtotal)}
+      {Number(t.discountTotal) > 0 && row(X.discount, -Number(t.discountTotal))}
+      {Number(t.freight) > 0 && row(X.freight, t.freight)}
+      {Number(t.insurance) > 0 && row(X.insurance, t.insurance)}
+      {row(X.taxable, t.taxable)}
+      {Number(t.igst) > 0 ? (
+        row(X.igst, t.igst)
+      ) : (
         <>
-          {row('CGST', t.cgst)}
-          {row('SGST', t.sgst)}
+          {row(X.cgst, t.cgst)}
+          {row(X.sgst, t.sgst)}
         </>
       )}
-      {row('Total', t.grandTotal, true)}
+      {row(X.total, t.grandTotal, true)}
       <div className="detail-row">
-        <dt>In words</dt>
+        <dt>{X.inWords}</dt>
         <dd>{t.amountInWords}</dd>
       </div>
       {showMargin && t.landedCostTotal !== null && t.landedCostTotal !== undefined && (
         <>
-          {row('Landed cost', t.landedCostTotal)}
+          {row(X.landedCost, t.landedCostTotal)}
           <div className="detail-row">
-            <dt>Margin</dt>
+            <dt>{X.margin}</dt>
             <dd className="num">{t.marginPct === null || t.marginPct === undefined ? <EmptyValue /> : pct(Number(t.marginPct))}</dd>
           </div>
         </>
       )}
     </dl>
+  );
+}
+
+/** GST summary by rate (Pricing & GST tab, Quotation PDF). */
+export function TaxSummary({ totals, className = '' }: { totals: Pick<QuoteTotals, 'taxByRate' | 'igst'>; className?: string }) {
+  const C = T.tabContent;
+  const igst = Number(totals.igst) > 0;
+  return (
+    <div className="table-scroll">
+      <table className={`mini-table ${className}`.trim()}>
+        <thead>
+          <tr>
+            <th scope="col">{C.gstRate}</th>
+            <th scope="col" className="num">
+              {C.taxableCol}
+            </th>
+            {igst ? (
+              <th scope="col" className="num">
+                {T.totals.igst}
+              </th>
+            ) : (
+              <>
+                <th scope="col" className="num">
+                  {T.totals.cgst}
+                </th>
+                <th scope="col" className="num">
+                  {T.totals.sgst}
+                </th>
+              </>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {totals.taxByRate.map((t) => (
+            <tr key={t.rate}>
+              <td>{t.rate}%</td>
+              <td className="num">{formatMoney(t.taxable)}</td>
+              {igst ? (
+                <td className="num">{formatMoney(t.igst)}</td>
+              ) : (
+                <>
+                  <td className="num">{formatMoney(t.cgst)}</td>
+                  <td className="num">{formatMoney(t.sgst)}</td>
+                </>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

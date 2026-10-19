@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { errorMessage } from '../../services/api/client';
 import { purgeFromBin, restoreFromBin } from '../../services/api/catalog';
@@ -12,6 +13,9 @@ import { EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../../comp
 import { confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { byTime, SortPicker, type SortDir, usePaged } from './kit';
+
+const B = L.admin.recycleBin;
 
 const safeLabel = (resKey: string) => {
   try {
@@ -21,17 +25,16 @@ const safeLabel = (resKey: string) => {
   }
 };
 
-/** FR-138 / COM-10: soft-deleted records — restore or delete permanently (administrators only). */
+/** COM-10 / FR-138: soft-deleted records — restore or delete permanently (System Administrator only). */
 export function RecycleBinPage() {
   const actor = useActor();
   const toast = useToast();
   const [type, setType] = useState('');
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<SortDir>('desc');
   const [busyId, setBusyId] = useState('');
   const bin = useServiceQuery(() => listRecycleBin(actor), [actor.user.id]);
-  if (!can(actor, 'recycle.manage')) return <NoAccess what="the recycle bin" />;
   const all = bin.data ?? [];
-  const types = [...new Set(all.map((e) => e.resource))];
   const titleOf = (e: (typeof all)[number]) => {
     try {
       const res = getResource(e.resource);
@@ -40,7 +43,14 @@ export function RecycleBinPage() {
       return e.record.id;
     }
   };
-  const rows = all.filter((e) => (!type || e.resource === type) && (!q || `${e.record.id} ${titleOf(e)}`.toLowerCase().includes(q.toLowerCase())));
+  const rows = byTime(
+    all.filter((e) => (!type || e.resource === type) && (!q || `${e.record.id} ${titleOf(e)}`.toLowerCase().includes(q.toLowerCase()))),
+    (e) => e.deletedAt,
+    sort,
+  );
+  const paged = usePaged(rows);
+  if (!can(actor, 'recycle.manage')) return <NoAccess what={B.noAccessWhat} />;
+  const types = [...new Set(all.map((e) => e.resource))];
   const act = async (id: string, op: () => Promise<void>, ok: string) => {
     setBusyId(id);
     try {
@@ -54,71 +64,74 @@ export function RecycleBinPage() {
   };
   return (
     <div className="page">
-      <PageHeader title="Recycle bin" description="Deleted records stay here until an administrator restores them or deletes them permanently. Both actions are audited." />
+      <PageHeader title={L.nav.pages.recycleBin.title} description={B.description} />
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder="Search ID or name" aria-label="Search the recycle bin" value={q} onChange={(e) => setQ(e.target.value)} />
-        <SelectMenu label="Filter by record type" value={type} options={[{ value: '', label: 'All record types' }, ...types.map((t) => ({ value: t, label: safeLabel(t) }))]} onChange={setType} />
-        <span className="toolbar-count muted">{rows.length} item(s)</span>
+        <input type="search" className="input input-compact" placeholder={B.searchPlaceholder} aria-label={B.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SelectMenu label={B.filterType} value={type} options={[{ value: '', label: L.admin.common.allRecordTypes }, ...types.map((t) => ({ value: t, label: safeLabel(t) }))]} onChange={setType} />
+        <SortPicker value={sort} onChange={setSort} />
       </div>
       <div className="content-surface">
         {bin.error ? (
-          <ErrorState title="Could not load the recycle bin" onRetry={bin.retry}>
+          <ErrorState title={B.loadError} onRetry={bin.retry}>
             {bin.error}
           </ErrorState>
         ) : !bin.data ? (
           <Skeleton rows={6} />
         ) : !rows.length ? (
-          <EmptyState icon="trash" title={all.length ? 'Nothing matches' : 'The recycle bin is empty'}>
-            {all.length ? 'Try another search or record type.' : 'Deleted records appear here.'}
+          <EmptyState icon="trash" title={all.length ? B.noMatchTitle : B.emptyTitle}>
+            {all.length ? B.noMatchBody : B.emptyBody}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
-              <thead>
-                <tr>
-                  <th scope="col">Record</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Deleted</th>
-                  <th scope="col">By</th>
-                  <th scope="col">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((e) => (
-                  <tr key={e.id}>
-                    <td>
-                      <span className="mono">{e.record.id}</span> · {titleOf(e) === e.record.id ? recordTitle(e.resource, e.record.id, actor) : titleOf(e)}
-                    </td>
-                    <td>{safeLabel(e.resource)}</td>
-                    <td className="nowrap">
-                      <DateText value={e.deletedAt} />
-                    </td>
-                    <td>{getUser(e.deletedBy)?.name ?? e.deletedBy}</td>
-                    <td className="row-gap">
-                      <Button loading={busyId === e.id} onClick={() => act(e.id, () => restoreFromBin(actor, e.id), `${e.record.id} restored`)}>
-                        Restore
-                      </Button>
-                      <Button
-                        variant="danger"
-                        onClick={() =>
-                          confirmDelete({
-                            title: `Delete ${e.record.id} permanently?`,
-                            message: 'The record cannot be restored afterwards. Its audit history is kept.',
-                            confirmLabel: 'Delete permanently',
-                            onConfirm: () => act(e.id, () => purgeFromBin(actor, e.id), `${e.record.id} deleted permanently`),
-                          })
-                        }
-                      >
-                        Delete permanently
-                      </Button>
-                    </td>
+          <>
+            <div className="table-scroll">
+              <table className="mini-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{B.columns.record}</th>
+                    <th scope="col">{B.columns.type}</th>
+                    <th scope="col">{B.columns.deleted}</th>
+                    <th scope="col">{B.columns.by}</th>
+                    <th scope="col">
+                      <span className="sr-only">{B.columns.actions}</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {paged.shown.map((e) => (
+                    <tr key={e.id}>
+                      <td>
+                        <span className="mono">{e.record.id}</span> · {titleOf(e) === e.record.id ? recordTitle(e.resource, e.record.id, actor) : titleOf(e)}
+                      </td>
+                      <td>{safeLabel(e.resource)}</td>
+                      <td className="nowrap">
+                        <DateText value={e.deletedAt} />
+                      </td>
+                      <td>{getUser(e.deletedBy)?.name ?? e.deletedBy}</td>
+                      <td className="row-gap">
+                        <Button loading={busyId === e.id} onClick={() => act(e.id, () => restoreFromBin(actor, e.id), B.restored(e.record.id))}>
+                          {B.restore}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          onClick={() =>
+                            confirmDelete({
+                              title: B.purgeTitle(e.record.id),
+                              message: B.purgeMessage,
+                              confirmLabel: B.purge,
+                              onConfirm: () => act(e.id, () => purgeFromBin(actor, e.id), B.purged(e.record.id)),
+                            })
+                          }
+                        >
+                          {B.purge}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {paged.footer(B.items)}
+          </>
         )}
       </div>
     </div>

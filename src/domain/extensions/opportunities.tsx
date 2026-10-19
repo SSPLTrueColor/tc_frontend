@@ -22,7 +22,11 @@ import { DateText } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/primitives/feedback';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { MarkLostDialog } from '../../modules/opportunities/MarkLostDialog';
+import { L } from '../../constants/labels';
+import { ROUTES, toPath } from '../../constants/routes';
 import { configureStagnationDays } from '../modules/opportunities';
+
+const T = L.opportunities;
 
 configureStagnationDays(() => getPolicies().opportunityStagnationDays);
 
@@ -35,7 +39,7 @@ const notifyStaff = (ctx: HookContext, staffId: unknown, title: string, link: { 
 
 registerResourceHooks('opportunities', {
   beforeCreate: (ctx, c) => applyCreateDefaults(ctx, c),
-  afterCreate: (ctx, r) => notifyStaff(ctx, r.ownerId, `${ctx.actor.user.name} assigned you opportunity ${r.id}: ${String(r.name)}`, { resource: 'opportunities', recordId: r.id }),
+  afterCreate: (ctx, r) => notifyStaff(ctx, r.ownerId, T.messages.assigned(ctx.actor.user.name, r.id, String(r.name)), { resource: 'opportunities', recordId: r.id }),
   beforeUpdate: (ctx, before, c) => {
     if (before.ownerId !== c.ownerId || before.customerId !== c.customerId || before.productId !== c.productId) {
       if (before.customerId !== c.customerId) c.territoryId = null;
@@ -44,7 +48,7 @@ registerResourceHooks('opportunities', {
     }
   },
   afterUpdate: (ctx, before, after) => {
-    if (before.ownerId !== after.ownerId) notifyStaff(ctx, after.ownerId, `${ctx.actor.user.name} assigned you opportunity ${after.id}: ${String(after.name)}`, { resource: 'opportunities', recordId: after.id });
+    if (before.ownerId !== after.ownerId) notifyStaff(ctx, after.ownerId, T.messages.assigned(ctx.actor.user.name, after.id, String(after.name)), { resource: 'opportunities', recordId: after.id });
   },
   beforeTransition: (ctx, r, to) => {
     if (OPEN_STAGES.includes(to) || to === 'won') checkStageEntry(ctx, r, to);
@@ -60,8 +64,8 @@ registerResourceHooks('opportunities', {
     }
   },
   afterTransition: (ctx, before, after) => {
-    if (after.stage === 'won') notifyStaff(ctx, after.ownerId, `${after.id} won — ${String(after.name)} (${formatMoney(Number(after.value))})`, { resource: 'opportunities', recordId: after.id });
-    else if (before.ownerId !== undefined) notifyStaff(ctx, after.ownerId, `${ctx.actor.user.name} moved ${after.id} to ${masterLabel('oppStage', after.stage)}`, { resource: 'opportunities', recordId: after.id });
+    if (after.stage === 'won') notifyStaff(ctx, after.ownerId, T.messages.won(after.id, String(after.name), formatMoney(Number(after.value))), { resource: 'opportunities', recordId: after.id });
+    else if (before.ownerId !== undefined) notifyStaff(ctx, after.ownerId, T.messages.moved(ctx.actor.user.name, after.id, masterLabel('oppStage', after.stage)), { resource: 'opportunities', recordId: after.id });
   },
 });
 
@@ -79,15 +83,15 @@ function demoGuard(ctx: HookContext, c: Record<string, unknown>, selfId?: string
   const clash = (ctx.d.records.demos ?? []).find(
     (x) => x.id !== selfId && x.demoMachineId === c.demoMachineId && ['requested', 'scheduled'].includes(String(x.status)) && overlaps(start, end, String(x.scheduledAt), addMinutes(String(x.scheduledAt), Number(x.durationMin) || 120)),
   );
-  if (clash) throw new ServiceError('validation', `The demo machine is already booked by ${clash.id} at that time.`, { fieldErrors: { scheduledAt: `Overlaps ${clash.id} — choose another time or machine` } });
+  if (clash) throw new ServiceError('validation', T.messages.demoClash(clash.id), { fieldErrors: { scheduledAt: T.messages.demoClashField(clash.id) } });
 }
 
 registerResourceHooks('demos', {
   beforeCreate: (ctx, c) => demoGuard(ctx, c),
   beforeUpdate: (ctx, before, c) => demoGuard(ctx, c, before.id),
-  afterCreate: (ctx, r) => notifyStaff(ctx, r.ownerId, `Demo ${r.id} booked for ${String(r.scheduledAt).replace('T', ' ')}`, { resource: 'demos', recordId: r.id }),
+  afterCreate: (ctx, r) => notifyStaff(ctx, r.ownerId, T.messages.demoBooked(r.id, String(r.scheduledAt).replace('T', ' ')), { resource: 'demos', recordId: r.id }),
   beforeTransition: (_ctx, r, to) => {
-    if (to === 'done' && !String(r.results ?? '').trim()) throw new ServiceError('validation', 'Record the demo results before marking it done (Edit → Results).', { fieldErrors: { results: 'Required to mark done' } });
+    if (to === 'done' && !String(r.results ?? '').trim()) throw new ServiceError('validation', T.messages.demoResultsNeeded, { fieldErrors: { results: T.messages.demoResultsField } });
   },
 });
 
@@ -99,12 +103,12 @@ registerResourceHooks('sampleRequests', {
       c.divisionId = opp.divisionId ?? null;
     }
   },
-  afterCreate: (ctx, r) => notifyStaff(ctx, r.assigneeId, `Sample print requested: ${String(r.title)} (${r.id}), needed by ${formatDate(String(r.dueDate))}`, { resource: 'sampleRequests', recordId: r.id }),
+  afterCreate: (ctx, r) => notifyStaff(ctx, r.assigneeId, T.messages.sampleRequested(String(r.title), r.id, formatDate(String(r.dueDate))), { resource: 'sampleRequests', recordId: r.id }),
   beforeTransition: (_ctx, r, to) => {
-    if (to === 'results_shared' && !String(r.results ?? '').trim()) throw new ServiceError('validation', 'Record the print results before sharing them (Edit → Print results).', { fieldErrors: { results: 'Required' } });
+    if (to === 'results_shared' && !String(r.results ?? '').trim()) throw new ServiceError('validation', T.messages.sampleResultsNeeded, { fieldErrors: { results: T.messages.required } });
   },
   afterTransition: (ctx, _b, after) => {
-    if (after.status === 'results_shared') notifyStaff(ctx, after.ownerId, `Sample results ready: ${String(after.title)} (${after.id})`, { resource: 'sampleRequests', recordId: after.id });
+    if (after.status === 'results_shared') notifyStaff(ctx, after.ownerId, T.messages.sampleResultsReady(String(after.title), after.id), { resource: 'sampleRequests', recordId: after.id });
   },
 });
 
@@ -119,21 +123,21 @@ function OpportunityActions({ actor, res, record }: RecordExtensionProps) {
   return (
     <>
       <Button icon="message" onClick={() => setLogging(true)}>
-        Log activity
+        {T.actions.logFollowUp}
       </Button>
       {open && (
-        <Button onClick={() => setLosing(true)} disabledReason={editable ? undefined : `Read-only for ${actor.role.label}`}>
-          Mark lost…
+        <Button onClick={() => setLosing(true)} disabledReason={editable ? undefined : T.messages.readOnlyFor(actor.role.label)}>
+          {T.actions.markLost}
         </Button>
       )}
       {record.stage === 'won' &&
         (accepted ? (
-          <Link className="btn btn-primary" to={`/orders/new?quotation=${encodeURIComponent(accepted.id)}`}>
-            <span className="btn-label">Generate sales order</span>
+          <Link className="btn btn-primary" to={toPath(ROUTES.salesOrderNew, {}, { quotation: accepted.id })}>
+            <span className="btn-label">{T.actions.generateSalesOrder}</span>
           </Link>
         ) : (
-          <Button variant="primary" disabledReason="Needs an accepted quotation on this opportunity">
-            Generate sales order
+          <Button variant="primary" disabledReason={T.messages.needsAcceptedQuotation}>
+            {T.actions.generateSalesOrder}
           </Button>
         ))}
       <LogActivityDialog
@@ -156,18 +160,19 @@ function OpportunityBanner({ actor, record }: RecordExtensionProps) {
   }, [actor]);
   if (record.stage === 'lost')
     return (
-      <InlineAlert tone="danger" title="Lost">
+      <InlineAlert tone="danger" title={T.banner.lostTitle}>
         {masterLabel('lostReason', record.lostReason)}
-        {record.lostToCompetitor ? ` — to ${String(record.lostToCompetitor)}` : ''}
-        {record.lostToPrice ? ` at ${formatMoney(Number(record.lostToPrice))}` : ''}
+        {record.lostToCompetitor ? T.banner.lostTo(String(record.lostToCompetitor)) : ''}
+        {record.lostToPrice ? T.banner.lostAt(formatMoney(Number(record.lostToPrice))) : ''}
       </InlineAlert>
     );
   if (record.stage === 'won') return null;
   if (!isStagnant(record)) return null;
   const past = !!record.expectedCloseDate && String(record.expectedCloseDate) < todayKey();
   return (
-    <InlineAlert tone="warning" title="Stagnant opportunity">
-      {past ? `Expected close date ${formatDate(String(record.expectedCloseDate))} has passed.` : `No activity for more than ${getPolicies().opportunityStagnationDays} days.`} Log an activity or update the close date.
+    <InlineAlert tone="warning" title={T.banner.stagnantTitle}>
+      {past ? T.banner.pastClose(formatDate(String(record.expectedCloseDate))) : T.banner.idle(getPolicies().opportunityStagnationDays)}
+      {T.banner.hint}
     </InlineAlert>
   );
 }
@@ -176,12 +181,12 @@ function Timeline({ actor, record }: RecordExtensionProps) {
   const q = useServiceQuery(() => activitiesFor(actor, 'opportunities', record.id), [record.id, actor.user.id]);
   if (q.error)
     return (
-      <ErrorState title="Could not load the timeline" onRetry={q.retry}>
+      <ErrorState title={T.timeline.errorTitle} onRetry={q.retry}>
         {q.error}
       </ErrorState>
     );
   if (!q.data) return <Skeleton rows={4} />;
-  if (!q.data.length) return <EmptyState icon="message" title="No activities yet">Calls, meetings and notes logged on this opportunity appear here.</EmptyState>;
+  if (!q.data.length) return <EmptyState icon="message" title={T.timeline.emptyTitle}>{T.timeline.emptyBody}</EmptyState>;
   return (
     <ul className="flow-list">
       {q.data.map((a: RecordData) => (
@@ -192,7 +197,7 @@ function Timeline({ actor, record }: RecordExtensionProps) {
             <span className="muted small">
               <DateText value={String(a.at)} />
               {a.notes ? ` · ${String(a.notes).slice(0, 140)}` : ''}
-              {a.nextFollowUpAt ? ` · next follow-up ${formatDate(String(a.nextFollowUpAt))}` : ''}
+              {a.nextFollowUpAt ? T.timeline.nextFollowUp(formatDate(String(a.nextFollowUpAt))) : ''}
             </span>
           </span>
         </li>
@@ -203,4 +208,4 @@ function Timeline({ actor, record }: RecordExtensionProps) {
 
 registerRecordActions('opportunities', OpportunityActions);
 registerRecordBanner('opportunities', OpportunityBanner);
-registerRecordTab('opportunities', { id: 'timeline', label: 'Timeline', component: Timeline });
+registerRecordTab('opportunities', { id: 'timeline', label: T.tabs.timeline, component: Timeline });

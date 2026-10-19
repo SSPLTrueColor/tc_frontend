@@ -1,9 +1,21 @@
-/** Async boundary for opportunity pages (simulated network latency / failures). */
+/** Async boundary for opportunity pages (simulated network latency / failures). Same signatures a real API would have. */
 import type { Actor } from '../authz';
 import { call } from './client';
-import { calendarItems, computeForecast, type ForecastGroup, type ForecastPeriod, type LostInput, markLost, sweepStagnation } from '../opportunities';
+import {
+  computeForecast,
+  demoMachineCalendar,
+  type DemoMachineCalendarFilter,
+  type ForecastGroup,
+  type ForecastPeriod,
+  type LostInput,
+  markLost,
+  type PipelineFilter,
+  pipelineRows,
+  sweepStagnation,
+} from '../opportunities';
 
+export const fetchPipeline = (actor: Actor, filter: PipelineFilter) => call(() => pipelineRows(actor, filter));
 export const fetchForecast = (actor: Actor, opts: { period: ForecastPeriod; groupBy: ForecastGroup; horizon: number; divisionId?: string }) => call(() => computeForecast(actor, opts));
-export const fetchCalendar = (actor: Actor, from: string, to: string, mineOnly: boolean) => call(() => calendarItems(actor, from, to, mineOnly));
+export const fetchDemoMachineCalendar = (actor: Actor, filter: DemoMachineCalendarFilter) => call(() => demoMachineCalendar(actor, filter));
 export const markOpportunityLost = (actor: Actor, id: string, input: LostInput, version: number) => call(() => markLost(actor, id, input, version));
 export const runStagnationSweep = (actor: Actor) => call(() => sweepStagnation(actor), { fast: true });

@@ -29,6 +29,8 @@ export interface RecordTab {
   id: string;
   label: string;
   component: ComponentType<RecordExtensionProps>;
+  /** Position among the extra tabs (lower first); tabs without it keep registration order after ordered ones. */
+  order?: number;
   /** Optional badge count. */
   count?: (props: RecordExtensionProps) => number | undefined;
 }
@@ -36,4 +38,8 @@ const recordTabs = new Map<string, RecordTab[]>();
 export function registerRecordTab(resource: string, tab: RecordTab) {
   recordTabs.set(resource, [...(recordTabs.get(resource) ?? []).filter((t) => t.id !== tab.id), tab]);
 }
-export const getRecordTabs = (resource: string) => recordTabs.get(resource) ?? [];
+export const getRecordTabs = (resource: string) =>
+  (recordTabs.get(resource) ?? [])
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => (a.t.order ?? Number.MAX_SAFE_INTEGER) - (b.t.order ?? Number.MAX_SAFE_INTEGER) || a.i - b.i)
+    .map(({ t }) => t);

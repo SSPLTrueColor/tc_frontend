@@ -46,7 +46,7 @@ export const clinicMasters: MasterDefinition[] = [
   ]),
   master('appointmentStatus', 'Appointment status', [
     v('scheduled', 'Scheduled', 'info'),
-    v('confirmed', 'Confirmed', 'accent'),
+    v('confirmed', 'Confirmed', 'success'), // positive = green (colour meanings, rule 41)
     v('checked_in', 'Checked in', 'warning'),
     v('in_progress', 'In visit', 'warning'),
     v('completed', 'Completed', 'success'),
@@ -54,13 +54,14 @@ export const clinicMasters: MasterDefinition[] = [
     v('no_show', 'No-show', 'danger'),
   ]),
   master('appointmentType', 'Appointment type', [
-    v('new_patient', 'New patient visit'),
+    // colours carry meaning: new = accent, routine follow-up = grey, review = blue, procedure = amber, remote = green
+    v('new_patient', 'New patient visit', 'accent'),
     v('follow_up', 'Follow-up'),
-    v('annual_review', 'Annual review'),
-    v('procedure_slot', 'Procedure slot'),
-    v('telehealth_check', 'Telehealth check-in'),
+    v('annual_review', 'Annual review', 'info'),
+    v('procedure_slot', 'Procedure slot', 'warning'),
+    v('telehealth_check', 'Telehealth check-in', 'success'),
   ]),
-  master('visitMode', 'Visit mode', [v('in_person', 'In person'), v('telehealth', 'Telehealth')]),
+  master('visitMode', 'Visit mode', [v('in_person', 'In person'), v('telehealth', 'Telehealth', 'info')]),
   master('bookingChannel', 'Booking channel', [
     v('phone', 'Phone'),
     v('front_desk', 'Front desk'),

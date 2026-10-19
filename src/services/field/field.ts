@@ -1,5 +1,5 @@
 /**
- * Field-force domain service (engine side, synchronous). Check-in/out and visit check-in/out are
+ * Field Force and Targets & Recognition domain service (engine side, synchronous). Check-in/out and visit check-in/out are
  * dedicated operations — GPS and times are captured here, never typed into a form — so the
  * attendance fields stay read-only everywhere else. Pages call these through services/api/field.ts.
  */
@@ -15,8 +15,12 @@ import { masterLabel } from '../registry';
 import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn, queryRecords } from '../runtime';
 import { ServiceError } from '../types';
+import { L } from '../../constants/labels';
 import { achievementFor, attendanceMetrics, BOOKED, geofenceCheck, isOfficeRole, OFFICE, periodLabel, periodRange, type Point, routeDistanceKm, TERRITORY_CENTRES } from './rules';
 
+const E = L.field.errors;
+const AU = L.field.audit;
+const EX = L.field.pages.exceptionDashboard.details;
 const recs = (key: string): RecordData[] => getDb().records[key] ?? [];
 const ctxOf = (d: ReturnType<typeof getDb>, actor: Actor): HookContext => ({ d, actor, correlationId: uid('cor') });
 
@@ -48,7 +52,7 @@ export function simulatedPoint(staffId: string): Point & { label: string } {
   if (!e || isOfficeRole(String(e.roleId))) return { lat: OFFICE.lat + 0.0004, lng: OFFICE.lng - 0.0003, label: OFFICE.label };
   const t = ((e.territoryIds as string[]) ?? [])[0];
   const c = TERRITORY_CENTRES[t] ?? TERRITORY_CENTRES.mumbai;
-  return { lat: Math.round((c.lat + 0.01) * 1e5) / 1e5, lng: Math.round((c.lng - 0.008) * 1e5) / 1e5, label: `${c.label} (simulated)` };
+  return { lat: Math.round((c.lat + 0.01) * 1e5) / 1e5, lng: Math.round((c.lng - 0.008) * 1e5) / 1e5, label: L.field.location.simulatedPlace(c.label) };
 }
 
 const CONSENT_KEY = (userId: string) => `tc.field.locationConsent.${userId}`;
@@ -70,7 +74,7 @@ export function grantLocationConsent(actor: Actor) {
   } catch {
     /* consent still audited below */
   }
-  commit((d) => appendAudit(d, actor, { action: 'consent.location', summary: 'Gave consent for location capture between check-in and check-out (DPDP Act 2023 notice shown)', correlationId: uid('cor') }));
+  commit((d) => appendAudit(d, actor, { action: 'consent.location', summary: AU.consent, correlationId: uid('cor') }));
 }
 
 // ---------------------------------------------------------------- attendance (ATT-01 … ATT-04)
@@ -87,22 +91,22 @@ export interface CheckInput {
 }
 
 function requireOwnWrite(actor: Actor, resKey: string) {
-  if (!perm(actor, resKey).create) throw new ServiceError('forbidden', 'Your role cannot record attendance.');
+  if (!perm(actor, resKey).create) throw new ServiceError('forbidden', E.noAttendanceRole);
 }
 
 export function checkIn(actor: Actor, input: CheckInput): RecordData {
   requireOwnWrite(actor, 'attendance');
-  if (!hasLocationConsent(actor)) throw new ServiceError('invalid_state', 'Give location consent before checking in.');
-  if (input.source === 'mock_app') throw new ServiceError('validation', 'Mock / fake GPS location detected — check-in blocked. Turn off the mock-location app and try again.');
+  if (!hasLocationConsent(actor)) throw new ServiceError('invalid_state', E.consentFirst);
+  if (input.source === 'mock_app') throw new ServiceError('validation', E.mockCheckIn);
   const date = input.at.slice(0, 10);
   const existing = attendanceOn(actor.staffId, date);
-  if (existing?.checkInAt && !existing.checkOutAt) throw new ServiceError('invalid_state', 'You are already checked in today. Check out first.');
-  if (existing?.checkInAt) throw new ServiceError('invalid_state', 'You have already checked in and out today. Use regularisation to correct it.');
-  if (existing?.status === 'leave') throw new ServiceError('invalid_state', 'You are on approved leave today.');
+  if (existing?.checkInAt && !existing.checkOutAt) throw new ServiceError('invalid_state', E.alreadyCheckedIn);
+  if (existing?.checkInAt) throw new ServiceError('invalid_state', E.alreadyDone);
+  if (existing?.status === 'leave') throw new ServiceError('invalid_state', E.onLeaveToday);
   const role = String(employeeOf(actor.staffId)?.roleId ?? actor.user.roleId);
   const office = isOfficeRole(role) && !input.onTour;
   const fence = geofenceCheck(input.point, getPolicies().geofenceRadiusM);
-  if (office && !fence.inside) throw new ServiceError('validation', `You are ${fence.distanceM.toLocaleString('en-IN')} m from the office — office staff check in within ${getPolicies().geofenceRadiusM} m. Choose “On tour” if you are travelling.`);
+  if (office && !fence.inside) throw new ServiceError('validation', E.outsideGeofence(fence.distanceM.toLocaleString('en-IN'), getPolicies().geofenceRadiusM));
   return commit((d) => {
     const ctx = ctxOf(d, actor);
     const status = input.onTour ? 'on_tour' : 'present';
@@ -124,8 +128,8 @@ export function checkIn(actor: Actor, input: CheckInput): RecordData {
       workMinutes: null,
       routePoints: [{ ...input.point, at: input.at }],
     };
-    const rec = existing ? patchRecordIn(ctx, 'attendance', existing.id, values, 'Checked in') : insertRecordIn(ctx, 'attendance', values);
-    appendAudit(d, actor, { action: 'attendance.check_in', resource: 'attendance', recordId: rec.id, summary: `Checked in at ${input.at.slice(11)} · ${input.place}${m.lateByMin ? ` · late by ${m.lateByMin} min` : ''}`, correlationId: ctx.correlationId });
+    const rec = existing ? patchRecordIn(ctx, 'attendance', existing.id, values, AU.checkedIn) : insertRecordIn(ctx, 'attendance', values);
+    appendAudit(d, actor, { action: 'attendance.check_in', resource: 'attendance', recordId: rec.id, summary: AU.checkInSummary(input.at.slice(11), input.place, m.lateByMin), correlationId: ctx.correlationId });
     return rec;
   });
 }
@@ -134,10 +138,10 @@ export function checkOut(actor: Actor, input: Omit<CheckInput, 'selfie' | 'onTou
   requireOwnWrite(actor, 'attendance');
   const date = input.at.slice(0, 10);
   const rec = attendanceOn(actor.staffId, date);
-  if (!rec?.checkInAt) throw new ServiceError('invalid_state', 'You have not checked in today.');
-  if (rec.checkOutAt) throw new ServiceError('invalid_state', 'You have already checked out today.');
-  if (input.source === 'mock_app') throw new ServiceError('validation', 'Mock / fake GPS location detected — check-out blocked.');
-  if (input.at < String(rec.checkInAt)) throw new ServiceError('validation', 'Check-out cannot be before check-in.');
+  if (!rec?.checkInAt) throw new ServiceError('invalid_state', E.notCheckedIn);
+  if (rec.checkOutAt) throw new ServiceError('invalid_state', E.alreadyCheckedOut);
+  if (input.source === 'mock_app') throw new ServiceError('validation', E.mockCheckOut);
+  if (input.at < String(rec.checkInAt)) throw new ServiceError('validation', E.outBeforeIn);
   return commit((d) => {
     const ctx = ctxOf(d, actor);
     // ATT-07: route = check-in, the day's visit locations, check-out (simulated tracking pings).
@@ -147,8 +151,8 @@ export function checkOut(actor: Actor, input: Omit<CheckInput, 'selfie' | 'onTou
       .map((v) => ({ lat: Number(v.checkInLat), lng: Number(v.checkInLng), at: String(v.checkInAt) }));
     const points = [...((rec.routePoints as Point[]) ?? []), ...visitPoints, { ...input.point, at: input.at }];
     const m = attendanceMetrics({ checkInAt: String(rec.checkInAt), checkOutAt: input.at, status: String(rec.status) }, getPolicies().shift);
-    const next = patchRecordIn(ctx, 'attendance', rec.id, { checkOutAt: input.at, checkOutLat: input.point.lat, checkOutLng: input.point.lng, workMinutes: m.workMinutes, earlyByMin: m.earlyByMin, lateByMin: m.lateByMin, status: m.status, routePoints: points, distanceKm: routeDistanceKm(points) }, 'Checked out');
-    appendAudit(d, actor, { action: 'attendance.check_out', resource: 'attendance', recordId: rec.id, summary: `Checked out at ${input.at.slice(11)} · worked ${Math.floor((m.workMinutes ?? 0) / 60)}h ${(m.workMinutes ?? 0) % 60}m`, correlationId: ctx.correlationId });
+    const next = patchRecordIn(ctx, 'attendance', rec.id, { checkOutAt: input.at, checkOutLat: input.point.lat, checkOutLng: input.point.lng, workMinutes: m.workMinutes, earlyByMin: m.earlyByMin, lateByMin: m.lateByMin, status: m.status, routePoints: points, distanceKm: routeDistanceKm(points) }, AU.checkedOut);
+    appendAudit(d, actor, { action: 'attendance.check_out', resource: 'attendance', recordId: rec.id, summary: AU.checkOutSummary(Math.floor((m.workMinutes ?? 0) / 60), (m.workMinutes ?? 0) % 60, input.at.slice(11)), correlationId: ctx.correlationId });
     return next;
   });
 }
@@ -192,7 +196,7 @@ export interface TeamRow {
 
 /** ATT-03: one row per person in scope for a date. */
 export function teamAttendance(actor: Actor, date: string): TeamRow[] {
-  if (perm(actor, 'attendance').read === 'none') throw new ServiceError('forbidden', 'Your role cannot see attendance.');
+  if (perm(actor, 'attendance').read === 'none') throw new ServiceError('forbidden', E.noAttendanceRead);
   return employeesInScope(actor)
     .filter((e) => !['admin', 'management'].includes(String(e.roleId)) || e.id === actor.staffId)
     .map((employee) => ({
@@ -217,15 +221,15 @@ export function attendanceExceptions(actor: Actor, date: string): ExceptionRow[]
   for (const { employee, record, visits } of rows) {
     if (sunday) continue;
     if (!record || (!record.checkInAt && record.status !== 'leave')) {
-      out.push({ employee, kind: 'no_check_in', detail: 'No check-in recorded' });
+      out.push({ employee, kind: 'no_check_in', detail: EX.no_check_in });
       continue;
     }
     if (record.status === 'leave') continue;
-    if (Number(record.lateByMin) > 0) out.push({ employee, kind: 'late', detail: `Late by ${record.lateByMin} min (in at ${String(record.checkInAt).slice(11)})` });
-    if (Number(record.earlyByMin) > 0) out.push({ employee, kind: 'early_exit', detail: `Left ${record.earlyByMin} min early (out at ${String(record.checkOutAt).slice(11)})` });
-    if (record.mockLocation) out.push({ employee, kind: 'mock_location', detail: 'Mock location detected' });
-    if (date < todayKey() && record.checkInAt && !record.checkOutAt) out.push({ employee, kind: 'not_checked_out', detail: 'Checked in but never checked out' });
-    if (isFieldRole(employee.roleId) && visits === 0 && (date < todayKey() || String(record.checkOutAt ?? ''))) out.push({ employee, kind: 'no_visits', detail: 'Present but no visit logged' });
+    if (Number(record.lateByMin) > 0) out.push({ employee, kind: 'late', detail: EX.late(record.lateByMin, String(record.checkInAt).slice(11)) });
+    if (Number(record.earlyByMin) > 0) out.push({ employee, kind: 'early_exit', detail: EX.early_exit(record.earlyByMin, String(record.checkOutAt).slice(11)) });
+    if (record.mockLocation) out.push({ employee, kind: 'mock_location', detail: EX.mock_location });
+    if (date < todayKey() && record.checkInAt && !record.checkOutAt) out.push({ employee, kind: 'not_checked_out', detail: EX.not_checked_out });
+    if (isFieldRole(employee.roleId) && visits === 0 && (date < todayKey() || String(record.checkOutAt ?? ''))) out.push({ employee, kind: 'no_visits', detail: EX.no_visits });
   }
   return out;
 }
@@ -233,7 +237,7 @@ export function attendanceExceptions(actor: Actor, date: string): ExceptionRow[]
 /** ATT-07 route for a person and date (scope-checked). */
 export function routeFor(actor: Actor, staffId: string, date: string) {
   const employee = employeeOf(staffId);
-  if (!employee || !employeesInScope(actor).some((e) => e.id === staffId)) throw new ServiceError('not_found', 'This person’s route is not available to you.');
+  if (!employee || !employeesInScope(actor).some((e) => e.id === staffId)) throw new ServiceError('not_found', E.routeUnavailable);
   const record = attendanceOn(staffId, date);
   const points = ((record?.routePoints as Point[] | undefined) ?? []).filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   const days = recs('attendance')
@@ -243,6 +247,26 @@ export function routeFor(actor: Actor, staffId: string, date: string) {
     .reverse()
     .slice(0, 14);
   return { employee, record, points, distanceKm: routeDistanceKm(points), days };
+}
+
+export interface RoutePerson {
+  employee: RecordData;
+  checkedIn: boolean;
+  distanceKm: number | null;
+  positions: number;
+}
+
+/** ATT-07 Route Map landing: people whose attendance the actor can see, with the day's tracked distance. */
+export function routePeople(actor: Actor, date: string): RoutePerson[] {
+  if (perm(actor, 'attendance').read === 'none') throw new ServiceError('forbidden', E.noAttendanceRead);
+  return employeesInScope(actor)
+    .filter((e) => isFieldRole(e.roleId) || e.id === actor.staffId)
+    .map((employee) => {
+      const a = attendanceOn(employee.id, date);
+      const positions = ((a?.routePoints as Point[] | undefined) ?? []).length;
+      return { employee, checkedIn: !!a?.checkInAt, distanceKm: a?.distanceKm === undefined || a?.distanceKm === null ? null : Number(a.distanceKm), positions };
+    })
+    .sort((a, b) => String(a.employee.fullName).localeCompare(String(b.employee.fullName)));
 }
 
 // ---------------------------------------------------------------- field visits (ATT-05)
@@ -270,10 +294,10 @@ function logVisitActivity(ctx: HookContext, v: RecordData) {
     'activities',
     {
       activityType: 'visit',
-      subject: `${masterLabel('visitPurpose', v.purpose)} visit — ${v.siteLabel}`,
+      subject: AU.visitSubject(masterLabel('visitPurpose', v.purpose), String(v.siteLabel)),
       at: v.checkOutAt ?? v.checkInAt ?? nowLocal(),
       byId: v.employeeId,
-      notes: [v.remarks, v.nextAction ? `Next: ${v.nextAction}` : ''].filter(Boolean).join('\n'),
+      notes: [v.remarks, v.nextAction ? AU.next(String(v.nextAction)) : ''].filter(Boolean).join('\n'),
       nextFollowUpAt: v.nextActionDate || null,
       parentResource: v.parentResource || (customerId ? 'customers' : 'fieldVisits'),
       parentId: v.parentId || customerId || v.id,
@@ -288,14 +312,14 @@ function markBeat(ctx: HookContext, v: RecordData) {
   const date = String(v.checkInAt ?? v.plannedFor).slice(0, 10);
   (ctx.d.records.beatPlans ?? [])
     .filter((b) => b.employeeId === v.employeeId && b.date === date && b.status !== 'visited' && ((v.customerId && b.customerId === v.customerId) || b.siteLabel === v.siteLabel))
-    .forEach((b) => patchRecordIn(ctx, 'beatPlans', b.id, { status: 'visited' }, `Visited (${v.id})`));
+    .forEach((b) => patchRecordIn(ctx, 'beatPlans', b.id, { status: 'visited' }, L.field.approvals.visited(v.id)));
 }
 
 /** NFR-19 quick log: one completed visit at the current place and time (≤ 3 taps). */
 export function logVisit(actor: Actor, input: VisitInput): RecordData {
-  if (!perm(actor, 'fieldVisits').create) throw new ServiceError('forbidden', 'Your role cannot log visits.');
-  if (!input.siteLabel.trim()) throw new ServiceError('validation', 'Choose a customer or type the site name.', { fieldErrors: { siteLabel: 'Required' } });
-  if (input.source === 'mock_app') throw new ServiceError('validation', 'Mock / fake GPS location detected — visit not logged.');
+  if (!perm(actor, 'fieldVisits').create) throw new ServiceError('forbidden', E.noVisitRole);
+  if (!input.siteLabel.trim()) throw new ServiceError('validation', E.siteRequired, { fieldErrors: { siteLabel: E.required } });
+  if (input.source === 'mock_app') throw new ServiceError('validation', E.mockVisit);
   return commit((d) => {
     const ctx = ctxOf(d, actor);
     const v = insertRecordIn(ctx, 'fieldVisits', {
@@ -325,25 +349,25 @@ export function logVisit(actor: Actor, input: VisitInput): RecordData {
 
 function ownVisit(actor: Actor, id: string) {
   const v = recs('fieldVisits').find((x) => x.id === id);
-  if (!v || v.employeeId !== actor.staffId) throw new ServiceError('not_found', 'Visit not found among your visits.');
+  if (!v || v.employeeId !== actor.staffId) throw new ServiceError('not_found', E.visitNotFound);
   return v;
 }
 
 export function startVisit(actor: Actor, id: string, at: string, point: Point, source: LocationSource) {
   const v = ownVisit(actor, id);
-  if (v.status !== 'planned') throw new ServiceError('invalid_state', 'Only planned visits can be checked in.');
-  if (source === 'mock_app') throw new ServiceError('validation', 'Mock / fake GPS location detected — check-in blocked.');
-  return commit((d) => patchRecordIn(ctxOf(d, actor), 'fieldVisits', id, { status: 'in_progress', checkInAt: at, checkInLat: point.lat, checkInLng: point.lng, locationSource: source }, 'Checked in at site'));
+  if (v.status !== 'planned') throw new ServiceError('invalid_state', E.onlyPlanned);
+  if (source === 'mock_app') throw new ServiceError('validation', E.mockVisitCheckIn);
+  return commit((d) => patchRecordIn(ctxOf(d, actor), 'fieldVisits', id, { status: 'in_progress', checkInAt: at, checkInLat: point.lat, checkInLng: point.lng, locationSource: source }, AU.atSite));
 }
 
 export function completeVisit(actor: Actor, id: string, input: { at: string; remarks: string; nextAction?: string; nextActionDate?: string | null }) {
   const v = ownVisit(actor, id);
-  if (v.status !== 'in_progress') throw new ServiceError('invalid_state', 'Check in at the site first.');
-  if (!input.remarks.trim()) throw new ServiceError('validation', 'Add remarks before checking out.', { fieldErrors: { remarks: 'Required' } });
-  if (input.nextActionDate && input.nextActionDate < todayKey()) throw new ServiceError('validation', 'Next action date cannot be in the past.', { fieldErrors: { nextActionDate: 'Cannot be in the past' } });
+  if (v.status !== 'in_progress') throw new ServiceError('invalid_state', E.checkInFirst);
+  if (!input.remarks.trim()) throw new ServiceError('validation', E.remarksFirst, { fieldErrors: { remarks: E.required } });
+  if (input.nextActionDate && input.nextActionDate < todayKey()) throw new ServiceError('validation', E.nextDatePast, { fieldErrors: { nextActionDate: E.cannotBePast } });
   return commit((d) => {
     const ctx = ctxOf(d, actor);
-    const next = patchRecordIn(ctx, 'fieldVisits', id, { status: 'completed', checkOutAt: input.at, remarks: input.remarks.trim(), nextAction: input.nextAction ?? '', nextActionDate: input.nextActionDate || null }, 'Checked out from site');
+    const next = patchRecordIn(ctx, 'fieldVisits', id, { status: 'completed', checkOutAt: input.at, remarks: input.remarks.trim(), nextAction: input.nextAction ?? '', nextActionDate: input.nextActionDate || null }, AU.leftSite);
     logVisitActivity(ctx, next);
     markBeat(ctx, next);
     return next;
@@ -408,23 +432,24 @@ export function trackedKmFor(staffId: string, date: string): number | null {
 
 /** Accounts: export approved claims as a payroll CSV and mark them exported. */
 export function exportApprovedClaims(actor: Actor, ids: string[]): string {
-  if (!can(actor, 'expense.export')) throw new ServiceError('forbidden', 'Only Accounts can export claims to payroll.');
+  if (!can(actor, 'expense.export')) throw new ServiceError('forbidden', E.onlyAccounts);
   const claims = recs('expenseClaims').filter((c) => ids.includes(c.id) && c.status === 'approved');
-  if (!claims.length) throw new ServiceError('validation', 'Select at least one approved claim.');
+  if (!claims.length) throw new ServiceError('validation', E.selectApproved);
   const at = nowIso();
   commit((d) => {
     const ctx = ctxOf(d, actor);
-    claims.forEach((c) => patchRecordIn(ctx, 'expenseClaims', c.id, { status: 'exported', exportedAt: nowLocal() }, 'Exported to payroll'));
-    appendAudit(d, actor, { action: 'export', resource: 'expenseClaims', summary: `Exported ${claims.length} approved claim(s) to payroll (${at.slice(0, 10)})`, correlationId: ctx.correlationId });
+    claims.forEach((c) => patchRecordIn(ctx, 'expenseClaims', c.id, { status: 'exported', exportedAt: nowLocal() }, AU.exported));
+    appendAudit(d, actor, { action: 'export', resource: 'expenseClaims', summary: AU.exportSummary(claims.length, at.slice(0, 10)), correlationId: ctx.correlationId });
   });
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const header = ['Claim', 'Employee ID', 'Employee', 'Expense date', 'Type', 'Km', 'Amount (INR)', 'Description'];
+  const CSV = L.field.csv;
+  const header = [CSV.claim, CSV.userId, CSV.user, CSV.date, CSV.type, CSV.km, CSV.amount, CSV.description];
   const lines = claims.map((c) => [c.id, c.employeeId, employeeOf(c.employeeId)?.fullName, c.claimDate, masterLabel('expenseType', c.expenseType), c.km ?? '', Number(c.amount).toFixed(2), c.description].map(esc).join(','));
   return [header.map(esc).join(','), ...lines].join('\n');
 }
 
 export function approvedClaims(actor: Actor): RecordData[] {
-  if (!can(actor, 'expense.export')) throw new ServiceError('forbidden', 'Only Accounts can export claims to payroll.');
+  if (!can(actor, 'expense.export')) throw new ServiceError('forbidden', E.onlyAccounts);
   return recs('expenseClaims')
     .filter((c) => c.workspaceId === actor.workspaceId && c.status === 'approved')
     .map((c): RecordData => ({ ...c, employeeName: employeeOf(c.employeeId)?.fullName ?? c.employeeId }))
@@ -466,7 +491,7 @@ export interface AchievementRow {
 
 /** TGT-02: target vs actual for targets the actor can see in a period, with per-person drill-down. */
 export function achievement(actor: Actor, periodType: string, periodStart: string): AchievementRow[] {
-  if (perm(actor, 'targets').read === 'none') throw new ServiceError('forbidden', 'Your role cannot see targets.');
+  if (perm(actor, 'targets').read === 'none') throw new ServiceError('forbidden', L.targets.errors.noTargetsRead);
   const data = achievementData();
   const visible = queryRecords(actor, 'targets', {}).rows.filter((t) => t.periodType === periodType && t.periodStart === periodStart);
   return visible.map((t) => {
@@ -486,9 +511,10 @@ export function achievement(actor: Actor, periodType: string, periodStart: strin
 /** CSV of achievement rows (TGT-05 export for incentive processing). */
 export function achievementCsv(rows: AchievementRow[]): string {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['Target', 'For', 'Division', 'Period', 'Metric', 'Product category', 'Target', 'Actual', 'Achievement %'];
+  const T = L.targets.csv;
+  const head = [T.target, T.for, T.division, T.period, T.metric, T.productType, T.targetValue, T.actual, T.pct];
   const lines = rows.map((r) =>
-    [r.target.name, r.target.scopeType === 'division' ? masterLabel('division', r.target.divisionId) : employeeOf(r.target.employeeId)?.fullName, masterLabel('division', r.target.divisionId), r.label, masterLabel('targetMetric', r.target.metric), r.target.productCategory ? masterLabel('productType', r.target.productCategory) : 'All', r.target.targetValue, r.actual, r.pct]
+    [r.target.name, r.target.scopeType === 'division' ? masterLabel('division', r.target.divisionId) : employeeOf(r.target.employeeId)?.fullName, masterLabel('division', r.target.divisionId), r.label, masterLabel('targetMetric', r.target.metric), r.target.productCategory ? masterLabel('productType', r.target.productCategory) : T.allProducts, r.target.targetValue, r.actual, r.pct]
       .map(esc)
       .join(','),
   );
@@ -534,11 +560,13 @@ export function scorecard(actor: Actor, weekStart: string): ScoreRow[] {
     .sort((a, b) => b.total - a.total);
 }
 
+export type BadgeKey = keyof typeof L.targets.badges;
+
 export interface Leaderboard {
   divisions: string[];
   division: string;
   month: string;
-  ranking: { employee: RecordData; orderValue: number; orders: number; targetPct: number | null; badges: string[] }[];
+  ranking: { employee: RecordData; orderValue: number; orders: number; targetPct: number | null; badges: BadgeKey[] }[];
   dealOfTheMonth: { orderId: string; orderNo: string; customer: string; value: number; owner: RecordData | undefined } | null;
 }
 
@@ -561,18 +589,18 @@ export function leaderboard(actor: Actor, divisionId: string | null, monthStart:
       const target = recs('targets').find((t) => t.scopeType === 'user' && t.employeeId === employee.id && t.periodType === 'month' && t.periodStart === from && t.metric === 'order_value');
       const orderValue = Math.round(mine.reduce((s, o) => s + (Number(o.grandTotal) || 0), 0));
       const targetPct = target ? Math.round((achievementFor(target as never, data, (o) => o === employee.id) / Number(target.targetValue)) * 100) : null;
-      return { employee, orderValue, orders: mine.length, targetPct, badges: [] as string[], acts: acts.filter((a) => a.byId === employee.id).length, visits: visits.filter((v) => v.employeeId === employee.id).length, refs: refs.filter((l) => l.referrerEmployeeId === employee.id).length };
+      return { employee, orderValue, orders: mine.length, targetPct, badges: [] as BadgeKey[], acts: acts.filter((a) => a.byId === employee.id).length, visits: visits.filter((v) => v.employeeId === employee.id).length, refs: refs.filter((l) => l.referrerEmployeeId === employee.id).length };
     })
     .sort((a, b) => b.orderValue - a.orderValue || (b.targetPct ?? 0) - (a.targetPct ?? 0));
-  const award = (key: 'acts' | 'visits' | 'refs', badge: string) => {
+  const award = (key: 'acts' | 'visits' | 'refs', badge: BadgeKey) => {
     const best = [...ranking].sort((a, b) => b[key] - a[key])[0];
     if (best && best[key] > 0) best.badges.push(badge);
   };
-  if (ranking[0]?.orderValue > 0) ranking[0].badges.push('Top performer');
-  ranking.filter((r) => (r.targetPct ?? 0) >= 100).forEach((r) => r.badges.push('Target achieved'));
-  award('acts', 'Activity champion');
-  award('visits', 'Road warrior');
-  award('refs', 'Referral star');
+  if (ranking[0]?.orderValue > 0) ranking[0].badges.push('topPerformer');
+  ranking.filter((r) => (r.targetPct ?? 0) >= 100).forEach((r) => r.badges.push('targetAchieved'));
+  award('acts', 'activityChampion');
+  award('visits', 'roadWarrior');
+  award('refs', 'referralStar');
   const top = [...orders].sort((a, b) => Number(b.grandTotal) - Number(a.grandTotal))[0];
   return {
     divisions,

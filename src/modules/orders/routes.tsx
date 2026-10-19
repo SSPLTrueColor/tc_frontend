@@ -1,18 +1,22 @@
-import { Navigate } from 'react-router-dom';
 import type { AppRoute } from '../types';
-import { ContractPrintPage } from './ContractPrintPage';
+import { ROUTES } from '../../constants/routes';
 import { EditOrderPage } from './EditOrderPage';
 import { NewOrderPage } from './NewOrderPage';
-import { PaymentsDuePage } from './PaymentsDuePage';
+import { OrderProcessingPage } from './OrderProcessingPage';
+import { PaymentSchedulePage } from './PaymentSchedulePage';
+import { SalesContractPdfPage } from './SalesContractPdfPage';
 import './orders.css';
 
-/** Orders pages beyond the generic resource lists (/salesOrders, /paymentMilestones, /dispatches, /salesContracts). */
+/**
+ * Sales Orders & Contracts pages beyond the generic resource screens. The Sales Orders list and records
+ * stay the generic resource pages at /sales-orders (one list experience); /payment-schedule is served by
+ * the Payment Schedule page (milestone records keep /payment-schedule/:id). Old /orders… URLs redirect
+ * centrally (LEGACY_REDIRECTS).
+ */
 export const routes: AppRoute[] = [
-  { path: '/orders', element: <Navigate to="/salesOrders" replace /> },
-  { path: '/orders/new', element: <NewOrderPage /> },
-  { path: '/salesOrders/new', element: <NewOrderPage /> },
-  { path: '/orders/payments', element: <PaymentsDuePage /> },
-  { path: '/orders/:id/edit', element: <EditOrderPage /> },
-  { path: '/salesOrders/:recordId/edit', element: <EditOrderPage /> },
-  { path: '/orders/:id/contract/print', element: <ContractPrintPage /> },
+  { path: ROUTES.salesOrderNew, element: <NewOrderPage /> },
+  { path: ROUTES.salesOrderEdit, element: <EditOrderPage /> },
+  { path: ROUTES.salesContractPdf, element: <SalesContractPdfPage /> },
+  { path: ROUTES.paymentSchedule, element: <PaymentSchedulePage /> },
+  { path: ROUTES.orderProcessing, element: <OrderProcessingPage /> },
 ];
