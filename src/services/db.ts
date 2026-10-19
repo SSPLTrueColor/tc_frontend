@@ -24,6 +24,7 @@ export const defaultSettings = (): PersonalSettings => ({
   pins: [],
   favorites: [],
   palette: 'violet',
+  formLayout: 'simple',
   customPalettes: [],
   recents: [],
   defaultViews: {},

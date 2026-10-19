@@ -38,13 +38,15 @@ function PaletteMock({ p, large }: { p: Palette; large?: boolean }) {
  * Theme changer (shared): light / dark / system mode + colour palettes. Presets are fixed; users can
  * create, edit and delete their own palettes (saved per user). Used in the top bar popover and Settings.
  */
-export function ThemePicker() {
+export function ThemePicker({ onEditPalette }: { onEditPalette?: (p: Palette) => void } = {}) {
   useRevision();
   const actor = useActor();
   const toast = useToast();
   const s = getSettings(actor.user.id);
   const current = findPalette(s.palette, s.customPalettes);
-  const [editing, setEditing] = useState<Palette | null>(null);
+  const [localEditing, setLocalEditing] = useState<Palette | null>(null);
+  // Inside a popover the editor must be opened by the owner (a dialog click would close the popover first).
+  const setEditing = (p: Palette) => (onEditPalette ? onEditPalette(p) : setLocalEditing(p));
 
   const card = (p: Palette) => (
     <li key={p.id} className="pal-item">
@@ -108,7 +110,7 @@ export function ThemePicker() {
           </li>
         </ul>
       </div>
-      {editing && <PaletteEditor initial={editing} onClose={() => setEditing(null)} />}
+      {localEditing && <PaletteEditor initial={localEditing} onClose={() => setLocalEditing(null)} />}
     </div>
   );
 }
@@ -152,7 +154,7 @@ function ColorField({ id, label, value, onChange }: { id: string; label: string;
 }
 
 /** Create / edit a custom palette with a live preview. */
-function PaletteEditor({ initial, onClose }: { initial: Palette; onClose: () => void }) {
+export function PaletteEditor({ initial, onClose }: { initial: Palette; onClose: () => void }) {
   const actor = useActor();
   const toast = useToast();
   const [p, setP] = useState<Palette>(initial);
