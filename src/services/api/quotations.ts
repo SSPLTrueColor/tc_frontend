@@ -5,8 +5,10 @@ import {
   acceptQuote,
   type AcceptInput,
   backToDraft,
+  decideQuoteApproval,
   editorData,
   getQuote,
+  pendingQuoteApprovals,
   productOptions,
   quotableOpportunities,
   type QuoteInput,
@@ -30,6 +32,10 @@ export const quotationsApi = {
   send: (actor: Actor, id: string, version: number, input: SendInput) => call(() => sendQuote(actor, id, version, input)),
   accept: (actor: Actor, id: string, version: number, input: AcceptInput) => call(() => acceptQuote(actor, id, version, input)),
   reject: (actor: Actor, id: string, version: number, reason: string, note: string) => call(() => rejectQuote(actor, id, version, reason, note)),
-  revise: (actor: Actor, id: string, version: number, note: string) => call(() => reviseQuote(actor, id, version, note)),
+  /** Create Version: new version R(n+1) as a draft (QUO-09). */
+  createVersion: (actor: Actor, id: string, version: number, note: string) => call(() => reviseQuote(actor, id, version, note)),
+  /** Pending Approvals page (QUO-06 / QUO-14). */
+  pendingApprovals: (actor: Actor) => call(() => pendingQuoteApprovals(actor)),
+  decideApproval: (actor: Actor, approvalId: string, decision: 'approved' | 'rejected', note: string, version: number) => call(() => decideQuoteApproval(actor, approvalId, decision, note, version)),
   sweep: () => call(() => runQuotationSweep(), { fast: true }),
 };

@@ -1,4 +1,4 @@
-/** Dispatch board (FR-079, SRV-05): engineer availability, workload, territory grid and suggested assignment. */
+/** Engineer Calendar & Map (FR-079, SRV-05): engineer availability, workload, territory grid and suggested assignment. */
 import { addDays, todayKey } from '../../lib/dates';
 import type { RecordData } from '../../metadata/types';
 import { type Actor, canReadRecord } from '../authz';
@@ -7,6 +7,9 @@ import { byId } from '../lookups';
 import { getResource } from '../registry';
 import { queryRecords } from '../runtime';
 import { OPEN_STATUSES } from './tickets';
+import { L } from '../../constants/labels';
+
+const R = L.service.assign.reasons;
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 const arr = (v: unknown) => (Array.isArray(v) ? (v as string[]) : []);
@@ -77,25 +80,25 @@ export function suggestEngineers(actor: Actor, ticket: RecordData): Suggestion[]
       let blocked: string | undefined;
       if (e.divisions.includes(s(ticket.divisionId))) {
         score += 4;
-        reasons.push('Skilled for this division');
-      } else blocked = 'Not trained for this division';
+        reasons.push(R.skilled);
+      } else blocked = R.notTrained;
       if (territory && e.territories.includes(territory)) {
         score += 3;
-        reasons.push('Covers the customer’s territory');
+        reasons.push(R.territory);
       }
       if (model) {
         const done = (db.tickets ?? []).filter((t) => t.assigneeId === e.id && t.status === 'closed' && s(byId('machines', t.machineId, db)?.model) === model).length;
         if (done) {
           score += Math.min(2, done);
-          reasons.push(`Fixed ${done} ${model} job${done > 1 ? 's' : ''}`);
+          reasons.push(R.fixed(done, model));
         }
       }
       score -= e.open;
-      reasons.push(`${e.open} open job${e.open === 1 ? '' : 's'}`);
-      if (e.onLeave) blocked = 'On leave today';
+      reasons.push(R.open(e.open));
+      if (e.onLeave) blocked = R.onLeave;
       else if (e.checkedIn) {
         score += 1;
-        reasons.push('Checked in today');
+        reasons.push(R.checkedIn);
       }
       return { engineer: e, score, reasons, blocked };
     })

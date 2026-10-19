@@ -5,15 +5,19 @@ import { recordPeekPath } from '../../lib/routes';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { useActor } from '../../services/hooks';
 import { byId } from '../../services/lookups';
-import { followUpsFor, safeTitle, type FollowUpItem } from '../../services/leads/rules';
+import { leadsQueries } from '../../services/api/leads';
+import { safeTitle, type FollowUpItem } from '../../services/leads/rules';
 import { Button } from '../../components/primitives/Button';
 import { EmptyState, ErrorState, Skeleton, Tabs } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { L } from '../../constants/labels';
+
+const T = L.leads.pages.followUps;
 
 type Bucket = 'overdue' | 'today' | 'upcoming';
-const BUCKET_LABEL: Record<Bucket, string> = { overdue: 'Overdue', today: 'Today', upcoming: 'Next 7 days' };
+const BUCKET_LABEL: Record<Bucket, string> = T.buckets;
 
 /** LEAD-09: every open follow-up the user can see (leads, opportunities, customers …), overdue first. */
 export function FollowUpsPage() {
@@ -22,7 +26,7 @@ export function FollowUpsPage() {
   const [type, setType] = useState('');
   const [q, setQ] = useState('');
   const [logFor, setLogFor] = useState<FollowUpItem | null>(null);
-  const query = useServiceQuery(() => followUpsFor(actor, 7), [actor.user.id]);
+  const query = useServiceQuery(() => leadsQueries.followUps(actor, 7), [actor.user.id]);
   const all = query.data ?? [];
   const types = [...new Map(all.map((i) => [i.resource, i.resourceLabel])).entries()];
   const rows = all.filter((i) => i.bucket === bucket && (!type || i.resource === type) && (!q || `${i.record.id} ${i.title}`.toLowerCase().includes(q.toLowerCase())));
@@ -30,16 +34,16 @@ export function FollowUpsPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Follow-ups" description="Open follow-ups on records you can see, from overdue to the next 7 days. Logging an activity sets the next follow-up date." />
-      <Tabs<Bucket> label="Follow-up period" value={bucket} onChange={setBucket} tabs={(['overdue', 'today', 'upcoming'] as Bucket[]).map((b) => ({ id: b, label: BUCKET_LABEL[b], count: query.data ? counts(b) : undefined }))} />
+      <PageHeader title={L.nav.pages.followUps.title} description={T.description} />
+      <Tabs<Bucket> label={T.periodLabel} value={bucket} onChange={setBucket} tabs={(['overdue', 'today', 'upcoming'] as Bucket[]).map((b) => ({ id: b, label: BUCKET_LABEL[b], count: query.data ? counts(b) : undefined }))} />
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder="Search record or company" aria-label="Search follow-ups" value={q} onChange={(e) => setQ(e.target.value)} />
-        <SelectMenu label="Record type" value={type} options={[{ value: '', label: 'All record types' }, ...types.map(([value, label]) => ({ value, label }))]} onChange={setType} />
-        <span className="toolbar-count muted">{rows.length} follow-ups</span>
+        <input type="search" className="input input-compact" placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SelectMenu label={T.recordType} value={type} options={[{ value: '', label: T.allRecordTypes }, ...types.map(([value, label]) => ({ value, label }))]} onChange={setType} />
+        <span className="toolbar-count muted">{T.count(rows.length)}</span>
       </div>
       <div className="content-surface">
         {query.error ? (
-          <ErrorState title="Could not load follow-ups" onRetry={query.retry}>
+          <ErrorState title={T.loadError} onRetry={query.retry}>
             {query.error}
           </ErrorState>
         ) : !query.data ? (
@@ -63,15 +67,15 @@ export function FollowUpsPage() {
                     </span>
                   </Link>
                   <Button icon="message" onClick={() => setLogFor(i)}>
-                    Log activity
+                    {L.leads.actions.logFollowUp}
                   </Button>
                 </li>
               );
             })}
           </ul>
         ) : (
-          <EmptyState icon="calendar-clock" title={bucket === 'overdue' ? 'Nothing overdue' : bucket === 'today' ? 'No follow-ups today' : 'Nothing planned for the next 7 days'}>
-            {bucket === 'overdue' ? 'Every follow-up is on time.' : 'Follow-ups appear here when you set a next follow-up date.'}
+          <EmptyState icon="calendar-clock" title={bucket === 'overdue' ? T.emptyOverdue : bucket === 'today' ? T.emptyToday : T.emptyUpcoming}>
+            {bucket === 'overdue' ? T.emptyOverdueBody : T.emptyBody}
           </EmptyState>
         )}
       </div>

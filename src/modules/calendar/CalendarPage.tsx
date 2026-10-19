@@ -98,7 +98,7 @@ export function CalendarPage() {
   const [detail, setDetail] = useState<{ item: CalItem; start: string; end: string } | null>(null);
   const anchor = useRef<HTMLElement | null>(null) as MutableRefObject<HTMLElement | null>;
 
-  const items = query.data ?? [];
+  const items = useMemo(() => query.data ?? [], [query.data]);
   const people = useMemo(() => {
     const ids = [...new Set(items.map((i) => i.assigneeId).filter(Boolean))];
     return ids.map((id) => ({ value: id, label: recordTitle('employees', id, actor) })).sort((a, b) => a.label.localeCompare(b.label));

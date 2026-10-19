@@ -1,4 +1,5 @@
 /** Cell / KPI value formatting shared by the report viewer and CSV export. */
+import { L } from '../../constants/labels';
 import { formatDate } from '../../lib/dates';
 import { formatMoney, formatNumber } from '../../lib/format';
 import { masterLabel } from '../registry';
@@ -17,9 +18,9 @@ export function formatCell(col: ReportColumn, v: unknown): string {
     case 'pct':
       return `${round1(Number(v) * 100)}%`;
     case 'hours':
-      return `${round1(Number(v))} h`;
+      return L.reports.common.hours(round1(Number(v)));
     case 'days':
-      return `${round1(Number(v))} days`;
+      return L.reports.common.days(round1(Number(v)));
     case 'date':
       return /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? formatDate(String(v).slice(0, 10)) : String(v);
     case 'status':

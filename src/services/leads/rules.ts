@@ -18,7 +18,11 @@ import { activeMasterValues, allResources, getResource, masterLabel } from '../r
 import type { HookContext } from '../resourceHooks';
 import { createRecord, insertRecordIn, queryRecords, recordTitle } from '../runtime';
 import { ServiceError, type Db } from '../types';
-import { isFollowUpDue, isNotAttended } from '../../domain/modules/leads/computed';
+import { isFollowUpDue, isNotAttended, scoreLead } from '../../domain/modules/leads/computed';
+import { L } from '../../constants/labels';
+
+const E = L.leads.errors;
+const M = L.leads.messages;
 
 export const OPEN_STATUSES = ['new', 'contacted', 'nurture'];
 const SALES_ROLES = ['sales_exec', 'sales_manager'];
@@ -32,7 +36,7 @@ export function safeTitle(resKey: string, id: unknown, actor?: Actor): string {
   return recordTitle(resKey, id, actor);
 }
 
-export const leadLabel = (lead: RecordData, actor?: Actor) => `${lead.id} · ${safeTitle('customers', lead.customerId, actor) || 'Unknown company'}`;
+export const leadLabel = (lead: RecordData, actor?: Actor) => `${lead.id} · ${safeTitle('customers', lead.customerId, actor) || E.unknownCustomer}`;
 
 // ---------------------------------------------------------------- assignment (LEAD-07, BR-09)
 
@@ -42,9 +46,9 @@ const employeesIn = (d: Db) => d.records.employees ?? [];
 export function ownerDivisionError(d: Db, ownerId: unknown, divisionId: unknown): string | undefined {
   if (!ownerId || !divisionId) return undefined;
   const e = employeesIn(d).find((x) => x.id === ownerId);
-  if (!e) return 'Selected owner no longer exists';
-  if (e.status === 'inactive') return `${e.fullName} is inactive`;
-  if (!((e.divisionIds as string[]) ?? []).includes(String(divisionId))) return `${e.fullName} does not work in the ${masterLabel('division', divisionId)} division`;
+  if (!e) return E.ownerMissing;
+  if (e.status === 'inactive') return E.ownerInactive(String(e.fullName));
+  if (!((e.divisionIds as string[]) ?? []).includes(String(divisionId))) return E.ownerWrongDivision(String(e.fullName), masterLabel('division', divisionId));
   return undefined;
 }
 
@@ -68,10 +72,10 @@ export function autoAssign(d: Db, lead: Record<string, unknown>): { ownerId: str
     const idx = d.records.assignmentRules.findIndex((r) => r.id === rule.id);
     // Rotation pointer is system bookkeeping (not audited as a user change).
     d.records.assignmentRules[idx] = { ...rule, rrPointer: (i + 1) % team.length };
-    return { ownerId: team[i], via: `rule ${rule.id} (${rule.name})` };
+    return { ownerId: team[i], via: M.viaRule(rule.id, String(rule.name)) };
   }
   const head = employeesIn(d).find((e) => e.roleId === 'division_head' && e.status !== 'inactive' && ((e.divisionIds as string[]) ?? []).includes(String(lead.divisionId)));
-  return head ? { ownerId: head.id, via: 'division head queue (no matching rule)' } : { ownerId: null, via: 'none' };
+  return head ? { ownerId: head.id, via: M.viaHead } : { ownerId: null, via: 'none' };
 }
 
 /** Owner defaulting on create: sales users own what they enter; everyone else (and imports/API) uses the rules. */
@@ -83,7 +87,7 @@ export function resolveOwner(ctx: HookContext, c: Record<string, unknown>) {
   }
   const { ownerId, via } = autoAssign(ctx.d, c);
   c.ownerId = ownerId ?? ctx.actor.staffId;
-  c.__assignedVia = ownerId ? via : 'creator (no rule or division head)';
+  c.__assignedVia = ownerId ? via : M.viaCreator;
 }
 
 // ---------------------------------------------------------------- duplicates (LEAD-03, BR-10, CUS-06)
@@ -156,14 +160,14 @@ export interface NewContactInput {
 export function validateNewParty(company: NewCompanyInput | null, contact: NewContactInput | null): Record<string, string> {
   const e: Record<string, string> = {};
   if (company) {
-    if (!company.name.trim()) e['company.name'] = 'Company name is required';
-    if (!company.city.trim()) e['company.city'] = 'City is required';
-    if (!company.state) e['company.state'] = 'State is required';
-    if (!company.territoryId) e['company.territoryId'] = 'Territory is required';
+    if (!company.name.trim()) e['company.name'] = E.companyName;
+    if (!company.city.trim()) e['company.city'] = E.city;
+    if (!company.state) e['company.state'] = E.state;
+    if (!company.territoryId) e['company.territoryId'] = E.territory;
   }
   if (contact) {
-    if (!contact.name.trim()) e['contact.name'] = 'Contact name is required';
-    if (!contact.mobile?.trim() && !contact.email?.trim()) e['contact.mobile'] = 'Give a mobile number or an email (BR-03)';
+    if (!contact.name.trim()) e['contact.name'] = E.contactName;
+    if (!contact.mobile?.trim() && !contact.email?.trim()) e['contact.mobile'] = E.contactReach;
     if (contact.mobile?.trim() && validateMobile(contact.mobile)) e['contact.mobile'] = validateMobile(contact.mobile)!;
     if (contact.email?.trim() && validateEmail(contact.email)) e['contact.email'] = validateEmail(contact.email)!;
   }
@@ -176,11 +180,11 @@ export function validateNewParty(company: NewCompanyInput | null, contact: NewCo
  * validation, audit). Lead values are pre-validated so a failing lead never leaves an orphan company.
  */
 export function createLeadWithParty(actor: Actor, lead: Record<string, unknown>, company: NewCompanyInput | null, contact: NewContactInput | null) {
-  if (!perm(actor, 'leads').create) throw new ServiceError('forbidden', 'Your role cannot create leads.');
+  if (!perm(actor, 'leads').create) throw new ServiceError('forbidden', E.noCreate);
   const partyErrors = validateNewParty(company, contact);
-  if (Object.keys(partyErrors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: partyErrors });
-  if ((company && !hasResource('customers')) || (contact && !hasResource('contacts'))) throw new ServiceError('invalid_state', 'Companies and contacts cannot be created here until the Customers module is available. Pick an existing company.');
-  if (company && !perm(actor, 'customers').create) throw new ServiceError('forbidden', 'Your role cannot create companies. Pick an existing company or ask a coordinator.');
+  if (Object.keys(partyErrors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: partyErrors });
+  if ((company && !hasResource('customers')) || (contact && !hasResource('contacts'))) throw new ServiceError('invalid_state', E.customersMissing);
+  if (company && !perm(actor, 'customers').create) throw new ServiceError('forbidden', E.noCustomerCreate);
   let customerId = lead.customerId as string | undefined;
   let contactId = lead.contactId as string | undefined;
   if (company || contact) {
@@ -204,7 +208,7 @@ export function createLeadWithParty(actor: Actor, lead: Record<string, unknown>,
           { validate: false },
         );
         customerId = c.id;
-        if (hasResource('addresses')) insertRecordIn(ctx, 'addresses', { customerId, addressType: 'billing', label: 'Head office', line1: company.city.trim(), city: company.city.trim(), state: company.state, pincode: '' }, { validate: false });
+        if (hasResource('addresses')) insertRecordIn(ctx, 'addresses', { customerId, addressType: 'billing', label: M.newCustomerAddress, line1: company.city.trim(), city: company.city.trim(), state: company.state, pincode: '' }, { validate: false });
       }
       if (contact) {
         const c = insertRecordIn(
@@ -237,9 +241,9 @@ function loadForChange(d: Db, actor: Actor, id: string, version: number) {
   const res = getResource('leads');
   const idx = (d.records.leads ?? []).findIndex((r) => r.id === id);
   const lead = d.records.leads?.[idx];
-  if (!lead || !canReadRecord(actor, res, lead)) throw new ServiceError('not_found', `Lead ${id} was not found or you do not have access.`);
-  if (!canUpdateRecord(actor, res, lead)) throw new ServiceError('forbidden', 'Your role cannot change this lead.');
-  if (lead.version !== version) throw new ServiceError('version_conflict', `Lead ${id} changed since you opened it. Reload and try again.`);
+  if (!lead || !canReadRecord(actor, res, lead)) throw new ServiceError('not_found', E.notFound(id));
+  if (!canUpdateRecord(actor, res, lead)) throw new ServiceError('forbidden', E.noUpdate);
+  if (lead.version !== version) throw new ServiceError('version_conflict', E.conflict(id));
   return { idx, lead };
 }
 
@@ -250,8 +254,8 @@ function writeStatus(d: Db, actor: Actor, idx: number, lead: RecordData, to: str
     action: 'transition',
     resource: 'leads',
     recordId: lead.id,
-    summary: `${action}: ${masterLabel('leadStatus', lead.status)} → ${masterLabel('leadStatus', to)}`,
-    changes: [{ field: 'status', label: 'Status', before: masterLabel('leadStatus', lead.status), after: masterLabel('leadStatus', to) }],
+    summary: M.statusAudit(action, masterLabel('leadStatus', lead.status), masterLabel('leadStatus', to)),
+    changes: [{ field: 'status', label: M.statusLabel, before: masterLabel('leadStatus', lead.status), after: masterLabel('leadStatus', to) }],
     correlationId,
   });
   emitEvent(d, actor, { eventType: 'leads.status_changed', resourceId: 'res_leads', recordId: lead.id, correlationId, payload: { from: lead.status, to } });
@@ -271,25 +275,25 @@ export interface QualifyInput {
 
 export function validateQualify(q: QualifyInput): Record<string, string> {
   const e: Record<string, string> = {};
-  if (!q.requirement?.trim()) e.requirement = 'Describe the customer’s need';
-  if (!(Number(q.budget) > 0)) e.budget = 'Enter the budget';
-  if (!q.decisionMaker?.trim()) e.decisionMaker = 'Name the decision maker';
-  if (!q.timeline) e.timeline = 'Pick the purchase timeline';
-  if (!q.opportunityName?.trim()) e.opportunityName = 'Name the opportunity';
-  if (!(Number(q.value) > 0)) e.value = 'Enter the expected value';
-  if (!q.expectedCloseDate) e.expectedCloseDate = 'Pick the expected close date';
-  else if (q.expectedCloseDate < todayKey()) e.expectedCloseDate = 'Date cannot be in the past';
+  if (!q.requirement?.trim()) e.requirement = E.requirement;
+  if (!(Number(q.budget) > 0)) e.budget = E.budget;
+  if (!q.decisionMaker?.trim()) e.decisionMaker = E.decisionMaker;
+  if (!q.timeline) e.timeline = E.timeline;
+  if (!q.opportunityName?.trim()) e.opportunityName = E.opportunityName;
+  if (!(Number(q.value) > 0)) e.value = E.value;
+  if (!q.expectedCloseDate) e.expectedCloseDate = E.expectedCloseDate;
+  else if (q.expectedCloseDate < todayKey()) e.expectedCloseDate = E.pastDate;
   return e;
 }
 
-/** LEAD-10 / §3.1: qualify → opportunity with the lead's data; notify the referrer (LEAD-12, BR-37). */
+/** LEAD-10 / §3.1: Convert to Opportunity with the lead's data; notify the referrer (LEAD-12, BR-37). */
 export function qualifyLead(actor: Actor, id: string, version: number, q: QualifyInput): { leadId: string; opportunityId: string } {
   const errors = validateQualify(q);
-  if (Object.keys(errors).length) throw new ServiceError('validation', 'Complete the qualification (BANT) before converting.', { fieldErrors: errors });
-  if (!hasResource('opportunities')) throw new ServiceError('invalid_state', 'The Opportunities module is not available yet, so the lead cannot be converted.');
+  if (Object.keys(errors).length) throw new ServiceError('validation', E.completeBant, { fieldErrors: errors });
+  if (!hasResource('opportunities')) throw new ServiceError('invalid_state', E.noOpportunities);
   return commit((d) => {
     const { idx, lead } = loadForChange(d, actor, id, version);
-    if (!['new', 'contacted'].includes(String(lead.status))) throw new ServiceError('invalid_state', `Only new or contacted leads can be qualified (this one is ${masterLabel('leadStatus', lead.status)}).`);
+    if (!['new', 'contacted'].includes(String(lead.status))) throw new ServiceError('invalid_state', E.onlyOpenConvert(masterLabel('leadStatus', lead.status)));
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const probability = getPolicies().stageProbability.needs_assessment ?? 10;
     const opp = insertRecordIn(
@@ -320,43 +324,43 @@ export function qualifyLead(actor: Actor, id: string, version: number, q: Qualif
       idx,
       lead,
       'qualified',
-      { requirement: q.requirement.trim(), budget: Number(q.budget), decisionMaker: q.decisionMaker.trim(), timeline: q.timeline, currentSetup: q.currentSetup?.trim() || lead.currentSetup, opportunityId: opp.id, nextFollowUpAt: null, statusNote: `Converted to ${opp.id}` },
-      'Qualified',
+      { requirement: q.requirement.trim(), budget: Number(q.budget), decisionMaker: q.decisionMaker.trim(), timeline: q.timeline, currentSetup: q.currentSetup?.trim() || lead.currentSetup, opportunityId: opp.id, nextFollowUpAt: null, statusNote: M.convertedNote(opp.id) },
+      L.leads.actions.convertToOpportunity,
       ctx.correlationId,
     );
     const label = leadLabel(lead, actor);
     // Referrer recognition (LEAD-12): employees/engineers in-app; customers/dealers by WhatsApp (simulated).
     const refEmp = lead.referrerEmployeeId ? userOfStaff(lead.referrerEmployeeId) : undefined;
-    if (refEmp && refEmp.id !== actor.user.id) notify(d, { userId: refEmp.id, workspaceId: actor.workspaceId, kind: 'info', title: `Your referral ${label} was qualified as ${opp.id} — thank you!`, link: { resource: 'leads', recordId: lead.id } });
+    if (refEmp && refEmp.id !== actor.user.id) notify(d, { userId: refEmp.id, workspaceId: actor.workspaceId, kind: 'info', title: M.referrerThanks(label, opp.id), link: { resource: 'leads', recordId: lead.id } });
     if (lead.referrerCustomerId) {
       const refCust = byId('customers', lead.referrerCustomerId, d.records);
-      queueMessage(ctx, { channel: 'whatsapp', to: String(refCust?.name ?? lead.referrerCustomerId), body: `Thank you for referring ${safeTitle('customers', lead.customerId)} to True Colors. Our team is now working on their requirement.`, related: { resource: 'leads', recordId: lead.id } });
+      queueMessage(ctx, { channel: 'whatsapp', to: String(refCust?.name ?? lead.referrerCustomerId), body: M.referrerWhatsApp(safeTitle('customers', lead.customerId)), related: { resource: 'leads', recordId: lead.id } });
     }
     const owner = userOfStaff(lead.ownerId);
-    if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: `${label} was qualified into ${opp.id}`, link: { resource: 'opportunities', recordId: opp.id } });
+    if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: M.ownerConverted(label, opp.id), link: { resource: 'opportunities', recordId: opp.id } });
     return { leadId: lead.id, opportunityId: opp.id };
   });
 }
 
 /** LEAD-11 nurture: not ready yet — re-contact on a future date. */
 export function nurtureLead(actor: Actor, id: string, version: number, until: string, note: string) {
-  if (!until) throw new ServiceError('validation', 'Pick the re-contact date.', { fieldErrors: { until: 'Required' } });
-  if (until <= todayKey()) throw new ServiceError('validation', 'The re-contact date must be in the future.', { fieldErrors: { until: 'Must be a future date' } });
+  if (!until) throw new ServiceError('validation', E.recontactRequired, { fieldErrors: { until: E.required } });
+  if (until <= todayKey()) throw new ServiceError('validation', E.recontactFuture, { fieldErrors: { until: E.futureDate } });
   return commit((d) => {
     const { idx, lead } = loadForChange(d, actor, id, version);
-    if (!['new', 'contacted'].includes(String(lead.status))) throw new ServiceError('invalid_state', 'Only new or contacted leads can be moved to Nurture.');
-    return writeStatus(d, actor, idx, lead, 'nurture', { nurtureUntil: until, nextFollowUpAt: until, statusNote: note.trim() || undefined }, 'Nurture', uid('cor'));
+    if (!['new', 'contacted'].includes(String(lead.status))) throw new ServiceError('invalid_state', E.onlyOpenNurture);
+    return writeStatus(d, actor, idx, lead, 'nurture', { nurtureUntil: until, nextFollowUpAt: until, statusNote: note.trim() || undefined }, L.leads.actions.nurture, uid('cor'));
   });
 }
 
 /** LEAD-11 disqualify: reason from the master list is mandatory. */
 export function disqualifyLead(actor: Actor, id: string, version: number, reason: string, note: string) {
-  if (!reason) throw new ServiceError('validation', 'Pick a reason.', { fieldErrors: { reason: 'Required' } });
-  if (reason === 'other' && note.trim().length < 5) throw new ServiceError('validation', 'Explain the reason (at least 5 characters).', { fieldErrors: { note: 'Required for “Other”' } });
+  if (!reason) throw new ServiceError('validation', E.reasonRequired, { fieldErrors: { reason: E.required } });
+  if (reason === 'other' && note.trim().length < 5) throw new ServiceError('validation', E.reasonOther, { fieldErrors: { note: E.reasonOtherField } });
   return commit((d) => {
     const { idx, lead } = loadForChange(d, actor, id, version);
-    if (!OPEN_STATUSES.includes(String(lead.status))) throw new ServiceError('invalid_state', 'This lead is already closed.');
-    return writeStatus(d, actor, idx, lead, 'disqualified', { disqualifyReason: reason, nextFollowUpAt: null, nurtureUntil: null, statusNote: note.trim() || undefined }, 'Disqualify', uid('cor'));
+    if (!OPEN_STATUSES.includes(String(lead.status))) throw new ServiceError('invalid_state', E.alreadyClosed);
+    return writeStatus(d, actor, idx, lead, 'disqualified', { disqualifyReason: reason, nextFollowUpAt: null, nurtureUntil: null, statusNote: note.trim() || undefined }, L.leads.actions.disqualify, uid('cor'));
   });
 }
 
@@ -384,9 +388,9 @@ export function sweepLeads(actor: Actor): { escalated: number; reminded: number 
       if (isNotAttended(l, hours) && !l.escalatedAt) {
         const owner = userOfStaff(l.ownerId);
         const mgr = userOfStaff(managerOf(l.ownerId, d.records));
-        if (mgr) notify(d, { userId: mgr.id, workspaceId: l.workspaceId, kind: 'escalation', title: `Not attended: ${label} has had no contact for over ${hours} h (owner ${owner?.name ?? 'unassigned'})`, link: { resource: 'leads', recordId: l.id } });
-        if (owner) notify(d, { userId: owner.id, workspaceId: l.workspaceId, kind: 'escalation', title: `First-contact SLA missed on ${label} — escalated to your manager`, link: { resource: 'leads', recordId: l.id } });
-        appendAudit(d, actor, { action: 'sla.escalated', actorType: 'system', resource: 'leads', recordId: l.id, summary: `First-contact SLA (${hours} h) missed; escalated to ${mgr?.name ?? 'no manager'}`, correlationId: ctx.correlationId });
+        if (mgr) notify(d, { userId: mgr.id, workspaceId: l.workspaceId, kind: 'escalation', title: M.slaManager(label, hours, owner?.name ?? M.unassigned), link: { resource: 'leads', recordId: l.id } });
+        if (owner) notify(d, { userId: owner.id, workspaceId: l.workspaceId, kind: 'escalation', title: M.slaOwner(label), link: { resource: 'leads', recordId: l.id } });
+        appendAudit(d, actor, { action: 'sla.escalated', actorType: 'system', resource: 'leads', recordId: l.id, summary: M.slaAudit(hours, mgr?.name ?? M.noManager), correlationId: ctx.correlationId });
         next = { ...next, escalatedAt: at };
         escalated++;
       }
@@ -394,9 +398,9 @@ export function sweepLeads(actor: Actor): { escalated: number; reminded: number 
         const owner = userOfStaff(l.ownerId);
         if (owner) {
           const overdue = String(l.nextFollowUpAt) < today;
-          const what = l.status === 'nurture' ? 'Re-contact (nurture)' : overdue ? 'Overdue follow-up' : 'Follow-up due today';
-          notify(d, { userId: owner.id, workspaceId: l.workspaceId, kind: 'reminder', title: `${what}: ${label}`, link: { resource: 'leads', recordId: l.id } });
-          queueMessage(ctx, { channel: 'push', to: owner.name, body: `${what}: ${label}`, related: { resource: 'leads', recordId: l.id } });
+          const what = l.status === 'nurture' ? M.reminderNurture : overdue ? M.reminderOverdue : M.reminderToday;
+          notify(d, { userId: owner.id, workspaceId: l.workspaceId, kind: 'reminder', title: M.reminder(what, label), link: { resource: 'leads', recordId: l.id } });
+          queueMessage(ctx, { channel: 'push', to: owner.name, body: M.reminder(what, label), related: { resource: 'leads', recordId: l.id } });
         }
         next = { ...next, reminderSentOn: today };
         reminded++;
@@ -405,6 +409,66 @@ export function sweepLeads(actor: Actor): { escalated: number; reminded: number 
     });
   });
   return { escalated, reminded };
+}
+
+// ---------------------------------------------------------------- Not Attended Leads dashboard (LEAD-08, BR-08)
+
+export interface NotAttendedRow {
+  lead: RecordData;
+  customer: string;
+  contact: string;
+  divisionId: string;
+  sourceId: string;
+  ownerId: string | null;
+  ownerName: string;
+  /** Manager the breach is escalated to (owner's reporting manager). */
+  managerName: string;
+  escalatedAt: string | null;
+  createdAt: string;
+  /** Whole hours since the lead was created. */
+  ageHours: number;
+  /** Whole hours past the first-contact SLA. */
+  overHours: number;
+  score: number;
+}
+
+export interface NotAttendedResult {
+  rows: NotAttendedRow[];
+  slaHours: number;
+}
+
+/**
+ * Open leads the actor can see that are past the first-contact SLA with no contact logged.
+ * Row scope follows the leads permission (own / team / division / all), so each role sees its own queue.
+ */
+export function notAttendedLeads(actor: Actor): NotAttendedResult {
+  const hours = getPolicies().leadFirstContactHours;
+  if (perm(actor, 'leads').read === 'none') throw new ServiceError('forbidden', E.noRead);
+  const now = Date.parse(nowIso());
+  const name = (staffId: unknown) => (staffId ? String(byId('employees', staffId)?.fullName ?? '') : '');
+  const rows = queryRecords(actor, 'leads', {})
+    .rows.filter((l) => isNotAttended(l, hours))
+    .map((l): NotAttendedRow => {
+      const ageHours = Math.max(0, Math.floor((now - Date.parse(String(l.createdAt))) / 3_600_000));
+      const mgr = l.ownerId ? managerOf(l.ownerId) : undefined;
+      return {
+        lead: l,
+        customer: safeTitle('customers', l.customerId, actor),
+        contact: safeTitle('contacts', l.contactId, actor),
+        divisionId: String(l.divisionId ?? ''),
+        sourceId: String(l.sourceId ?? ''),
+        ownerId: (l.ownerId as string) ?? null,
+        ownerName: name(l.ownerId),
+        managerName: name(mgr),
+        escalatedAt: (l.escalatedAt as string) ?? null,
+        createdAt: String(l.createdAt),
+        ageHours,
+        overHours: Math.max(0, ageHours - hours),
+        score: scoreLead(l),
+      };
+    })
+    .sort((a, b) => b.ageHours - a.ageHours);
+  return { rows, slaHours: hours };
 }
 
 // ---------------------------------------------------------------- follow-ups across records (LEAD-09)
@@ -462,7 +526,7 @@ export function parseCsv(text: string): string[][] {
   let row: string[] = [];
   let cell = '';
   let quoted = false;
-  const src = text.replace(/^﻿/, '');
+  const src = text.replace(/^\uFEFF/, '');
   for (let i = 0; i < src.length; i++) {
     const ch = src[i];
     if (quoted) {
@@ -508,7 +572,7 @@ export function toImportRows(table: string[][]): ImportRow[] {
   if (!table.length) return [];
   const header = table[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
   const known = IMPORT_COLUMNS.filter((c) => header.includes(c));
-  if (!known.includes('company')) throw new ServiceError('validation', 'The file needs a header row with at least a “company” column. Download the template.');
+  if (!known.includes('company')) throw new ServiceError('validation', E.importHeader);
   return table.slice(1).map((r) => Object.fromEntries(IMPORT_COLUMNS.map((c) => [c, (r[header.indexOf(c)] ?? '').trim()])) as ImportRow);
 }
 
@@ -518,23 +582,23 @@ export function previewImport(actor: Actor, rows: ImportRow[]): ImportPreviewRow
   return rows.map((v, i) => {
     const errors: string[] = [];
     const warnings: string[] = [];
-    if (!v.company) errors.push('Company is required');
-    if (!v.contact_name) errors.push('Contact name is required');
-    if (!v.mobile && !v.email) errors.push('Mobile or email is required');
+    if (!v.company) errors.push(E.rowCompany);
+    if (!v.contact_name) errors.push(E.rowContact);
+    if (!v.mobile && !v.email) errors.push(E.rowReach);
     if (v.mobile && validateMobile(v.mobile)) errors.push(validateMobile(v.mobile)!);
     if (v.email && validateEmail(v.email)) errors.push(validateEmail(v.email)!);
     const division = matchMaster('division', v.division);
-    if (!division) errors.push(v.division ? `Unknown division “${v.division}”` : 'Division is required');
+    if (!division) errors.push(v.division ? E.rowUnknownDivision(v.division) : E.rowDivision);
     const productType = matchMaster('productType', v.product_type) ?? 'machine';
-    if (v.product_type && !matchMaster('productType', v.product_type)) warnings.push(`Unknown product type “${v.product_type}” — using Machine`);
+    if (v.product_type && !matchMaster('productType', v.product_type)) warnings.push(E.rowUnknownProduct(v.product_type));
     const state = matchMaster('state', v.state);
-    if (v.state && !state) warnings.push(`Unknown state “${v.state}”`);
+    if (v.state && !state) warnings.push(E.rowUnknownState(v.state));
     const key = `${normaliseMobile(v.mobile)}|${v.email.toLowerCase()}|${norm(v.company)}`;
-    if (seen.has(key)) warnings.push('Repeated in this file');
+    if (seen.has(key)) warnings.push(E.rowRepeated);
     seen.add(key);
     if (division) {
       const dup = findDuplicateLeads(actor, { divisionId: division, mobile: v.mobile, email: v.email, companyName: v.company });
-      if (dup.visible.length + dup.hidden > 0) warnings.push(`Possible duplicate of ${dup.visible.map((l) => l.id).join(', ') || `${dup.hidden} lead(s) owned by another team`}`);
+      if (dup.visible.length + dup.hidden > 0) warnings.push(E.rowDuplicate(dup.visible.map((l) => l.id).join(', ') || E.rowDuplicateHidden(dup.hidden)));
     }
     return { line: i + 2, values: v, division, productType, state, errors, warnings };
   });
@@ -545,9 +609,9 @@ export function previewImport(actor: Actor, rows: ImportRow[]): ImportPreviewRow
  * by name / mobile / email, and auto-assigning owners by rule. Returns created lead ids.
  */
 export function importLeads(actor: Actor, rows: ImportPreviewRow[], eventName: string): { created: string[]; skipped: number } {
-  if (!can(actor, 'leads.import') || !perm(actor, 'leads').create) throw new ServiceError('forbidden', 'Your role cannot import leads.');
-  if (!eventName.trim()) throw new ServiceError('validation', 'Enter the exhibition / event name.', { fieldErrors: { eventName: 'Required' } });
-  if (!hasResource('customers') || !hasResource('contacts')) throw new ServiceError('invalid_state', 'Import needs the Customers module (companies and contacts).');
+  if (!can(actor, 'leads.import') || !perm(actor, 'leads').create) throw new ServiceError('forbidden', E.importNoAccess);
+  if (!eventName.trim()) throw new ServiceError('validation', E.importEvent, { fieldErrors: { eventName: E.required } });
+  if (!hasResource('customers') || !hasResource('contacts')) throw new ServiceError('invalid_state', E.importNeedsCustomers);
   const valid = rows.filter((r) => !r.errors.length);
   const created: string[] = [];
   commit((d) => {
@@ -576,7 +640,7 @@ export function importLeads(actor: Actor, rows: ImportPreviewRow[], eventName: s
       });
       created.push(lead.id);
     }
-    appendAudit(d, actor, { action: 'import', resource: 'leads', summary: `Imported ${created.length} exhibition lead(s) from “${eventName.trim()}” (${rows.length - valid.length} row(s) skipped)`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'import', resource: 'leads', summary: M.importAudit(created.length, eventName.trim(), rows.length - valid.length), correlationId: ctx.correlationId });
   });
   return { created, skipped: rows.length - valid.length };
 }

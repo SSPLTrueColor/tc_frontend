@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { appModules, demoUsers, organization, workspaces } from '../../domain/pack';
 import { cx } from '../../lib/format';
 import { pagePath, recordPeekPath, resourcePath, wsBase } from '../../lib/routes';
+import { keyOfSlug, ROUTES } from '../../constants/routes';
 import { PHONE, TABLET, useMedia } from '../../lib/useMedia';
 import { can, canReadResource } from '../../services/authz';
 import { listNotifications, markAllRead, markNotification, snoozeNotification } from '../../services/collab';
@@ -33,12 +34,19 @@ function moduleVisible(actor: ReturnType<typeof useActor>, m: (typeof appModules
 
 /** Module of the current URL: /admin/* → admin; /<resource> → its module; /<page> → the module owning the page. */
 function activeModule(pathname: string) {
-  const seg = pathname.split('/')[1] ?? '';
-  if (!seg || seg === 'dashboard') return 'home';
-  if (seg === 'admin') return 'admin';
-  const byResource = appModules.find((m) => m.resources.includes(seg));
+  const parts = pathname.split('/').filter(Boolean);
+  if (!parts.length) return 'home';
+  // Exact page match first, then the longest page prefix, then the resource slug.
+  const pages = appModules.flatMap((m) => (m.pages ?? []).map((p) => ({ m: m.id, path: p.path })));
+  const exact = pages.find((p) => p.path === pathname);
+  if (exact) return exact.m;
+  const slug = parts[0] === 'admin' ? `admin/${parts[1] ?? ''}` : parts[0];
+  const key = keyOfSlug(slug);
+  const byResource = key && appModules.find((m) => m.resources.includes(key));
   if (byResource) return byResource.id;
-  return appModules.find((m) => m.id !== 'admin' && (m.pages ?? []).some((p) => p.path.split('/')[0] === seg))?.id ?? seg;
+  if (parts[0] === 'admin') return 'admin';
+  const prefix = pages.filter((p) => pathname.startsWith(`${p.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
+  return prefix?.m ?? pages.find((p) => p.path.split('/')[1] === parts[0])?.m ?? 'home';
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -181,7 +189,7 @@ function IconRail({ mod, onSearch, onHelp }: { mod: string; onSearch: () => void
           </button>
         </li>
         <li>
-          <button type="button" className={cx('rail-item', mod === 'work' && location.pathname.endsWith('inbox') && 'is-active')} aria-label={`Work inbox${unread ? `, ${unread} unread` : ''}`} data-tooltip="Work inbox" onClick={() => navigate(pagePath(actor.workspaceId, 'work', 'inbox'))}>
+          <button type="button" className={cx('rail-item', mod === 'work' && location.pathname === ROUTES.notifications && 'is-active')} aria-label={`Work inbox${unread ? `, ${unread} unread` : ''}`} data-tooltip="Work inbox" onClick={() => navigate(ROUTES.notifications)}>
             <Icon name="inbox" />
             {unread > 0 && (
               <span className="rail-badge" aria-hidden="true">
@@ -277,7 +285,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
     .map((rk) => {
       const res = getResource(rk);
       const views = listViews(actor, rk);
-      const base = `/${rk}`;
+      const base = resourcePath(actor.workspaceId, rk);
       const current = location.pathname === base ? new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || views[0]?.id) : undefined;
       const withIcons = m.navChildIcons?.includes(rk);
       const items: NavEntry[] = views.map((v) => {

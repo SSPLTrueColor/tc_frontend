@@ -1,5 +1,5 @@
 /**
- * Installed-base domain services (BRD 4.6 / 4.7). Synchronous engine-side logic; pages call the
+ * Installed Base domain services (BRD 4.6 / 4.7). Synchronous engine-side logic; pages call the
  * async wrappers in services/api/installed.ts. Every write is one commit, audited.
  */
 import { appPack } from '../../domain/pack';
@@ -20,6 +20,9 @@ import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn, recordsIn } from '../runtime';
 import { ServiceError } from '../types';
 import { READINESS_FIELDS } from '../../domain/modules/installed/resources';
+import { L } from '../../constants/labels';
+
+const S = L.installed.service;
 
 export { READINESS_FIELDS };
 
@@ -45,10 +48,10 @@ export function customerRecipient(d: HookContext['d'], customerId: unknown): { t
   const customer = (d.records.customers ?? []).find((c) => c.id === customerId);
   const contacts = (d.records.contacts ?? []).filter((c) => c.customerId === customerId);
   const best = contacts.find((c) => c.buyingRole === 'decision_maker' && c.consentWhatsapp && (c.whatsapp || c.mobile)) ?? contacts.find((c) => c.consentWhatsapp && (c.whatsapp || c.mobile)) ?? contacts.find((c) => c.email && c.consentEmail);
-  const name = String(customer?.name ?? customerId ?? 'Customer');
+  const name = String(customer?.name ?? customerId ?? S.customerFallback);
   if (best && best.consentWhatsapp && (best.whatsapp || best.mobile)) return { to: `${best.name} (+91 ${best.whatsapp || best.mobile})`, name, channel: 'whatsapp' };
   if (best && best.email) return { to: `${best.name} <${best.email}>`, name, channel: 'email' };
-  return { to: `${name} (no contact with messaging consent on file)`, name, channel: 'email' };
+  return { to: S.noConsentContact(name), name, channel: 'email' };
 }
 
 const notifyStaff = (ctx: HookContext, staffId: unknown, title: string, link: { resource: string; recordId: string }) => {
@@ -77,7 +80,7 @@ export function generatePmVisits(ctx: HookContext, opts: { machine: RecordData; 
       existing.add(due.slice(0, 7));
       n++;
     } catch (e) {
-      appendAudit(ctx.d, ctx.actor, { action: 'pm.skipped', actorType: 'workflow', resource: 'machines', recordId: opts.machine.id, summary: `PM visit for ${due} not created: ${e instanceof Error ? e.message : 'unknown error'}`, correlationId: ctx.correlationId });
+      appendAudit(ctx.d, ctx.actor, { action: 'pm.skipped', actorType: 'workflow', resource: 'machines', recordId: opts.machine.id, summary: S.pmSkipped(due, e instanceof Error ? e.message : S.unknownError), correlationId: ctx.correlationId });
       break;
     }
   }
@@ -90,8 +93,8 @@ const res = () => getResource('installations');
 
 function loadInstallation(d: HookContext['d'], actor: Actor, id: string, write = true) {
   const raw = (d.records.installations ?? []).find((r) => r.id === id);
-  if (!raw || !canReadRecord(actor, res(), raw)) throw new ServiceError('not_found', `Installation job ${id} was not found.`);
-  if (write && !canUpdateRecord(actor, res(), raw)) throw new ServiceError('forbidden', 'Your role cannot update this installation job.');
+  if (!raw || !canReadRecord(actor, res(), raw)) throw new ServiceError('not_found', S.installationNotFound(id));
+  if (write && !canUpdateRecord(actor, res(), raw)) throw new ServiceError('forbidden', S.cannotUpdateInstallation);
   return raw;
 }
 
@@ -104,17 +107,17 @@ export const handoverComplete = (r: Record<string, unknown>) => ['hoExpectations
 export function shareReadinessChecklist(actor: Actor, id: string) {
   commit((d) => {
     const raw = loadInstallation(d, actor, id);
-    if (raw.status !== 'scheduled') throw new ServiceError('invalid_state', 'The checklist is shared before the site is verified.');
+    if (raw.status !== 'scheduled') throw new ServiceError('invalid_state', S.checklistBeforeVerify);
     const ctx = ctxFor(d, actor);
     const r = customerRecipient(d, raw.customerId);
     queueMessage(ctx, {
       channel: r.channel,
       to: r.to,
-      subject: `Site readiness checklist for your installation (${id})`,
-      body: `Please confirm before installation: ${READINESS_FIELDS.map(([, l]) => l).join('; ')}. Our engineer will verify each item on site.`,
+      subject: S.checklistSubject(id),
+      body: S.checklistBody(READINESS_FIELDS.map(([, l]) => l).join('; ')),
       related: { resource: 'installations', recordId: id },
     });
-    patchRecordIn(ctx, 'installations', id, { readinessSharedAt: nowLocal() }, `Readiness checklist shared with ${r.name}`);
+    patchRecordIn(ctx, 'installations', id, { readinessSharedAt: nowLocal() }, S.checklistShared(r.name));
   });
 }
 
@@ -122,13 +125,13 @@ export function shareReadinessChecklist(actor: Actor, id: string) {
 export function attachInstallationMedia(actor: Actor, id: string, files: { name: string; size: number }[]) {
   const max = getPolicies().maxFileMb;
   const tooBig = files.filter((f) => f.size > max * 1024 * 1024);
-  if (tooBig.length) throw new ServiceError('validation', `${tooBig.map((f) => f.name).join(', ')} ${tooBig.length > 1 ? 'are' : 'is'} larger than ${max} MB.`);
+  if (tooBig.length) throw new ServiceError('validation', S.tooLarge(tooBig.map((f) => f.name).join(', '), tooBig.length > 1, max));
   if (!files.length) return;
   commit((d) => {
     const raw = loadInstallation(d, actor, id);
-    if (raw.status === 'signed_off') throw new ServiceError('invalid_state', 'The job card is locked after sign-off.');
+    if (raw.status === 'signed_off') throw new ServiceError('invalid_state', S.jobCardLocked);
     const names = [String(raw.mediaFiles ?? ''), ...files.map((f) => f.name)].filter(Boolean).join(', ');
-    patchRecordIn(ctxFor(d, actor), 'installations', id, { mediaFiles: names.slice(0, 2000) }, `Attached ${files.length} photo/video file(s)`);
+    patchRecordIn(ctxFor(d, actor), 'installations', id, { mediaFiles: names.slice(0, 2000) }, S.attached(files.length));
   });
 }
 
@@ -139,10 +142,10 @@ export function startSignOffOtp(actor: Actor, id: string): string {
   const code = String(100000 + Math.floor(Math.random() * 900000));
   commit((d) => {
     const raw = loadInstallation(d, actor, id);
-    if (raw.status !== 'trial_training') throw new ServiceError('invalid_state', 'Sign-off happens after trial & training.');
+    if (raw.status !== 'trial_training') throw new ServiceError('invalid_state', S.signOffAfterTrial);
     const ctx = ctxFor(d, actor);
     const r = customerRecipient(d, raw.customerId);
-    queueMessage(ctx, { channel: 'sms', to: r.to, body: `True Colors: your installation sign-off code for ${id} is ${code}. Share it with the engineer only after you are satisfied.`, related: { resource: 'installations', recordId: id } });
+    queueMessage(ctx, { channel: 'sms', to: r.to, body: S.otpSms(id, code), related: { resource: 'installations', recordId: id } });
   });
   otps.set(id, code);
   return code;
@@ -158,15 +161,15 @@ export interface SignOffInput {
 /** What still blocks sign-off (shown in the dialog and enforced by signOffInstallation). */
 export function signOffBlockers(r: RecordData, d = getDb()): string[] {
   const out: string[] = [];
-  if (r.status !== 'trial_training') out.push('Move the job to Trial & training first');
-  if (!r.productId) out.push('Machine model (product) is missing');
-  if (!r.serialNo) out.push('Enter the machine serial number');
-  else if ((d.records.machines ?? []).some((m) => String(m.serialNo).toUpperCase() === String(r.serialNo).toUpperCase())) out.push(`Serial ${r.serialNo} already exists on another machine`);
-  if (!String(r.trialResults ?? '').trim()) out.push('Record the trial printing results');
-  if (!((r.trainingTopics as string[] | undefined) ?? []).length) out.push('Record the training topics given');
-  if (!String(r.trainees ?? '').trim()) out.push('Record the trainees');
+  if (r.status !== 'trial_training') out.push(S.blockerStatus);
+  if (!r.productId) out.push(S.blockerProduct);
+  if (!r.serialNo) out.push(S.blockerSerial);
+  else if ((d.records.machines ?? []).some((m) => String(m.serialNo).toUpperCase() === String(r.serialNo).toUpperCase())) out.push(S.serialExists(String(r.serialNo)));
+  if (!String(r.trialResults ?? '').trim()) out.push(S.blockerTrial);
+  if (!((r.trainingTopics as string[] | undefined) ?? []).length) out.push(S.blockerTopics);
+  if (!String(r.trainees ?? '').trim()) out.push(S.blockerTrainees);
   const steps = missingSteps(r);
-  if (steps.length) out.push(`Complete job-card steps: ${steps.map((s) => masterLabel('installStep', s)).join(', ')}`);
+  if (steps.length) out.push(S.blockerSteps(steps.map((s) => masterLabel('installStep', s)).join(', ')));
   return out;
 }
 
@@ -176,15 +179,15 @@ export function signOffBlockers(r: RecordData, d = getDb()): string[] {
  * the sales order; notifies sales and the customer. One atomic commit.
  */
 export function signOffInstallation(actor: Actor, id: string, input: SignOffInput, expectedVersion: number): RecordData {
-  if (!can(actor, 'install.signoff')) throw new ServiceError('forbidden', 'Your role cannot record customer sign-off.');
+  if (!can(actor, 'install.signoff')) throw new ServiceError('forbidden', S.noSignOffRole);
   const fieldErrors: Record<string, string> = {};
-  if (!input.signedOffBy.trim()) fieldErrors.signedOffBy = 'Name of the customer representative is required';
-  if (input.method === 'otp' && (!input.otp || input.otp.trim() !== otps.get(id))) fieldErrors.otp = 'The code does not match the one sent to the customer';
-  if (input.method === 'signature' && !/^data:image\//.test(input.signatureData ?? '')) fieldErrors.signature = 'The customer must sign in the box';
-  if (Object.keys(fieldErrors).length) throw new ServiceError('validation', 'Please complete the sign-off.', { fieldErrors });
+  if (!input.signedOffBy.trim()) fieldErrors.signedOffBy = S.representativeRequired;
+  if (input.method === 'otp' && (!input.otp || input.otp.trim() !== otps.get(id))) fieldErrors.otp = S.otpMismatch;
+  if (input.method === 'signature' && !/^data:image\//.test(input.signatureData ?? '')) fieldErrors.signature = S.signatureRequired;
+  if (Object.keys(fieldErrors).length) throw new ServiceError('validation', S.completeSignOff, { fieldErrors });
   return commit((d) => {
     const raw = loadInstallation(d, actor, id);
-    if (raw.version !== expectedVersion) throw new ServiceError('version_conflict', `Installation ${id} changed since you opened it. Reload and try again.`);
+    if (raw.version !== expectedVersion) throw new ServiceError('version_conflict', S.versionConflict(id));
     const blockers = signOffBlockers(raw, d);
     if (blockers.length) throw new ServiceError('invalid_state', blockers.join('. '));
     const ctx = ctxFor(d, actor);
@@ -209,7 +212,7 @@ export function signOffInstallation(actor: Actor, id: string, input: SignOffInpu
     });
     const months = Number(product?.warrantyMonths) || getPolicies().defaultWarrantyMonths;
     const end = addDays(addMonths(today, months), -1);
-    insertRecordIn(ctx, 'warranties', { machineId: machine.id, customerId: machine.customerId, coverageType: 'parts_labour', startDate: today, endDate: end, divisionId: machine.divisionId, exclusions: 'Consumables, print-head damage from non-approved ink, physical damage and power surges.' });
+    insertRecordIn(ctx, 'warranties', { machineId: machine.id, customerId: machine.customerId, coverageType: 'parts_labour', startDate: today, endDate: end, divisionId: machine.divisionId, exclusions: S.warrantyExclusions });
     const pm = generatePmVisits(ctx, { machine, start: today, end, perYear: WARRANTY_PM_PER_YEAR });
     insertRecordIn(ctx, 'trainingRecords', {
       customerId: raw.customerId,
@@ -227,22 +230,22 @@ export function signOffInstallation(actor: Actor, id: string, input: SignOffInpu
       'installations',
       id,
       { status: 'signed_off', signedOffAt: nowLocal(), signOffMethod: input.method, signedOffBy: input.signedOffBy.trim(), signatureData: input.method === 'signature' ? input.signatureData : null, machineId: machine.id, serialNo: machine.serialNo },
-      `Customer sign-off by ${input.signedOffBy.trim()} (${input.method === 'otp' ? 'OTP verified' : 'digital signature'})`,
+      S.signOffAudit(input.method, input.signedOffBy.trim()),
     );
     otps.delete(id);
     if (so && !['completed', 'cancelled'].includes(String(so.status))) {
-      patchRecordIn(ctx, 'salesOrders', String(so.id), { status: 'completed', completedAt: nowIso() }, `Completed after installation ${id} was signed off`);
-      notifyStaff(ctx, so.ownerId, `${machine.serialNo} installed and signed off — order ${so.orderNo ?? so.id} completed`, { resource: 'machines', recordId: machine.id });
+      patchRecordIn(ctx, 'salesOrders', String(so.id), { status: 'completed', completedAt: nowIso() }, S.soCompleted(id));
+      notifyStaff(ctx, so.ownerId, S.soCompletedNotice(String(machine.serialNo), String(so.orderNo ?? so.id)), { resource: 'machines', recordId: machine.id });
     }
     const r = customerRecipient(d, raw.customerId);
     queueMessage(ctx, {
       channel: r.channel,
       to: r.to,
-      subject: `Installation completed — ${machine.model} ${machine.serialNo}`,
-      body: `Thank you for signing off installation ${id}. Warranty runs from ${formatDate(today)} to ${formatDate(end)}. ${pm ? `${pm} preventive maintenance visit(s) are scheduled.` : ''} Your job card is attached.`,
+      subject: S.completedSubject(String(machine.model), String(machine.serialNo)),
+      body: S.completedBody(id, formatDate(today), formatDate(end), pm),
       related: { resource: 'machines', recordId: machine.id },
     });
-    appendAudit(d, actor, { action: 'install.signed_off', resource: 'installations', recordId: id, summary: `Signed off → machine ${machine.serialNo}, warranty to ${formatDate(end)}, ${pm} PM visit(s)`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'install.signed_off', resource: 'installations', recordId: id, summary: S.signOffSummary(String(machine.serialNo), formatDate(end), pm), correlationId: ctx.correlationId });
     return next;
   });
 }
@@ -259,23 +262,23 @@ export interface MoveInput {
 
 /** IB-01 resale / relocation with history. Active contracts stay with the machine; their owners are told. */
 export function moveMachine(actor: Actor, machineId: string, input: MoveInput) {
-  if (!can(actor, 'machine.transfer')) throw new ServiceError('forbidden', 'Your role cannot relocate or transfer machines.');
+  if (!can(actor, 'machine.transfer')) throw new ServiceError('forbidden', S.noTransferRole);
   const fieldErrors: Record<string, string> = {};
-  if (!input.reason.trim()) fieldErrors.reason = 'Reason is required';
-  if (!input.moveDate) fieldErrors.moveDate = 'Effective date is required';
-  else if (input.moveDate > todayKey()) fieldErrors.moveDate = 'Date cannot be in the future';
+  if (!input.reason.trim()) fieldErrors.reason = S.reasonRequired;
+  if (!input.moveDate) fieldErrors.moveDate = S.effectiveRequired;
+  else if (input.moveDate > todayKey()) fieldErrors.moveDate = S.noFuture;
   return commit((d) => {
     const m = (d.records.machines ?? []).find((x) => x.id === machineId);
     const mres = getResource('machines');
-    if (!m || !canReadRecord(actor, mres, m)) throw new ServiceError('not_found', `Machine ${machineId} was not found.`);
-    if (!canUpdateRecord(actor, mres, m)) throw new ServiceError('forbidden', 'Your role cannot update this machine.');
-    if (m.status === 'scrapped') throw new ServiceError('invalid_state', 'Scrapped machines cannot be moved.');
+    if (!m || !canReadRecord(actor, mres, m)) throw new ServiceError('not_found', S.machineNotFound(machineId));
+    if (!canUpdateRecord(actor, mres, m)) throw new ServiceError('forbidden', S.cannotUpdateMachine);
+    if (m.status === 'scrapped') throw new ServiceError('invalid_state', S.scrappedNoMove);
     const toCustomer = input.moveType === 'resale' ? input.toCustomerId : String(m.customerId);
-    if (input.moveType === 'resale' && (!toCustomer || toCustomer === m.customerId)) fieldErrors.toCustomerId = 'Choose the new owner';
-    if (input.moveType === 'relocation' && (!input.toSiteAddressId || input.toSiteAddressId === m.siteAddressId)) fieldErrors.toSiteAddressId = 'Choose the new site';
+    if (input.moveType === 'resale' && (!toCustomer || toCustomer === m.customerId)) fieldErrors.toCustomerId = S.chooseNewOwner;
+    if (input.moveType === 'relocation' && (!input.toSiteAddressId || input.toSiteAddressId === m.siteAddressId)) fieldErrors.toSiteAddressId = S.chooseNewSite;
     const site = input.toSiteAddressId ? byId('addresses', input.toSiteAddressId, d.records) : undefined;
-    if (site && site.customerId !== toCustomer) fieldErrors.toSiteAddressId = 'The site must belong to the owner';
-    if (Object.keys(fieldErrors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors });
+    if (site && site.customerId !== toCustomer) fieldErrors.toSiteAddressId = S.siteOfOwner;
+    if (Object.keys(fieldErrors).length) throw new ServiceError('validation', S.fixFields, { fieldErrors });
     const ctx = ctxFor(d, actor);
     insertRecordIn(ctx, 'machineMoves', {
       machineId,
@@ -288,16 +291,16 @@ export function moveMachine(actor: Actor, machineId: string, input: MoveInput) {
       reason: input.reason.trim(),
       divisionId: m.divisionId,
     });
-    patchRecordIn(ctx, 'machines', machineId, { customerId: toCustomer, siteAddressId: input.toSiteAddressId ?? null, status: input.moveType === 'relocation' ? 'relocated' : 'active' }, `${input.moveType === 'resale' ? 'Resold' : 'Relocated'}: ${input.reason.trim()}`);
+    patchRecordIn(ctx, 'machines', machineId, { customerId: toCustomer, siteAddressId: input.toSiteAddressId ?? null, status: input.moveType === 'relocation' ? 'relocated' : 'active' }, S.moveAudit(input.moveType === 'resale', input.reason.trim()));
     if (input.moveType === 'resale') {
       (d.records.warranties ?? []).filter((w) => w.machineId === machineId).forEach((w) => patchRecordIn(ctx, 'warranties', w.id, { customerId: toCustomer }));
       (d.records.amcContracts ?? [])
         .filter((c) => c.machineId === machineId && ['active', 'due_for_renewal'].includes(String(c.status)))
         .forEach((c) => {
           // The contract follows the machine: transfer it to the new owner and tell its owners.
-          patchRecordIn(ctx, 'amcContracts', c.id, { customerId: toCustomer }, `Transferred with ${m.serialNo} to the new owner`);
-          notifyStaff(ctx, c.ownerId, `${m.serialNo} was resold — contract ${c.contractNo} transferred`, { resource: 'amcContracts', recordId: c.id });
-          notifyStaff(ctx, c.serviceOwnerId, `${m.serialNo} was resold — contract ${c.contractNo} transferred`, { resource: 'amcContracts', recordId: c.id });
+          patchRecordIn(ctx, 'amcContracts', c.id, { customerId: toCustomer }, S.contractTransferred(String(m.serialNo)));
+          notifyStaff(ctx, c.ownerId, S.resoldNotice(String(m.serialNo), String(c.contractNo)), { resource: 'amcContracts', recordId: c.id });
+          notifyStaff(ctx, c.serviceOwnerId, S.resoldNotice(String(m.serialNo), String(c.contractNo)), { resource: 'amcContracts', recordId: c.id });
         });
     }
   });
@@ -307,21 +310,21 @@ export function moveMachine(actor: Actor, machineId: string, input: MoveInput) {
 export function replaceComponent(actor: Actor, componentId: string, input: { newSerial: string; date: string; reason: string }) {
   const fieldErrors: Record<string, string> = {};
   const serial = input.newSerial.trim().toUpperCase();
-  if (!/^[A-Z0-9][A-Z0-9/-]{3,29}$/.test(serial)) fieldErrors.newSerial = 'Use 4–30 capital letters, digits, "-" or "/"';
-  if (!input.date || input.date > todayKey()) fieldErrors.date = 'Enter a date up to today';
-  if (!input.reason.trim()) fieldErrors.reason = 'Reason is required';
-  if (Object.keys(fieldErrors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors });
+  if (!/^[A-Z0-9][A-Z0-9/-]{3,29}$/.test(serial)) fieldErrors.newSerial = L.installed.validation.serial;
+  if (!input.date || input.date > todayKey()) fieldErrors.date = S.dateUpToToday;
+  if (!input.reason.trim()) fieldErrors.reason = S.reasonRequired;
+  if (Object.keys(fieldErrors).length) throw new ServiceError('validation', S.fixFields, { fieldErrors });
   return commit((d) => {
     const cres = getResource('machineComponents');
     const old = (d.records.machineComponents ?? []).find((c) => c.id === componentId);
-    if (!old || !canReadRecord(actor, cres, old)) throw new ServiceError('not_found', 'Component not found.');
-    if (!canUpdateRecord(actor, cres, old)) throw new ServiceError('forbidden', 'Your role cannot replace components.');
-    if (old.status !== 'in_service') throw new ServiceError('invalid_state', 'This component was already replaced.');
-    if ((d.records.machineComponents ?? []).some((c) => String(c.serialNo).toUpperCase() === serial)) throw new ServiceError('validation', 'That serial number is already recorded.', { fieldErrors: { newSerial: 'Already recorded on another component' } });
-    if (input.date < String(old.installedAt)) throw new ServiceError('validation', 'Replacement date is before the part was fitted.', { fieldErrors: { date: 'Before the fitted date' } });
+    if (!old || !canReadRecord(actor, cres, old)) throw new ServiceError('not_found', S.componentNotFound);
+    if (!canUpdateRecord(actor, cres, old)) throw new ServiceError('forbidden', S.cannotReplace);
+    if (old.status !== 'in_service') throw new ServiceError('invalid_state', S.alreadyReplaced);
+    if ((d.records.machineComponents ?? []).some((c) => String(c.serialNo).toUpperCase() === serial)) throw new ServiceError('validation', S.serialRecorded, { fieldErrors: { newSerial: S.serialOnOther } });
+    if (input.date < String(old.installedAt)) throw new ServiceError('validation', S.beforeFitted, { fieldErrors: { date: S.beforeFittedShort } });
     const ctx = ctxFor(d, actor);
     const fresh = insertRecordIn(ctx, 'machineComponents', { machineId: old.machineId, componentType: old.componentType, position: old.position, serialNo: serial, installedAt: input.date, status: 'in_service', divisionId: old.divisionId });
-    patchRecordIn(ctx, 'machineComponents', componentId, { status: 'replaced', replacedAt: input.date, replacedById: fresh.id, replacementReason: input.reason.trim() }, `Replaced by ${serial}: ${input.reason.trim()}`);
+    patchRecordIn(ctx, 'machineComponents', componentId, { status: 'replaced', replacedAt: input.date, replacedById: fresh.id, replacementReason: input.reason.trim() }, S.replacedBy(serial, input.reason.trim()));
     return fresh;
   });
 }
@@ -336,7 +339,7 @@ export function nextContractNo(d: HookContext['d']) {
 
 export function defaultSlaTerms(contractType: string) {
   const s = getPolicies().sla.critical[contractType] ?? getPolicies().sla.critical.none;
-  return `Machine-down (critical) calls: response within ${s.response} h, engineer on site within ${s.arrival} h, resolution within ${s.resolution} h. ${contractType === 'cmc' ? 'Parts and labour included.' : 'Labour and preventive visits included; parts chargeable.'}`;
+  return S.slaTerms(s.response, s.arrival, s.resolution, contractType === 'cmc');
 }
 
 /** Renewal opportunity (IB-05) — created once, only when the opportunities module is installed. */
@@ -346,7 +349,7 @@ export function ensureRenewalOpportunity(ctx: HookContext, c: RecordData): strin
   const customer = byId('customers', c.customerId, ctx.d.records);
   try {
     const opp = insertRecordIn(ctx, 'opportunities', {
-      name: `${String(c.contractType).toUpperCase()} renewal – ${machine?.serialNo ?? c.machineId} – ${customer?.name ?? c.customerId}`,
+      name: S.renewalOppName(String(c.contractType).toUpperCase(), String(machine?.serialNo ?? c.machineId), String(customer?.name ?? c.customerId)),
       customerId: c.customerId,
       divisionId: c.divisionId,
       oppType: 'renewal',
@@ -359,10 +362,10 @@ export function ensureRenewalOpportunity(ctx: HookContext, c: RecordData): strin
       machineId: c.machineId ?? null,
       amcContractId: c.id,
     });
-    patchRecordIn(ctx, 'amcContracts', c.id, { renewalOpportunityId: opp.id }, `Renewal opportunity ${opp.id} created`);
+    patchRecordIn(ctx, 'amcContracts', c.id, { renewalOpportunityId: opp.id }, S.renewalOppCreated(opp.id));
     return opp.id;
   } catch (e) {
-    appendAudit(ctx.d, ctx.actor, { action: 'renewal.opportunity_skipped', actorType: 'workflow', resource: 'amcContracts', recordId: c.id, summary: `Renewal opportunity not created: ${e instanceof Error ? e.message : 'unknown error'}`, correlationId: ctx.correlationId });
+    appendAudit(ctx.d, ctx.actor, { action: 'renewal.opportunity_skipped', actorType: 'workflow', resource: 'amcContracts', recordId: c.id, summary: S.renewalOppSkipped(e instanceof Error ? e.message : S.unknownError), correlationId: ctx.correlationId });
     return null;
   }
 }
@@ -408,25 +411,25 @@ export function runRenewalSweep(actor: Actor): number {
   commit((d) => {
     const ctx = ctxFor(d, actor);
     const find = (id: string) => (d.records.amcContracts ?? []).find((c) => c.id === id)!;
-    plan.expire.forEach((id) => patchRecordIn(ctx, 'amcContracts', id, { status: 'expired' }, 'Expired automatically after the end date'));
+    plan.expire.forEach((id) => patchRecordIn(ctx, 'amcContracts', id, { status: 'expired' }, S.expiredAuto));
     plan.due.forEach((id) => {
-      patchRecordIn(ctx, 'amcContracts', id, { status: 'due_for_renewal' }, 'Due for renewal (reminder window reached)');
+      patchRecordIn(ctx, 'amcContracts', id, { status: 'due_for_renewal' }, S.dueAuto);
       ensureRenewalOpportunity(ctx, find(id));
     });
     plan.remind.forEach(({ id, threshold, daysLeft, mark }) => {
       const c = find(id);
-      const title = `${c.contractNo} expires in ${daysLeft} day(s) — renewal due (${threshold}-day reminder)`;
+      const title = S.reminderTitle(String(c.contractNo), daysLeft, threshold);
       notifyStaff(ctx, c.ownerId, title, { resource: 'amcContracts', recordId: id });
       notifyStaff(ctx, c.serviceOwnerId, title, { resource: 'amcContracts', recordId: id });
       const r = customerRecipient(d, c.customerId);
       queueMessage(ctx, {
         channel: r.channel,
         to: r.to,
-        subject: `Your ${masterLabel('amcType', c.contractType)} ${c.contractNo} expires on ${formatDate(String(c.endDate))}`,
-        body: `Renew before ${formatDate(String(c.endDate))} to keep priority service and preventive visits. Current value ${formatMoney(Number(c.value))}. Reply to this message or call your service coordinator.`,
+        subject: S.reminderSubject(masterLabel('amcType', c.contractType), String(c.contractNo), formatDate(String(c.endDate))),
+        body: S.reminderBody(formatDate(String(c.endDate)), formatMoney(Number(c.value))),
         related: { resource: 'amcContracts', recordId: id },
       });
-      patchRecordIn(ctx, 'amcContracts', id, { remindersSent: mark.join(',') }, `${threshold}-day renewal reminder sent`);
+      patchRecordIn(ctx, 'amcContracts', id, { remindersSent: mark.join(',') }, S.reminderSent(threshold));
     });
   });
   return n;
@@ -435,8 +438,8 @@ export function runRenewalSweep(actor: Actor): number {
 function loadContract(d: HookContext['d'], actor: Actor, id: string) {
   const cres = getResource('amcContracts');
   const c = (d.records.amcContracts ?? []).find((x) => x.id === id);
-  if (!c || !canReadRecord(actor, cres, c)) throw new ServiceError('not_found', `Contract ${id} was not found.`);
-  if (!can(actor, 'amc.renew') || !canUpdateRecord(actor, cres, c)) throw new ServiceError('forbidden', 'Your role cannot renew or close this contract.');
+  if (!c || !canReadRecord(actor, cres, c)) throw new ServiceError('not_found', S.contractNotFound(id));
+  if (!can(actor, 'amc.renew') || !canUpdateRecord(actor, cres, c)) throw new ServiceError('forbidden', S.cannotRenew);
   return c;
 }
 
@@ -451,14 +454,14 @@ export interface RenewInput {
 /** IB-05: renew — new active contract linked to the old one; PM visits generated; old → Renewed. */
 export function renewContract(actor: Actor, id: string, input: RenewInput): RecordData {
   const fieldErrors: Record<string, string> = {};
-  if (!input.startDate) fieldErrors.startDate = 'Start date is required';
-  if (!input.endDate || input.endDate <= input.startDate) fieldErrors.endDate = 'End date must be after the start date';
-  if (!(input.value > 0)) fieldErrors.value = 'Enter the renewal value';
-  if (!(input.pmVisitsPerYear >= 0 && input.pmVisitsPerYear <= 12)) fieldErrors.pmVisitsPerYear = 'Between 0 and 12';
-  if (Object.keys(fieldErrors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors });
+  if (!input.startDate) fieldErrors.startDate = S.startRequired;
+  if (!input.endDate || input.endDate <= input.startDate) fieldErrors.endDate = L.installed.validation.endAfterStart;
+  if (!(input.value > 0)) fieldErrors.value = S.enterRenewalValue;
+  if (!(input.pmVisitsPerYear >= 0 && input.pmVisitsPerYear <= 12)) fieldErrors.pmVisitsPerYear = S.visitsRange;
+  if (Object.keys(fieldErrors).length) throw new ServiceError('validation', S.fixFields, { fieldErrors });
   return commit((d) => {
     const c = loadContract(d, actor, id);
-    if (!['active', 'due_for_renewal', 'expired'].includes(String(c.status))) throw new ServiceError('invalid_state', `A ${masterLabel('amcStatus', c.status)} contract cannot be renewed.`);
+    if (!['active', 'due_for_renewal', 'expired'].includes(String(c.status))) throw new ServiceError('invalid_state', S.cannotRenewStatus(masterLabel('amcStatus', c.status)));
     const ctx = ctxFor(d, actor);
     const fresh = insertRecordIn(ctx, 'amcContracts', {
       customerId: c.customerId,
@@ -475,25 +478,40 @@ export function renewContract(actor: Actor, id: string, input: RenewInput): Reco
       status: 'active',
       renewalOfId: c.id,
     });
-    patchRecordIn(ctx, 'amcContracts', id, { status: 'renewed', renewedById: fresh.id }, `Renewed as ${fresh.contractNo}`);
+    patchRecordIn(ctx, 'amcContracts', id, { status: 'renewed', renewedById: fresh.id }, S.renewedAs(String(fresh.contractNo)));
     const machine = byId('machines', c.machineId, d.records);
     if (machine) generatePmVisits(ctx, { machine, start: input.startDate, end: input.endDate, perYear: input.pmVisitsPerYear, amcContractId: fresh.id });
     const opp = c.renewalOpportunityId ? byId('opportunities', c.renewalOpportunityId, d.records) : undefined;
-    if (opp && !['won', 'lost'].includes(String(opp.stage))) patchRecordIn(ctx, 'opportunities', opp.id, { stage: 'won', probability: 100, wonAt: nowIso() }, `Won: contract renewed as ${fresh.contractNo}`);
+    if (opp && !['won', 'lost'].includes(String(opp.stage))) patchRecordIn(ctx, 'opportunities', opp.id, { stage: 'won', probability: 100, wonAt: nowIso() }, S.oppWon(String(fresh.contractNo)));
     return fresh;
   });
 }
 
 /** IB-05 lost renewal with a reason from the lost-reason master. */
 export function markContractLost(actor: Actor, id: string, reason: string, note: string) {
-  if (!reason) throw new ServiceError('validation', 'Choose a lost reason.', { fieldErrors: { lostReason: 'Required' } });
+  if (!reason) throw new ServiceError('validation', S.chooseLostReason, { fieldErrors: { lostReason: S.required } });
   commit((d) => {
     const c = loadContract(d, actor, id);
-    if (!['active', 'due_for_renewal', 'expired'].includes(String(c.status))) throw new ServiceError('invalid_state', `A ${masterLabel('amcStatus', c.status)} contract cannot be marked lost.`);
+    if (!['active', 'due_for_renewal', 'expired'].includes(String(c.status))) throw new ServiceError('invalid_state', S.cannotLoseStatus(masterLabel('amcStatus', c.status)));
     const ctx = ctxFor(d, actor);
-    patchRecordIn(ctx, 'amcContracts', id, { status: 'lost', lostReason: reason }, `Renewal lost: ${masterLabel('lostReason', reason)}${note.trim() ? ` — ${note.trim()}` : ''}`);
+    patchRecordIn(ctx, 'amcContracts', id, { status: 'lost', lostReason: reason }, S.lostAudit(masterLabel('lostReason', reason), note.trim()));
     const opp = c.renewalOpportunityId ? byId('opportunities', c.renewalOpportunityId, d.records) : undefined;
-    if (opp && !['won', 'lost'].includes(String(opp.stage))) patchRecordIn(ctx, 'opportunities', opp.id, { stage: 'lost', probability: 0, lostReason: reason }, `Lost: contract ${c.contractNo} not renewed`);
+    if (opp && !['won', 'lost'].includes(String(opp.stage))) patchRecordIn(ctx, 'opportunities', opp.id, { stage: 'lost', probability: 0, lostReason: reason }, S.oppLost(String(c.contractNo)));
+  });
+}
+
+/**
+ * IB-05 "Create Renewal Quotation": makes sure the contract has its renewal opportunity (creates it
+ * when the reminder sweep has not yet) and returns its id; the quotation editor opens on it.
+ */
+export function prepareRenewalQuotation(actor: Actor, id: string): string {
+  if (!hasResource('opportunities') || !hasResource('quotations')) throw new ServiceError('invalid_state', S.noOpportunities);
+  return commit((d) => {
+    const c = loadContract(d, actor, id);
+    if (!['active', 'due_for_renewal', 'expired'].includes(String(c.status))) throw new ServiceError('invalid_state', S.quotationOnlyOpen);
+    const oppId = ensureRenewalOpportunity(ctxFor(d, actor), c);
+    if (!oppId) throw new ServiceError('invalid_state', S.noOpportunities);
+    return oppId;
   });
 }
 

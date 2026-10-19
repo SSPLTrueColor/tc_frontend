@@ -3,14 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "True Color — frontend simulation prototype (simulated data, local storage only)",
+  "description": "True Color \u2014 frontend simulation prototype (simulated data, local storage only)",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.22",
@@ -28,6 +29,7 @@
     "rrule": "^2.8.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
@@ -35,8 +37,13 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
     "jsdom": "^25.0.1",
     "typescript": "^5.6.3",
+    "typescript-eslint": "^8.71.2",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
   }

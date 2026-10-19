@@ -53,7 +53,7 @@ export function FeedbackPage() {
       .then(setData)
       .catch((e) => setError(errorMessage(e)));
   };
-  useEffect(load, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [token]);  
   const submit = async (resolved: boolean) => {
     setBusy(true);
     setError('');

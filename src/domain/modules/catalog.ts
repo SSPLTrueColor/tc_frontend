@@ -1,8 +1,9 @@
 /**
- * Catalog module: product master, price lists (FR-036, FR-039) and notification templates (FR-124),
- * plus the administration configuration pages (organisation, policies, import/export, recycle bin,
- * integrations) added to the Administration nav.
+ * Product & Price Master (QUO-02, QUO-05, ADM-03 — FR-036, FR-039) and Notification Templates (ADM-06, FR-124).
+ * Both live in the Administration sidebar group (src/domain/sidebar.ts); this pack only contributes
+ * resources, masters, permissions and capabilities.
  */
+import { L } from '../../constants/labels';
 import type { MasterDefinition, MasterValue, ResourceDefinition, Tone } from '../../metadata/types';
 import { ALL, cols, cond, field, FORM_ONLY, group, NO_SEARCH, views } from '../helpers';
 import { p, type ModulePack } from './types';
@@ -10,28 +11,18 @@ import { p, type ModulePack } from './types';
 const v = (key: string, label: string, tone: Tone = 'neutral'): Omit<MasterValue, 'order'> => ({ key, label, tone, active: true });
 const master = (key: string, label: string, values: Omit<MasterValue, 'order'>[]): MasterDefinition => ({ id: `mst_${key}`, key, label, version: 1, values: values.map((x, i) => ({ ...x, order: i })) });
 
+const M = L.catalog.masters;
+const vals = <K extends string>(m: { values: Record<K, string> }, tones: Partial<Record<K, Tone>> = {}) =>
+  (Object.keys(m.values) as K[]).map((k) => v(k, m.values[k], tones[k] ?? 'neutral'));
+
 const masters: MasterDefinition[] = [
-  master('productStatus', 'Product status', [v('active', 'Active', 'success'), v('inactive', 'Inactive')]),
-  master('priceListStatus', 'Price list status', [v('draft', 'Draft', 'info'), v('active', 'Active', 'success'), v('expired', 'Expired')]),
-  master('gstRate', 'GST rate', [v('0', '0%'), v('5', '5%'), v('12', '12%'), v('18', '18%'), v('28', '28%')]),
-  master('uom', 'Unit of measure', [v('nos', 'Nos'), v('litre', 'Litre'), v('kg', 'Kg'), v('roll', 'Roll'), v('metre', 'Metre'), v('ream', 'Ream'), v('visit', 'Visit'), v('year', 'Year'), v('licence', 'Licence')]),
-  master('notificationChannel', 'Channel', [v('email', 'Email', 'info'), v('whatsapp', 'WhatsApp', 'success'), v('sms', 'SMS'), v('in_app', 'In-app / push', 'accent')]),
-  master('notificationEvent', 'Event', [
-    v('lead_assigned', 'Lead assigned'),
-    v('followup_due', 'Follow-up due'),
-    v('lead_not_attended', 'Lead not attended (SLA)'),
-    v('approval_requested', 'Approval requested'),
-    v('approval_decided', 'Approval decided'),
-    v('quotation_sent', 'Quotation sent'),
-    v('payment_due', 'Payment due'),
-    v('dispatch_intimation', 'Dispatch intimation'),
-    v('installation_scheduled', 'Installation scheduled'),
-    v('ticket_logged', 'Ticket logged'),
-    v('sla_breach', 'SLA breach'),
-    v('feedback_request', 'Feedback request'),
-    v('renewal_reminder', 'AMC / warranty renewal reminder'),
-  ]),
-  master('templateStatus', 'Template status', [v('active', 'Active', 'success'), v('inactive', 'Inactive')]),
+  master('productStatus', M.productStatus.label, vals(M.productStatus, { active: 'success' })),
+  master('priceListStatus', M.priceListStatus.label, vals(M.priceListStatus, { draft: 'info', active: 'success' })),
+  master('gstRate', M.gstRate.label, vals(M.gstRate)),
+  master('uom', M.uom.label, vals(M.uom)),
+  master('notificationChannel', M.notificationChannel.label, vals(M.notificationChannel, { email: 'info', whatsapp: 'success', in_app: 'accent' })),
+  master('notificationEvent', M.notificationEvent.label, vals(M.notificationEvent)),
+  master('templateStatus', M.templateStatus.label, vals(M.templateStatus, { active: 'success' })),
 ];
 
 const fp = (key: string, label: string, type: Parameters<typeof field>[3], extra?: Parameters<typeof field>[4]) => field('products', key, label, type, extra);

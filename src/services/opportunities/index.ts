@@ -5,7 +5,7 @@
 import { appPack } from '../../domain/pack';
 import { OPEN_STAGES, isStagnant } from '../../domain/modules/opportunities';
 import type { RecordData } from '../../metadata/types';
-import { addDays, nowLocal, todayKey } from '../../lib/dates';
+import { addDays, addMinutes, nowLocal, todayKey } from '../../lib/dates';
 import { nowIso } from '../../lib/clock';
 import { uid } from '../../lib/ids';
 import { type Actor, canReadRecord, canUpdateRecord, perm } from '../authz';
@@ -17,6 +17,9 @@ import { getResource, masterLabel } from '../registry';
 import type { HookContext } from '../resourceHooks';
 import { queryRecords } from '../runtime';
 import { ServiceError } from '../types';
+import { L } from '../../constants/labels';
+
+const T = L.opportunities.messages;
 
 export { OPEN_STAGES, isStagnant };
 
@@ -34,11 +37,11 @@ const quotationsOf = (oppId: string, records = getDb().records) => (records.quot
 /** OPP-02 entry criteria for the target stage. Throws a readable ServiceError when not met. */
 export function checkStageEntry(ctx: HookContext, r: Record<string, unknown>, to: string) {
   const recs = ctx.d.records;
-  if (to === 'proposal' && !(Number(r.value) > 0)) throw new ServiceError('validation', 'Enter the deal value before moving to Proposal.', { fieldErrors: { value: 'Required for Proposal' } });
-  if (to === 'negotiation' && hasResource('quotations') && !quotationsOf(String(r.id), recs).length) throw new ServiceError('invalid_state', 'Negotiation needs a quotation for this opportunity. Create one first.');
+  if (to === 'proposal' && !(Number(r.value) > 0)) throw new ServiceError('validation', T.proposalNeedsValue, { fieldErrors: { value: T.proposalNeedsValueField } });
+  if (to === 'negotiation' && hasResource('quotations') && !quotationsOf(String(r.id), recs).length) throw new ServiceError('invalid_state', T.negotiationNeedsQuotation);
   if (to === 'won') {
-    if (hasResource('quotations') && !acceptedQuotationFor(String(r.id), recs)) throw new ServiceError('invalid_state', 'Won needs an accepted quotation (customer PO or acceptance recorded on the quotation).');
-    if (!(Number(r.value) > 0)) throw new ServiceError('validation', 'A won opportunity needs a value.');
+    if (hasResource('quotations') && !acceptedQuotationFor(String(r.id), recs)) throw new ServiceError('invalid_state', T.wonNeedsAccepted);
+    if (!(Number(r.value) > 0)) throw new ServiceError('validation', T.wonNeedsValue);
   }
 }
 
@@ -53,17 +56,17 @@ export interface LostInput {
 export function markLost(actor: Actor, id: string, input: LostInput, expectedVersion: number) {
   const res = getResource('opportunities');
   const errors: Record<string, string> = {};
-  if (!input.lostReason) errors.lostReason = 'Choose a lost reason';
-  if (!input.lostToCompetitor?.trim()) errors.lostToCompetitor = 'Name the competitor (or "None — project dropped")';
-  if (input.lostToPrice !== undefined && input.lostToPrice !== null && !(Number(input.lostToPrice) >= 0)) errors.lostToPrice = 'Enter a valid amount';
-  if (Object.keys(errors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: errors });
+  if (!input.lostReason) errors.lostReason = T.chooseLostReason;
+  if (!input.lostToCompetitor?.trim()) errors.lostToCompetitor = T.nameCompetitor;
+  if (input.lostToPrice !== undefined && input.lostToPrice !== null && !(Number(input.lostToPrice) >= 0)) errors.lostToPrice = T.validAmount;
+  if (Object.keys(errors).length) throw new ServiceError('validation', T.fixFields, { fieldErrors: errors });
   return commit((d) => {
     const idx = d.records.opportunities.findIndex((r) => r.id === id);
     const cur = d.records.opportunities[idx];
-    if (!cur || !canReadRecord(actor, res, cur)) throw new ServiceError('not_found', `Opportunity ${id} was not found.`);
-    if (!canUpdateRecord(actor, res, cur)) throw new ServiceError('forbidden', 'Your role cannot change this opportunity.');
-    if (cur.version !== expectedVersion) throw new ServiceError('version_conflict', 'This opportunity changed since you opened it. Reload and try again.');
-    if (!OPEN_STAGES.includes(String(cur.stage))) throw new ServiceError('invalid_state', 'Only open opportunities can be marked lost.');
+    if (!cur || !canReadRecord(actor, res, cur)) throw new ServiceError('not_found', T.notFound(id));
+    if (!canUpdateRecord(actor, res, cur)) throw new ServiceError('forbidden', T.cannotChange);
+    if (cur.version !== expectedVersion) throw new ServiceError('version_conflict', T.versionConflict);
+    if (!OPEN_STAGES.includes(String(cur.stage))) throw new ServiceError('invalid_state', T.onlyOpenLost);
     const at = nowIso();
     const next: RecordData = {
       ...cur,
@@ -82,8 +85,8 @@ export function markLost(actor: Actor, id: string, input: LostInput, expectedVer
       action: 'transition',
       resource: 'opportunities',
       recordId: id,
-      summary: `Marked lost: ${masterLabel('lostReason', input.lostReason)} — to ${input.lostToCompetitor.trim()}${input.note ? ` (${input.note})` : ''}`,
-      changes: [{ field: 'stage', label: 'Stage', before: masterLabel('oppStage', cur.stage), after: 'Lost' }],
+      summary: T.auditLost(masterLabel('lostReason', input.lostReason), input.lostToCompetitor.trim(), input.note ?? ''),
+      changes: [{ field: 'stage', label: L.opportunities.fields.opportunities.stage, before: masterLabel('oppStage', cur.stage), after: masterLabel('oppStage', 'lost') }],
       correlationId,
     });
     emitEvent(d, actor, { eventType: 'opportunities.status_changed', resourceId: res.id, recordId: id, correlationId, payload: { from: cur.stage, to: 'lost' } });
@@ -100,14 +103,14 @@ export function sweepStagnation(actor: Actor): number {
   const stale = queryRecords(actor, 'opportunities', {}).rows.filter((r) => isStagnant(r));
   if (!stale.length) return 0;
   const today = todayKey();
-  const fresh = stale.filter((r) => !getDb().notifications.some((n) => n.title.includes(r.id) && n.title.includes('stagnant') && n.createdAt.slice(0, 10) === today));
+  const fresh = stale.filter((r) => !getDb().notifications.some((n) => n.title.includes(r.id) && n.title.includes(T.stagnantMarker) && n.createdAt.slice(0, 10) === today));
   if (!fresh.length) return stale.length;
   commit((d) => {
     fresh.forEach((r) => {
       const owner = userOfStaff(r.ownerId);
       const mgr = userOfStaff(managerOf(r.ownerId, d.records));
       const past = !!r.expectedCloseDate && String(r.expectedCloseDate) < today;
-      const title = `${r.id} is stagnant: ${past ? 'past its expected close date' : `no activity for ${getPolicies().opportunityStagnationDays}+ days`} — ${String(r.name)}`;
+      const title = T.stagnantNotice(r.id, past ? T.stagnantPastClose : T.stagnantIdle(getPolicies().opportunityStagnationDays), String(r.name));
       [owner, mgr].filter(Boolean).forEach((u) => notify(d, { userId: u!.id, workspaceId: actor.workspaceId, kind: 'reminder', title, link: { resource: 'opportunities', recordId: r.id } }));
     });
   });
@@ -127,7 +130,7 @@ export interface ForecastRow {
 }
 
 export interface Forecast {
-  /** Largest open deals closing in range (for the "where the number comes from" panel). */
+  /** Largest open opportunities closing in range (for the "where the number comes from" panel). */
   top: RecordData[];
   periods: { key: string; label: string }[];
   rows: ForecastRow[];
@@ -166,9 +169,9 @@ function nextPeriods(period: ForecastPeriod, count: number): { key: string; labe
 }
 
 /**
- * Weighted = Σ value × probability (open deals closing in the period).
- * Commit = Σ value of deals in Negotiation (the team's committed number) + won in the period.
- * Pipeline = Σ value of all open deals. Won = value won in the period (by won date).
+ * Weighted = Σ value × probability (open opportunities closing in the period).
+ * Commit = Σ value of opportunities in Negotiation (the team's committed number) + won in the period.
+ * Pipeline = Σ value of all open opportunities. Won = value won in the period (by won date).
  */
 export function computeForecast(actor: Actor, opts: { period: ForecastPeriod; groupBy: ForecastGroup; horizon: number; divisionId?: string }): Forecast {
   const periods = nextPeriods(opts.period, opts.horizon);
@@ -182,7 +185,7 @@ export function computeForecast(actor: Actor, opts: { period: ForecastPeriod; gr
   const top: RecordData[] = [];
   const groupKey = (r: RecordData) => String(opts.groupBy === 'owner' ? r.ownerId : opts.groupBy === 'division' ? r.divisionId : r.productType ?? 'unspecified');
   const groupLabel = (k: string) => {
-    if (k === 'unspecified' || k === 'undefined' || k === 'null') return 'Not specified';
+    if (k === 'unspecified' || k === 'undefined' || k === 'null') return T.notSpecified;
     if (opts.groupBy === 'owner') return String(getDb().records.employees?.find((e) => e.id === k)?.fullName ?? k);
     return masterLabel(opts.groupBy === 'division' ? 'division' : 'productType', k);
   };
@@ -212,51 +215,115 @@ export function computeForecast(actor: Actor, opts: { period: ForecastPeriod; gr
   return { top: top.slice(0, 6), periods, rows: [...groups.values()].sort((a, b) => b.total.weighted - a.total.weighted), totals, grand, count };
 }
 
-// ---------------------------------------------------------------- calendar (FR-034)
+// ---------------------------------------------------------------- demo machine calendar (OPP-04)
 
-export interface CalendarItem {
+export interface DemoBooking {
   id: string;
-  date: string;
-  time?: string;
-  kind: 'task' | 'demo' | 'close' | 'follow_up';
-  title: string;
-  sub: string;
-  resource: string;
-  recordId: string;
-  overdue: boolean;
+  machineId: string;
+  /** ISO local "YYYY-MM-DDTHH:mm". */
+  start: string;
+  end: string;
+  status: string;
+  /** False when the actor cannot read this demo (another owner's booking): shown as a busy slot only. */
+  visible: boolean;
+  opportunityId?: string;
+  opportunityName?: string;
+  customerName?: string;
+  ownerId?: string;
 }
 
-/** Tasks, demos, expected close dates and follow-ups the actor can see, between two dates. */
-export function calendarItems(actor: Actor, from: string, to: string, mineOnly: boolean): CalendarItem[] {
-  const today = todayKey();
-  const inRange = (d: string) => d >= from && d <= to;
-  const mine = (owner: unknown) => !mineOnly || owner === actor.staffId;
-  const items: CalendarItem[] = [];
-  const read = (key: string) => (hasResource(key) && perm(actor, key).read !== 'none' ? queryRecords(actor, key, {}).rows : []);
-  for (const t of read('tasks')) {
-    const d = String(t.dueDate ?? '');
-    if (!d || !inRange(d) || !mine(t.assigneeId) || !['todo', 'in_progress'].includes(String(t.status))) continue;
-    items.push({ id: `t-${t.id}`, date: d, kind: 'task', title: String(t.title), sub: String(t.relatedLabel || 'Task'), resource: 'tasks', recordId: t.id, overdue: d < today });
+export interface DemoMachineCalendarData {
+  machines: RecordData[];
+  bookings: DemoBooking[];
+}
+
+export interface DemoMachineCalendarFilter {
+  machineId?: string;
+  divisionId?: string;
+  from?: string;
+  to?: string;
+  includeCancelled?: boolean;
+}
+
+/**
+ * Demo machines the actor can see and every centre demo booked on them. Bookings of demos the actor
+ * cannot read (row scope) still show as busy slots, so nobody double-books a machine.
+ */
+export function demoMachineCalendar(actor: Actor, f: DemoMachineCalendarFilter = {}): DemoMachineCalendarData {
+  const machines = queryRecords(actor, 'demoMachines', {}).rows
+    .filter((m) => (!f.machineId || m.id === f.machineId) && (!f.divisionId || m.divisionId === f.divisionId))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const ids = new Set(machines.map((m) => m.id));
+  const demoRes = getResource('demos');
+  const canSeeDemos = perm(actor, 'demos').read !== 'none';
+  const bookings: DemoBooking[] = [];
+  for (const d of getDb().records.demos ?? []) {
+    if (d.location !== 'centre' || !ids.has(String(d.demoMachineId)) || !d.scheduledAt) continue;
+    if (!f.includeCancelled && d.status === 'cancelled') continue;
+    const start = String(d.scheduledAt).slice(0, 16);
+    const end = addMinutes(start, Number(d.durationMin) || 120).slice(0, 16);
+    if ((f.from && end.slice(0, 10) < f.from) || (f.to && start.slice(0, 10) > f.to)) continue;
+    const visible = canSeeDemos && canReadRecord(actor, demoRes, d);
+    bookings.push({
+      id: d.id,
+      machineId: String(d.demoMachineId),
+      start,
+      end,
+      status: String(d.status),
+      visible,
+      ...(visible ? { opportunityId: String(d.opportunityId ?? ''), opportunityName: titleOf('opportunities', d.opportunityId), customerName: titleOf('customers', d.customerId), ownerId: String(d.ownerId ?? '') } : {}),
+    });
   }
-  for (const m of read('demos')) {
-    const at = String(m.scheduledAt ?? '');
-    const d = at.slice(0, 10);
-    if (!d || !inRange(d) || !mine(m.ownerId) || !['requested', 'scheduled'].includes(String(m.status))) continue;
-    items.push({ id: `d-${m.id}`, date: d, time: at.slice(11, 16), kind: 'demo', title: `Demo · ${titleOf('opportunities', m.opportunityId)}`, sub: masterLabel('demoLocation', m.location), resource: 'demos', recordId: m.id, overdue: d < today });
-  }
-  for (const o of read('opportunities')) {
-    if (!OPEN_STAGES.includes(String(o.stage)) || !mine(o.ownerId)) continue;
-    const c = String(o.expectedCloseDate ?? '');
-    if (c && inRange(c)) items.push({ id: `c-${o.id}`, date: c, kind: 'close', title: `Expected close · ${String(o.name)}`, sub: masterLabel('oppStage', o.stage), resource: 'opportunities', recordId: o.id, overdue: c < today });
-    const f = String(o.nextFollowUpAt ?? '');
-    if (f && inRange(f)) items.push({ id: `f-${o.id}`, date: f, kind: 'follow_up', title: `Follow up · ${String(o.name)}`, sub: 'Opportunity', resource: 'opportunities', recordId: o.id, overdue: f < today });
-  }
-  for (const l of read('leads')) {
-    const f = String(l.nextFollowUpAt ?? '');
-    if (!f || !inRange(f) || !mine(l.ownerId) || !['new', 'contacted', 'nurture'].includes(String(l.status))) continue;
-    items.push({ id: `l-${l.id}`, date: f, kind: 'follow_up', title: `Follow up · lead ${l.id}`, sub: titleOf('customers', l.customerId) || 'Lead', resource: 'leads', recordId: l.id, overdue: f < today });
-  }
-  return items.sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
+  bookings.sort((a, b) => a.start.localeCompare(b.start));
+  return { machines, bookings };
+}
+
+// ---------------------------------------------------------------- pipeline (OPP-03)
+
+export interface PipelineFilter {
+  search?: string;
+  divisionId?: string;
+  ownerId?: string;
+  /** '' / undefined = open stages, 'all' = every stage, else one stage key. */
+  stage?: string;
+  territoryId?: string;
+  productType?: string;
+  /** "YYYY-MM" of the expected close date. */
+  closeMonth?: string;
+  sort?: { field: string; dir: 'asc' | 'desc' }[];
+}
+
+/** Opportunities the actor can see, filtered for the Pipeline page (Kanban and list). */
+export function pipelineRows(actor: Actor, f: PipelineFilter = {}): RecordData[] {
+  const sort = f.sort?.length ? f.sort : [{ field: 'expectedCloseDate', dir: 'asc' as const }];
+  return queryRecords(actor, 'opportunities', { search: f.search || undefined, sort }).rows.filter(
+    (r) =>
+      (!f.stage ? OPEN_STAGES.includes(String(r.stage)) : f.stage === 'all' || r.stage === f.stage) &&
+      (!f.divisionId || r.divisionId === f.divisionId) &&
+      (!f.ownerId || r.ownerId === f.ownerId) &&
+      (!f.territoryId || r.territoryId === f.territoryId) &&
+      (!f.productType || r.productType === f.productType) &&
+      (!f.closeMonth || String(r.expectedCloseDate ?? '').startsWith(f.closeMonth)),
+  );
+}
+
+/** Filter choices that depend on the data: owners and expected-close months of the opportunities the actor can see. */
+export function pipelineFacets(actor: Actor): { ownerIds: string[]; closeMonths: string[] } {
+  const rows = queryRecords(actor, 'opportunities', {}).rows;
+  const ownerIds = [...new Set(rows.map((r) => String(r.ownerId ?? '')).filter(Boolean))];
+  const closeMonths = [...new Set(rows.map((r) => String(r.expectedCloseDate ?? '').slice(0, 7)).filter((m) => /^\d{4}-\d{2}$/.test(m)))].sort();
+  return { ownerIds, closeMonths };
+}
+
+/** Totals for the Pipeline header: count, value, weighted value and stagnation alerts of the open rows. */
+export function pipelineTotals(rows: RecordData[]) {
+  const open = rows.filter((r) => OPEN_STAGES.includes(String(r.stage)));
+  return {
+    open: open.length,
+    value: open.reduce((s, r) => s + (Number(r.value) || 0), 0),
+    weighted: open.reduce((s, r) => s + ((Number(r.value) || 0) * (Number(r.probability) || 0)) / 100, 0),
+    stagnant: open.filter((r) => isStagnant(r)).length,
+  };
 }
 
 function titleOf(resKey: string, id: unknown): string {
@@ -266,7 +333,7 @@ function titleOf(resKey: string, id: unknown): string {
   return r ? String(r[res.titleField] ?? r.id) : String(id);
 }
 
-/** New-opportunity defaults for the hook: probability, hub, product category, stage timestamp. */
+/** New-opportunity defaults for the hook: probability, territory / hub, product type, stage timestamp. */
 export function applyCreateDefaults(ctx: HookContext, c: Record<string, unknown>) {
   if (c.probability === undefined || c.probability === null || c.probability === '') c.probability = stageProbability(String(c.stage ?? 'needs_assessment'));
   const cust = ctx.d.records.customers?.find((x) => x.id === c.customerId);

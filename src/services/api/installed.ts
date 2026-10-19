@@ -1,5 +1,5 @@
 /**
- * Installed-base page services (async boundary). Same signatures a REST API would have;
+ * Installed Base page services (async boundary). Same signatures a REST API would have;
  * each call waits the simulated network delay before running the engine-side logic.
  */
 import type { RecordData } from '../../metadata/types';
@@ -11,6 +11,7 @@ import {
   daysBetween,
   markContractLost,
   moveMachine,
+  prepareRenewalQuotation,
   type MoveInput,
   renewContract,
   type RenewInput,
@@ -33,6 +34,8 @@ export const installedApi = {
   replaceComponent: (actor: Actor, componentId: string, input: { newSerial: string; date: string; reason: string }) => call(() => replaceComponent(actor, componentId, input)),
   renew: (actor: Actor, id: string, input: RenewInput) => call(() => renewContract(actor, id, input)),
   markLost: (actor: Actor, id: string, reason: string, note: string) => call(() => markContractLost(actor, id, reason, note)),
+  /** IB-05: returns the renewal opportunity id to open the quotation editor on. */
+  prepareRenewalQuotation: (actor: Actor, id: string) => call(() => prepareRenewalQuotation(actor, id)),
 };
 
 export type RenewalBucket = 'upcoming' | 'due' | 'lapsed' | 'renewed' | 'lost';

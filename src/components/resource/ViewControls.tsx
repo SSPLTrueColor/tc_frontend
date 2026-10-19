@@ -93,7 +93,7 @@ export function ViewBar({
     if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 8);
     else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 8;
     measure();
-  }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId]);  
 
   // One sliding underline: it glides from the old tab to the newly selected one (smooth transition).
   const tabsRef = useRef<HTMLDivElement>(null);

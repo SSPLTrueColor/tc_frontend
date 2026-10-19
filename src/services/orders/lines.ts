@@ -1,4 +1,5 @@
 /** Order line maths (QuoteLine shape from docs/CONTRACTS.md) — shared by quotations-to-order and repeat orders. */
+import { L } from '../../constants/labels';
 import { gstSplit } from '../lookups';
 
 export interface QuoteLine {
@@ -119,11 +120,12 @@ export function diffLines(order: QuoteLine[], reference: QuoteLine[], orderTotal
 }
 
 export function describeDiff(d: LineDiff): string {
+  const T = L.orders.diff;
   const parts: string[] = [];
-  if (d.added.length) parts.push(`${d.added.length} line(s) added`);
-  if (d.removed.length) parts.push(`${d.removed.length} line(s) removed`);
-  if (d.changed.length) parts.push(`${d.changed.length} line(s) changed`);
-  if (d.valueChangePct) parts.push(`value ${d.valueChangePct > 0 ? '+' : ''}${d.valueChangePct}%`);
-  if (d.discountIncreased) parts.push('higher discount');
-  return parts.length ? parts.join(' · ') : 'Same as quotation';
+  if (d.added.length) parts.push(T.summaryAdded(d.added.length));
+  if (d.removed.length) parts.push(T.summaryRemoved(d.removed.length));
+  if (d.changed.length) parts.push(T.summaryChanged(d.changed.length));
+  if (d.valueChangePct) parts.push(T.summaryValue(d.valueChangePct));
+  if (d.discountIncreased) parts.push(T.summaryDiscount);
+  return parts.length ? parts.join(' · ') : T.same;
 }

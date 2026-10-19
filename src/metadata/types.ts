@@ -27,7 +27,7 @@ export type FieldType =
   /** Several people (relation ids) — avatar stack with "+N" in grids. */
   | 'people';
 
-/** Classification drives masking/hiding per role. Toggling column visibility never changes it. */
+/** Classification drives masking/hiding per role. Toggling column visibility never changes it. Key `health` is the "Restricted" class (label in L.common.sensitivity). */
 export type Sensitivity = 'none' | 'contact' | 'identifier' | 'health' | 'financial';
 
 /** Declarative, typed condition — no customer-authored code is ever evaluated. */
@@ -75,7 +75,7 @@ export interface FieldDefinition {
     resource: string;
     /** Dependent lookup: options where option[field] === form[fromField]. */
     filterBy?: { field: string; fromField: string };
-    /** Static option restriction, e.g. only clinical staff. */
+    /** Static option restriction, e.g. only active users. */
     where?: FieldCondition;
   };
   min?: number;

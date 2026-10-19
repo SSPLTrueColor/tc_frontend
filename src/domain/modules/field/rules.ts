@@ -3,6 +3,7 @@
  * unit-tested and reused by hooks, services and seed data.
  */
 import type { ApprovalLevel } from '../../../services/types';
+import { L } from '../../../constants/labels';
 
 // ---------------------------------------------------------------- shift (BR-43)
 
@@ -113,9 +114,9 @@ export function expenseLimit(expenseType: string, vehicle: string, rates: { twoW
  * and division (not a named person), so "reporting manager" is the requester's manager level.
  */
 export function managerLevel(roleId: string): ApprovalLevel {
-  if (['sales_exec', 'engineer', 'coordinator', 'profiling'].includes(roleId)) return { capability: 'approve.l1', label: 'Reporting manager' };
-  if (['sales_manager', 'service_head', 'scm', 'store', 'accounts'].includes(roleId)) return { capability: 'approve.l2', label: 'Division head' };
-  return { capability: 'approve.l3', label: 'Management' };
+  if (['sales_exec', 'engineer', 'coordinator', 'profiling'].includes(roleId)) return { capability: 'approve.l1', label: L.field.approvals.reportingManager };
+  if (['sales_manager', 'service_head', 'scm', 'store', 'accounts'].includes(roleId)) return { capability: 'approve.l2', label: L.roles.division_head.label };
+  return { capability: 'approve.l3', label: L.roles.management.label };
 }
 
 // ---------------------------------------------------------------- periods (TGT-01)

@@ -1,10 +1,13 @@
 /** quotations module: runtime hooks, approval type, record actions/tabs and the expiry/reminder job. */
+import { L } from '../../constants/labels';
 import { registerRecordActions, registerRecordBanner, registerRecordTab } from '../../components/resource/extensions';
 import { subscribe } from '../../services/db';
 import { registerResourceHooks } from '../../services/resourceHooks';
 import { onDiscountApproved, onDiscountRejected, QUOTE_APPROVAL, quoteBeforeCreate, quoteBeforeUpdate, runQuotationSweep } from '../../services/quotations/workflow';
 import { registerApprovalType } from '../../services/workflow';
-import { LinesTab, OpportunityQuotesTab, QuoteActions, QuoteBanner, RevisionsTab, RoiTab } from '../../modules/quotations/RecordExtensions';
+import { ApprovalTab, DocumentsTab, LinesTab, OpportunityQuotesTab, PricingTab, QuoteActions, QuoteBanner, RoiTab, TermsTab, VersionsTab } from '../../modules/quotations/RecordExtensions';
+
+const T = L.quotations.tabs;
 
 registerResourceHooks('quotations', {
   beforeCreate: quoteBeforeCreate,
@@ -12,19 +15,24 @@ registerResourceHooks('quotations', {
   title: (r) => String(r.quoteNo || r.id),
 });
 
-// FR-040 / BR-17: multi-level discount approval; decisions happen in the Work inbox.
+// FR-040 / BR-17: multi-level discount approval; decisions happen on the Pending Approvals page.
 registerApprovalType(QUOTE_APPROVAL, {
-  label: 'Quotation discount',
+  label: L.quotations.approvalType,
   onApproved: (ctx, a) => onDiscountApproved(ctx, a.recordId),
   onRejected: (ctx, a) => onDiscountRejected(ctx, a.recordId, a.decisionNote ?? ''),
 });
 
 registerRecordActions('quotations', QuoteActions);
 registerRecordBanner('quotations', QuoteBanner);
-registerRecordTab('quotations', { id: 'lines', label: 'Lines', component: LinesTab });
-registerRecordTab('quotations', { id: 'revisions', label: 'Revisions', component: RevisionsTab });
-registerRecordTab('quotations', { id: 'roi', label: 'ROI', component: RoiTab });
-registerRecordTab('opportunities', { id: 'quotations', label: 'Quotations', component: OpportunityQuotesTab });
+// GLOSSARY §1.2 quotation record tabs, in order. "Activity History" is the shared activity tab of the record view.
+registerRecordTab('quotations', { id: 'lines', label: T.lineItems, component: LinesTab });
+registerRecordTab('quotations', { id: 'pricing', label: T.pricing, component: PricingTab });
+registerRecordTab('quotations', { id: 'terms', label: T.terms, component: TermsTab });
+registerRecordTab('quotations', { id: 'approval', label: T.approval, component: ApprovalTab });
+registerRecordTab('quotations', { id: 'versions', label: T.versions, component: VersionsTab });
+registerRecordTab('quotations', { id: 'roi', label: T.roi, component: RoiTab });
+registerRecordTab('quotations', { id: 'documents', label: T.documents, component: DocumentsTab });
+registerRecordTab('opportunities', { id: 'quotations', label: T.opportunityQuotations, component: OpportunityQuotesTab });
 
 /**
  * Simulated server job (FR-044, QUO-06): expire quotations past validity, tidy withdrawn requests and

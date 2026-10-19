@@ -88,7 +88,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
-  }, [columns, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [columns, rows.length]);  
   const masterDetail = res.fields.some((f) => f.type === 'lineitems' && access[f.key] !== 'hide' && access[f.key] !== 'mask');
 
   // Pinned column offsets (sticky left after the select column).
@@ -130,6 +130,8 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
   const virtual = !groupBy && rowLines === 1 && expanded.size === 0 && rows.length > VIRTUAL_THRESHOLD;
   const [scroll, setScroll] = useState({ top: 0, height: 800 });
   const [rowPx, setRowPx] = useState(density === 'compact' ? 35 : 41);
+  // Measures after every render on purpose (row height and viewport can change with any update); the guards stop loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     if (!virtual) return;
     const el = wrapRef.current;

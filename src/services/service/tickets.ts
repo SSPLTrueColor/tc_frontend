@@ -20,6 +20,12 @@ import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn } from '../runtime';
 import { ServiceError } from '../types';
 import { clockStates, computeDues, hoursSinceBreach, isBreached, resumePatch } from './sla';
+import { L } from '../../constants/labels';
+
+const E = L.service.errors;
+const A = L.service.audit;
+const N = L.service.notify;
+const O = L.service.outbox;
 
 export const OPEN_STATUSES = ['open', 'assigned', 'accepted', 'in_progress', 'waiting_parts', 'waiting_customer', 'reopened'];
 /** Divisions whose complaints may have no machine (Q-13). */
@@ -44,7 +50,10 @@ export function serviceDesk(divisionId: unknown, store = getDb().records): Recor
   return [...employeesWithRole('coordinator', div, store), ...employeesWithRole('service_head', div, store)];
 }
 
-export const customerName = (customerId: unknown, store = getDb().records) => s(byId('customers', customerId, store)?.name) || s(customerId) || 'Unknown customer';
+/** SLA escalation level → role name (SRV-09: Service Manager → Service Head → GM → MD). */
+export const escalationRole = (level: number, fallback = '') => L.roles.escalationLevels[level as keyof typeof L.roles.escalationLevels] ?? fallback;
+
+export const customerName = (customerId: unknown, store = getDb().records) => s(byId('customers', customerId, store)?.name) || s(customerId) || L.service.titles.unknownCustomer;
 
 // ---------------------------------------------------------------- creation defaults (beforeCreate)
 
@@ -64,9 +73,9 @@ export function applyTicketDefaults(ctx: HookContext, c: Record<string, unknown>
   }
   if (!c.divisionId && c.customerId) c.divisionId = ((byId('customers', c.customerId, store)?.divisionIds as string[] | undefined) ?? [])[0] ?? null;
   if (!c.machineId && !NO_MACHINE_DIVISIONS.includes(s(c.divisionId)) && c.ticketType !== 'spare_only') {
-    throw new ServiceError('validation', 'Choose the machine. Only Ink, Paper and Fabric complaints can be logged without one.', { fieldErrors: { machineId: 'Machine is required for this division' } });
+    throw new ServiceError('validation', E.machineRequired, { fieldErrors: { machineId: E.machineRequiredField } });
   }
-  if (!c.divisionId) throw new ServiceError('validation', 'Choose the division for a complaint without a machine.', { fieldErrors: { divisionId: 'Division is required' } });
+  if (!c.divisionId) throw new ServiceError('validation', E.divisionRequired, { fieldErrors: { divisionId: E.divisionRequiredField } });
   c.coverage = c.machineId ? coverageFor(s(c.machineId), s(c.reportedAt).slice(0, 10), store) : 'none';
   Object.assign(c, computeDues(getPolicies(), s(c.reportedAt), s(c.priority || 'medium'), s(c.coverage)));
   // BR-33 repeat complaint: same machine + category within the policy window.
@@ -92,16 +101,16 @@ export function applyTicketDefaults(ctx: HookContext, c: Record<string, unknown>
 }
 
 export function afterTicketCreated(ctx: HookContext, t: RecordData) {
-  const title = `New ${s(t.priority) === 'critical' ? 'CRITICAL ' : ''}ticket ${t.id} — ${customerName(t.customerId, ctx.d.records)}`;
-  if (t.assigneeId && t.assigneeId !== ctx.actor.staffId) notifyStaff(ctx, t.assigneeId, `Assigned to you: ${title}`, { resource: 'tickets', recordId: t.id }, 'assignment');
-  if (!t.assigneeId) serviceDesk(t.divisionId, ctx.d.records).forEach((e) => e.id !== ctx.actor.staffId && notifyStaff(ctx, e.id, `${title} needs an engineer`, { resource: 'tickets', recordId: t.id }, 'assignment'));
-  if (t.repeatOfId) serviceDesk(t.divisionId, ctx.d.records).forEach((e) => notifyStaff(ctx, e.id, `Repeat complaint ${t.id} (previous ${t.repeatOfId}) — root cause needed`, { resource: 'tickets', recordId: t.id }, 'exception'));
+  const title = N.newTicket(s(t.priority) === 'critical', t.id, customerName(t.customerId, ctx.d.records));
+  if (t.assigneeId && t.assigneeId !== ctx.actor.staffId) notifyStaff(ctx, t.assigneeId, N.assignedToYou(title), { resource: 'tickets', recordId: t.id }, 'assignment');
+  if (!t.assigneeId) serviceDesk(t.divisionId, ctx.d.records).forEach((e) => e.id !== ctx.actor.staffId && notifyStaff(ctx, e.id, N.needsEngineer(title), { resource: 'tickets', recordId: t.id }, 'assignment'));
+  if (t.repeatOfId) serviceDesk(t.divisionId, ctx.d.records).forEach((e) => notifyStaff(ctx, e.id, N.repeat(t.id, s(t.repeatOfId)), { resource: 'tickets', recordId: t.id }, 'exception'));
 }
 
 // ---------------------------------------------------------------- edits and transitions
 
 export function guardTicketUpdate(ctx: HookContext, before: RecordData, c: Record<string, unknown>) {
-  if (c.assigneeId !== before.assigneeId && !can(ctx.actor, 'ticket.assign')) throw new ServiceError('forbidden', 'Only coordinators and service leadership can change the engineer.');
+  if (c.assigneeId !== before.assigneeId && !can(ctx.actor, 'ticket.assign')) throw new ServiceError('forbidden', E.changeEngineer);
   if (c.priority !== before.priority && OPEN_STATUSES.includes(s(before.status))) {
     // Priority change re-targets the clocks that are still running.
     const dues = computeDues(getPolicies(), s(before.reportedAt), s(c.priority), s(before.coverage));
@@ -117,30 +126,30 @@ export function guardTicketUpdate(ctx: HookContext, before: RecordData, c: Recor
 
 export function afterTicketUpdated(ctx: HookContext, before: RecordData, after: RecordData) {
   if (after.assigneeId && after.assigneeId !== before.assigneeId && after.assigneeId !== ctx.actor.staffId) {
-    notifyStaff(ctx, after.assigneeId, `Assigned to you: ${after.id} — ${customerName(after.customerId, ctx.d.records)}`, { resource: 'tickets', recordId: after.id }, 'assignment');
+    notifyStaff(ctx, after.assigneeId, N.assignedShort(after.id, customerName(after.customerId, ctx.d.records)), { resource: 'tickets', recordId: after.id }, 'assignment');
   }
 }
 
 export function chargeableBlocker(t: RecordData): string | null {
   if (t.coverage !== 'none' || NEVER_CHARGEABLE.includes(s(t.ticketType))) return null;
   if (['approved', 'billing_requested', 'waived'].includes(s(t.chargeableStatus))) return null;
-  return 'This machine has no warranty or contract: send a chargeable quote and record the customer’s approval (or have the service head waive charges) before resolving.';
+  return E.chargeableBlocker;
 }
 
 export function guardTicketTransition(ctx: HookContext, t: RecordData, to: string) {
   const isAssignee = t.assigneeId === ctx.actor.staffId;
   const from = s((ctx.d.records.tickets ?? []).find((x) => x.id === t.id)?.status);
-  if (to === 'assigned' && !t.assigneeId) throw new ServiceError('invalid_state', 'Choose an engineer first (Assign engineer, or the dispatch board).');
-  if ((to === 'accepted' || (from === 'assigned' && to === 'open')) && !isAssignee && !can(ctx.actor, 'ticket.assign')) throw new ServiceError('forbidden', 'Only the assigned engineer can accept or reject this job.');
+  if (to === 'assigned' && !t.assigneeId) throw new ServiceError('invalid_state', E.chooseEngineerFirst);
+  if ((to === 'accepted' || (from === 'assigned' && to === 'open')) && !isAssignee && !can(ctx.actor, 'ticket.assign')) throw new ServiceError('forbidden', E.onlyAssigneeAccept);
   if (to === 'resolved') {
-    if (!s(t.resolution).trim()) throw new ServiceError('validation', 'Describe the work done (Edit → Work done / resolution, or complete the job card) before resolving.', { fieldErrors: { resolution: 'Required to resolve' } });
+    if (!s(t.resolution).trim()) throw new ServiceError('validation', E.workDoneRequired, { fieldErrors: { resolution: E.requiredToResolve } });
     const block = chargeableBlocker(t);
     if (block) throw new ServiceError('invalid_state', block);
   }
-  if (to === 'closed' && t.repeatOfId && !s(t.rootCause).trim()) throw new ServiceError('validation', `Repeat complaint (previous ${t.repeatOfId}): record the root cause before closing.`, { fieldErrors: { rootCause: 'Required for repeat complaints' } });
+  if (to === 'closed' && t.repeatOfId && !s(t.rootCause).trim()) throw new ServiceError('validation', E.rootCauseRequired(s(t.repeatOfId)), { fieldErrors: { rootCause: E.rootCauseField } });
   if (to === 'reopened') {
     const closed = s(t.closedAt).slice(0, 10);
-    if (closed && addDays(closed, getPolicies().reopenWindowDays) < todayKey()) throw new ServiceError('invalid_state', `Tickets can be re-opened within ${getPolicies().reopenWindowDays} days of closure. Log a new ticket instead.`);
+    if (closed && addDays(closed, getPolicies().reopenWindowDays) < todayKey()) throw new ServiceError('invalid_state', E.reopenWindow(getPolicies().reopenWindowDays));
   }
 }
 
@@ -156,7 +165,7 @@ export function afterTicketTransition(ctx: HookContext, before: RecordData, afte
   if (to === 'in_progress' && !after.arrivedAt) patch.arrivedAt = now;
   if (from === 'assigned' && to === 'open') {
     patch.assigneeId = null;
-    serviceDesk(after.divisionId, ctx.d.records).forEach((e) => notifyStaff(ctx, e.id, `${ctx.actor.user.name} rejected ${after.id}; please re-assign`, { resource: 'tickets', recordId: after.id }, 'assignment'));
+    serviceDesk(after.divisionId, ctx.d.records).forEach((e) => notifyStaff(ctx, e.id, N.rejected(ctx.actor.user.name, after.id), { resource: 'tickets', recordId: after.id }, 'assignment'));
   }
   if (to === 'resolved') {
     patch.resolvedAt = now;
@@ -165,7 +174,7 @@ export function afterTicketTransition(ctx: HookContext, before: RecordData, afte
   if (to === 'customer_confirmation' && from !== 'resolved') patch.resolvedAt = after.resolvedAt || now;
   if (from === 'customer_confirmation' && to === 'in_progress') {
     patch.resolvedAt = null;
-    if (after.assigneeId) notifyStaff(ctx, after.assigneeId, `${after.id}: customer says the problem is not resolved`, { resource: 'tickets', recordId: after.id }, 'exception');
+    if (after.assigneeId) notifyStaff(ctx, after.assigneeId, N.notResolved(after.id), { resource: 'tickets', recordId: after.id }, 'exception');
   }
   if (to === 'closed') patch.closedAt = now;
   if (to === 'reopened') {
@@ -180,10 +189,10 @@ export function afterTicketTransition(ctx: HookContext, before: RecordData, afte
       pausedMinutes: 0,
       feedbackToken: uid('fb').replace(/^fb_/, ''),
     });
-    [after.assigneeId, ...serviceDesk(after.divisionId, ctx.d.records).map((e) => e.id)].filter(Boolean).forEach((id) => notifyStaff(ctx, id, `${after.id} was re-opened`, { resource: 'tickets', recordId: after.id }, 'exception'));
+    [after.assigneeId, ...serviceDesk(after.divisionId, ctx.d.records).map((e) => e.id)].filter(Boolean).forEach((id) => notifyStaff(ctx, id, N.reopened(after.id), { resource: 'tickets', recordId: after.id }, 'exception'));
   }
   if (Object.keys(patch).length) {
-    const next = patchRecordIn(ctx, 'tickets', after.id, patch, to === 'resolved' ? `Resolved; waiting for customer confirmation` : undefined);
+    const next = patchRecordIn(ctx, 'tickets', after.id, patch, to === 'resolved' ? A.resolvedWaiting : undefined);
     if (to === 'resolved') sendClosurePack(ctx, next);
   }
 }
@@ -197,16 +206,16 @@ export function sendClosurePack(ctx: HookContext, t: RecordData) {
     channel: 'whatsapp',
     to,
     templateId: 'ticket.resolved',
-    body: `True Colors service: ${t.id} is resolved. Job card attached. Please confirm and rate our service (1–5): ${link}`,
+    body: O.resolved(t.id, link),
     related: { resource: 'tickets', recordId: t.id },
   });
   if (contact?.email) {
     queueMessage(ctx, {
       channel: 'email',
       to: s(contact.email),
-      subject: `Service job card ${t.id}`,
+      subject: O.jobCardSubject(t.id),
       templateId: 'ticket.jobcard',
-      body: `Job card for ${t.id} (${customerName(t.customerId, ctx.d.records)}). Work done: ${s(t.resolution).slice(0, 160)}. Feedback: ${link}`,
+      body: O.jobCard(t.id, customerName(t.customerId, ctx.d.records), s(t.resolution).slice(0, 160), link),
       related: { resource: 'tickets', recordId: t.id },
     });
   }
@@ -219,9 +228,9 @@ function mutateTicket(actor: Actor, id: string, opts: { allow?: (t: RecordData) 
   const res = getResource('tickets');
   return commit((d) => {
     const t = (d.records.tickets ?? []).find((x) => x.id === id);
-    if (!t || !canReadRecord(actor, res, t)) throw new ServiceError('not_found', `Ticket ${id} was not found or you do not have access.`);
+    if (!t || !canReadRecord(actor, res, t)) throw new ServiceError('not_found', E.notFoundOrNoAccess(id));
     const allowed = opts.allow ? opts.allow(t) : canUpdateRecord(actor, res, t);
-    if (!allowed) throw new ServiceError('forbidden', opts.denied ?? `Your role (${actor.role.label}) cannot change this ticket.`);
+    if (!allowed) throw new ServiceError('forbidden', opts.denied ?? E.roleCannotChange(actor.role.label));
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const patch = fn(ctx, t);
     return patch && Object.keys(patch).length ? patchRecordIn(ctx, 'tickets', id, patch, summary) : t;
@@ -232,31 +241,31 @@ const deskOrAssignee = (actor: Actor) => (t: RecordData) => can(actor, 'ticket.a
 
 /** Assign (or re-assign) an engineer; open tickets move to Assigned and the response clock stops. */
 export function assignTicket(actor: Actor, id: string, staffId: string) {
-  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', 'Only coordinators and service leadership assign engineers.');
+  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', E.onlyDeskAssigns);
   const eng = byId('employees', staffId);
-  if (!eng || eng.status === 'inactive') throw new ServiceError('validation', 'Choose an active engineer.');
+  if (!eng || eng.status === 'inactive') throw new ServiceError('validation', E.activeEngineer);
   return mutateTicket(
     actor,
     id,
     { allow: () => true },
     (ctx, t) => {
-      if (!OPEN_STATUSES.includes(s(t.status))) throw new ServiceError('invalid_state', 'Only open tickets can be assigned.');
+      if (!OPEN_STATUSES.includes(s(t.status))) throw new ServiceError('invalid_state', E.onlyOpenAssign);
       const now = nowLocal();
-      notifyStaff(ctx, staffId, `Assigned to you: ${t.id} — ${customerName(t.customerId, ctx.d.records)} (${s(t.priority)})`, { resource: 'tickets', recordId: t.id }, 'assignment');
+      notifyStaff(ctx, staffId, N.assignedWithPriority(t.id, customerName(t.customerId, ctx.d.records), L.service.masters.ticketPriority.values[s(t.priority) as keyof typeof L.service.masters.ticketPriority.values] ?? s(t.priority)), { resource: 'tickets', recordId: t.id }, 'assignment');
       return { assigneeId: staffId, status: ['open', 'reopened'].includes(s(t.status)) ? 'assigned' : t.status, respondedAt: t.respondedAt || now };
     },
-    `Assigned to ${s(eng.fullName)}`,
+    A.assignedTo(s(eng.fullName)),
   );
 }
 
 /** FR-081: remote support record; optionally resolves the call or converts it to a site visit. */
 export function recordRemoteSession(actor: Actor, id: string, input: { steps: string; durationMin: number; sessionRef: string; outcome: 'resolved' | 'site_visit' | 'continue' }) {
-  if (!input.steps.trim()) throw new ServiceError('validation', 'Describe the troubleshooting steps.', { fieldErrors: { steps: 'Required' } });
-  if (!(input.durationMin > 0)) throw new ServiceError('validation', 'Enter the call duration in minutes.', { fieldErrors: { durationMin: 'Must be more than 0' } });
+  if (!input.steps.trim()) throw new ServiceError('validation', E.stepsRequired, { fieldErrors: { steps: E.required } });
+  if (!(input.durationMin > 0)) throw new ServiceError('validation', E.durationRequired, { fieldErrors: { durationMin: E.moreThanZero } });
   return mutateTicket(
     actor,
     id,
-    { allow: deskOrAssignee(actor), denied: 'Only the assigned engineer or the service desk can record remote support.' },
+    { allow: deskOrAssignee(actor), denied: E.remoteDenied },
     (ctx, t) => {
       const now = nowLocal();
       insertRecordIn(ctx, 'serviceVisits', { ticketId: t.id, engineerId: t.assigneeId || actor.staffId, visitType: 'remote', status: 'completed', checkInAt: now, checkOutAt: now, diagnosis: input.steps, workDone: input.outcome === 'resolved' ? input.steps : '' });
@@ -268,33 +277,33 @@ export function recordRemoteSession(actor: Actor, id: string, input: { steps: st
       };
       if (input.outcome === 'site_visit') {
         patch.ticketType = t.ticketType === 'remote_support' ? 'breakdown' : t.ticketType;
-        serviceDesk(t.divisionId, ctx.d.records).forEach((e) => notifyStaff(ctx, e.id, `${t.id}: remote support could not fix it — site visit needed`, { resource: 'tickets', recordId: t.id }, 'assignment'));
+        serviceDesk(t.divisionId, ctx.d.records).forEach((e) => notifyStaff(ctx, e.id, N.remoteToSite(t.id), { resource: 'tickets', recordId: t.id }, 'assignment'));
       }
       if (input.outcome === 'resolved') {
-        patch.resolution = [s(t.resolution), `Resolved remotely: ${input.steps.trim()}`].filter(Boolean).join('\n');
+        patch.resolution = [s(t.resolution), A.resolvedRemotely(input.steps.trim())].filter(Boolean).join('\n');
         patch.arrivedAt = t.arrivedAt || now;
       }
       return patch;
     },
-    input.outcome === 'site_visit' ? 'Remote support recorded; converted to a site visit' : 'Remote support session recorded',
+    input.outcome === 'site_visit' ? A.remoteToSite : A.remoteRecorded,
   );
 }
 
 /** FR-084 / BR-36 chargeable service. */
 export function quoteChargeable(actor: Actor, id: string, amount: number, note: string) {
-  if (!(amount > 0)) throw new ServiceError('validation', 'Enter the chargeable amount.', { fieldErrors: { amount: 'Must be more than 0' } });
-  if (!note.trim()) throw new ServiceError('validation', 'List the visit charges and parts being quoted.', { fieldErrors: { note: 'Required' } });
+  if (!(amount > 0)) throw new ServiceError('validation', E.amountRequired, { fieldErrors: { amount: E.moreThanZero } });
+  if (!note.trim()) throw new ServiceError('validation', E.noteRequired, { fieldErrors: { note: E.required } });
   return mutateTicket(
     actor,
     id,
-    { allow: (t) => can(actor, 'ticket.chargeable') || t.assigneeId === actor.staffId, denied: 'Only the service desk or the assigned engineer can prepare a chargeable quote.' },
+    { allow: (t) => can(actor, 'ticket.chargeable') || t.assigneeId === actor.staffId, denied: E.quoteDenied },
     (ctx, t) => {
-      if (['billing_requested'].includes(s(t.chargeableStatus))) throw new ServiceError('invalid_state', 'Billing was already requested for this ticket.');
+      if (['billing_requested'].includes(s(t.chargeableStatus))) throw new ServiceError('invalid_state', E.billingAlready);
       const contact = byId('contacts', t.contactId, ctx.d.records);
-      queueMessage(ctx, { channel: 'whatsapp', to: s(contact?.whatsapp || contact?.mobile) || customerName(t.customerId, ctx.d.records), templateId: 'ticket.chargeable_quote', body: `True Colors service quote for ${t.id}: ${formatMoney(amount)} (${note.trim()}). Reply YES to approve.`, related: { resource: 'tickets', recordId: t.id } });
+      queueMessage(ctx, { channel: 'whatsapp', to: s(contact?.whatsapp || contact?.mobile) || customerName(t.customerId, ctx.d.records), templateId: 'ticket.chargeable_quote', body: O.quote(t.id, formatMoney(amount), note.trim()), related: { resource: 'tickets', recordId: t.id } });
       return { chargeableStatus: 'quoted', chargeableAmount: amount, chargeableNote: note.trim() };
     },
-    `Chargeable quote ${formatMoney(amount)} sent to the customer`,
+    A.quoteSent(formatMoney(amount)),
   );
 }
 
@@ -302,12 +311,12 @@ export function recordChargeableDecision(actor: Actor, id: string, approved: boo
   return mutateTicket(
     actor,
     id,
-    { allow: () => can(actor, 'ticket.chargeable'), denied: 'Only the service desk records the customer’s decision.' },
+    { allow: () => can(actor, 'ticket.chargeable'), denied: E.decisionDenied },
     (_ctx, t) => {
-      if (t.chargeableStatus !== 'quoted') throw new ServiceError('invalid_state', 'Send a chargeable quote first.');
+      if (t.chargeableStatus !== 'quoted') throw new ServiceError('invalid_state', E.quoteFirst);
       return { chargeableStatus: approved ? 'approved' : 'rejected' };
     },
-    approved ? 'Customer approved the chargeable quote' : 'Customer declined the chargeable quote',
+    approved ? A.customerApproved : A.customerDeclined,
   );
 }
 
@@ -315,20 +324,20 @@ export function requestBilling(actor: Actor, id: string) {
   return mutateTicket(
     actor,
     id,
-    { allow: () => can(actor, 'ticket.chargeable'), denied: 'Only the service desk can request billing.' },
+    { allow: () => can(actor, 'ticket.chargeable'), denied: E.billingDenied },
     (ctx, t) => {
-      if (t.chargeableStatus !== 'approved') throw new ServiceError('invalid_state', 'Billing can be requested only after the customer approves the quote (BR-36).');
+      if (t.chargeableStatus !== 'approved') throw new ServiceError('invalid_state', E.billingNeedsApproval);
       emitEvent(ctx.d, actor, { eventType: 'erp.billing_requested', resourceId: 'res_tickets', recordId: t.id, correlationId: ctx.correlationId, payload: { amount: t.chargeableAmount }, classification: 'financial' });
-      appendAudit(ctx.d, actor, { action: 'erp.billing_request', resource: 'tickets', recordId: t.id, summary: `Billing request for ${formatMoney(Number(t.chargeableAmount))} sent to ERP (simulated)`, correlationId: ctx.correlationId });
+      appendAudit(ctx.d, actor, { action: 'erp.billing_request', resource: 'tickets', recordId: t.id, summary: A.billingRequest(formatMoney(Number(t.chargeableAmount))), correlationId: ctx.correlationId });
       return { chargeableStatus: 'billing_requested' };
     },
   );
 }
 
 export function waiveCharges(actor: Actor, id: string, reason: string) {
-  if (!can(actor, 'approve.service')) throw new ServiceError('forbidden', 'Only service leadership can waive charges.');
-  if (reason.trim().length < 5) throw new ServiceError('validation', 'Give a reason for waiving the charges.', { fieldErrors: { reason: 'At least 5 characters' } });
-  return mutateTicket(actor, id, { allow: () => true }, () => ({ chargeableStatus: 'waived', chargeableNote: `Waived: ${reason.trim()}` }), `Charges waived: ${reason.trim()}`);
+  if (!can(actor, 'approve.service')) throw new ServiceError('forbidden', E.waiveDenied);
+  if (reason.trim().length < 5) throw new ServiceError('validation', E.waiveReason, { fieldErrors: { reason: E.atLeast5 } });
+  return mutateTicket(actor, id, { allow: () => true }, () => ({ chargeableStatus: 'waived', chargeableNote: A.waivedNote(reason.trim()) }), A.waived(reason.trim()));
 }
 
 const INTEREST_PRODUCT: Record<string, string> = { new_machine: 'machine', upgrade: 'machine', amc: 'service', consumables: 'ink' };
@@ -336,8 +345,8 @@ const CONSUMABLE_BY_DIVISION: Record<string, string> = { INK: 'ink', PPR: 'paper
 
 /** FR-088 / BR-37: engineer flags a sales opportunity → lead with the engineer as referrer. */
 export function opportunitySpotted(actor: Actor, id: string, input: { interest: string; note: string }) {
-  if (!resourceExists('leads')) throw new ServiceError('invalid_state', 'Leads are not available in this build yet.');
-  if (!input.note.trim()) throw new ServiceError('validation', 'Describe what the customer needs.', { fieldErrors: { note: 'Required' } });
+  if (!resourceExists('leads')) throw new ServiceError('invalid_state', E.leadsUnavailable);
+  if (!input.note.trim()) throw new ServiceError('validation', E.describeNeed, { fieldErrors: { note: E.required } });
   return mutateTicket(
     actor,
     id,
@@ -345,7 +354,7 @@ export function opportunitySpotted(actor: Actor, id: string, input: { interest: 
     (ctx, t) => {
       const customer = byId('customers', t.customerId, ctx.d.records);
       const contact = byId('contacts', t.contactId, ctx.d.records) ?? (ctx.d.records.contacts ?? []).find((c) => c.customerId === t.customerId);
-      if (!contact) throw new ServiceError('validation', 'The customer has no contact person yet — add one before creating a lead.');
+      if (!contact) throw new ServiceError('validation', E.noContact);
       const productType = input.interest === 'consumables' ? CONSUMABLE_BY_DIVISION[s(t.divisionId)] ?? 'ink' : INTEREST_PRODUCT[input.interest] ?? 'machine';
       const lead = insertRecordIn(ctx, 'leads', {
         customerId: t.customerId,
@@ -355,21 +364,21 @@ export function opportunitySpotted(actor: Actor, id: string, input: { interest: 
         referrerType: 'engineer',
         referrerEmployeeId: actor.staffId,
         productType,
-        requirement: `Spotted by ${actor.user.name} on ${t.id}: ${input.note.trim()}`,
+        requirement: A.spottedRequirement(actor.user.name, t.id, input.note.trim()),
         ownerId: customer?.ownerId ?? actor.staffId,
         nextFollowUpAt: addDays(todayKey(), 1),
       });
-      if (customer?.ownerId) notifyStaff(ctx, customer.ownerId, `${actor.user.name} spotted an opportunity at ${s(customer.name)} — ${lead.id}`, { resource: 'leads', recordId: lead.id }, 'assignment');
+      if (customer?.ownerId) notifyStaff(ctx, customer.ownerId, N.spotted(actor.user.name, s(customer.name), lead.id), { resource: 'leads', recordId: lead.id }, 'assignment');
       return { spottedLeadId: lead.id };
     },
-    'Opportunity spotted — lead created',
+    A.spotted,
   );
 }
 
 /** Re-sends the job card + feedback link (FR-082). */
 export function resendJobCard(actor: Actor, id: string) {
   return mutateTicket(actor, id, { allow: (t) => canReadRecord(actor, getResource('tickets'), t) }, (ctx, t) => {
-    if (!t.resolvedAt) throw new ServiceError('invalid_state', 'The job card is sent once the ticket is resolved.');
+    if (!t.resolvedAt) throw new ServiceError('invalid_state', E.jobCardAfterResolve);
     sendClosurePack(ctx, t);
   });
 }
@@ -395,28 +404,28 @@ export function feedbackLookup(token: string) {
 
 /** Customer confirms (closes) or says "not resolved"; rating ≤ threshold alerts service leadership (BR-35). */
 export function submitFeedback(token: string, input: { rating: number; comment: string; resolved: boolean }) {
-  if (!(input.rating >= 1 && input.rating <= 5)) throw new ServiceError('validation', 'Choose a rating from 1 to 5.', { fieldErrors: { rating: 'Required' } });
+  if (!(input.rating >= 1 && input.rating <= 5)) throw new ServiceError('validation', E.chooseRating, { fieldErrors: { rating: E.required } });
   const actor = system();
   return commit((d) => {
     const t = (d.records.tickets ?? []).find((x) => x.feedbackToken === token);
-    if (!t) throw new ServiceError('not_found', 'This feedback link is not valid any more.');
-    if (t.status !== 'customer_confirmation' || t.rating) throw new ServiceError('invalid_state', 'Feedback for this ticket was already received. Thank you!');
+    if (!t) throw new ServiceError('not_found', E.feedbackInvalid);
+    if (t.status !== 'customer_confirmation' || t.rating) throw new ServiceError('invalid_state', E.feedbackAlready);
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const now = nowLocal();
     const patch: Record<string, unknown> = { rating: input.rating, feedbackComment: input.comment.trim() };
     if (!input.resolved) {
-      Object.assign(patch, { status: 'in_progress', resolvedAt: null, rating: null, feedbackComment: `Customer: not resolved (${input.rating}/5). ${input.comment.trim()}` });
-      if (t.assigneeId) notifyStaff(ctx, t.assigneeId, `${t.id}: customer says the problem is not resolved`, { resource: 'tickets', recordId: t.id }, 'exception');
+      Object.assign(patch, { status: 'in_progress', resolvedAt: null, rating: null, feedbackComment: A.notResolvedComment(input.rating, input.comment.trim()) });
+      if (t.assigneeId) notifyStaff(ctx, t.assigneeId, N.notResolved(t.id), { resource: 'tickets', recordId: t.id }, 'exception');
     } else if (t.repeatOfId && !s(t.rootCause).trim()) {
-      serviceDesk(t.divisionId, d.records).forEach((e) => notifyStaff(ctx, e.id, `${t.id} confirmed by the customer — add the root cause to close this repeat complaint`, { resource: 'tickets', recordId: t.id }, 'reminder'));
+      serviceDesk(t.divisionId, d.records).forEach((e) => notifyStaff(ctx, e.id, N.confirmAddRootCause(t.id), { resource: 'tickets', recordId: t.id }, 'reminder'));
     } else {
       Object.assign(patch, { status: 'closed', closedAt: now });
     }
     if (input.rating <= getPolicies().lowRatingThreshold) {
-      employeesWithRole('service_head', s(t.divisionId), d.records).forEach((e) => notifyStaff(ctx, e.id, `Low rating ${input.rating}/5 on ${t.id} (${customerName(t.customerId, d.records)})`, { resource: 'tickets', recordId: t.id }, 'escalation'));
+      employeesWithRole('service_head', s(t.divisionId), d.records).forEach((e) => notifyStaff(ctx, e.id, N.lowRating(input.rating, t.id, customerName(t.customerId, d.records)), { resource: 'tickets', recordId: t.id }, 'escalation'));
     }
-    appendAudit(d, actor, { action: 'feedback.received', actorType: 'system', resource: 'tickets', recordId: t.id, summary: `Customer feedback via link: ${input.rating}/5, ${input.resolved ? 'confirmed resolved' : 'not resolved'}`, correlationId: ctx.correlationId });
-    return patchRecordIn(ctx, 'tickets', t.id, patch, 'Customer feedback received');
+    appendAudit(d, actor, { action: 'feedback.received', actorType: 'system', resource: 'tickets', recordId: t.id, summary: A.feedback(input.rating, input.resolved), correlationId: ctx.correlationId });
+    return patchRecordIn(ctx, 'tickets', t.id, patch, A.feedbackReceived);
   });
 }
 
@@ -469,7 +478,7 @@ export interface NewTicketInput {
 
 /** Creates a ticket on behalf of a customer (portal) or from an incoming message (simulated). */
 export function createTicketFromChannel(input: NewTicketInput, actor: Actor = system()) {
-  if (input.description.trim().length < 10) throw new ServiceError('validation', 'Describe the problem in a few words (at least 10 characters).', { fieldErrors: { description: 'At least 10 characters' } });
+  if (input.description.trim().length < 10) throw new ServiceError('validation', E.describeProblem, { fieldErrors: { description: E.atLeast10 } });
   return commit((d) => {
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const t = insertRecordIn(ctx, 'tickets', {
@@ -484,14 +493,14 @@ export function createTicketFromChannel(input: NewTicketInput, actor: Actor = sy
       channel: input.channel,
     });
     const contact = byId('contacts', input.contactId, d.records);
-    if (contact) queueMessage(ctx, { channel: input.channel === 'email' ? 'email' : 'whatsapp', to: s(input.channel === 'email' ? contact.email : contact.whatsapp || contact.mobile), templateId: 'ticket.acknowledged', body: `True Colors service: we have logged your complaint as ${t.id}. An engineer will contact you shortly.`, related: { resource: 'tickets', recordId: t.id } });
+    if (contact) queueMessage(ctx, { channel: input.channel === 'email' ? 'email' : 'whatsapp', to: s(input.channel === 'email' ? contact.email : contact.whatsapp || contact.mobile), templateId: 'ticket.acknowledged', body: O.acknowledged(t.id), related: { resource: 'tickets', recordId: t.id } });
     return t;
   });
 }
 
 /** Simulated incoming WhatsApp / email (desk): identify the sender, then log the ticket. */
 export function simulateIncoming(actor: Actor, input: { channel: 'whatsapp' | 'email'; from: string; message: string }) {
-  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', 'Only the service desk receives incoming messages.');
+  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', E.incomingDenied);
   const db = getDb().records;
   let match: PortalMatch | null = null;
   if (input.channel === 'email') {
@@ -499,7 +508,7 @@ export function simulateIncoming(actor: Actor, input: { channel: 'whatsapp' | 'e
     match = c ? portalIdentify(s(c.mobile)) ?? { customerId: s(c.customerId), customerName: customerName(c.customerId), contactId: c.id, machines: [], divisionIds: [] } : null;
     if (match && c) match.contactId = c.id;
   } else match = portalIdentify(input.from);
-  if (!match) throw new ServiceError('not_found', `No customer found for ${input.from}. Log the ticket by phone instead.`, { fieldErrors: { from: 'Not a registered mobile / email' } });
+  if (!match) throw new ServiceError('not_found', E.noCustomerFor(input.from), { fieldErrors: { from: E.notRegistered } });
   const machine = match.machines[0];
   return createTicketFromChannel(
     {
@@ -546,7 +555,7 @@ export function sweepService(actor: Actor = currentActor()): number {
           notes.push((ctx) => {
             const div = s(t.divisionId);
             const who = level <= 2 ? employeesWithRole('service_head', div, ctx.d.records) : level === 3 ? employeesWithRole('division_head', div, ctx.d.records) : employeesWithRole('management', undefined, ctx.d.records);
-            who.forEach((e) => notifyStaff(ctx, e.id, `SLA breach escalated to ${step.to}: ${t.id} — ${customerName(t.customerId, ctx.d.records)}`, { resource: 'tickets', recordId: t.id }, 'escalation'));
+            who.forEach((e) => notifyStaff(ctx, e.id, N.escalated(escalationRole(level, step.to), t.id, customerName(t.customerId, ctx.d.records)), { resource: 'tickets', recordId: t.id }, 'escalation'));
           });
         }
       }
@@ -554,13 +563,13 @@ export function sweepService(actor: Actor = currentActor()): number {
     if (status === 'customer_confirmation' && t.resolvedAt && addDays(s(t.resolvedAt).slice(0, 10), policies.autoCloseDays) < today && !(t.repeatOfId && !s(t.rootCause).trim())) {
       Object.assign(patch, { status: 'closed', closedAt: now });
     }
-    if (Object.keys(patch).length) changes.push({ key: 'tickets', id: t.id, patch, notes, summary: patch.status === 'closed' ? `Auto-closed after ${policies.autoCloseDays} days without customer response` : patch.escalationLevel ? `SLA escalation level ${patch.escalationLevel}` : 'SLA breached' });
+    if (Object.keys(patch).length) changes.push({ key: 'tickets', id: t.id, patch, notes, summary: patch.status === 'closed' ? A.autoClosed(policies.autoCloseDays) : patch.escalationLevel ? A.escalation(escalationRole(Number(patch.escalationLevel), s(policies.escalation[Number(patch.escalationLevel) - 1]?.to))) : A.breached });
   }
   for (const pm of db.records.pmVisits ?? []) {
     if (['done'].includes(s(pm.status))) continue;
     const due = s(pm.dueDate);
     const next = due < addDays(today, -30) ? 'missed' : due < today ? 'overdue' : 'due';
-    if (next !== pm.status) changes.push({ key: 'pmVisits', id: pm.id, patch: { status: next }, notes: [], summary: `PM visit ${next}` });
+    if (next !== pm.status) changes.push({ key: 'pmVisits', id: pm.id, patch: { status: next }, notes: [], summary: A.pmStatus(L.service.masters.pmStatus.values[next]) });
   }
   if (!changes.length) return 0;
   commit((d) => {
@@ -573,5 +582,5 @@ export function sweepService(actor: Actor = currentActor()): number {
   return changes.length;
 }
 
-/** Hours between two local times (for reports and the dispatch board). */
+/** Hours between two local times (for reports and the Engineer Calendar & Map). */
 export const hoursBetween = (a: string, b: string) => (parseLocal(b).getTime() - parseLocal(a).getTime()) / 3_600_000;

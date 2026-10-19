@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { formatDate, relativeTime, todayKey } from '../lib/dates';
 import { cx } from '../lib/format';
-import { recordPeekPath } from '../lib/routes';
+import { recordPeekPath, resourceKeyFromParams, resourcePath } from '../lib/routes';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { perm } from '../services/authz';
 import { getDb } from '../services/db';
@@ -263,7 +263,9 @@ function DecisionDialog({ approvalId, decision, onClose }: { approvalId: string;
 // ---------------------------------------------------------------- Full-page form (line-item documents)
 
 export function FullPageFormPage() {
-  const { resource = '', recordId } = useParams();
+  const params = useParams();
+  const resource = resourceKeyFromParams(params);
+  const recordId = params.recordId;
   const actor = useActor();
   const res = getResource(resource);
   if (recordId) {
@@ -278,7 +280,7 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
   const form = useRecordForm({ resKey, recordId });
   const navigate = useNavigate();
   const toast = useToast();
-  const back = `/${resKey}${recordId ? `?peek=${recordId}` : ''}`;
+  const back = recordId ? recordPeekPath('tc', resKey, recordId) : resourcePath('tc', resKey);
   const guard = useUnsavedGuard(form.dirty, () => navigate(back));
   useEffect(() => {
     if (!form.dirty) return;
@@ -300,7 +302,7 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
       }
     }
     toast(`${out.record.id} ${issue ? 'saved and issued' : 'saved as draft'}`);
-    navigate(`/${resKey}?peek=${out.record.id}`);
+    navigate(recordPeekPath('tc', resKey, out.record.id));
   };
   return (
     <div className="page">

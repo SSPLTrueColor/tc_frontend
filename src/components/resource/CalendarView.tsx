@@ -20,7 +20,7 @@ const INACTIVE = ['cancelled', 'no_show'];
 
 /**
  * Resource-timeline day calendar driven by `resource.calendar` metadata.
- * Lanes = related records (rooms / clinicians). Click an empty slot to book.
+ * Lanes = related records (e.g. demo machines, engineers). Click an empty slot to add an entry.
  */
 export function CalendarView({
   res,

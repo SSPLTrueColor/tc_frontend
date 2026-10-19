@@ -14,18 +14,16 @@ import { InfoTip } from '../../components/primitives/InfoTip';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { BarChart } from '../../components/resource/BarChart';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { L } from '../../constants/labels';
 import { moneyShort } from './format';
 
-type Measure = 'weighted' | 'commit' | 'pipeline' | 'won';
-const MEASURES: { value: Measure; label: string }[] = [
-  { value: 'weighted', label: 'Weighted (value × probability)' },
-  { value: 'commit', label: 'Commit (negotiation + won)' },
-  { value: 'pipeline', label: 'Pipeline (all open)' },
-  { value: 'won', label: 'Won' },
-];
+const T = L.opportunities.pages.salesForecast;
 
-/** FR-033: monthly / quarterly weighted and commit forecast by owner, division or product category. */
-export function ForecastPage() {
+type Measure = 'weighted' | 'commit' | 'pipeline' | 'won';
+const MEASURES: { value: Measure; label: string }[] = (['weighted', 'commit', 'pipeline', 'won'] as const).map((value) => ({ value, label: T.measures[value] }));
+
+/** FR-033 (OPP-07): monthly / quarterly weighted and commit forecast by owner, division or product type. */
+export function SalesForecastPage() {
   const actor = useActor();
   const [period, setPeriod] = useState<ForecastPeriod>('month');
   const [horizon, setHorizon] = useState(6);
@@ -38,14 +36,14 @@ export function ForecastPage() {
     void runStagnationSweep(actor).catch(() => undefined);
   }, [actor.user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (perm(actor, 'opportunities').read === 'none') return <NoAccess what="the sales forecast" />;
+  if (perm(actor, 'opportunities').read === 'none') return <NoAccess what={L.opportunities.messages.noAccessForecast} />;
   const horizons = period === 'month' ? [3, 6, 12] : [2, 4];
   const f = q.data;
   return (
     <div className="page">
-      <PageHeader title="Forecast" description="Computed live from the opportunities you can see. Weighted = value × stage probability for open deals by expected close date; Commit = deals in Negotiation plus deals won in the period. Quarters follow the Indian financial year (Q1 = Apr–Jun)." />
+      <PageHeader title={L.nav.pages.salesForecast.title} description={T.description} />
       <div className="toolbar">
-        <div className="segmented" role="radiogroup" aria-label="Period">
+        <div className="segmented" role="radiogroup" aria-label={T.period}>
           {(['month', 'quarter'] as const).map((p) => (
             <button
               key={p}
@@ -58,70 +56,70 @@ export function ForecastPage() {
                 setHorizon(p === 'month' ? 6 : 4);
               }}
             >
-              {p === 'month' ? 'Monthly' : 'Quarterly'}
+              {p === 'month' ? T.monthly : T.quarterly}
             </button>
           ))}
         </div>
-        <SelectMenu label="Horizon" value={horizon} options={horizons.map((n) => ({ value: n, label: `Next ${n} ${period === 'month' ? 'months' : 'quarters'}` }))} onChange={setHorizon} />
+        <SelectMenu label={T.horizon} value={horizon} options={horizons.map((n) => ({ value: n, label: T.nextN(n, period) }))} onChange={setHorizon} />
         <SelectMenu<ForecastGroup>
-          label="Group by"
+          label={T.groupBy}
           value={groupBy}
           options={[
-            { value: 'owner', label: 'By owner' },
-            { value: 'division', label: 'By division' },
-            { value: 'productType', label: 'By product category' },
+            { value: 'owner', label: T.byOwner },
+            { value: 'division', label: T.byDivision },
+            { value: 'productType', label: T.byProductType },
           ]}
           onChange={setGroupBy}
         />
-        <SelectMenu label="Division" value={division} options={[{ value: '', label: 'All divisions' }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={setDivision} />
-        <SelectMenu<Measure> label="Measure" value={measure} options={MEASURES} onChange={setMeasure} />
+        <SelectMenu label={T.division} value={division} options={[{ value: '', label: T.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={setDivision} />
+        <SelectMenu<Measure> label={T.measure} value={measure} options={MEASURES} onChange={setMeasure} />
       </div>
       {q.error ? (
-        <ErrorState title="Could not compute the forecast" onRetry={q.retry}>
+        <ErrorState title={T.errorTitle} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       ) : !f ? (
         <Skeleton rows={8} />
       ) : !f.count ? (
-        <EmptyState icon="activity" title="Nothing to forecast in this period">
-          Open opportunities with an expected close date in the next {horizon} {period === 'month' ? 'months' : 'quarters'} appear here.
+        <EmptyState icon="activity" title={T.emptyTitle}>
+          {T.emptyBody(horizon, period)}
         </EmptyState>
       ) : (
         <>
-          <section className="stats" aria-label="Forecast totals">
+          <section className="stats" aria-label={T.totals}>
             <div className="stat">
-              <span className="stat-label">Weighted</span>
+              <span className="stat-label">{T.weighted}</span>
               <span className="stat-value">{moneyShort(f.grand.weighted)}</span>
-              <span className="stat-sub">{f.count} deals in range</span>
+              <span className="stat-sub">{T.inRange(f.count)}</span>
             </div>
             <div className="stat">
-              <span className="stat-label">Commit</span>
+              <span className="stat-label">{T.commit}</span>
               <span className="stat-value">{moneyShort(f.grand.commit)}</span>
-              <span className="stat-sub">Negotiation + won</span>
+              <span className="stat-sub">{T.commitSub}</span>
             </div>
             <Link className="stat" to={resourcePath(actor.workspaceId, 'opportunities', { view: 'v_opp_open' })}>
-              <span className="stat-label">Open pipeline</span>
+              <span className="stat-label">{T.openPipeline}</span>
               <span className="stat-value">{moneyShort(f.grand.pipeline)}</span>
-              <span className="stat-sub">Best case</span>
+              <span className="stat-sub">{T.bestCase}</span>
             </Link>
             <Link className="stat" to={resourcePath(actor.workspaceId, 'opportunities', { view: 'v_opp_closed' })}>
-              <span className="stat-label">Won</span>
+              <span className="stat-label">{T.won}</span>
               <span className="stat-value">{moneyShort(f.grand.won)}</span>
-              <span className="stat-sub">In this range</span>
+              <span className="stat-sub">{T.wonSub}</span>
             </Link>
           </section>
           <div className="dash-grid">
             <section className="panel">
-              <BarChart data={f.periods.map((p) => ({ key: p.key, label: p.label, value: Math.round(f.totals[p.key][measure] / 1e4) / 10 }))} label={`${MEASURES.find((m) => m.value === measure)!.label} by ${period} (₹ lakh)`} unit="₹ lakh" />
+              <BarChart data={f.periods.map((p) => ({ key: p.key, label: p.label, value: Math.round(f.totals[p.key][measure] / 1e4) / 10 }))} label={T.chartLabel(MEASURES.find((m) => m.value === measure)!.label, period)} unit={T.unitLakh} />
             </section>
             <section className="panel">
               <div className="panel-head">
                 <h2 className="panel-title dialog-title-row">
-                  Largest open deals in range
-                  <InfoTip text="Open opportunities with the highest weighted value closing in the selected range." label="About largest deals" />
+                  {T.largest}
+                  <InfoTip text={T.largestTip} label={T.largestTipLabel} />
                 </h2>
                 <Link to={resourcePath(actor.workspaceId, 'opportunities', { view: 'v_opp_open' })} className="link small">
-                  All open
+                  {T.allOpen}
                 </Link>
               </div>
               {f.top.length ? (
@@ -132,34 +130,34 @@ export function ForecastPage() {
                       <Link to={recordPeekPath(actor.workspaceId, 'opportunities', o.id)} className="flow-main">
                         <span className="flow-title">{String(o.name)}</span>
                         <span className="muted small">
-                          {moneyShort(Number(o.value))} · closes {formatDate(String(o.expectedCloseDate))}
+                          {moneyShort(Number(o.value))} · {T.closes(formatDate(String(o.expectedCloseDate)))}
                         </span>
                       </Link>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="muted">No open deals close in this range.</p>
+                <p className="muted">{T.noneInRange}</p>
               )}
             </section>
           </div>
           <section className="panel">
             <h2 className="panel-title dialog-title-row">
               {MEASURES.find((m) => m.value === measure)!.label}
-              <InfoTip text="Hover a cell for the exact amount. Rows are sorted by weighted value." label="About the forecast table" />
+              <InfoTip text={T.tableTip} label={T.tableTipLabel} />
             </h2>
             <div className="table-scroll">
               <table className="mini-table">
                 <thead>
                   <tr>
-                    <th scope="col">{groupBy === 'owner' ? 'Owner' : groupBy === 'division' ? 'Division' : 'Product category'}</th>
+                    <th scope="col">{groupBy === 'owner' ? T.owner : groupBy === 'division' ? T.division : T.productType}</th>
                     {f.periods.map((p) => (
                       <th key={p.key} scope="col" className="num">
                         {p.label}
                       </th>
                     ))}
                     <th scope="col" className="num">
-                      Total
+                      {T.total}
                     </th>
                   </tr>
                 </thead>
@@ -178,7 +176,7 @@ export function ForecastPage() {
                     </tr>
                   ))}
                   <tr>
-                    <th scope="row">Total</th>
+                    <th scope="row">{T.total}</th>
                     {f.periods.map((p) => (
                       <td key={p.key} className="num">
                         <strong>{moneyShort(f.totals[p.key][measure])}</strong>

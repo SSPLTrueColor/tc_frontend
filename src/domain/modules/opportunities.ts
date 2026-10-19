@@ -1,11 +1,12 @@
 /**
- * Opportunities module (BRD 4.3, FR-027 – FR-034): qualified deals through stages to Won / Lost,
- * demo bookings on demo-centre machines, sample print requests to Profiling.
- * Lists live in the "Sales" nav (owned by the leads module) via `extend`.
+ * Opportunities & Pipeline module (BRD 4.3, FR-027 – FR-034): qualified opportunities through stages
+ * to Won / Lost, demo bookings on demo-centre machines, sample print requests to Profiling.
+ * Sidebar entries come from src/domain/sidebar.ts; every label comes from L.opportunities.
  */
 import type { MasterDefinition, MasterValue, ResourceDefinition, ResourcePermission, RowScope, Tone } from '../../metadata/types';
 import { todayKey } from '../../lib/dates';
 import { nowMs } from '../../lib/clock';
+import { L } from '../../constants/labels';
 import { ALL, cols, cond, field, FORM_ONLY, group, NO_SEARCH, views } from '../helpers';
 import type { ModulePack } from './types';
 
@@ -14,6 +15,13 @@ const p = (read: RowScope, update: RowScope = 'none', create = false, del = fals
 
 type FieldType = Parameters<typeof field>[3];
 type Extra = Parameters<typeof field>[4];
+const F = L.opportunities.fields;
+const V = L.opportunities.views;
+const A = L.opportunities.actions;
+const C = L.opportunities.confirms;
+const S = L.opportunities.sections;
+const R = L.opportunities.records;
+const D = L.opportunities.descriptions;
 const fo = (key: string, label: string, type: FieldType, extra?: Extra) => field('opportunities', key, label, type, extra);
 const fd = (key: string, label: string, type: FieldType, extra?: Extra) => field('demos', key, label, type, extra);
 const fs = (key: string, label: string, type: FieldType, extra?: Extra) => field('sampleRequests', key, label, type, extra);
@@ -31,20 +39,28 @@ const master = (key: string, label: string, values: Omit<MasterValue, 'order'>[]
 
 export const OPEN_STAGES = ['needs_assessment', 'demo', 'proposal', 'negotiation'];
 
+const M = L.opportunities.masters;
 const masters: MasterDefinition[] = [
-  master('oppStage', 'Opportunity stage', [
-    mv('needs_assessment', 'Needs assessment', 'info'),
-    mv('demo', 'Demo / sample', 'info'),
-    mv('proposal', 'Proposal / quotation', 'accent'),
-    mv('negotiation', 'Negotiation', 'warning'),
-    mv('won', 'Won', 'success'),
-    mv('lost', 'Lost', 'danger'),
+  master('oppStage', M.oppStage.label, [
+    mv('needs_assessment', M.oppStage.values.needs_assessment, 'info'),
+    mv('demo', M.oppStage.values.demo, 'info'),
+    mv('proposal', M.oppStage.values.proposal, 'accent'),
+    mv('negotiation', M.oppStage.values.negotiation, 'warning'),
+    mv('won', M.oppStage.values.won, 'success'),
+    mv('lost', M.oppStage.values.lost, 'danger'),
   ]),
-  master('oppType', 'Opportunity type', [mv('new_machine', 'New machine', 'accent'), mv('upgrade', 'Upgrade / additional machine', 'info'), mv('consumables', 'Consumables contract'), mv('amc', 'AMC / CMC'), mv('renewal', 'AMC renewal', 'warning')]),
-  master('demoLocation', 'Demo location', [mv('centre', 'Demo centre', 'accent'), mv('site', 'Customer site', 'info')]),
-  master('demoStatus', 'Demo status', [mv('requested', 'Requested', 'info'), mv('scheduled', 'Scheduled', 'accent'), mv('done', 'Done', 'success'), mv('cancelled', 'Cancelled')]),
-  master('sampleStatus', 'Sample request status', [mv('requested', 'Requested', 'info'), mv('in_progress', 'Printing', 'warning'), mv('results_shared', 'Results shared', 'success'), mv('cancelled', 'Cancelled')]),
-  master('demoMachineStatus', 'Demo machine status', [mv('active', 'Available', 'success'), mv('maintenance', 'Under maintenance', 'warning'), mv('inactive', 'Retired')]),
+  master('oppType', M.oppType.label, [
+    mv('new_machine', M.oppType.values.new_machine, 'accent'),
+    mv('additional_machine', M.oppType.values.additional_machine, 'accent'),
+    mv('upgrade', M.oppType.values.upgrade, 'info'),
+    mv('consumables', M.oppType.values.consumables),
+    mv('amc', M.oppType.values.amc),
+    mv('renewal', M.oppType.values.renewal, 'warning'),
+  ]),
+  master('demoLocation', M.demoLocation.label, [mv('centre', M.demoLocation.values.centre, 'accent'), mv('site', M.demoLocation.values.site, 'info')]),
+  master('demoStatus', M.demoStatus.label, [mv('requested', M.demoStatus.values.requested, 'info'), mv('scheduled', M.demoStatus.values.scheduled, 'accent'), mv('done', M.demoStatus.values.done, 'success'), mv('cancelled', M.demoStatus.values.cancelled)]),
+  master('sampleStatus', M.sampleStatus.label, [mv('requested', M.sampleStatus.values.requested, 'info'), mv('in_progress', M.sampleStatus.values.in_progress, 'warning'), mv('results_shared', M.sampleStatus.values.results_shared, 'success'), mv('cancelled', M.sampleStatus.values.cancelled)]),
+  master('demoMachineStatus', M.demoMachineStatus.label, [mv('active', M.demoMachineStatus.values.active, 'success'), mv('maintenance', M.demoMachineStatus.values.maintenance, 'warning'), mv('inactive', M.demoMachineStatus.values.inactive)]),
 ];
 
 // Domain packs must not import services (the store imports the pack while seeding), so the
@@ -65,9 +81,9 @@ export function isStagnant(r: Record<string, unknown>): boolean {
 export const opportunities: ResourceDefinition = {
   id: 'res_opportunities',
   key: 'opportunities',
-  module: 'leads',
-  label: 'Opportunity',
-  labelPlural: 'Opportunities',
+  module: 'opportunities',
+  label: R.opportunities.one,
+  labelPlural: R.opportunities.many,
   icon: 'activity',
   version: 1,
   idPrefix: 'OPP',
@@ -76,76 +92,75 @@ export const opportunities: ResourceDefinition = {
   subtitleFields: ['customerId', 'stage'],
   ownerField: 'ownerId',
   divisionField: 'divisionId',
-  description:
-    'Qualified deals from Needs assessment to Won or Lost. Stage probability drives the weighted forecast. Entry rules: Proposal needs a value; Negotiation needs a quotation; Won needs an accepted quotation; Lost needs a reason and competitor.',
+  description: D.opportunities,
   status: 'published',
   fields: [
-    fo('name', 'Opportunity', 'text', { required: true, maxLength: 120, capabilities: ALL, width: 260, subFields: ['customerId', 'value'] }),
-    fo('customerId', 'Customer', 'relation', { required: true, relation: { resource: 'customers' }, capabilities: ALL, width: 200 }),
-    fo('contactId', 'Contact', 'relation', { relation: { resource: 'contacts', filterBy: { field: 'customerId', fromField: 'customerId' } }, width: 170 }),
-    fo('divisionId', 'Division', 'master', { master: 'division', required: true, width: 150 }),
-    fo('oppType', 'Type', 'master', { master: 'oppType', required: true, defaultValue: 'new_machine', width: 150 }),
-    fo('productType', 'Product category', 'master', { master: 'productType', width: 140 }),
-    fo('productId', 'Product', 'relation', { relation: { resource: 'products' }, width: 180 }),
-    fo('value', 'Value', 'money', { required: true, min: 0, currency: 'INR', width: 140 }),
-    fo('stage', 'Stage', 'master', { master: 'oppStage', readOnly: true, width: 160 }),
-    fo('probability', 'Probability', 'number', { min: 0, max: 100, unit: '%', width: 100, help: 'Defaults from the stage (Settings → policies); you can adjust it.' }),
-    fo('weightedValue', 'Weighted value', 'money', {
+    fo('name', F.opportunities.name, 'text', { required: true, maxLength: 120, capabilities: ALL, width: 260, subFields: ['customerId', 'value'] }),
+    fo('customerId', F.opportunities.customerId, 'relation', { required: true, relation: { resource: 'customers' }, capabilities: ALL, width: 200 }),
+    fo('contactId', F.opportunities.contactId, 'relation', { relation: { resource: 'contacts', filterBy: { field: 'customerId', fromField: 'customerId' } }, width: 170 }),
+    fo('divisionId', F.opportunities.divisionId, 'master', { master: 'division', required: true, width: 150 }),
+    fo('oppType', F.opportunities.oppType, 'master', { master: 'oppType', required: true, defaultValue: 'new_machine', width: 170 }),
+    fo('productType', F.opportunities.productType, 'master', { master: 'productType', width: 140 }),
+    fo('productId', F.opportunities.productId, 'relation', { relation: { resource: 'products' }, width: 180 }),
+    fo('value', F.opportunities.value, 'money', { required: true, min: 0, currency: 'INR', width: 140 }),
+    fo('stage', F.opportunities.stage, 'master', { master: 'oppStage', readOnly: true, width: 170 }),
+    fo('probability', F.opportunities.probability, 'number', { min: 0, max: 100, unit: L.opportunities.units.percent, width: 100, help: F.opportunities.probabilityHelp }),
+    fo('weightedValue', F.opportunities.weightedValue, 'money', {
       readOnly: true,
       computed: (r) => Math.round((Number(r.value) || 0) * (Number(r.probability) || 0)) / 100,
       capabilities: { list: true, sort: true, filter: true, export: true },
       width: 140,
     }),
-    fo('expectedCloseDate', 'Expected close', 'date', { required: true, width: 130 }),
-    fo('ownerId', 'Owner', 'relation', { required: true, relation: { resource: 'employees', where: { field: 'status', op: 'neq', value: 'inactive' } }, width: 170, display: 'person', personSubtitle: 'designation' }),
-    fo('territoryId', 'Hub', 'master', { master: 'territory', width: 120 }),
-    fo('competitors', 'Competitors', 'text', { maxLength: 200, capabilities: { ...NO_SEARCH, search: true } }),
-    fo('decisionMakers', 'Decision makers', 'text', { maxLength: 200 }),
-    fo('nextFollowUpAt', 'Next follow-up', 'date', { dateRule: 'future', width: 130 }),
-    fo('stagnant', 'Stagnant', 'boolean', { readOnly: true, computed: (r) => isStagnant(r), capabilities: { list: true, filter: true }, width: 100 }),
-    fo('lostReason', 'Lost reason', 'master', { master: 'lostReason', readOnly: true }),
-    fo('lostToCompetitor', 'Lost to', 'text', { readOnly: true }),
-    fo('lostToPrice', 'Competitor price', 'money', { readOnly: true, currency: 'INR' }),
-    fo('leadId', 'From lead', 'relation', { relation: { resource: 'leads' }, readOnly: true }),
-    fo('machineId', 'Machine', 'relation', { relation: { resource: 'machines' } }),
-    fo('amcContractId', 'AMC contract', 'relation', { relation: { resource: 'amcContracts' }, readOnly: true }),
-    fo('stageChangedAt', 'Stage since', 'datetime', { readOnly: true, capabilities: { list: true, sort: true } }),
-    fo('wonAt', 'Won on', 'datetime', { readOnly: true, capabilities: { list: true, sort: true, filter: true } }),
-    fo('lastActivityAt', 'Last activity', 'datetime', { readOnly: true, capabilities: { list: true, sort: true, filter: true } }),
-    fo('notes', 'Notes', 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
+    fo('expectedCloseDate', F.opportunities.expectedCloseDate, 'date', { required: true, width: 150 }),
+    fo('ownerId', F.opportunities.ownerId, 'relation', { required: true, relation: { resource: 'employees', where: { field: 'status', op: 'neq', value: 'inactive' } }, width: 170, display: 'person', personSubtitle: 'designation' }),
+    fo('territoryId', F.opportunities.territoryId, 'master', { master: 'territory', width: 140 }),
+    fo('competitors', F.opportunities.competitors, 'text', { maxLength: 200, capabilities: { ...NO_SEARCH, search: true } }),
+    fo('decisionMakers', F.opportunities.decisionMakers, 'text', { maxLength: 200 }),
+    fo('nextFollowUpAt', F.opportunities.nextFollowUpAt, 'date', { dateRule: 'future', width: 130 }),
+    fo('stagnant', F.opportunities.stagnant, 'boolean', { readOnly: true, computed: (r) => isStagnant(r), capabilities: { list: true, filter: true }, width: 130 }),
+    fo('lostReason', F.opportunities.lostReason, 'master', { master: 'lostReason', readOnly: true }),
+    fo('lostToCompetitor', F.opportunities.lostToCompetitor, 'text', { readOnly: true }),
+    fo('lostToPrice', F.opportunities.lostToPrice, 'money', { readOnly: true, currency: 'INR' }),
+    fo('leadId', F.opportunities.leadId, 'relation', { relation: { resource: 'leads' }, readOnly: true }),
+    fo('machineId', F.opportunities.machineId, 'relation', { relation: { resource: 'machines' } }),
+    fo('amcContractId', F.opportunities.amcContractId, 'relation', { relation: { resource: 'amcContracts' }, readOnly: true }),
+    fo('stageChangedAt', F.opportunities.stageChangedAt, 'datetime', { readOnly: true, capabilities: { list: true, sort: true } }),
+    fo('wonAt', F.opportunities.wonAt, 'datetime', { readOnly: true, capabilities: { list: true, sort: true, filter: true } }),
+    fo('lastActivityAt', F.opportunities.lastActivityAt, 'datetime', { readOnly: true, capabilities: { list: true, sort: true, filter: true } }),
+    fo('notes', F.opportunities.notes, 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
   ],
   relationships: [
-    { id: 'rel_opp_demos', label: 'Demos', resource: 'demos', foreignKey: 'opportunityId' },
-    { id: 'rel_opp_samples', label: 'Sample requests', resource: 'sampleRequests', foreignKey: 'opportunityId' },
+    { id: 'rel_opp_demos', label: L.opportunities.relationships.demos, resource: 'demos', foreignKey: 'opportunityId' },
+    { id: 'rel_opp_samples', label: L.opportunities.relationships.sampleRequests, resource: 'sampleRequests', foreignKey: 'opportunityId' },
   ],
   lifecycle: {
     field: 'stage',
     initial: 'needs_assessment',
-    // Lost is recorded through "Mark lost…" (reason + competitor are mandatory, FR-031).
+    // Lost is recorded through "Mark Lost" (reason + competitor are mandatory, FR-031).
     terminal: ['won', 'lost'],
     transitions: [
-      { from: ['needs_assessment', 'proposal', 'negotiation'], to: 'demo', action: 'Move to demo / sample' },
-      { from: ['needs_assessment', 'demo', 'negotiation'], to: 'proposal', action: 'Move to proposal' },
-      { from: ['needs_assessment', 'demo', 'proposal'], to: 'negotiation', action: 'Move to negotiation' },
-      { from: ['proposal', 'negotiation'], to: 'won', action: 'Mark won', confirm: 'Mark this opportunity as won? A sales order can then be generated from the accepted quotation.' },
-      { from: ['demo', 'proposal', 'negotiation'], to: 'needs_assessment', action: 'Back to needs assessment' },
-      { from: ['won', 'lost'], to: 'needs_assessment', action: 'Reopen', capability: 'opportunity.reopen', confirm: 'Reopen this closed opportunity? It returns to Needs assessment.' },
+      { from: ['needs_assessment', 'proposal', 'negotiation'], to: 'demo', action: A.moveToDemo },
+      { from: ['needs_assessment', 'demo', 'negotiation'], to: 'proposal', action: A.moveToProposal },
+      { from: ['needs_assessment', 'demo', 'proposal'], to: 'negotiation', action: A.moveToNegotiation },
+      { from: ['proposal', 'negotiation'], to: 'won', action: A.markWon, confirm: C.markWon },
+      { from: ['demo', 'proposal', 'negotiation'], to: 'needs_assessment', action: A.backToNeedsAssessment },
+      { from: ['won', 'lost'], to: 'needs_assessment', action: A.reopen, capability: 'opportunity.reopen', confirm: C.reopen },
     ],
   },
   form: {
     quickCreate: ['name', 'customerId', 'contactId', 'divisionId', 'oppType', 'value', 'expectedCloseDate', 'ownerId'],
     sections: [
-      { id: 'deal', title: 'Deal', fields: ['name', 'customerId', 'contactId', 'oppType', 'divisionId', 'ownerId'], columns: 2 },
-      { id: 'value', title: 'Value & timing', fields: ['productType', 'productId', 'value', 'probability', 'expectedCloseDate', 'nextFollowUpAt'], columns: 2 },
-      { id: 'context', title: 'Context', fields: ['competitors', 'decisionMakers', 'machineId', 'notes'], columns: 2 },
+      { id: 'deal', title: S.opportunity, fields: ['name', 'customerId', 'contactId', 'oppType', 'divisionId', 'ownerId'], columns: 2 },
+      { id: 'value', title: S.valueTiming, fields: ['productType', 'productId', 'value', 'probability', 'expectedCloseDate', 'nextFollowUpAt'], columns: 2 },
+      { id: 'context', title: S.context, fields: ['competitors', 'decisionMakers', 'machineId', 'notes'], columns: 2 },
     ],
-    primaryLabel: 'New opportunity',
+    primaryLabel: A.newOpportunity,
   },
   views: views([
     {
       id: 'v_opp_pipeline',
       resource: 'opportunities',
-      name: 'Pipeline',
+      name: V.kanban,
       type: 'board',
       boardField: 'stage',
       filter: group('and', [cond('stage', 'in', OPEN_STAGES)]),
@@ -155,7 +170,7 @@ export const opportunities: ResourceDefinition = {
     {
       id: 'v_opp_open',
       resource: 'opportunities',
-      name: 'Open',
+      name: V.open,
       type: 'table',
       filter: group('and', [cond('stage', 'in', OPEN_STAGES)]),
       sort: [{ field: 'expectedCloseDate', dir: 'asc' }],
@@ -164,7 +179,7 @@ export const opportunities: ResourceDefinition = {
     {
       id: 'v_opp_closing',
       resource: 'opportunities',
-      name: 'Closing in 7 days',
+      name: V.closing,
       type: 'table',
       filter: group('and', [cond('stage', 'in', OPEN_STAGES), cond('expectedCloseDate', 'next7')]),
       sort: [{ field: 'expectedCloseDate', dir: 'asc' }],
@@ -173,7 +188,7 @@ export const opportunities: ResourceDefinition = {
     {
       id: 'v_opp_stagnant',
       resource: 'opportunities',
-      name: 'Stagnant',
+      name: V.stagnant,
       type: 'table',
       filter: group('and', [cond('stagnant', 'eq', true)]),
       sort: [{ field: 'lastActivityAt', dir: 'asc' }],
@@ -182,7 +197,7 @@ export const opportunities: ResourceDefinition = {
     {
       id: 'v_opp_by_owner',
       resource: 'opportunities',
-      name: 'By owner',
+      name: V.byOwner,
       type: 'table',
       filter: group('and', [cond('stage', 'in', OPEN_STAGES)]),
       sort: [{ field: 'value', dir: 'desc' }],
@@ -192,7 +207,7 @@ export const opportunities: ResourceDefinition = {
     {
       id: 'v_opp_closed',
       resource: 'opportunities',
-      name: 'Won & lost',
+      name: V.closed,
       type: 'table',
       filter: group('and', [cond('stage', 'in', ['won', 'lost'])]),
       sort: [{ field: 'expectedCloseDate', dir: 'desc' }],
@@ -204,34 +219,34 @@ export const opportunities: ResourceDefinition = {
 export const demoMachines: ResourceDefinition = {
   id: 'res_demoMachines',
   key: 'demoMachines',
-  module: 'leads',
-  label: 'Demo machine',
-  labelPlural: 'Demo machines',
+  module: 'opportunities',
+  label: R.demoMachines.one,
+  labelPlural: R.demoMachines.many,
   icon: 'blocks',
   version: 1,
   idPrefix: 'DMC',
   titleField: 'name',
   subtitleFields: ['location', 'status'],
   divisionField: 'divisionId',
-  description: 'Machines at the demo centres that can be booked for customer demos.',
+  description: D.demoMachines,
   status: 'published',
   fields: [
-    fm('name', 'Machine', 'text', { required: true, maxLength: 80, capabilities: ALL, width: 260 }),
-    fm('location', 'Demo centre', 'text', { required: true, maxLength: 80, capabilities: ALL, width: 180 }),
-    fm('divisionId', 'Division', 'master', { master: 'division', required: true }),
-    fm('status', 'Status', 'master', { master: 'demoMachineStatus', required: true, defaultValue: 'active' }),
+    fm('name', F.demoMachines.name, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 260 }),
+    fm('location', F.demoMachines.location, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 180 }),
+    fm('divisionId', F.demoMachines.divisionId, 'master', { master: 'division', required: true }),
+    fm('status', F.demoMachines.status, 'master', { master: 'demoMachineStatus', required: true, defaultValue: 'active' }),
   ],
-  relationships: [{ id: 'rel_dmc_demos', label: 'Demos', resource: 'demos', foreignKey: 'demoMachineId' }],
-  form: { quickCreate: ['name', 'location', 'divisionId', 'status'], sections: [{ id: 'main', title: 'Machine', fields: ['name', 'location', 'divisionId', 'status'], columns: 2 }] },
-  views: views([{ id: 'v_dmc_all', resource: 'demoMachines', name: 'All', type: 'table', filter: group('and'), sort: [{ field: 'name', dir: 'asc' }], columns: cols('name', 'location', 'divisionId', 'status') }]),
+  relationships: [{ id: 'rel_dmc_demos', label: L.opportunities.relationships.demos, resource: 'demos', foreignKey: 'demoMachineId' }],
+  form: { quickCreate: ['name', 'location', 'divisionId', 'status'], sections: [{ id: 'main', title: S.machine, fields: ['name', 'location', 'divisionId', 'status'], columns: 2 }] },
+  views: views([{ id: 'v_dmc_all', resource: 'demoMachines', name: V.all, type: 'table', filter: group('and'), sort: [{ field: 'name', dir: 'asc' }], columns: cols('name', 'location', 'divisionId', 'status') }]),
 };
 
 export const demos: ResourceDefinition = {
   id: 'res_demos',
   key: 'demos',
-  module: 'leads',
-  label: 'Demo',
-  labelPlural: 'Demos',
+  module: 'opportunities',
+  label: R.demos.one,
+  labelPlural: R.demos.many,
   icon: 'calendar',
   version: 1,
   idPrefix: 'DEM',
@@ -243,31 +258,31 @@ export const demos: ResourceDefinition = {
     startField: 'scheduledAt',
     durationField: 'durationMin',
     lanes: [
-      { field: 'demoMachineId', label: 'Demo machines', emptyLaneLabel: 'Customer site' },
-      { field: 'ownerId', label: 'Sales owner', laneFilter: { field: 'roleId', op: 'in', value: ['sales_manager', 'sales_exec', 'division_head'] } },
+      { field: 'demoMachineId', label: L.opportunities.calendarLanes.demoMachines, emptyLaneLabel: L.opportunities.calendarLanes.customerSite },
+      { field: 'ownerId', label: L.opportunities.calendarLanes.salesOwner, laneFilter: { field: 'roleId', op: 'in', value: ['sales_manager', 'sales_exec', 'division_head'] } },
     ],
   },
-  description: 'Demos at the demo centre or the customer site. A demo machine cannot be double-booked.',
+  description: D.demos,
   status: 'published',
   fields: [
-    fd('opportunityId', 'Opportunity', 'relation', { required: true, relation: { resource: 'opportunities' }, capabilities: ALL, width: 240 }),
-    fd('customerId', 'Customer', 'relation', { relation: { resource: 'customers' }, readOnly: true, width: 200 }),
-    fd('location', 'Where', 'master', { master: 'demoLocation', required: true, defaultValue: 'centre', width: 130 }),
-    fd('demoMachineId', 'Demo machine', 'relation', {
+    fd('opportunityId', F.demos.opportunityId, 'relation', { required: true, relation: { resource: 'opportunities' }, capabilities: ALL, width: 240 }),
+    fd('customerId', F.demos.customerId, 'relation', { relation: { resource: 'customers' }, readOnly: true, width: 200 }),
+    fd('location', F.demos.location, 'master', { master: 'demoLocation', required: true, defaultValue: 'centre', width: 140 }),
+    fd('demoMachineId', F.demos.demoMachineId, 'relation', {
       relation: { resource: 'demoMachines', where: { field: 'status', op: 'eq', value: 'active' } },
       requiredWhen: { field: 'location', op: 'eq', value: 'centre' },
       visibleWhen: { field: 'location', op: 'eq', value: 'centre' },
       clearWhenHidden: true,
       width: 220,
     }),
-    fd('scheduledAt', 'When', 'datetime', { required: true, width: 160 }),
-    fd('durationMin', 'Duration', 'number', { required: true, min: 30, max: 480, unit: 'min', defaultValue: 120, width: 100 }),
-    fd('status', 'Status', 'master', { master: 'demoStatus', readOnly: true, width: 120 }),
-    fd('ownerId', 'Sales owner', 'relation', { required: true, relation: { resource: 'employees' }, width: 170, display: 'person', personSubtitle: 'designation' }),
-    fd('divisionId', 'Division', 'master', { master: 'division', readOnly: true }),
-    fd('agenda', 'Agenda', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
-    fd('results', 'Results', 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
-    fd('customerFeedback', 'Customer feedback', 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
+    fd('scheduledAt', F.demos.scheduledAt, 'datetime', { required: true, width: 160 }),
+    fd('durationMin', F.demos.durationMin, 'number', { required: true, min: 30, max: 480, unit: L.opportunities.units.minutes, defaultValue: 120, width: 100 }),
+    fd('status', F.demos.status, 'master', { master: 'demoStatus', readOnly: true, width: 120 }),
+    fd('ownerId', F.demos.ownerId, 'relation', { required: true, relation: { resource: 'employees' }, width: 170, display: 'person', personSubtitle: 'designation' }),
+    fd('divisionId', F.demos.divisionId, 'master', { master: 'division', readOnly: true }),
+    fd('agenda', F.demos.agenda, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
+    fd('results', F.demos.results, 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
+    fd('customerFeedback', F.demos.customerFeedback, 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
   ],
   relationships: [],
   lifecycle: {
@@ -275,40 +290,40 @@ export const demos: ResourceDefinition = {
     initial: 'requested',
     terminal: ['done', 'cancelled'],
     transitions: [
-      { from: ['requested'], to: 'scheduled', action: 'Confirm demo' },
-      { from: ['requested', 'scheduled'], to: 'done', action: 'Mark done' },
-      { from: ['requested', 'scheduled'], to: 'cancelled', action: 'Cancel demo', confirm: 'Cancel this demo? The demo machine slot is released.' },
+      { from: ['requested'], to: 'scheduled', action: A.confirmDemo },
+      { from: ['requested', 'scheduled'], to: 'done', action: A.markDone },
+      { from: ['requested', 'scheduled'], to: 'cancelled', action: A.cancelDemo, confirm: C.cancelDemo },
     ],
   },
   form: {
     quickCreate: ['opportunityId', 'location', 'demoMachineId', 'scheduledAt', 'durationMin', 'ownerId', 'agenda'],
     sections: [
-      { id: 'when', title: 'When & where', fields: ['opportunityId', 'location', 'demoMachineId', 'scheduledAt', 'durationMin', 'ownerId'], columns: 2 },
-      { id: 'outcome', title: 'Outcome', fields: ['agenda', 'results', 'customerFeedback'], columns: 1 },
+      { id: 'when', title: S.whenWhere, fields: ['opportunityId', 'location', 'demoMachineId', 'scheduledAt', 'durationMin', 'ownerId'], columns: 2 },
+      { id: 'outcome', title: S.outcome, fields: ['agenda', 'results', 'customerFeedback'], columns: 1 },
     ],
-    primaryLabel: 'Book demo',
+    primaryLabel: A.bookDemo,
   },
   views: views([
-    { id: 'v_demo_calendar', resource: 'demos', name: 'Demo calendar', type: 'calendar', filter: group('and'), sort: [{ field: 'scheduledAt', dir: 'asc' }], columns: cols('scheduledAt', 'opportunityId', 'demoMachineId', 'status') },
+    { id: 'v_demo_calendar', resource: 'demos', name: V.demoCalendar, type: 'calendar', filter: group('and'), sort: [{ field: 'scheduledAt', dir: 'asc' }], columns: cols('scheduledAt', 'opportunityId', 'demoMachineId', 'status') },
     {
       id: 'v_demo_upcoming',
       resource: 'demos',
-      name: 'Upcoming',
+      name: V.upcoming,
       type: 'table',
       filter: group('and', [cond('status', 'in', ['requested', 'scheduled'])]),
       sort: [{ field: 'scheduledAt', dir: 'asc' }],
       columns: cols('scheduledAt', 'opportunityId', 'customerId', 'location', 'demoMachineId', 'ownerId', 'status'),
     },
-    { id: 'v_demo_all', resource: 'demos', name: 'All', type: 'table', filter: group('and'), sort: [{ field: 'scheduledAt', dir: 'desc' }], columns: cols('scheduledAt', 'opportunityId', 'customerId', 'location', 'demoMachineId', 'ownerId', 'status') },
+    { id: 'v_demo_all', resource: 'demos', name: V.all, type: 'table', filter: group('and'), sort: [{ field: 'scheduledAt', dir: 'desc' }], columns: cols('scheduledAt', 'opportunityId', 'customerId', 'location', 'demoMachineId', 'ownerId', 'status') },
   ]),
 };
 
 export const sampleRequests: ResourceDefinition = {
   id: 'res_sampleRequests',
   key: 'sampleRequests',
-  module: 'leads',
-  label: 'Sample request',
-  labelPlural: 'Sample requests',
+  module: 'opportunities',
+  label: R.sampleRequests.one,
+  labelPlural: R.sampleRequests.many,
   icon: 'layout-dashboard',
   version: 1,
   idPrefix: 'SR',
@@ -316,21 +331,21 @@ export const sampleRequests: ResourceDefinition = {
   subtitleFields: ['opportunityId', 'status'],
   ownerField: 'ownerId',
   divisionField: 'divisionId',
-  description: 'Sample prints requested from the Profiling team with the customer’s artwork and fabric details; results and feedback are recorded here.',
+  description: D.sampleRequests,
   status: 'published',
   fields: [
-    fs('title', 'Sample', 'text', { required: true, maxLength: 120, capabilities: ALL, width: 260 }),
-    fs('opportunityId', 'Opportunity', 'relation', { required: true, relation: { resource: 'opportunities' }, capabilities: ALL, width: 220 }),
-    fs('customerId', 'Customer', 'relation', { relation: { resource: 'customers' }, readOnly: true, width: 200 }),
-    fs('assigneeId', 'Profiling', 'relation', { required: true, relation: { resource: 'employees', where: { field: 'roleId', op: 'eq', value: 'profiling' } }, width: 170, display: 'person' }),
-    fs('dueDate', 'Needed by', 'date', { required: true, dateRule: 'future', width: 120 }),
-    fs('status', 'Status', 'master', { master: 'sampleStatus', readOnly: true, width: 130 }),
-    fs('ownerId', 'Requested by', 'relation', { required: true, relation: { resource: 'employees' }, width: 170 }),
-    fs('divisionId', 'Division', 'master', { master: 'division', readOnly: true }),
-    fs('artwork', 'Artwork / design', 'longtext', { required: true, maxLength: 1000, capabilities: FORM_ONLY, help: 'File names or a description of the customer artwork (files are not uploaded in this prototype).' }),
-    fs('fabricDetails', 'Fabric / media details', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
-    fs('results', 'Print results', 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
-    fs('customerFeedback', 'Customer feedback', 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
+    fs('title', F.sampleRequests.title, 'text', { required: true, maxLength: 120, capabilities: ALL, width: 260 }),
+    fs('opportunityId', F.sampleRequests.opportunityId, 'relation', { required: true, relation: { resource: 'opportunities' }, capabilities: ALL, width: 220 }),
+    fs('customerId', F.sampleRequests.customerId, 'relation', { relation: { resource: 'customers' }, readOnly: true, width: 200 }),
+    fs('assigneeId', F.sampleRequests.assigneeId, 'relation', { required: true, relation: { resource: 'employees', where: { field: 'roleId', op: 'eq', value: 'profiling' } }, width: 170, display: 'person' }),
+    fs('dueDate', F.sampleRequests.dueDate, 'date', { required: true, dateRule: 'future', width: 120 }),
+    fs('status', F.sampleRequests.status, 'master', { master: 'sampleStatus', readOnly: true, width: 130 }),
+    fs('ownerId', F.sampleRequests.ownerId, 'relation', { required: true, relation: { resource: 'employees' }, width: 170 }),
+    fs('divisionId', F.sampleRequests.divisionId, 'master', { master: 'division', readOnly: true }),
+    fs('artwork', F.sampleRequests.artwork, 'longtext', { required: true, maxLength: 1000, capabilities: FORM_ONLY, help: F.sampleRequests.artworkHelp }),
+    fs('fabricDetails', F.sampleRequests.fabricDetails, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
+    fs('results', F.sampleRequests.results, 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
+    fs('customerFeedback', F.sampleRequests.customerFeedback, 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
   ],
   relationships: [],
   lifecycle: {
@@ -338,30 +353,30 @@ export const sampleRequests: ResourceDefinition = {
     initial: 'requested',
     terminal: ['results_shared', 'cancelled'],
     transitions: [
-      { from: ['requested'], to: 'in_progress', action: 'Start printing' },
-      { from: ['requested', 'in_progress'], to: 'results_shared', action: 'Share results' },
-      { from: ['requested', 'in_progress'], to: 'cancelled', action: 'Cancel request', confirm: 'Cancel this sample request?' },
+      { from: ['requested'], to: 'in_progress', action: A.startPrinting },
+      { from: ['requested', 'in_progress'], to: 'results_shared', action: A.shareResults },
+      { from: ['requested', 'in_progress'], to: 'cancelled', action: A.cancelRequest, confirm: C.cancelRequest },
     ],
   },
   form: {
     quickCreate: ['title', 'opportunityId', 'assigneeId', 'dueDate', 'ownerId', 'artwork', 'fabricDetails'],
     sections: [
-      { id: 'req', title: 'Request', fields: ['title', 'opportunityId', 'assigneeId', 'dueDate', 'ownerId', 'artwork', 'fabricDetails'], columns: 2 },
-      { id: 'res', title: 'Results', fields: ['results', 'customerFeedback'], columns: 1 },
+      { id: 'req', title: S.request, fields: ['title', 'opportunityId', 'assigneeId', 'dueDate', 'ownerId', 'artwork', 'fabricDetails'], columns: 2 },
+      { id: 'res', title: S.results, fields: ['results', 'customerFeedback'], columns: 1 },
     ],
-    primaryLabel: 'Request sample',
+    primaryLabel: A.requestSamplePrint,
   },
   views: views([
     {
       id: 'v_sr_open',
       resource: 'sampleRequests',
-      name: 'Open',
+      name: V.open,
       type: 'table',
       filter: group('and', [cond('status', 'in', ['requested', 'in_progress'])]),
       sort: [{ field: 'dueDate', dir: 'asc' }],
       columns: cols('title', 'opportunityId', 'customerId', 'assigneeId', 'dueDate', 'status', 'ownerId'),
     },
-    { id: 'v_sr_all', resource: 'sampleRequests', name: 'All', type: 'table', filter: group('and'), sort: [{ field: 'dueDate', dir: 'desc' }], columns: cols('title', 'opportunityId', 'customerId', 'assigneeId', 'dueDate', 'status') },
+    { id: 'v_sr_all', resource: 'sampleRequests', name: V.all, type: 'table', filter: group('and'), sort: [{ field: 'dueDate', dir: 'desc' }], columns: cols('title', 'opportunityId', 'customerId', 'assigneeId', 'dueDate', 'status') },
   ]),
 };
 
@@ -383,10 +398,4 @@ export const opportunitiesPack: ModulePack = {
     profiling: { opportunities: p('all'), demos: p('all'), sampleRequests: p('all', 'all'), demoMachines: p('all') },
   },
   capabilities: { admin: ['opportunity.reopen'] },
-  extend: {
-    leads: {
-      resources: ['opportunities', 'demos', 'sampleRequests', 'demoMachines'],
-      pages: [{ id: 'forecast', label: 'Forecast', icon: 'activity', path: 'opportunities/forecast' }],
-    },
-  },
 };

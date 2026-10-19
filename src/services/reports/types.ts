@@ -51,7 +51,8 @@ export interface ReportContext {
   nowMs: number;
 }
 
-export type ReportGroup = 'customers' | 'leads' | 'quotations' | 'orders' | 'installed' | 'service' | 'field' | 'kpis';
+/** Category id = URL segment under /reports (GLOSSARY §1.2). */
+export type ReportGroup = 'kpis' | 'customers' | 'leads' | 'quotations' | 'sales-orders' | 'installed-base' | 'service' | 'field-force';
 
 export interface ReportDef {
   id: string;

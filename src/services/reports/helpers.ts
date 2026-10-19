@@ -1,4 +1,6 @@
 /** Small shared helpers for report definitions. */
+import { L } from '../../constants/labels';
+import { ROUTES, toPath } from '../../constants/routes';
 import type { RecordData } from '../../metadata/types';
 import { recordPeekPath, resourcePath } from '../../lib/routes';
 import { masterLabel } from '../registry';
@@ -10,6 +12,8 @@ export const n = (v: unknown) => (typeof v === 'number' ? v : Number(v) || 0);
 
 export const peek = (resKey: string, idKey = 'id') => (row: ReportRow) => (row[idKey] ? recordPeekPath('tc', resKey, s(row[idKey])) : undefined);
 export const list = (resKey: string, params: Record<string, string | undefined> = {}) => resourcePath('tc', resKey, params);
+/** Link to a report or a report category page (/reports/<id>). */
+export const reportPath = (reportId: string) => toPath(ROUTES.report, { reportId });
 
 /** Applies division / owner / date filters to base rows. */
 export function applyFilters(rows: RecordData[], f: ReportFilters, opts: { date?: string; owner?: string; division?: string } = {}) {
@@ -38,7 +42,7 @@ export function groupBy<T>(rows: T[], key: (r: T) => string) {
 }
 
 export const monthKey = (v: unknown) => dayOf(v).slice(0, 7);
-export const label = (master: string, key: unknown) => masterLabel(master, key) || s(key) || 'Not set';
-export const empName = (ds: Dataset, id: unknown) => (id ? ds.name('employees', id) : 'Unassigned');
+export const label = (master: string, key: unknown) => masterLabel(master, key) || s(key) || L.reports.common.notSet;
+export const empName = (ds: Dataset, id: unknown) => (id ? ds.name('employees', id) : L.reports.common.unassigned);
 export const pctOf = (num: number, den: number) => (den ? num / den : null);
 export const top = <T extends { value: number }>(rows: T[], k = 10) => [...rows].sort((a, b) => b.value - a.value).slice(0, k);

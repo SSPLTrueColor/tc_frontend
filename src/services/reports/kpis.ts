@@ -3,6 +3,7 @@
  * through services (role-scoped), so every figure follows what the actor may see.
  * No store access here — this file is unit-tested on fixed fixtures.
  */
+import { L } from '../../constants/labels';
 import type { RecordData } from '../../metadata/types';
 import { addDays, toDate } from '../../lib/dates';
 
@@ -82,10 +83,10 @@ export const isBooked = (o: RecordData) => !['pending_approval', 'cancelled'].in
 export const outstandingOf = (m: RecordData) => Math.max(0, n(m.amount) - n(m.receivedAmount));
 
 export const AGEING = [
-  { key: '0-30', label: '1–30 days', min: 1, max: 30 },
-  { key: '31-60', label: '31–60 days', min: 31, max: 60 },
-  { key: '61-90', label: '61–90 days', min: 61, max: 90 },
-  { key: '90+', label: 'Over 90 days', min: 91, max: Infinity },
+  { key: '0-30', label: L.reports.ageing.overdue.d0_30, min: 1, max: 30 },
+  { key: '31-60', label: L.reports.ageing.overdue.d31_60, min: 31, max: 60 },
+  { key: '61-90', label: L.reports.ageing.overdue.d61_90, min: 61, max: 90 },
+  { key: '90+', label: L.reports.ageing.overdue.d90, min: 91, max: Infinity },
 ];
 
 /** Collections and overdues: payments received vs due, overdue amount and ageing as of a date. */
@@ -157,11 +158,11 @@ export function csat(tickets: Rows) {
 
 /** Ageing buckets in days for open items (tickets, leads). */
 export const OPEN_AGE = [
-  { key: '0-2', label: '0–2 days', min: 0, max: 2 },
-  { key: '3-7', label: '3–7 days', min: 3, max: 7 },
-  { key: '8-15', label: '8–15 days', min: 8, max: 15 },
-  { key: '16-30', label: '16–30 days', min: 16, max: 30 },
-  { key: '30+', label: 'Over 30 days', min: 31, max: Infinity },
+  { key: '0-2', label: L.reports.ageing.open.d0_2, min: 0, max: 2 },
+  { key: '3-7', label: L.reports.ageing.open.d3_7, min: 3, max: 7 },
+  { key: '8-15', label: L.reports.ageing.open.d8_15, min: 8, max: 15 },
+  { key: '16-30', label: L.reports.ageing.open.d16_30, min: 16, max: 30 },
+  { key: '30+', label: L.reports.ageing.open.d30, min: 31, max: Infinity },
 ];
 export function ageingBuckets(rows: Rows, dateKey: string, nowMs: number) {
   return OPEN_AGE.map((b) => ({ ...b, count: rows.filter((r) => { const d = Math.floor((nowMs - ms(r[dateKey] || r.createdAt)) / 86_400_000); return d >= b.min && d <= b.max; }).length }));
@@ -173,7 +174,7 @@ export function mtbfByModel(machines: Rows, tickets: Rows, from: string, to: str
   const groups = new Map<string, { model: string; machines: number; machineDays: number; breakdowns: number }>();
   const windowDays = Math.max(1, Math.round((ms(to) - ms(from)) / 86_400_000) + 1);
   machines.forEach((m) => {
-    const model = s(m.model) || 'Unknown model';
+    const model = s(m.model) || L.reports.common.unknownModel;
     const g = groups.get(model) ?? { model, machines: 0, machineDays: 0, breakdowns: 0 };
     const start = dayOf(m.installDate) > from ? dayOf(m.installDate) : from;
     g.machines++;
@@ -184,7 +185,7 @@ export function mtbfByModel(machines: Rows, tickets: Rows, from: string, to: str
     .filter((t) => t.ticketType === 'breakdown' && inRange(t.reportedAt, from, to))
     .forEach((t) => {
       const m = byMachine.get(s(t.machineId));
-      const g = m ? groups.get(s(m.model) || 'Unknown model') : undefined;
+      const g = m ? groups.get(s(m.model) || L.reports.common.unknownModel) : undefined;
       if (g) g.breakdowns++;
     });
   return [...groups.values()].map((g) => ({ ...g, mtbfDays: g.breakdowns ? g.machineDays / g.breakdowns : null }));

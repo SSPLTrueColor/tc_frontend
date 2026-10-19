@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { ColumnState, FilterCondition, FilterGroup, RecordData, ViewDefinition } from '../metadata/types';
 import { cx } from '../lib/format';
+import { recordNewPath, recordPagePath, recordPeekPath, resourceKeyFromParams, resourcePath } from '../lib/routes';
 import { formatDate, todayKey } from '../lib/dates';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { canReadRecord, perm } from '../services/authz';
@@ -41,7 +42,7 @@ interface Working {
 const fromView = (v: ViewDefinition): Working => ({ filter: cloneGroup(v.filter), sort: [...v.sort], columns: v.columns.map((c) => ({ ...c })), groupBy: v.groupBy, density: v.density, rowLines: v.rowLines ?? 1 });
 
 export function ResourcePage() {
-  const { resource = '' } = useParams();
+  const resource = resourceKeyFromParams(useParams());
   useRevision();
   const actor = useActor();
   const navigate = useNavigate();
@@ -82,7 +83,7 @@ export function ResourcePage() {
   }, [view]);
 
   useEffect(() => {
-    pushRecent(actor, res.labelPlural, `/${res.key}`);
+    pushRecent(actor, res.labelPlural, resourcePath(actor.workspaceId, res.key));
   }, [res.key, actor.workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced search → URL (shareable).
@@ -131,7 +132,7 @@ export function ResourcePage() {
   const open = (id: string) => update({ peek: id });
   const primary = () => {
     if (res.form.wizard) setCreating({ mode: 'wizard' });
-    else if (res.form.fullPage) navigate(`/${res.key}/new`);
+    else if (res.form.fullPage) navigate(recordNewPath(res.key));
     else setCreating({ mode: 'quick' });
   };
 
@@ -139,7 +140,7 @@ export function ResourcePage() {
     const raw = getDb().records[resource].find((x) => x.id === r.id);
     return [
       { id: 'open', label: 'Open in inspector', icon: 'eye', onSelect: () => open(r.id) },
-      { id: 'page', label: 'Open full page', icon: 'layout-dashboard', onSelect: () => navigate(`/${res.key}/${r.id}`) },
+      { id: 'page', label: 'Open full page', icon: 'layout-dashboard', onSelect: () => navigate(recordPagePath(actor.workspaceId, res.key, r.id)) },
       ...availableTransitions(actor, res, r).map((t, i) => ({
         id: `t-${t.to}`,
         label: t.action,
@@ -404,7 +405,7 @@ export function ResourcePage() {
 function IconSearch() {
   return (
     <span className="search-icon" aria-hidden="true">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.14">
         <circle cx="11" cy="11" r="7" />
         <path d="m20 20-3.5-3.5" />
       </svg>
@@ -452,7 +453,9 @@ export function FilterChips({ res, filter, onChange, actor }: { res: ReturnType<
 
 /** Full-page record detail (deep link /:recordId) — same tabs and composer as the inspector. */
 export function RecordPage() {
-  const { resource = '', recordId = '' } = useParams();
+  const params = useParams();
+  const resource = resourceKeyFromParams(params);
+  const recordId = params.recordId ?? '';
   const actor = useActor();
   const navigate = useNavigate();
   const res = getResource(resource);
@@ -462,7 +465,7 @@ export function RecordPage() {
     <div className="page">
       <PageHeader
         title={visible ? `${res.label} ${recordId}` : res.label}
-        onBack={() => navigate(`/${res.key}?peek=${recordId}`)}
+        onBack={() => navigate(recordPeekPath(actor.workspaceId, res.key, recordId))}
       />
       <div className="record-page">
         <RecordInspector resKey={resource} recordId={recordId} onClose={() => navigate(-1)} variant="page" />

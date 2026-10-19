@@ -6,6 +6,8 @@
  * Line items are hidden from the generic engine; saves hand them to the quotation hooks through
  * `withPendingLines` so the hooks (not the UI) price, validate and total them.
  */
+import { L } from '../../constants/labels';
+import { ROUTES } from '../../constants/routes';
 import { addDays, todayKey } from '../../lib/dates';
 import { nowIso, nowMs } from '../../lib/clock';
 import { fyLabel } from '../../lib/fy';
@@ -23,8 +25,12 @@ import { getResource, masterLabel } from '../registry';
 import type { HookContext } from '../resourceHooks';
 import { createRecord, insertRecordIn, patchRecordIn, type Projected, updateRecord } from '../runtime';
 import { ServiceError } from '../types';
-import { canDecide, requestApprovalIn } from '../workflow';
+import { canDecide, decideApproval, requestApprovalIn } from '../workflow';
 import { cleanLines, computeTotals, type QuoteLine, validateLines } from './pricing';
+import type { Approval, ApprovalLevel } from '../types';
+
+const E = L.quotations.errors;
+const A = L.quotations.audit;
 
 /**
  * BR-15: lines for products with a valid price list take the list price (and landed cost) from
@@ -49,7 +55,7 @@ const res = () => getResource('quotations');
 export const rootOf = (q: RecordData) => String(q.rootId || q.id);
 const baseNo = (quoteNo: unknown) => String(quoteNo ?? '').replace(/-R\d+$/, '');
 
-// ---------------------------------------------------------------- hooks (registered in domain/extensions/quotations.tsx)
+// ---------------------------------------------------------------- hooks (registered in domain/extensions/quotations.ts)
 
 let pendingLines: QuoteLine[] | null = null;
 
@@ -67,9 +73,9 @@ function withPendingLines<T>(lines: QuoteLine[] | undefined, run: () => T): T {
 function derive(ctx: HookContext, c: Record<string, unknown>, isNew: boolean) {
   const { d } = ctx;
   const opp = byId('opportunities', c.opportunityId, d.records);
-  if (c.opportunityId && !opp) throw new ServiceError('validation', 'The selected opportunity no longer exists.', { fieldErrors: { opportunityId: 'Opportunity not found' } });
+  if (c.opportunityId && !opp) throw new ServiceError('validation', E.opportunityMissing, { fieldErrors: { opportunityId: E.opportunityNotFound } });
   if (opp) {
-    if (isNew && opp.stage === 'lost') throw new ServiceError('invalid_state', `Opportunity ${opp.id} is lost — reopen it before quoting.`);
+    if (isNew && opp.stage === 'lost') throw new ServiceError('invalid_state', E.opportunityLost(String(opp.id)));
     c.customerId = opp.customerId ?? c.customerId;
     c.divisionId = opp.divisionId ?? c.divisionId;
     if (!c.ownerId) c.ownerId = opp.ownerId;
@@ -129,8 +135,8 @@ export function quoteBeforeUpdate(ctx: HookContext, before: RecordData, c: Recor
   const changed = Object.keys(c).filter((k) => !['version', 'updatedAt'].includes(k) && JSON.stringify(c[k] ?? null) !== JSON.stringify(before[k] ?? null));
   const content = changed.filter((k) => !ROI_KEYS.includes(k));
   if (!content.length) return; // ROI inputs can change in any status (FR-047)
-  if (!before.isLatest) throw new ServiceError('invalid_state', `${before.quoteNo} is an old revision and cannot be edited.`);
-  if (before.status !== 'draft') throw new ServiceError('invalid_state', `Only draft quotations can be edited — revise ${before.quoteNo} to create the next revision.`);
+  if (!before.isLatest) throw new ServiceError('invalid_state', E.oldVersion(String(before.quoteNo)));
+  if (before.status !== 'draft') throw new ServiceError('invalid_state', E.onlyDraftEdit(String(before.quoteNo)));
   derive(ctx, c, false);
 }
 
@@ -143,13 +149,18 @@ export interface QuoteView {
   showMargin: boolean;
   canEdit: boolean;
   canUpdate: boolean;
+  /** Every version of this quotation the actor can see, R0 first. */
   revisions: RecordData[];
   pendingApprovalId?: string;
+  /** Discount approval requests for this version, newest first. */
+  approvals: Approval[];
+  /** Sales order generated from this quotation, if any. */
+  salesOrder?: { id: string; orderNo: string };
 }
 
 function readRaw(actor: Actor, id: string): RecordData {
   const raw = (getDb().records.quotations ?? []).find((q) => q.id === id);
-  if (!raw || !canReadRecord(actor, res(), raw)) throw new ServiceError('not_found', `Quotation ${id} was not found or you do not have access.`);
+  if (!raw || !canReadRecord(actor, res(), raw)) throw new ServiceError('not_found', E.notFound(id));
   return raw;
 }
 
@@ -167,8 +178,22 @@ export function getQuote(actor: Actor, id: string): QuoteView {
   const root = rootOf(raw);
   const revisions = (getDb().records.quotations ?? []).filter((q) => rootOf(q) === root && canReadRecord(actor, res(), q)).sort((a, b) => Number(a.revision) - Number(b.revision));
   const canUpdate = canUpdateRecord(actor, res(), raw);
-  const pending = getDb().approvals.find((a) => a.recordId === id && a.type === QUOTE_APPROVAL && a.status === 'pending');
-  return { record, lines, showMargin, canUpdate, canEdit: canUpdate && raw.status === 'draft' && !!raw.isLatest, revisions, pendingApprovalId: pending?.id };
+  const approvals = getDb()
+    .approvals.filter((a) => a.recordId === id && a.type === QUOTE_APPROVAL)
+    .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  const pending = approvals.find((a) => a.status === 'pending');
+  const so = (getDb().records.salesOrders ?? []).find((o) => o.quotationId === id);
+  return {
+    record,
+    lines,
+    showMargin,
+    canUpdate,
+    canEdit: canUpdate && raw.status === 'draft' && !!raw.isLatest,
+    revisions,
+    pendingApprovalId: pending?.id,
+    approvals,
+    salesOrder: so ? { id: so.id, orderNo: String(so.orderNo || so.id) } : undefined,
+  };
 }
 
 /** Opportunities the actor may quote on (open stages, visible). */
@@ -194,16 +219,16 @@ export interface QuoteInput {
 
 export function saveQuote(actor: Actor, input: QuoteInput): Projected {
   const header = Object.fromEntries(Object.entries(input.header).filter(([k]) => EDITABLE_HEADER.includes(k)));
-  if (!input.lines.length) throw new ServiceError('validation', 'Add at least one line item.', { fieldErrors: { lines: 'Add at least one line item' } });
+  if (!input.lines.length) throw new ServiceError('validation', E.needLine, { fieldErrors: { lines: E.needLineField } });
   return withPendingLines(input.lines, () => (input.id ? updateRecord(actor, 'quotations', input.id, header, input.version ?? 0) : createRecord(actor, 'quotations', header)));
 }
 
 function load(actor: Actor, d: ReturnType<typeof getDb>, id: string, version?: number) {
   const q = (d.records.quotations ?? []).find((x) => x.id === id);
-  if (!q || !canReadRecord(actor, res(), q)) throw new ServiceError('not_found', `Quotation ${id} was not found.`);
-  if (!canUpdateRecord(actor, res(), q)) throw new ServiceError('forbidden', `Your role cannot change ${q.quoteNo}.`);
-  if (version !== undefined && q.version !== version) throw new ServiceError('version_conflict', `${q.quoteNo} changed since you opened it. Reload and try again.`);
-  if (!q.isLatest) throw new ServiceError('invalid_state', `${q.quoteNo} has been superseded by a newer revision.`);
+  if (!q || !canReadRecord(actor, res(), q)) throw new ServiceError('not_found', E.notFound(id));
+  if (!canUpdateRecord(actor, res(), q)) throw new ServiceError('forbidden', E.cannotChange(String(q.quoteNo)));
+  if (version !== undefined && q.version !== version) throw new ServiceError('version_conflict', E.changed(String(q.quoteNo)));
+  if (!q.isLatest) throw new ServiceError('invalid_state', E.superseded(String(q.quoteNo)));
   return q;
 }
 
@@ -212,7 +237,7 @@ function withdrawPending(ctx: HookContext, id: string, why: string) {
     if (a.recordId === id && a.type === QUOTE_APPROVAL && a.status === 'pending') {
       a.status = 'withdrawn';
       a.version++;
-      appendAudit(ctx.d, ctx.actor, { action: 'approval.withdrawn', actorType: 'workflow', resource: 'quotations', recordId: id, summary: `${a.id} withdrawn: ${why}`, correlationId: ctx.correlationId });
+      appendAudit(ctx.d, ctx.actor, { action: 'approval.withdrawn', actorType: 'workflow', resource: 'quotations', recordId: id, summary: A.withdrawn(a.id, why), correlationId: ctx.correlationId });
     }
   });
 }
@@ -222,33 +247,33 @@ function logActivityIn(ctx: HookContext, q: RecordData, type: string, subject: s
   insertRecordIn(
     ctx,
     'activities',
-    { activityType: type, subject, notes, at: nowIso().slice(0, 16), byId: ctx.actor.staffId, parentResource: 'quotations', parentId: q.id, parentLabel: `${q.quoteNo}`, customerId: q.customerId ?? null, nextFollowUpAt: null },
+    { activityType: type, subject, notes, at: nowIso().slice(0, 16), byId: ctx.actor.staffId, parentResource: 'quotations', parentId: q.id, parentLabel: String(q.quoteNo), customerId: q.customerId ?? null, nextFollowUpAt: null },
     { validate: false },
   );
 }
 
-/** FR-040 / BR-17: submit a draft. Within the discount limit it is approved at once; otherwise the approval chain starts. */
+/** FR-040 / BR-17: Submit for Approval. Within the discount limit it is approved at once; otherwise the approval chain starts. */
 export function submitQuote(actor: Actor, id: string, version: number, reason = ''): { status: string; approvalId?: string } {
   return commit((d) => {
     const q = load(actor, d, id, version);
-    if (q.status !== 'draft') throw new ServiceError('invalid_state', 'Only draft quotations can be submitted.');
-    if (!cleanLines(q.lines).length) throw new ServiceError('validation', 'Add at least one line item before submitting.');
-    if (String(q.validUntil) < todayKey()) throw new ServiceError('validation', 'The validity date has passed — change “Valid until” first.', { fieldErrors: { validUntil: 'In the past' } });
+    if (q.status !== 'draft') throw new ServiceError('invalid_state', E.onlyDraftSubmit);
+    if (!cleanLines(q.lines).length) throw new ServiceError('validation', E.needLineSubmit);
+    if (String(q.validUntil) < todayKey()) throw new ServiceError('validation', E.validityPassed, { fieldErrors: { validUntil: E.inPast } });
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const pct = Number(q.maxDiscountPct) || 0;
     const levels = discountApprovalLevels(pct);
     if (!levels.length) {
-      patchRecordIn(ctx, 'quotations', id, { status: 'approved', rejectNote: '' }, `Approved automatically: highest discount ${pct}% is within the no-approval limit`);
+      patchRecordIn(ctx, 'quotations', id, { status: 'approved', rejectNote: '' }, A.autoApproved(pct));
       return { status: 'approved' };
     }
-    if (pct > 0 && reason.trim().length < 5) throw new ServiceError('validation', 'Give a reason for the discount (at least 5 characters).', { fieldErrors: { reason: 'Required for discounts that need approval' } });
-    patchRecordIn(ctx, 'quotations', id, { status: 'pending_approval', rejectNote: '' }, `Submitted for discount approval (${pct}%)`);
+    if (pct > 0 && reason.trim().length < 5) throw new ServiceError('validation', E.needReason, { fieldErrors: { reason: E.needReasonField } });
+    patchRecordIn(ctx, 'quotations', id, { status: 'pending_approval', rejectNote: '' }, A.submitted(pct));
     const a = requestApprovalIn(ctx, {
       type: QUOTE_APPROVAL,
       resource: 'quotations',
       recordId: id,
       reason,
-      summary: `Discount ${pct}% on ${q.quoteNo} (${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(q.grandTotal) || 0)})`,
+      summary: A.approvalSummary(pct, String(q.quoteNo), new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(q.grandTotal) || 0)),
       levels,
       amount: Number(q.grandTotal) || 0,
       divisionIds: q.divisionId ? [String(q.divisionId)] : undefined,
@@ -261,10 +286,10 @@ export function submitQuote(actor: Actor, id: string, version: number, reason = 
 export function backToDraft(actor: Actor, id: string, version: number) {
   commit((d) => {
     const q = load(actor, d, id, version);
-    if (q.status !== 'pending_approval') throw new ServiceError('invalid_state', 'Only quotations pending approval can be pulled back.');
+    if (q.status !== 'pending_approval') throw new ServiceError('invalid_state', E.onlyPendingPullBack);
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
-    withdrawPending(ctx, id, 'pulled back to draft by the requester');
-    patchRecordIn(ctx, 'quotations', id, { status: 'draft' }, 'Pulled back to draft');
+    withdrawPending(ctx, id, A.pulledBackWhy);
+    patchRecordIn(ctx, 'quotations', id, { status: 'draft' }, A.pulledBack);
   });
 }
 
@@ -278,25 +303,25 @@ export interface SendInput {
 export function sendQuote(actor: Actor, id: string, version: number, input: SendInput) {
   commit((d) => {
     const q = load(actor, d, id, version);
-    if (!['approved', 'sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', 'Only approved quotations can be sent.');
-    if (String(q.validUntil) < todayKey()) throw new ServiceError('invalid_state', 'This quotation has expired — revise it before sending.');
+    if (!['approved', 'sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', E.onlyApprovedSend);
+    if (String(q.validUntil) < todayKey()) throw new ServiceError('invalid_state', E.expiredSend);
     const to = input.to.trim();
     const err = input.channel === 'email' ? validateEmail(to) : validateMobile(to);
     if (err) throw new ServiceError('validation', err, { fieldErrors: { to: err } });
     const contact = byId('contacts', q.contactId, d.records);
-    if (contact && input.channel === 'email' && contact.consentEmail === false) throw new ServiceError('forbidden', `${contact.name} has not consented to email (DPDP). Choose another channel or contact.`);
-    if (contact && input.channel === 'whatsapp' && contact.consentWhatsapp === false) throw new ServiceError('forbidden', `${contact.name} has not consented to WhatsApp messages (DPDP).`);
+    if (contact && input.channel === 'email' && contact.consentEmail === false) throw new ServiceError('forbidden', E.noEmailConsent(String(contact.name)));
+    if (contact && input.channel === 'whatsapp' && contact.consentWhatsapp === false) throw new ServiceError('forbidden', E.noWhatsappConsent(String(contact.name)));
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     queueMessage(ctx, {
       channel: input.channel,
       to,
-      subject: `Quotation ${q.quoteNo} from True Colors Limited`,
-      body: `${input.message.trim() || `Please find attached our quotation ${q.quoteNo}.`} [Attachment: ${q.quoteNo}.pdf]`,
+      subject: A.sendSubject(String(q.quoteNo)),
+      body: `${input.message.trim() || A.sendBody(String(q.quoteNo))} ${A.attachment(String(q.quoteNo))}`,
       related: { resource: 'quotations', recordId: q.id },
     });
-    const via = input.channel === 'email' ? 'Email' : 'WhatsApp';
-    patchRecordIn(ctx, 'quotations', id, { status: q.status === 'approved' ? 'sent' : q.status, sentAt: nowIso(), sentVia: `${via} · ${to}` }, `Sent by ${via} to ${to}`);
-    logActivityIn(ctx, q, input.channel, `Quotation ${q.quoteNo} sent by ${via}`);
+    const via = input.channel === 'email' ? L.quotations.dialogs.send.email : L.quotations.dialogs.send.whatsapp;
+    patchRecordIn(ctx, 'quotations', id, { status: q.status === 'approved' ? 'sent' : q.status, sentAt: nowIso(), sentVia: `${via} · ${to}` }, A.sentBy(via, to));
+    logActivityIn(ctx, q, input.channel, A.sentActivity(String(q.quoteNo), via));
   });
 }
 
@@ -314,36 +339,36 @@ const PO_TYPES = /\.(pdf|jpe?g|png)$/i;
 export function acceptQuote(actor: Actor, id: string, version: number, input: AcceptInput) {
   commit((d) => {
     const q = load(actor, d, id, version);
-    if (!['sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', 'Only sent quotations can be accepted.');
-    if (String(q.validUntil) < todayKey()) throw new ServiceError('invalid_state', 'This quotation has expired — revise it before recording acceptance.');
+    if (!['sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', E.onlySentAccept);
+    if (String(q.validUntil) < todayKey()) throw new ServiceError('invalid_state', E.expiredAccept);
     const errors: Record<string, string> = {};
     const patch: Record<string, unknown> = { status: 'accepted', acceptedAt: nowIso(), acceptanceMethod: input.method };
     if (input.method === 'po') {
-      if (!input.poNo?.trim()) errors.poNo = 'Customer PO number is required';
-      else if (input.poNo.trim().length > 40) errors.poNo = 'At most 40 characters';
-      if (!input.poDate) errors.poDate = 'PO date is required';
-      else if (input.poDate > todayKey()) errors.poDate = 'PO date cannot be in the future';
+      if (!input.poNo?.trim()) errors.poNo = E.poNoRequired;
+      else if (input.poNo.trim().length > 40) errors.poNo = E.poNoMax;
+      if (!input.poDate) errors.poDate = E.poDateRequired;
+      else if (input.poDate > todayKey()) errors.poDate = E.poDateFuture;
       const maxMb = getPolicies().maxFileMb;
-      if (!input.file) errors.file = 'Attach the PO copy';
-      else if (!PO_TYPES.test(input.file.name)) errors.file = 'PO copy must be a PDF, JPG or PNG file';
-      else if (input.file.size > maxMb * 1024 * 1024) errors.file = `PO copy must be ${maxMb} MB or smaller`;
+      if (!input.file) errors.file = E.poFileRequired;
+      else if (!PO_TYPES.test(input.file.name)) errors.file = E.poFileType;
+      else if (input.file.size > maxMb * 1024 * 1024) errors.file = E.poFileSize(maxMb);
       Object.assign(patch, { customerPoNo: input.poNo?.trim(), customerPoDate: input.poDate, poFileName: input.file?.name, acceptedByName: '' });
     } else {
-      if (!input.acceptedByName?.trim()) errors.acceptedByName = 'Name of the person accepting is required';
+      if (!input.acceptedByName?.trim()) errors.acceptedByName = E.acceptedByRequired;
       Object.assign(patch, { acceptedByName: input.acceptedByName?.trim() });
     }
-    if (Object.keys(errors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: errors });
+    if (Object.keys(errors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: errors });
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
-    patchRecordIn(ctx, 'quotations', id, patch, input.method === 'po' ? `Accepted with customer PO ${input.poNo}` : `Accepted electronically by ${input.acceptedByName}`);
+    patchRecordIn(ctx, 'quotations', id, patch, input.method === 'po' ? A.acceptedPo(String(input.poNo)) : A.acceptedElectronic(String(input.acceptedByName)));
     const opp = byId('opportunities', q.opportunityId, d.records);
     if (opp && !['won', 'lost'].includes(String(opp.stage))) {
-      patchRecordIn(ctx, 'opportunities', String(opp.id), { stage: 'won', wonAt: nowIso(), probability: 100 }, `Won: quotation ${q.quoteNo} accepted`);
+      patchRecordIn(ctx, 'opportunities', String(opp.id), { stage: 'won', wonAt: nowIso(), probability: 100 }, A.oppWon(String(q.quoteNo)));
     } else if (opp?.stage === 'lost') {
-      appendAudit(d, actor, { action: 'warning', resource: 'opportunities', recordId: String(opp.id), summary: `Quotation ${q.quoteNo} accepted while the opportunity is marked lost — review the opportunity`, correlationId: ctx.correlationId });
+      appendAudit(d, actor, { action: 'warning', resource: 'opportunities', recordId: String(opp.id), summary: A.oppLostWarning(String(q.quoteNo)), correlationId: ctx.correlationId });
     }
     const owner = userOfStaff(q.ownerId);
-    if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: `${q.quoteNo} accepted by the customer — generate the sales order`, link: { resource: 'quotations', recordId: q.id } });
-    logActivityIn(ctx, q, 'note', `Quotation ${q.quoteNo} accepted`);
+    if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: A.acceptedNotify(String(q.quoteNo)), link: { resource: 'quotations', recordId: q.id } });
+    logActivityIn(ctx, q, 'note', A.acceptedActivity(String(q.quoteNo)));
   });
 }
 
@@ -351,23 +376,23 @@ export function acceptQuote(actor: Actor, id: string, version: number, input: Ac
 export function rejectQuote(actor: Actor, id: string, version: number, reason: string, note: string) {
   commit((d) => {
     const q = load(actor, d, id, version);
-    if (!['sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', 'Only sent quotations can be marked rejected.');
-    if (!reason) throw new ServiceError('validation', 'Choose a reason.', { fieldErrors: { reason: 'Required' } });
-    patchRecordIn({ d, actor, correlationId: uid('cor') }, 'quotations', id, { status: 'rejected', rejectReason: reason, rejectNote: note.trim() }, `Rejected by the customer: ${masterLabel('lostReason', reason)}`);
+    if (!['sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', E.onlySentReject);
+    if (!reason) throw new ServiceError('validation', E.chooseReason, { fieldErrors: { reason: E.required } });
+    patchRecordIn({ d, actor, correlationId: uid('cor') }, 'quotations', id, { status: 'rejected', rejectReason: reason, rejectNote: note.trim() }, A.rejected(masterLabel('lostReason', reason)));
   });
 }
 
-/** FR-043 / BR-18: new revision R(n+1) as a draft; the previous one becomes read-only. Expired quotations can be revised (Q-09). */
+/** FR-043 / BR-18: new version R(n+1) as a draft; the previous one becomes read-only. Expired quotations can get a new version (Q-09). */
 export function reviseQuote(actor: Actor, id: string, version: number, note: string): string {
   return commit((d) => {
     const q = load(actor, d, id, version);
-    if (![...OPEN, 'expired'].includes(String(q.status))) throw new ServiceError('invalid_state', `A ${masterLabel('quoteStatus', q.status).toLowerCase()} quotation cannot be revised.`);
-    if (q.status === 'draft') throw new ServiceError('invalid_state', 'This revision is still a draft — edit it instead.');
-    if (!perm(actor, 'quotations').create) throw new ServiceError('forbidden', 'Your role cannot create quotations.');
-    if (note.trim().length < 5) throw new ServiceError('validation', 'Describe what changes in this revision (at least 5 characters).', { fieldErrors: { note: 'Required' } });
+    if (![...OPEN, 'expired'].includes(String(q.status))) throw new ServiceError('invalid_state', E.cannotVersion(masterLabel('quoteStatus', q.status)));
+    if (q.status === 'draft') throw new ServiceError('invalid_state', E.draftEditInstead);
+    if (!perm(actor, 'quotations').create) throw new ServiceError('forbidden', E.cannotCreate);
+    if (note.trim().length < 5) throw new ServiceError('validation', E.needVersionNote, { fieldErrors: { note: E.required } });
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
-    withdrawPending(ctx, id, `superseded by a new revision`);
-    patchRecordIn(ctx, 'quotations', id, { status: 'superseded', isLatest: false }, 'Superseded by a new revision');
+    withdrawPending(ctx, id, A.supersededWhy);
+    patchRecordIn(ctx, 'quotations', id, { status: 'superseded', isLatest: false }, A.superseded);
     const rev = (Number(q.revision) || 0) + 1;
     const copy: Record<string, unknown> = {};
     for (const k of [...EDITABLE_HEADER, 'customerId', 'divisionId', 'lines', ...ROI_KEYS]) copy[k] = q[k];
@@ -382,7 +407,7 @@ export function reviseQuote(actor: Actor, id: string, version: number, note: str
       status: 'draft',
       revisionNote: note.trim(),
     });
-    appendAudit(d, actor, { action: 'revise', resource: 'quotations', recordId: next.id, summary: `Revision R${rev} of ${baseNo(q.quoteNo)}: ${note.trim()}`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'version.created', resource: 'quotations', recordId: next.id, summary: A.versionCreated(rev, baseNo(q.quoteNo), note.trim()), correlationId: ctx.correlationId });
     return next.id;
   });
 }
@@ -392,7 +417,7 @@ export function reviseQuote(actor: Actor, id: string, version: number, note: str
 const systemActor = () => actorFor(demoUsers[0].id, 'tc');
 
 /**
- * FR-044 automatic expiry, stale "pending approval" clean-up (request withdrawn in the inbox) and
+ * FR-044 automatic expiry, stale "Pending Approval" clean-up (request withdrawn elsewhere) and
  * QUO-06 reminders after 24 h. Idempotent: commits only when something changes.
  */
 export function runQuotationSweep(): number {
@@ -408,17 +433,17 @@ export function runQuotationSweep(): number {
   commit((d) => {
     const ctx: HookContext = { d, actor: systemActor(), correlationId: uid('cor') };
     expiring.forEach((q) => {
-      withdrawPending(ctx, q.id, 'validity ended');
-      patchRecordIn(ctx, 'quotations', q.id, { status: 'expired' }, `Expired automatically (valid until ${q.validUntil})`);
+      withdrawPending(ctx, q.id, A.validityEnded);
+      patchRecordIn(ctx, 'quotations', q.id, { status: 'expired' }, A.expired(String(q.validUntil)));
     });
-    orphaned.filter((q) => !expiring.includes(q)).forEach((q) => patchRecordIn(ctx, 'quotations', q.id, { status: 'draft' }, 'Back to draft: the approval request was withdrawn'));
+    orphaned.filter((q) => !expiring.includes(q)).forEach((q) => patchRecordIn(ctx, 'quotations', q.id, { status: 'draft' }, A.orphaned));
     stale.forEach((s) => {
       const a = d.approvals.find((x) => x.id === s.id)!;
       a.remindedAt = nowIso();
       demoUsers
         .map((u) => actorFor(u.id, a.workspaceId))
         .filter((x) => canDecide(x, a))
-        .forEach((x) => notify(d, { userId: x.user.id, workspaceId: a.workspaceId, kind: 'reminder', title: `Reminder (${a.remindedAt!.slice(0, 10)}): ${a.levels[a.currentLevel]?.label} approval still pending — ${a.summary}`, link: { page: 'inbox' } }));
+        .forEach((x) => notify(d, { userId: x.user.id, workspaceId: a.workspaceId, kind: 'reminder', title: A.reminder(a.remindedAt!.slice(0, 10), levelName(a.levels[a.currentLevel]), a.summary), link: { page: ROUTES.quotationPendingApprovals.slice(1) } }));
     });
   });
   return n;
@@ -426,14 +451,94 @@ export function runQuotationSweep(): number {
 
 // ---------------------------------------------------------------- approvals (registered in extensions)
 
+/** Approval level shown by role name (GLOSSARY §3: Sales Manager → Division Head → Management (MD)). */
+export function levelName(level?: ApprovalLevel): string {
+  if (!level) return '';
+  const n = /^approve\.l([123])$/.exec(level.capability)?.[1];
+  return n ? L.roles.approvalLevels[Number(n) as 1 | 2 | 3] : level.label;
+}
+
+export interface PendingApprovalRow {
+  approval: Approval;
+  quoteId: string;
+  quoteNo: string;
+  customerName: string;
+  ownerName: string;
+  divisionId: string;
+  grandTotal: number;
+  discountPct: number;
+  levelName: string;
+  /** 1-based level in the chain. */
+  step: number;
+  steps: number;
+  /** When the current level started (request time or the previous level's decision). */
+  waitingSince: string;
+  waitingHours: number;
+  /** Pending for more than 24 h at this level (QUO-06 reminder rule). */
+  overdue: boolean;
+  /** The viewer may approve / reject at the current level. */
+  canDecide: boolean;
+  /** The viewer raised this request (separation of duties). */
+  ownRequest: boolean;
+}
+
+/**
+ * QUO-06 / QUO-14 Pending Approvals: every pending quotation discount request the viewer can see —
+ * the ones at the viewer's approval level (approve.l1/l2/l3 + division) and all others for follow-up.
+ */
+export function pendingQuoteApprovals(actor: Actor): PendingApprovalRow[] {
+  if (perm(actor, 'quotations').read === 'none') return [];
+  const d = getDb();
+  const quotes = new Map((d.records.quotations ?? []).map((q) => [q.id, q]));
+  const now = nowMs();
+  const rows: PendingApprovalRow[] = [];
+  d.approvals.forEach((a) => {
+    if (a.type !== QUOTE_APPROVAL || a.status !== 'pending' || a.workspaceId !== actor.workspaceId) return;
+    const q = quotes.get(a.recordId);
+    if (!q) return;
+    const decide = canDecide(actor, a);
+    if (!decide && !canReadRecord(actor, res(), q)) return;
+    const last = a.decisions.filter((x) => x.level < a.currentLevel).map((x) => x.at).sort().pop();
+    const since = last ?? a.requestedAt;
+    const hours = Math.max(0, Math.floor((now - new Date(since).getTime()) / 3_600_000));
+    rows.push({
+      approval: a,
+      quoteId: q.id,
+      quoteNo: String(q.quoteNo ?? q.id),
+      customerName: String(byId('customers', q.customerId, d.records)?.name ?? q.customerId ?? ''),
+      ownerName: String(byId('employees', q.ownerId, d.records)?.fullName ?? q.ownerId ?? ''),
+      divisionId: String(q.divisionId ?? ''),
+      grandTotal: Number(q.grandTotal) || 0,
+      discountPct: Number(q.maxDiscountPct) || 0,
+      levelName: levelName(a.levels[a.currentLevel]),
+      step: a.currentLevel + 1,
+      steps: a.levels.length,
+      waitingSince: since,
+      waitingHours: hours,
+      overdue: hours >= 24,
+      canDecide: decide,
+      ownRequest: a.requestedBy === actor.user.id,
+    });
+  });
+  return rows;
+}
+
+/** Approve / Reject a quotation discount request at the viewer's level (comment required to reject). */
+export function decideQuoteApproval(actor: Actor, approvalId: string, decision: 'approved' | 'rejected', note: string, expectedVersion: number): Approval {
+  const a = getDb().approvals.find((x) => x.id === approvalId && x.workspaceId === actor.workspaceId);
+  if (!a) throw new ServiceError('not_found', E.approvalNotFound);
+  if (a.type !== QUOTE_APPROVAL) throw new ServiceError('invalid_state', E.notQuotationApproval);
+  return decideApproval(actor, approvalId, decision, note, expectedVersion);
+}
+
 export function onDiscountApproved(ctx: HookContext, recordId: string) {
   const q = (ctx.d.records.quotations ?? []).find((x) => x.id === recordId);
-  if (q && q.status === 'pending_approval') patchRecordIn(ctx, 'quotations', recordId, { status: 'approved' }, 'Discount approved — ready to send');
+  if (q && q.status === 'pending_approval') patchRecordIn(ctx, 'quotations', recordId, { status: 'approved' }, A.discountApproved);
 }
 
 export function onDiscountRejected(ctx: HookContext, recordId: string, note: string) {
   const q = (ctx.d.records.quotations ?? []).find((x) => x.id === recordId);
-  if (q && q.status === 'pending_approval') patchRecordIn(ctx, 'quotations', recordId, { status: 'draft', rejectNote: `Discount rejected: ${note}` }, `Discount rejected — back to draft (${note})`);
+  if (q && q.status === 'pending_approval') patchRecordIn(ctx, 'quotations', recordId, { status: 'draft', rejectNote: A.discountRejectedNote(note) }, A.discountRejected(note));
 }
 
 // ---------------------------------------------------------------- comparison (FR-043)
@@ -475,13 +580,13 @@ export interface EditorData {
 
 /** Everything the full-page editor needs in one round-trip. */
 export function editorData(actor: Actor, quoteId?: string, opportunityId?: string): EditorData {
-  if (!quoteId && !perm(actor, 'quotations').create) throw new ServiceError('forbidden', `${actor.role.label} cannot create quotations.`);
+  if (!quoteId && !perm(actor, 'quotations').create) throw new ServiceError('forbidden', E.cannotCreateRole(actor.role.label));
   const quote = quoteId ? getQuote(actor, quoteId) : null;
   const d = getDb();
   const opps = quotableOpportunities(actor);
   const current = quote ? byId('opportunities', quote.record.opportunityId) : undefined;
   const fromParam = opportunityId ? opps.find((o) => o.id === opportunityId) ?? null : null;
-  if (opportunityId && !fromParam) throw new ServiceError('not_found', `Opportunity ${opportunityId} is not open or not visible to you.`);
+  if (opportunityId && !fromParam) throw new ServiceError('not_found', E.oppNotOpen(opportunityId));
   const customers: EditorData['customers'] = {};
   (d.records.customers ?? []).forEach((c) => (customers[c.id] = { name: String(c.name), billingState: c.billingState as string | undefined }));
   return {

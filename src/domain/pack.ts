@@ -17,6 +17,8 @@ import { sparesPack } from './modules/spares';
 import { fieldPack } from './modules/field';
 import { reportsPack } from './modules/reports';
 import { calendarPack } from './modules/calendar';
+import { sidebarModules } from './sidebar';
+import { L } from '../constants/labels';
 
 /** Business modules in navigation order (REQUIREMENTS §3). */
 export const MODULE_PACKS: ModulePack[] = [customersPack, leadsPack, opportunitiesPack, quotationsPack, ordersPack, installedPack, servicePack, sparesPack, catalogPack, fieldPack, reportsPack, calendarPack];
@@ -31,96 +33,96 @@ const NONE = p('none');
 const baseRoles: RoleDefinition[] = [
   {
     id: 'admin',
-    label: 'System administrator',
-    description: 'CRM admin (IT/MIS): full access, users, masters, workflows and configuration.',
+    label: L.roles.admin.label,
+    description: L.roles.admin.description,
     resources: { employees: p('all', 'all', true, true, true), tasks: p('all', 'all', true, true, true), activities: p('all', 'all', true, true, true) },
     sensitivity: { identifier: 'edit', health: 'hide', financial: 'edit' },
     capabilities: ['config.publish', 'audit.view', 'events.view', 'access.view', 'demo.settings', 'recycle.manage', 'users.manage', 'views.share.org', 'views.share.team', 'outbox.view'],
   },
   {
     id: 'management',
-    label: 'Management',
-    description: 'MD, Chairman, CFO & Director: company-wide visibility and final approvals.',
+    label: L.roles.management.label,
+    description: L.roles.management.description,
     resources: { employees: p('all'), tasks: p('all', 'all', true, false, true), activities: p('all', 'all', true, false, true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'view' },
     capabilities: ['audit.view', 'access.view', 'approve.l3', 'views.share.org', 'views.share.team', 'outbox.view'],
   },
   {
     id: 'division_head',
-    label: 'Division head',
-    description: 'GM / VP / Head of a division: everything in their division, level-2 approvals.',
+    label: L.roles.division_head.label,
+    description: L.roles.division_head.description,
     resources: { employees: p('all'), tasks: p('division', 'division', true, false, true), activities: p('division', 'division', true, false, true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: ['approve.l2', 'views.share.org', 'views.share.team'],
   },
   {
     id: 'sales_manager',
-    label: 'Sales manager',
-    description: 'Regional / national sales managers: own and team records, level-1 approvals.',
+    label: L.roles.sales_manager.label,
+    description: L.roles.sales_manager.description,
     resources: { employees: p('all'), tasks: p('team', 'team', true, false, true), activities: p('team', 'team', true, false, true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: ['approve.l1', 'views.share.team'],
   },
   {
     id: 'sales_exec',
-    label: 'Sales executive',
-    description: 'Ink, Paper, Fabric and Textile sales: own records only.',
+    label: L.roles.sales_exec.label,
+    description: L.roles.sales_exec.description,
     resources: { employees: p('all'), tasks: p('own', 'own', true), activities: p('own', 'own', true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: [],
   },
   {
     id: 'service_head',
-    label: 'Service leadership',
-    description: 'Service Head, National Service Manager: all service work, service approvals and escalations.',
+    label: L.roles.service_head.label,
+    description: L.roles.service_head.description,
     resources: { employees: p('all'), tasks: p('team', 'team', true, false, true), activities: p('team', 'team', true, false, true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: ['approve.l1', 'approve.service', 'views.share.team'],
   },
   {
     id: 'engineer',
-    label: 'Service engineer',
-    description: 'Field engineers: assigned jobs, own attendance and visits.',
+    label: L.roles.engineer.label,
+    description: L.roles.engineer.description,
     resources: { employees: p('all'), tasks: p('own', 'own', true), activities: p('own', 'own', true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: [],
   },
   {
     id: 'coordinator',
-    label: 'Coordinator',
-    description: 'Service / sales / fabric coordinators: division records, ticket logging and assignment.',
+    label: L.roles.coordinator.label,
+    description: L.roles.coordinator.description,
     resources: { employees: p('all'), tasks: p('division', 'division', true), activities: p('division', 'division', true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: ['views.share.team'],
   },
   {
     id: 'scm',
-    label: 'Import / SCM',
-    description: 'Import Head and SCM executives: order processing, shipments and spares import.',
+    label: L.roles.scm.label,
+    description: L.roles.scm.description,
     resources: { employees: p('all'), tasks: p('own', 'own', true), activities: p('own', 'own', true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: [],
   },
   {
     id: 'store',
-    label: 'Store in-charge',
-    description: 'Main store: spares issue, receipts and returns.',
+    label: L.roles.store.label,
+    description: L.roles.store.description,
     resources: { employees: p('all'), tasks: p('own', 'own', true), activities: p('own', 'own', true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: [],
   },
   {
     id: 'accounts',
-    label: 'Accounts',
-    description: 'Finance checks on orders, expenses and collections; sees margins.',
+    label: L.roles.accounts.label,
+    description: L.roles.accounts.description,
     resources: { employees: p('all'), tasks: p('own', 'own', true), activities: p('own', 'own', true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'view' },
     capabilities: ['approve.finance'],
   },
   {
     id: 'profiling',
-    label: 'Profiling',
-    description: 'Profiling Manager: sample print requests and results.',
+    label: L.roles.profiling.label,
+    description: L.roles.profiling.description,
     resources: { employees: p('all'), tasks: p('own', 'own', true), activities: p('own', 'own', true) },
     sensitivity: { identifier: 'view', health: 'hide', financial: 'hide' },
     capabilities: [],
@@ -208,41 +210,8 @@ export const workspaces = [{ id: 'tc', slug: 'tc', name: 'True Colors', timezone
 /** Roles whose sign-in asks for a one-time code (NFR-07, simulated). */
 export const MFA_ROLES = ['admin', 'management'];
 
-const coreModules: ModuleDefinition[] = [
-  {
-    id: 'home',
-    label: 'Home',
-    icon: 'home',
-    resources: ['tasks', 'activities'],
-    pages: [
-      { id: 'dashboard', label: 'Overview', icon: 'layout-dashboard', path: 'dashboard' },
-      { id: 'inbox', label: 'Work inbox', icon: 'inbox', path: 'inbox' },
-    ],
-  },
-  {
-    id: 'admin',
-    label: 'Administration',
-    icon: 'settings',
-    resources: ['employees'],
-    pages: [
-      { id: 'studio', label: 'Configuration studio', icon: 'blocks', path: 'studio', capability: 'config.publish' },
-      { id: 'access', label: 'Roles & access', icon: 'shield', path: 'access', capability: 'access.view' },
-      { id: 'audit', label: 'Audit log', icon: 'scroll-text', path: 'audit', capability: 'audit.view' },
-      { id: 'events', label: 'Event trace', icon: 'activity', path: 'events', capability: 'events.view' },
-      { id: 'outbox', label: 'Message outbox', icon: 'send', path: 'outbox', capability: 'outbox.view' },
-      { id: 'settings', label: 'Settings', icon: 'sliders', path: 'settings' },
-    ],
-  },
-];
-
-function extendNav(m: ModuleDefinition): ModuleDefinition {
-  const ext = MODULE_PACKS.map((x) => x.extend?.[m.id]).filter((x): x is NonNullable<typeof x> => !!x);
-  if (!ext.length) return m;
-  return { ...m, resources: [...m.resources, ...ext.flatMap((e) => e.resources ?? [])], pages: [...(m.pages ?? []), ...ext.flatMap((e) => e.pages ?? [])] };
-}
-
-/** Home first, then business modules in order, Administration last. */
-export const appModules: ModuleDefinition[] = [coreModules[0], ...MODULE_PACKS.map((m) => m.nav).filter((x): x is ModuleDefinition => !!x), coreModules[1]].map(extendNav);
+/** Sidebar modules (src/domain/sidebar.ts): one per BRD §4 module, Dashboard first, Administration last. */
+export const appModules: ModuleDefinition[] = sidebarModules;
 
 export const appPack: DomainPack = {
   id: 'truecolors-crm',

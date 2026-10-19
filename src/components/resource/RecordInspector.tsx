@@ -656,7 +656,7 @@ function RecordSide({ res, actor, p }: { res: ResourceDefinition; actor: Actor; 
   const status = statusField?.master ? masterValue(statusField.master, r[statusField.key]) : undefined;
   const when = res.fields.find((f) => (f.type === 'datetime' || f.type === 'date') && vis(f) && r[f.key]);
   const duration = res.fields.find((f) => f.type === 'number' && /^(min|mins|minutes|h|hours)$/i.test(f.unit ?? '') && vis(f));
-  const people = res.fields.filter((f) => f.type === 'relation' && ['patients', 'staff'].includes(f.relation!.resource) && vis(f) && r[f.key]);
+  const people = res.fields.filter((f) => f.type === 'relation' && f.relation!.resource === 'employees' && vis(f) && r[f.key]);
   const details = res.fields.filter((f) => vis(f) && !f.system && f !== statusField && f !== when && f !== duration && !people.includes(f) && ['master', 'relation', 'money', 'text', 'boolean'].includes(f.type) && f.key !== res.titleField).slice(0, 6);
   return (
     <div className="record-side">
@@ -691,7 +691,7 @@ function RecordSide({ res, actor, p }: { res: ResourceDefinition; actor: Actor; 
             {people.map((f) => (
               <li key={f.key}>
                 <Link className="rs-person" to={recordPagePath(actor.workspaceId, f.relation!.resource, String(r[f.key]))}>
-                  <Icon name={f.relation!.resource === 'staff' ? 'f-person' : 'users'} size={18} className="rs-icon" />
+                  <Icon name={f.relation!.resource === 'employees' ? 'f-person' : 'users'} size={18} className="rs-icon" />
                   <span>
                     <span className="muted rs-sub">{f.label}</span>
                     <span className="rs-link">{recordTitle(f.relation!.resource, r[f.key], actor)}</span>

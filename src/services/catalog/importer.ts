@@ -164,7 +164,7 @@ export function previewImport(actor: Actor, resKey: string, text: string): Impor
   if (!can(actor, 'data.import') || !perm(actor, resKey).create) throw new ServiceError('forbidden', 'Your role cannot import these records.');
   const res = getResource(resKey);
   const fields = importFields(actor, res);
-  const table = parseCsv(text.replace(/^﻿/, ''));
+  const table = parseCsv(text.replace(/^\uFEFF/, ''));
   if (!table.length) throw new ServiceError('validation', 'The file is empty.');
   if (table.length > 1001) throw new ServiceError('validation', 'Import at most 1,000 rows at a time.');
   const columns = table[0].map((h) => ({ header: h.trim(), field: fields.find((f) => norm(f.label) === norm(h) || norm(f.key) === norm(h)) }));

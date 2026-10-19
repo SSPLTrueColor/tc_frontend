@@ -36,10 +36,10 @@ export function QuickComment({ actor, resource, recordId }: { actor: Actor; reso
   useEffect(() => {
     const t = setTimeout(flush, 600);
     return () => clearTimeout(t);
-  }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [text]);  
 
   // Flush on unmount (e.g. switching to another record or closing the inspector).
-  useEffect(() => flush, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => flush, []);  
 
   const send = () => {
     if (sending || !text.trim()) return;

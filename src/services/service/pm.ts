@@ -10,18 +10,18 @@ import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn, queryRecords } from '../runtime';
 import { ServiceError } from '../types';
 import { notifyStaff } from './tickets';
+import { L } from '../../constants/labels';
+
+const E = L.service.errors;
+const A = L.service.audit;
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
 /** Model-wise PM checklist (by machine division; textile machines get the longest list). */
 export function pmChecklist(machine: RecordData | undefined): string[] {
-  const common = ['Clean machine exterior and work area', 'Check power supply, earthing and UPS', 'Update firmware / RIP if a release is pending', 'Record print counter reading'];
-  const byDivision: Record<string, string[]> = {
-    TX: ['Nozzle check on every head; clean / purge as needed', 'Inspect ink lines and dampers for leaks', 'Check belt tension and encoder strip', 'Clean and check heater / dryer', 'Verify fabric feed and tension rollers'],
-    POD: ['Nozzle check and head alignment', 'Clean paper path and feed rollers', 'Check cutter blade', 'Verify colour calibration'],
-    LBL: ['Check web tension and guides', 'Inspect die / cutter station', 'Head alignment and nozzle check', 'Verify registration marks sensor'],
-  };
-  return [...(byDivision[s(machine?.divisionId)] ?? []), ...common];
+  const c = L.service.checklist;
+  const byDivision: Record<string, readonly string[]> = { TX: c.TX, POD: c.POD, LBL: c.LBL };
+  return [...(byDivision[s(machine?.divisionId)] ?? []), ...c.common];
 }
 
 export function pmSchedule(actor: Actor) {
@@ -33,48 +33,48 @@ function pmCommit<T>(actor: Actor, id: string, check: (p: RecordData) => boolean
   const res = getResource('pmVisits');
   return commit((d) => {
     const p = (d.records.pmVisits ?? []).find((x) => x.id === id);
-    if (!p || !canReadRecord(actor, res, p)) throw new ServiceError('not_found', `PM visit ${id} was not found.`);
+    if (!p || !canReadRecord(actor, res, p)) throw new ServiceError('not_found', E.pmNotFound(id));
     if (!check(p)) throw new ServiceError('forbidden', denied);
     return fn({ d, actor, correlationId: uid('cor') }, p);
   });
 }
 
 export function assignPm(actor: Actor, id: string, staffId: string) {
-  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', 'Only coordinators and service leadership assign PM visits.');
+  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', E.pmAssignDenied);
   return pmCommit(actor, id, () => true, '', (ctx, p) => {
-    if (p.status === 'done') throw new ServiceError('invalid_state', 'This PM visit is already done.');
-    notifyStaff(ctx, staffId, `PM visit ${p.id} due ${s(p.dueDate)} assigned to you`, { page: 'my-jobs' }, 'assignment');
-    return patchRecordIn(ctx, 'pmVisits', p.id, { engineerId: staffId }, 'PM visit assigned');
+    if (p.status === 'done') throw new ServiceError('invalid_state', E.pmAlreadyDone);
+    notifyStaff(ctx, staffId, L.service.notify.pmAssigned(p.id, s(p.dueDate)), { page: 'my-jobs' }, 'assignment');
+    return patchRecordIn(ctx, 'pmVisits', p.id, { engineerId: staffId }, A.pmAssigned);
   });
 }
 
 /** Completes a PM visit; every checklist item must be answered, failed items need a note. */
 export function completePm(actor: Actor, id: string, input: { results: { item: string; ok: boolean }[]; notes: string }) {
-  if (input.results.some((r) => !r.ok) && !input.notes.trim()) throw new ServiceError('validation', 'Describe what was found for the failed checklist items.', { fieldErrors: { notes: 'Required when an item fails' } });
+  if (input.results.some((r) => !r.ok) && !input.notes.trim()) throw new ServiceError('validation', E.pmFindings, { fieldErrors: { notes: E.pmFindingsField } });
   return pmCommit(
     actor,
     id,
     (p) => p.engineerId === actor.staffId || canUpdateRecord(actor, getResource('pmVisits'), p),
-    'Only the assigned engineer or the service desk can complete this PM visit.',
+    E.pmCompleteDenied,
     (ctx, p) => {
-      if (p.status === 'done') throw new ServiceError('invalid_state', 'This PM visit is already done.');
-      const text = [...input.results.map((r) => `${r.ok ? '✓' : '✗'} ${r.item}`), input.notes.trim() && `Notes: ${input.notes.trim()}`].filter(Boolean).join('\n');
-      return patchRecordIn(ctx, 'pmVisits', p.id, { status: 'done', completedAt: todayKey(), checklist: text, engineerId: p.engineerId || actor.staffId }, `PM visit completed${input.results.some((r) => !r.ok) ? ' with findings' : ''}`);
+      if (p.status === 'done') throw new ServiceError('invalid_state', E.pmAlreadyDone);
+      const text = [...input.results.map((r) => `${r.ok ? '✓' : '✗'} ${r.item}`), input.notes.trim() && L.service.checklist.notes(input.notes.trim())].filter(Boolean).join('\n');
+      return patchRecordIn(ctx, 'pmVisits', p.id, { status: 'done', completedAt: todayKey(), checklist: text, engineerId: p.engineerId || actor.staffId }, A.pmCompleted(input.results.some((r) => !r.ok)));
     },
   );
 }
 
 /** Raises a PM-type ticket for the visit (e.g. to send an engineer with the job-card flow). */
 export function raisePmTicket(actor: Actor, id: string) {
-  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', 'Only the service desk raises PM tickets.');
+  if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', E.pmTicketDenied);
   return pmCommit(actor, id, () => true, '', (ctx, p) => {
-    if (p.ticketId) throw new ServiceError('invalid_state', `Ticket ${p.ticketId} already exists for this visit.`);
+    if (p.ticketId) throw new ServiceError('invalid_state', E.pmTicketExists(s(p.ticketId)));
     const machine = byId('machines', p.machineId, ctx.d.records);
     const t = insertRecordIn(ctx, 'tickets', {
       customerId: p.customerId,
       machineId: p.machineId,
       divisionId: p.divisionId || machine?.divisionId,
-      description: `Preventive maintenance visit due ${s(p.dueDate)}${machine ? ` for ${s(machine.serialNo)}` : ''}`,
+      description: A.pmTicketDescription(s(p.dueDate), s(machine?.serialNo)),
       category: 'other',
       ticketType: 'pm',
       priority: 'low',
@@ -82,7 +82,7 @@ export function raisePmTicket(actor: Actor, id: string) {
       assigneeId: p.engineerId || null,
       reportedAt: nowLocal(),
     });
-    patchRecordIn(ctx, 'pmVisits', p.id, { ticketId: t.id }, `PM ticket ${t.id} raised`);
+    patchRecordIn(ctx, 'pmVisits', p.id, { ticketId: t.id }, A.pmTicket(t.id));
     return t;
   });
 }
