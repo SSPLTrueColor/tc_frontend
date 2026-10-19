@@ -1401,6 +1401,21 @@ input[type='radio'] {
 .topbar-right {
   justify-content: flex-end;
 }
+.prototype-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--s-warning-bg);
+  color: var(--s-warning);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .prototype-badge {
+    display: none;
+  }
+}
 .topbar-title {
   display: flex;
   align-items: center;
