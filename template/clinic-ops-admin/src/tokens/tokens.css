@@ -1,0 +1,291 @@
+/*
+ * UAB 2.0 Soft Enterprise tokens — primitive → semantic → component.
+ * LOCKED values come from UAB_2.0_Master_Specification_Enforced.md §1.2/§1.3/C2.
+ * PROPOSED values fill gaps (palette, type scale, spacing, breakpoints) and are
+ * pending design approval — see src/tokens/tokens.ts for the status registry.
+ * Components consume ONLY --c-* (component) or --s-* (semantic) aliases.
+ */
+
+:root {
+  /* ---------- primitives: neutrals (PROPOSED) ---------- */
+  --p-gray-0: #ffffff;
+  --p-gray-25: #fafafb;
+  --p-gray-50: #f6f6f8;
+  --p-gray-100: #efeff3;
+  --p-gray-150: #e4e4ea;
+  --p-gray-200: #d6d6de;
+  --p-gray-300: #c2c2cd;
+  --p-gray-500: #6b6b7a;
+  --p-gray-600: #4a4a57;
+  --p-gray-800: #2a2a33;
+  --p-gray-900: #1d1d24;
+  --p-gray-d50: #141419;
+  --p-gray-d100: #1c1c23;
+  --p-gray-d150: #24242d;
+  --p-gray-d200: #2e2e38;
+  --p-gray-d300: #42424f;
+  --p-gray-d500: #9a9aaa;
+  --p-gray-d600: #b8b8c6;
+  --p-gray-d900: #ececf1;
+
+  /* ---------- primitives: accent purple (PROPOSED; calm purple selection per §1.1) ---------- */
+  --p-purple-50: #f3f0fd;
+  --p-purple-100: #ebe6fc;
+  --p-purple-500: #5b47c7;
+  --p-purple-600: #4c3ab0;
+  --p-purple-700: #4a37b5;
+  --p-purple-d300: #c9bcff;
+  --p-purple-d400: #a895ff;
+  --p-purple-d800: #2e2846;
+
+  /* ---------- primitives: status (PROPOSED, contrast-checked pairs) ---------- */
+  --p-green-700: #1e7a4c;
+  --p-green-50: #e6f4ec;
+  --p-amber-700: #855700;
+  --p-amber-50: #fff3d6;
+  --p-red-700: #b42318;
+  --p-red-50: #fdecea;
+  --p-blue-700: #2457a6;
+  --p-blue-50: #e8f0fc;
+
+  /* ---------- LOCKED rail skins (§1.3) ---------- */
+  --uab-rail-charcoal-bg: #24252d;
+  --uab-rail-charcoal-icon: #aaaab7;
+  --uab-rail-charcoal-selected-bg: #3b354f;
+  --uab-rail-charcoal-selected-icon: #cfbfff;
+  --uab-rail-navy-bg: #1c2535;
+  --uab-rail-black-bg: #15161a;
+
+  /* ---------- LOCKED geometry (§1.2 / C2) ---------- */
+  --uab-rail-width: 60px; /* locked range 56–64 */
+  --uab-sidebar-width-default: 240px;
+  --uab-sidebar-min: 200px; /* proposed */
+  --uab-sidebar-max: 360px; /* proposed */
+  --uab-nav-row-h: 34px;
+  --uab-nav-row-h-compact: 30px; /* proposed compact option */
+  --uab-nav-row-gap: 2px;
+  --uab-nav-font-size: var(--fs-supportive); /* 13px locked */
+  --uab-section-font-size: var(--fs-supportive); /* spec 12px → 13px owner override */
+  --uab-view-tab-h: 40px; /* locked range 38–42 */
+  --uab-inspector-width: 480px;
+  --uab-inspector-width-expanded: 720px; /* locked range 680–760 */
+  --uab-control-h: 40px;
+  --uab-control-h-compact: 36px;
+  --uab-control-h-touch: 44px;
+  --uab-radius-control: 7px;
+  --uab-radius-panel: 12px;
+  --uab-radius-dialog: 14px;
+  --uab-icon-size: 16px;
+
+  /* ---------- PROPOSED spacing / type / motion / z ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* GLOBAL TYPE SCALE — exactly three sizes (owner decision). Use only these. */
+  --fs-primary: 18px; /* page title, record title */
+  --fs-secondary: 16px; /* section/panel/dialog titles, key numbers */
+  --fs-supportive: 13px; /* everything else: tables, buttons, inputs, tabs, nav, labels, help, footer */
+  /* Legacy aliases — map onto the three sizes */
+  --fs-xs: var(--fs-supportive);
+  --fs-sm: var(--fs-supportive);
+  --fs-md: var(--fs-supportive);
+  --fs-lg: var(--fs-primary);
+  --fs-xl: var(--fs-primary);
+  --lh-body: 1.45;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --motion-fast: 120ms;
+  --motion-med: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --z-sticky: 5;
+  --z-inspector: 30;
+  --z-drawer: 40;
+  --z-popover: 80; /* above dialogs, so dropdowns inside dialogs are visible */
+  --z-dialog: 70;
+  --z-toast: 90;
+
+  /* ---------- semantic (light) ---------- */
+  color-scheme: light;
+  --s-canvas: var(--p-gray-50);
+  --s-panel: var(--p-gray-0);
+  --s-elevated: var(--p-gray-0);
+  --s-sunken: var(--p-gray-100);
+  --s-hover: var(--p-gray-100);
+  --s-text: var(--p-gray-900);
+  --s-text-secondary: var(--p-gray-600);
+  --s-text-muted: var(--p-gray-500);
+  --s-border: var(--p-gray-150);
+  --s-border-strong: var(--p-gray-300);
+  --s-accent: var(--p-purple-500);
+  --s-accent-hover: var(--p-purple-600);
+  --s-accent-text: var(--p-purple-700);
+  --s-accent-subtle: var(--p-purple-50);
+  --s-on-accent: #ffffff;
+  --s-selected: var(--p-purple-100);
+  --s-focus: #6d5ae6;
+  --s-success: var(--p-green-700);
+  --s-success-bg: var(--p-green-50);
+  --s-warning: var(--p-amber-700);
+  --s-warning-bg: var(--p-amber-50);
+  --s-danger: var(--p-red-700);
+  --s-danger-bg: var(--p-red-50);
+  --s-info: var(--p-blue-700);
+  --s-info-bg: var(--p-blue-50);
+  --s-disabled-bg: var(--p-gray-100);
+  --s-disabled-text: #8b8b98;
+  --s-shadow-pop: 0 8px 24px rgba(20, 20, 30, 0.12), 0 1px 2px rgba(20, 20, 30, 0.06);
+  --s-shadow-panel: -1px 0 0 var(--p-gray-150), -8px 0 24px rgba(20, 20, 30, 0.06);
+  --s-scrim: rgba(18, 18, 24, 0.4);
+  --s-chart-1: #2a78d6; /* dataviz reference palette slot 1 */
+  --s-chart-grid: var(--p-gray-150);
+}
+
+/* ---------- semantic (dark) — OS preference unless user chose light ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --s-canvas: var(--p-gray-d50);
+    --s-panel: var(--p-gray-d100);
+    --s-elevated: var(--p-gray-d150);
+    --s-sunken: #18181e;
+    --s-hover: var(--p-gray-d150);
+    --s-text: var(--p-gray-d900);
+    --s-text-secondary: var(--p-gray-d600);
+    --s-text-muted: var(--p-gray-d500);
+    --s-border: var(--p-gray-d200);
+    --s-border-strong: var(--p-gray-d300);
+    --s-accent: var(--p-purple-d400);
+    --s-accent-hover: var(--p-purple-d300);
+    --s-accent-text: var(--p-purple-d300);
+    --s-accent-subtle: var(--p-purple-d800);
+    --s-on-accent: #17132b;
+    --s-selected: var(--p-purple-d800);
+    --s-focus: #b9a8ff;
+    --s-success: #6bd49b;
+    --s-success-bg: #16302a;
+    --s-warning: #f2c14e;
+    --s-warning-bg: #33290f;
+    --s-danger: #ff8a80;
+    --s-danger-bg: #3a1a1a;
+    --s-info: #8ab4f8;
+    --s-info-bg: #172640;
+    --s-disabled-bg: var(--p-gray-d150);
+    --s-disabled-text: #7a7a88;
+    --s-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --s-shadow-panel: -1px 0 0 var(--p-gray-d200), -8px 0 24px rgba(0, 0, 0, 0.35);
+    --s-scrim: rgba(0, 0, 0, 0.55);
+    --s-chart-1: #3987e5;
+    --s-chart-grid: var(--p-gray-d200);
+  }
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --s-canvas: var(--p-gray-d50);
+  --s-panel: var(--p-gray-d100);
+  --s-elevated: var(--p-gray-d150);
+  --s-sunken: #18181e;
+  --s-hover: var(--p-gray-d150);
+  --s-text: var(--p-gray-d900);
+  --s-text-secondary: var(--p-gray-d600);
+  --s-text-muted: var(--p-gray-d500);
+  --s-border: var(--p-gray-d200);
+  --s-border-strong: var(--p-gray-d300);
+  --s-accent: var(--p-purple-d400);
+  --s-accent-hover: var(--p-purple-d300);
+  --s-accent-text: var(--p-purple-d300);
+  --s-accent-subtle: var(--p-purple-d800);
+  --s-on-accent: #17132b;
+  --s-selected: var(--p-purple-d800);
+  --s-focus: #b9a8ff;
+  --s-success: #6bd49b;
+  --s-success-bg: #16302a;
+  --s-warning: #f2c14e;
+  --s-warning-bg: #33290f;
+  --s-danger: #ff8a80;
+  --s-danger-bg: #3a1a1a;
+  --s-info: #8ab4f8;
+  --s-info-bg: #172640;
+  --s-disabled-bg: var(--p-gray-d150);
+  --s-disabled-text: #7a7a88;
+  --s-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --s-shadow-panel: -1px 0 0 var(--p-gray-d200), -8px 0 24px rgba(0, 0, 0, 0.35);
+  --s-scrim: rgba(0, 0, 0, 0.55);
+  --s-chart-1: #3987e5;
+  --s-chart-grid: var(--p-gray-d200);
+}
+
+/* ---------- component aliases ---------- */
+:root {
+  --c-rail-w: var(--uab-rail-width);
+  --c-sidebar-w: var(--uab-sidebar-width-default);
+  --c-sidebar-bg: color-mix(in srgb, var(--s-text) 2.5%, var(--s-panel)); /* light grey sidebar surface (owner rule) */
+  --c-sidebar-hover-bg: color-mix(in srgb, var(--s-text) 6%, var(--s-panel));
+  --c-nav-row-h: 30px; /* owner override: tighter sidebar options (UAB default 34px) */
+  --c-control-h: var(--uab-control-h);
+  /* Owner override: every compact button/input in the app is 32px (locked spec value is 36px) */
+  --c-control-h-compact: 32px;
+  --c-radius-control: var(--uab-radius-control);
+  --c-radius-panel: var(--uab-radius-panel);
+  --c-radius-dialog: var(--uab-radius-dialog);
+  --c-viewbar-h: var(--uab-view-tab-h);
+  --c-inspector-w: var(--uab-inspector-width);
+  --c-inspector-w-expanded: var(--uab-inspector-width-expanded);
+  --c-grid-row-h: 40px; /* proposed: comfortable */
+  --c-grid-header-bg: var(--s-panel); /* owner rule: clean white header row with one bottom line (table sits on a white panel, so it never blends into the grey canvas) */
+  --c-empty-value-fg: color-mix(in srgb, var(--s-text) 22%, var(--s-panel)); /* very light "N/A" */
+  --c-grid-row-hover-bg: color-mix(in srgb, var(--s-text) 3%, var(--s-panel)); /* soft row hover */
+  --c-grid-row-h-compact: 34px; /* proposed: compact */
+  --c-header-h: 52px; /* proposed */
+}
+
+/* Rail skins (applied to the rail only — never recolor workspace surfaces). */
+[data-rail-skin='softCharcoal'] {
+  --c-rail-bg: var(--uab-rail-charcoal-bg);
+  --c-rail-icon: var(--uab-rail-charcoal-icon);
+  --c-rail-selected-bg: var(--uab-rail-charcoal-selected-bg);
+  --c-rail-selected-icon: var(--uab-rail-charcoal-selected-icon);
+  --c-rail-hover-bg: #30313b;
+  --c-rail-badge-ring: var(--uab-rail-charcoal-bg);
+}
+[data-rail-skin='midnightNavy'] {
+  --c-rail-bg: var(--uab-rail-navy-bg);
+  --c-rail-icon: #a6b1c6; /* derived, proposed */
+  --c-rail-selected-bg: #2f3c58;
+  --c-rail-selected-icon: #cfdcff;
+  --c-rail-hover-bg: #26314a;
+  --c-rail-badge-ring: var(--uab-rail-navy-bg);
+}
+[data-rail-skin='graphiteBlack'] {
+  --c-rail-bg: var(--uab-rail-black-bg);
+  --c-rail-icon: #a8a8b3; /* derived, proposed */
+  --c-rail-selected-bg: #2c2938;
+  --c-rail-selected-icon: #cfbfff;
+  --c-rail-hover-bg: #212228;
+  --c-rail-badge-ring: var(--uab-rail-black-bg);
+}
+[data-rail-skin='softLight'] {
+  --c-rail-bg: #ececf1; /* unresolved in spec — proposed, contrast-checked */
+  --c-rail-icon: #55556a;
+  --c-rail-selected-bg: #ddd6fa;
+  --c-rail-selected-icon: #3f2fa3;
+  --c-rail-hover-bg: #e0e0e8;
+  --c-rail-badge-ring: #ececf1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-med: 0ms;
+  }
+}
+@media (pointer: coarse) {
+  :root {
+    --c-control-h: var(--uab-control-h-touch);
+    --c-control-h-compact: var(--uab-control-h-touch);
+  }
+}

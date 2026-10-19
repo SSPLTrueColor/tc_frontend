@@ -1,0 +1,397 @@
+{
+  "result": "PASS",
+  "passed": 64,
+  "total": 64,
+  "failures": [],
+  "checks": [
+    {
+      "group": "structure",
+      "name": "YAML frontmatter",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "No bundled legacy V1/V2 directories",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Agent manifest exists",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/architecture-contracts.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/security-governance.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/design-system.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/navigation-urls.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/metadata-and-configuration.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/components-and-experiences.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/workflows-and-agents.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/enterprise-services.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/integrations-and-data.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/quality-and-evaluation.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/design-system.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/architecture-contracts.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/design-system.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/navigation-urls.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/security-governance.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/quality-and-evaluation.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/metadata-and-configuration.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/components-and-experiences.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/workflows-and-agents.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/enterprise-services.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/integrations-and-data.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/domain-examples.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/quality-and-evaluation.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "structure",
+      "name": "Referenced file: references/quality-and-evaluation.md",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: tenant",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: metadata",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: Quick Comment",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: audit",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: EDA",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: agent",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: idempotent",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: deep link",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: accessibility",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: role",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: workflow",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: published",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "contract",
+      "name": "Contract covered: recovery",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "crm",
+      "name": "Distinct resource fields",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "crm",
+      "name": "Relationships declared",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "crm",
+      "name": "Business events declared",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "crm",
+      "name": "Role fields all in canonical schema",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "crm",
+      "name": "No anonymous/guest access by default",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "crm",
+      "name": "Cross-surface requirements in QA",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "hrms",
+      "name": "Distinct resource fields",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "hrms",
+      "name": "Relationships declared",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "hrms",
+      "name": "Business events declared",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "hrms",
+      "name": "Role fields all in canonical schema",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "hrms",
+      "name": "No anonymous/guest access by default",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "hrms",
+      "name": "Cross-surface requirements in QA",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "inventory",
+      "name": "Distinct resource fields",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "inventory",
+      "name": "Relationships declared",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "inventory",
+      "name": "Business events declared",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "inventory",
+      "name": "Role fields all in canonical schema",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "inventory",
+      "name": "No anonymous/guest access by default",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "inventory",
+      "name": "Cross-surface requirements in QA",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "hrms",
+      "name": "Salary masked from ordinary employee",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "crm",
+      "name": "Personal saved-view acceptance",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "inventory",
+      "name": "Quantity and grouping coverage",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "safety",
+      "name": "No API management console",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "safety",
+      "name": "No code execution from configuration",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "group": "safety",
+      "name": "Preview vs actual test separation",
+      "passed": true,
+      "details": ""
+    }
+  ],
+  "limitations": [
+    "Static instructions and synthetic fixtures only",
+    "No independent agent generation or browser UI execution",
+    "No backend, concurrency, penetration or real integrations tested"
+  ]
+}

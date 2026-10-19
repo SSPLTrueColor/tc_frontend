@@ -1,0 +1,5 @@
+{
+  "crm": {"resource":"lead","fields":["id","name","email","status","owner_id"],"views":["list","board"],"permissions":{"sales_rep":["id","name","email","status","owner_id"],"guest":[]},"events":["lead.created","task.created"],"relations":["account","task"],"required":["grid","form","filter","saved_view","inspector","quick_comment","audit"]},
+  "hrms": {"resource":"employee","fields":["id","name","department_id","salary","leave_status"],"sensitive":["salary"],"views":["list"],"permissions":{"hr_manager":["id","name","department_id","salary","leave_status"],"employee":["id","name","department_id","leave_status"]},"events":["employee.created","leave.approval_requested"],"relations":["department","leave_request"],"required":["grid","form","filter","inspector","approval","audit"]},
+  "inventory": {"resource":"stock_item","fields":["id","sku","quantity","unit","warehouse_id"],"views":["list","grouped"],"permissions":{"storekeeper":["id","sku","quantity","unit","warehouse_id"],"guest":[]},"events":["stock.adjusted"],"relations":["warehouse","stock_movement"],"required":["grid","form","filter","grouped_view","inspector","audit"]}
+}
