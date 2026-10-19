@@ -11,7 +11,7 @@ export const RESOURCE_SLUGS: Record<string, string> = {
   activities: 'activity-history',
   calendarEvents: 'calendar-events',
   // Customers & Contacts (4.1)
-  customers: 'customers',
+  customers: 'companies',
   contacts: 'contacts',
   addresses: 'sites',
   // Leads (4.2)

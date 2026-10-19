@@ -26,13 +26,13 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-001 | CUS-01 | M | Company record: name, legal name, GSTIN (validated), PAN, industry/segment, category, website, divisions, territory/hub, owner | `/customers/new`, `/customers/:id/edit` | Built | Done (GSTIN format+checksum+state+PAN in hook) |
+| FR-001 | CUS-01 | M | Company record: name, legal name, GSTIN (validated), PAN, industry/segment, category, website, divisions, territory/hub, owner | `/companies/new`, `/companies/:id/edit` | Built | Done (GSTIN format+checksum+state+PAN in hook) |
 | FR-002 | CUS-02 | M | Multiple addresses (billing / shipping / installation site), each geo-tagged | Customer 360 → Addresses tab | Simulated (lat/long entered or mock "Use my location"; no map tiles) | Done — geo Simulated (`/addresses`, 360 Contacts & sites) |
 | FR-003 | CUS-03 | M | Multiple contacts: name, designation, department, mobile, WhatsApp, email, buying role, communication consent | Customer 360 → Contacts tab | Built | Done (consent; mobile or email required) |
 | FR-004 | CUS-04 | M | Configurable classification (Prospect, Active, Existing/Inactive, Dealer, Distributor) + segment tags | Customer form; `/admin/masters/customer-categories` | Built | Done |
 | FR-005 | CUS-05 | M | Contact pool (phone book, Excel/CSV, visiting-card OCR, manual) + "Convert to Lead" | `/contacts`, `/contacts/:id` | Simulated (CSV import real; phone book and OCR use sample data) | Done — phone book & OCR Simulated (`/contacts?view=v_ct_pool`, `/contact-pool/import`, Convert to lead) |
 | FR-006 | CUS-06 | M | Duplicate detection (GSTIN, mobile, email, fuzzy name) on create/import; admin merge with audit | Customer form warning; `/admin/duplicate-merge` | Built | Done (blocking exact match, fuzzy ≥0.85 warning, `/admin/duplicate-merge` merge) |
-| FR-007 | CUS-07 | M | Customer 360: leads, opps, quotes, orders, ERP payment status, machines, warranty/AMC, tickets, feedback, unified timeline | `/customers/:id` | Built (ERP figures from mock ERP service) | Done (360 tabs: Contacts & sites, Timeline, Sales, Machines & service, Account) |
+| FR-007 | CUS-07 | M | Customer 360: leads, opps, quotes, orders, ERP payment status, machines, warranty/AMC, tickets, feedback, unified timeline | `/companies/:id` | Built (ERP figures from mock ERP service) | Done (360 tabs: Contacts & sites, Timeline, Sales, Machines & service, Account) |
 | FR-008 | CUS-08 | S | Parent–child group linkage; dealer → end-customer linkage | Customer form + 360 "Related" panel | Built | Done (cycle-safe) |
 | FR-009 | CUS-09 | S | Credit limit, outstanding, overdue read-only from ERP | Customer 360 header | Simulated (mock ERP) | Simulated (Refresh from ERP) |
 | FR-010 | CUS-10 | M | Bulk ownership transfer (accounts, open leads, opps, tasks) with history | `/admin/ownership-transfer` | Built | Done (`/admin/ownership-transfer`, preview + reason + audit) |
@@ -355,8 +355,8 @@ Every resource list is `/<slug>` with `?view=`, `?peek=<id>` (side panel), `/new
 | 1 | Dashboard | Notifications & Approvals (tabs Notifications, Approvals, My Tasks) | `/notifications` | COM-03, QUO-06, SO-04 | FR-131, FR-040, FR-052 |
 | 1 | Dashboard | Tasks & Calendar | `/calendar` | OPP-08 | FR-034 |
 | 1 | Dashboard | Tasks · Activity History · Calendar Events | `/tasks`, `/activity-history`, `/calendar-events` | OPP-08, COM-05 | FR-021, FR-034, FR-133 |
-| 2 | Customers & Contacts (4.1 Customer & Contact Master) | Customers | `/customers` | CUS-01, CUS-04, CUS-08 | FR-001, FR-004, FR-008 |
-| 2 | Customers & Contacts | Customer 360° View (Overview, Contacts, Sites, Leads, Opportunities, Quotations, Sales Orders, Payment Status, Installed Machines, Warranty & AMC, Service Tickets, Feedback, Consumables, Training Records, Key Account Plan, Activity History, Documents) | `/customers/:id` | CUS-07, CUS-09, CUS-11 | FR-007, FR-009, FR-011, FR-067, FR-098, FR-132 |
+| 2 | Customers & Contacts (4.1 Customer & Contact Master) | Companies | `/companies` | CUS-01, CUS-04, CUS-08 | FR-001, FR-004, FR-008 |
+| 2 | Customers & Contacts | Customer 360° View (Overview, Contacts, Sites, Leads, Opportunities, Quotations, Sales Orders, Payment Status, Installed Machines, Warranty & AMC, Service Tickets, Feedback, Consumables, Training Records, Key Account Plan, Activity History, Documents) | `/companies/:id` | CUS-07, CUS-09, CUS-11 | FR-007, FR-009, FR-011, FR-067, FR-098, FR-132 |
 | 2 | Customers & Contacts | Contacts | `/contacts` | CUS-03 | FR-003 |
 | 2 | Customers & Contacts | Contact Pool | `/contact-pool` | CUS-05 | FR-005 |
 | 2 | Customers & Contacts | Import Contacts | `/contact-pool/import` | CUS-05 | FR-005 |

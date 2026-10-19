@@ -1168,7 +1168,7 @@ const roles = {
  */
 const customers = {
   records: {
-    customers: { one: 'Customer', many: 'Customers' },
+    customers: { one: 'Company', many: 'Companies' },
     contacts: { one: 'Contact', many: 'Contacts' },
     addresses: { one: 'Site', many: 'Sites' },
   },
@@ -1210,7 +1210,7 @@ const customers = {
       planNextReview: 'Next plan review',
     },
     addresses: {
-      customerId: 'Customer',
+      customerId: 'Company',
       label: 'Site name',
       labelPlaceholder: 'e.g. Sachin GIDC plant',
       addressType: 'Site type',
@@ -1223,7 +1223,7 @@ const customers = {
     },
     contacts: {
       name: 'Name',
-      customerId: 'Customer',
+      customerId: 'Company',
       customerIdHelp: 'Leave empty to keep the contact in the Contact Pool.',
       designation: 'Designation',
       department: 'Department',
@@ -1245,7 +1245,7 @@ const customers = {
   },
 
   sections: {
-    customers: { company: 'Customer details', tax: 'Tax', org: 'Ownership', plan: 'Key Account Plan' },
+    customers: { company: 'Company details', tax: 'Tax', org: 'Ownership', plan: 'Key Account Plan' },
     addresses: { main: 'Site', geo: 'Location' },
     contacts: { who: 'Contact details', reach: 'Communication', own: 'Ownership' },
   },
@@ -1258,7 +1258,7 @@ const customers = {
   },
 
   views: {
-    customers: { all: 'All Customers', key: 'Key Accounts', dealers: 'Dealers & Distributors', overdue: 'Overdue (ERP)', byTerritory: 'By Territory' },
+    customers: { all: 'All Companies', key: 'Key Accounts', dealers: 'Dealers & Distributors', overdue: 'Overdue (ERP)', byTerritory: 'By Territory' },
     addresses: { all: 'All Sites', installation: 'Installation Sites' },
     contacts: { all: 'All Contacts', decision: 'Decision Makers', converted: 'Converted to Lead' },
   },
@@ -1266,7 +1266,7 @@ const customers = {
   masters: {
     addressType: { label: 'Site type', values: { billing: 'Billing', shipping: 'Shipping', installation: 'Installation' } },
     poolStatus: { label: 'Pool status', values: { new: 'New', contacted: 'Contacted', converted: 'Converted to Lead' } },
-    customerStatus: { label: 'Customer status', values: { active: 'Active', inactive: 'Inactive' } },
+    customerStatus: { label: 'Company status', values: { active: 'Active', inactive: 'Inactive' } },
     /** Defined in src/domain/masters.ts (owned elsewhere) — these are the glossary values to use there. */
     customerCategory: { label: 'Customer category', values: { prospect: 'Prospect', active: 'Active Customer', inactive: 'Existing / Inactive Customer', dealer: 'Dealer', distributor: 'Distributor' } },
     segment: {
@@ -1332,7 +1332,7 @@ const customers = {
     notAvailable: 'Not available for your role or not part of this build yet.',
     columns: { id: 'ID', title: 'Title', status: 'Status', amount: 'Amount', date: 'Date' },
     overview: {
-      facts: 'Customer details',
+      facts: 'Company details',
       atAGlance: 'At a glance',
       erp: 'Credit & outstanding (ERP)',
       recent: 'Recent activity',
@@ -1471,7 +1471,7 @@ const customers = {
     summary: (rows: number, ready: number, errors: number, existing: number) => `${rows} rows · ${ready} ready · ${errors} with errors · ${existing} already exist`,
     noValid: 'No valid new rows to import',
     imported: (n: number, skipped: number) => `Imported ${n} ${n === 1 ? 'contact' : 'contacts'}${skipped ? `, skipped ${skipped}` : ''}`,
-    cols: { line: 'Line', name: 'Name', company: 'Customer', mobile: 'Mobile', email: 'Email', city: 'City', check: 'Check' },
+    cols: { line: 'Line', name: 'Name', company: 'Company', mobile: 'Mobile', email: 'Email', city: 'City', check: 'Check' },
     pool: 'Contact Pool',
     exists: (id: string) => `Exists as ${id}`,
     ready: 'Ready',
@@ -1489,7 +1489,7 @@ const customers = {
   },
 
   duplicates: {
-    description: 'Customers with the same GSTIN or very similar names (≥ 85%), and contacts sharing a mobile number. Merging re-points every linked record to the survivor and moves the duplicate to the recycle bin; the merge is audited.',
+    description: 'Companies with the same GSTIN or very similar names (≥ 85%), and contacts sharing a mobile number. Merging re-points every linked record to the survivor and moves the duplicate to the recycle bin; the merge is audited.',
     noAccess: 'duplicate review',
     loadError: 'Could not check for duplicates',
     empty: 'No likely duplicates',
@@ -1523,13 +1523,13 @@ const customers = {
     chooseFrom: 'Choose the current owner to see their records.',
     countError: 'Could not count records',
     confirmTitle: (n: number, to: string) => `Transfer ${n} records to ${to}?`,
-    confirmMessage: (from: string, to: string) => `Customers, contacts, open leads, open opportunities and open tasks of ${from} move to ${to}. Closed records keep their original owner. Every change is kept in the record history.`,
+    confirmMessage: (from: string, to: string) => `Companies, contacts, open leads, open opportunities and open tasks of ${from} move to ${to}. Closed records keep their original owner. Every change is kept in the record history.`,
     done: (n: number, to: string) => `Transferred ${n} records to ${to}`,
     nothing: 'Nothing to transfer',
     chooseTo: 'Choose the new owner',
     reasonShort: 'Give a reason (at least 5 characters)',
     buttonCount: (n: number) => `${n} records`,
-    targets: { customers: 'Customers', contacts: 'Contacts', leads: 'Open leads', opportunities: 'Open opportunities', tasks: 'Open tasks' },
+    targets: { customers: 'Companies', contacts: 'Contacts', leads: 'Open leads', opportunities: 'Open opportunities', tasks: 'Open tasks' },
   },
 
   messages: {
@@ -1584,7 +1584,7 @@ const customers = {
     linkedOnConversion: 'Linked to customer on conversion',
     convertedHistory: (leadId: string) => `Converted to Lead ${leadId}`,
     convertNotify: (leadId: string, name: string) => `New lead ${leadId} from contact ${name}`,
-    customerNotFound: 'Customer not found.',
+    customerNotFound: 'Company not found.',
     noErpRefresh: 'Your role cannot refresh ERP figures for this customer.',
     erpHistory: 'Credit and outstanding refreshed from ERP (simulated)',
     noPoolAccess: 'You do not have access to the Contact Pool.',

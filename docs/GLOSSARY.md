@@ -70,8 +70,8 @@ Routes are kebab-case of the BRD name. Record pages keep the pattern `/<list>/:i
 
 | Page | BRD ref | App today | Route today → proposed | |
 |---|---|---|---|---|
-| Customers | CUS-01, CUS-04 | Customers | `/customers` | ✅ |
-| Customer 360° View | CUS-07 | customer record page | `/customers/:id` | ✏️ title |
+| Companies | CUS-01, CUS-04 | Customers | `/customers` → `/companies` | ✏️ (C-02) |
+| Customer 360° View | CUS-07 | customer record page | `/companies/:id` | ✏️ title |
 | Contacts | CUS-03 | Contacts | `/contacts` | ✅ |
 | Contact Pool | CUS-05 | a saved view inside Contacts | `/contacts?view=…` → `/contact-pool` | ➕ own page |
 | Import Contacts | CUS-05 | Import contacts | `/contacts/import` → `/contact-pool/import` | ✏️ |
@@ -281,7 +281,7 @@ Ticket record tabs: Details, SLA Tracking (SRV-09), Site Visits (SRV-06), Remote
 
 | BRD record name (singular / list) | BRD ref | App today | |
 |---|---|---|---|
-| Customer / Customers | 4.1 title, CUS-04, CUS-07 | Customer | ✅ |
+| Company / Companies | CUS-01 (C-02) | Customer | ✏️ |
 | Contact / Contacts (field label on other records: "Contact Person") | CUS-03, LEAD-01, QUO-01 | Contact; "Contact person" on lead and quotation, "Contact" on opportunity | ✏️ opportunity |
 | Site (billing / shipping / installation) | CUS-02 | Address | ✏️ |
 | Lead | Appendix A | Lead | ✅ |
@@ -529,7 +529,7 @@ Generic buttons (New, Edit, Delete, Save, Cancel, Export, Import) keep their cur
 | # | Variants in the BRD (with refs) | Recommended single term | Reason |
 |---|---|---|---|
 | C-01 | Casing: "Sales order" (Appendix A) vs "Sales Order" (SO-01, 'Generate Sales Order'); "In Progress" vs "in progress" | **Title Case** for names, buttons and statuses; sentence case for field labels and messages | Quoted buttons and status flows are Title Case |
-| C-02 | Customer · Company (CUS-01) · Account (CUS-01 "account owner", CUS-10, §8) · Prospect (CUS-04) | **Customer** (record); keep "Account Owner" and "Key Account" as field names | 4.1 title, CUS-07 "Customer 360°" |
+| C-02 | Customer · Company (CUS-01) · Account (CUS-01 "account owner", CUS-10, §8) · Prospect (CUS-04) | **Company** for the master record (list "Companies"), per CUS-01 "Company (account) record" — owner decision 19-10-2026. Its detail page keeps the BRD title **Customer 360° View** (CUS-07); "Customer" stays where the BRD uses it for the buyer on a transaction (QUO-01, SO-01, SRV-02) and in Customer Category values (CUS-04). "Account Owner" and "Key Account" stay as field names | CUS-01 (record), CUS-07 (360° view) |
 | C-03 | Contact · Contact person (CUS-03, LEAD-01, QUO-01) | **Contact** (record); **Contact Person** (field on other records) | — |
 | C-04 | Opportunity · Deal (§8 "deals", TGT-04 "Deal of the Month") | **Opportunity**; "Deal of the Month" stays as the name of the award | Appendix A |
 | C-05 | Quotation · Quote (QUO-14 "quote-to-order") · Proposal (OPP-02 stage, §3.2) | **Quotation**; the stage stays "Proposal/Quotation" | Appendix A |
