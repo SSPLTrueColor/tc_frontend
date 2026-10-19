@@ -1,4 +1,4 @@
-/** Service module: ticket/visit/PM/KB hooks, KB approval type, ticket record extensions and the SLA sweep timer. */
+/** Service module: service ticket / site visit / PM visit / knowledge article hooks, KB approval type, ticket record extensions and the SLA sweep timer. */
 import { registerRecordActions, registerRecordBanner, registerRecordTab } from '../../components/resource/extensions';
 import { isSignedIn } from '../../services/session';
 import { byId } from '../../services/lookups';
@@ -7,7 +7,10 @@ import { patchRecordIn, recordTitle } from '../../services/runtime';
 import { visitsOf } from '../../services/service/jobs';
 import { afterTicketCreated, afterTicketTransition, afterTicketUpdated, applyTicketDefaults, customerName, guardTicketTransition, guardTicketUpdate, sweepService } from '../../services/service/tickets';
 import { registerApprovalType, requestApprovalIn } from '../../services/workflow';
-import { SlaTab, TicketActions, TicketBanner, VisitsTab } from '../../modules/service/components/TicketExtensions';
+import { ChargeableTab, FeedbackTab, RemoteTab, SlaTab, TicketActions, TicketBanner, VisitsTab } from '../../modules/service/components/TicketExtensions';
+import { L } from '../../constants/labels';
+
+const S = L.service;
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
@@ -34,37 +37,41 @@ registerResourceHooks('pmVisits', {
     c.divisionId = c.divisionId || m?.divisionId || null;
     c.customerId = c.customerId || m?.customerId;
   },
-  title: (p) => `PM ${s(byId('machines', p.machineId)?.serialNo) || s(p.machineId)} · due ${s(p.dueDate)}`,
+  title: (p) => S.titles.pmVisit(s(byId('machines', p.machineId)?.serialNo) || s(p.machineId), s(p.dueDate)),
 });
 
-// Knowledge base: engineers submit, the service head approves (FR-090).
+// Knowledge Base: service engineers submit, Service Leadership approves (FR-090).
 registerResourceHooks('knowledgeArticles', {
   beforeCreate: (ctx, c) => {
     c.authorId = c.authorId || ctx.actor.staffId;
   },
   afterTransition: (ctx, before, after) => {
     if (after.status === 'pending' && before.status === 'draft') {
-      requestApprovalIn(ctx, { type: 'kb.article', resource: 'knowledgeArticles', recordId: after.id, reason: '', summary: `KB article “${s(after.title)}”`, levels: [{ capability: 'approve.service', label: 'Service head' }] });
+      requestApprovalIn(ctx, { type: 'kb.article', resource: 'knowledgeArticles', recordId: after.id, reason: '', summary: S.titles.kbApproval(s(after.title)), levels: [{ capability: 'approve.service', label: S.approvals.kbLevel }] });
     }
   },
 });
 
 registerApprovalType('kb.article', {
-  label: 'Knowledge article',
+  label: S.approvals.kbType,
   onApproved: (ctx, a) => {
     const art = (ctx.d.records.knowledgeArticles ?? []).find((x) => x.id === a.recordId);
-    if (art?.status === 'pending') patchRecordIn(ctx, 'knowledgeArticles', art.id, { status: 'published' }, `Published after approval ${a.id}`);
+    if (art?.status === 'pending') patchRecordIn(ctx, 'knowledgeArticles', art.id, { status: 'published' }, S.approvals.published(a.id));
   },
   onRejected: (ctx, a) => {
     const art = (ctx.d.records.knowledgeArticles ?? []).find((x) => x.id === a.recordId);
-    if (art?.status === 'pending') patchRecordIn(ctx, 'knowledgeArticles', art.id, { status: 'draft' }, `Returned to draft: ${a.decisionNote ?? ''}`);
+    if (art?.status === 'pending') patchRecordIn(ctx, 'knowledgeArticles', art.id, { status: 'draft' }, S.approvals.returned(a.decisionNote ?? ''));
   },
 });
 
 registerRecordBanner('tickets', TicketBanner);
 registerRecordActions('tickets', TicketActions);
-registerRecordTab('tickets', { id: 'sla', label: 'SLA', component: SlaTab });
-registerRecordTab('tickets', { id: 'visits', label: 'Visits', component: VisitsTab, count: ({ record }) => visitsOf(record.id).length || undefined });
+// Ticket tabs (GLOSSARY §1.2): Details, SLA Tracking, Site Visits, Remote Support, Parts Used (Spare Parts module), Chargeable Service, Customer Feedback, Activity History.
+registerRecordTab('tickets', { id: 'sla', order: 10, label: S.tabs.sla, component: SlaTab });
+registerRecordTab('tickets', { id: 'visits', order: 20, label: S.tabs.visits, component: VisitsTab, count: ({ record }) => visitsOf(record.id).filter((v) => v.visitType !== 'remote').length || undefined });
+registerRecordTab('tickets', { id: 'remote', order: 30, label: S.tabs.remote, component: RemoteTab, count: ({ record }) => visitsOf(record.id).filter((v) => v.visitType === 'remote').length || undefined });
+registerRecordTab('tickets', { id: 'chargeable', order: 40, label: S.tabs.chargeable, component: ChargeableTab });
+registerRecordTab('tickets', { id: 'feedback', order: 50, label: S.tabs.feedback, component: FeedbackTab });
 
 // SLA sweep on the simulated clock (BR-32): every minute while signed in; writes only when something changed.
 if (typeof window !== 'undefined') {

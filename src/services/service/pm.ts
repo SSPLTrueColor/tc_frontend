@@ -11,6 +11,7 @@ import { insertRecordIn, patchRecordIn, queryRecords } from '../runtime';
 import { ServiceError } from '../types';
 import { notifyStaff } from './tickets';
 import { L } from '../../constants/labels';
+import { ROUTES } from '../../constants/routes';
 
 const E = L.service.errors;
 const A = L.service.audit;
@@ -29,6 +30,32 @@ export function pmSchedule(actor: Actor) {
   return rows.map((p): RecordData & { machineLabel: string; model: string; customerLabel: string } => ({ ...p, machineLabel: s(byId('machines', p.machineId)?.serialNo) || s(p.machineId), model: s(byId('machines', p.machineId)?.model), customerLabel: s(byId('customers', p.customerId)?.name) || s(p.customerId) }));
 }
 
+export type PmRow = ReturnType<typeof pmSchedule>[number];
+export type PmTab = 'all' | 'due' | 'overdue' | 'missed' | 'done';
+export type PmSort = 'due_asc' | 'due_desc' | 'customer';
+export interface PmFilter {
+  tab: PmTab;
+  q?: string;
+  /** Staff id, '' = any, '__none' = unassigned. */
+  engineerId?: string;
+  divisionId?: string;
+  sort?: PmSort;
+}
+
+/** PM Schedule list (one page for the schedule and the PM visits list): tab, search, filters, sort. Pure; unit-tested. */
+export function filterPm(rows: PmRow[], f: PmFilter): PmRow[] {
+  const q = s(f.q).trim().toLowerCase();
+  const out = rows.filter(
+    (p) =>
+      (f.tab === 'all' || p.status === f.tab) &&
+      (!f.engineerId || (f.engineerId === '__none' ? !p.engineerId : p.engineerId === f.engineerId)) &&
+      (!f.divisionId || p.divisionId === f.divisionId) &&
+      (!q || `${p.id} ${p.machineLabel} ${p.model} ${p.customerLabel}`.toLowerCase().includes(q)),
+  );
+  const sort: PmSort = f.sort ?? (f.tab === 'done' ? 'due_desc' : 'due_asc');
+  return out.sort((a, b) => (sort === 'customer' ? a.customerLabel.localeCompare(b.customerLabel) || s(a.dueDate).localeCompare(s(b.dueDate)) : sort === 'due_desc' ? s(b.dueDate).localeCompare(s(a.dueDate)) : s(a.dueDate).localeCompare(s(b.dueDate))));
+}
+
 function pmCommit<T>(actor: Actor, id: string, check: (p: RecordData) => boolean, denied: string, fn: (ctx: HookContext, p: RecordData) => T): T {
   const res = getResource('pmVisits');
   return commit((d) => {
@@ -43,7 +70,7 @@ export function assignPm(actor: Actor, id: string, staffId: string) {
   if (!can(actor, 'ticket.assign')) throw new ServiceError('forbidden', E.pmAssignDenied);
   return pmCommit(actor, id, () => true, '', (ctx, p) => {
     if (p.status === 'done') throw new ServiceError('invalid_state', E.pmAlreadyDone);
-    notifyStaff(ctx, staffId, L.service.notify.pmAssigned(p.id, s(p.dueDate)), { page: 'my-jobs' }, 'assignment');
+    notifyStaff(ctx, staffId, L.service.notify.pmAssigned(p.id, s(p.dueDate)), { page: ROUTES.myJobs.slice(1) }, 'assignment');
     return patchRecordIn(ctx, 'pmVisits', p.id, { engineerId: staffId }, A.pmAssigned);
   });
 }

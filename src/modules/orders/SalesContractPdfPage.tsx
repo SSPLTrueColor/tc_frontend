@@ -1,8 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
 import { organization } from '../../domain/pack';
+import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { formatDate } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
+import { recordPeekPath } from '../../lib/routes';
 import { orderView, printableContract } from '../../services/api/orders';
 import { useActor } from '../../services/hooks';
 import { amountInWords } from '../../services/lookups';
@@ -12,38 +14,36 @@ import { ErrorState, Skeleton } from '../../components/primitives/feedback';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { LinesTable } from './components';
 
-const TERMS: [string, string][] = [
-  ['paymentTerms', 'Payment'],
-  ['deliveryTerms', 'Delivery'],
-  ['loadingTerms', 'Loading / unloading'],
-  ['installationTerms', 'Installation'],
-  ['warrantyTerms', 'Warranty'],
-  ['sparesTerms', 'Spare parts'],
-  ['inkCommitment', 'Ink purchase commitment & prices'],
-  ['amcTerms', 'AMC'],
-];
+const O = L.orders;
+const P = O.pages.contractPdf;
+const FC = O.fields.salesContracts;
+const TITLE = L.nav.pages.salesContractPdf.title;
 
-/** FR-053: printable sales contract (browser "Save as PDF"). */
-export function ContractPrintPage() {
-  const { id = '' } = useParams();
+const TERMS = ['paymentTerms', 'deliveryTerms', 'loadingTerms', 'installationTerms', 'warrantyTerms', 'sparesTerms', 'inkCommitment', 'amcTerms'] as const;
+
+/** SO-05: Sales Contract PDF (browser "Save as PDF"). Route: ROUTES.salesContractPdf (/sales-orders/:recordId/contract/pdf). */
+export function SalesContractPdfPage() {
+  const { recordId: id = '' } = useParams();
   const actor = useActor();
   const q = useServiceQuery(() => ({ ...printableContract(actor, id), view: orderView(actor, id) }), [id, actor.user.id]);
+  const back = (
+    <Link className="btn btn-secondary" to={recordPeekPath(actor.workspaceId, 'salesOrders', id)}>
+      <span className="btn-label">{O.actions.backToOrder}</span>
+    </Link>
+  );
   if (q.error)
     return (
       <div className="page">
-        <PageHeader title="Sales contract" />
-        <ErrorState title="Contract unavailable" onRetry={q.retry}>
+        <PageHeader title={TITLE} actions={back} />
+        <ErrorState title={P.unavailable} onRetry={q.retry}>
           {q.error}
         </ErrorState>
-        <p className="center">
-          <Link to={`/salesOrders?peek=${encodeURIComponent(id)}`}>Back to the order</Link>
-        </p>
       </div>
     );
   if (!q.data)
     return (
       <div className="page">
-        <PageHeader title="Sales contract" />
+        <PageHeader title={TITLE} />
         <Skeleton rows={10} />
       </div>
     );
@@ -51,14 +51,13 @@ export function ContractPrintPage() {
   return (
     <div className="page">
       <PageHeader
-        title={`Contract ${contract.contractNo}`}
+        title={TITLE}
+        description={P.title(String(contract.contractNo))}
         actions={
           <>
-            <Link className="btn btn-secondary" to={`/salesOrders?peek=${encodeURIComponent(order.id)}`}>
-              <span className="btn-label">Back to order</span>
-            </Link>
+            {back}
             <Button variant="primary" icon="download" onClick={() => window.print()}>
-              Print / save as PDF
+              {O.actions.savePdf}
             </Button>
           </>
         }
@@ -67,23 +66,21 @@ export function ContractPrintPage() {
         <header className="orders-print-head">
           <div>
             <h1 className="orders-print-title">{organization.name}</h1>
-            <p className="muted small">{masterLabel('division', order.divisionId)} division · Sales contract</p>
+            <p className="muted small">{P.division(masterLabel('division', order.divisionId))}</p>
           </div>
           <dl className="detail-list">
             <div className="detail-row">
-              <dt>Contract</dt>
-              <dd>
-                {String(contract.contractNo)} (version {String(contract.version)})
-              </dd>
+              <dt>{P.contract}</dt>
+              <dd>{P.versionOf(String(contract.contractNo), String(contract.version))}</dd>
             </div>
             <div className="detail-row">
-              <dt>Sales order</dt>
+              <dt>{P.salesOrder}</dt>
               <dd>
                 {String(order.orderNo)} · {formatDate(String(order.orderDate))}
               </dd>
             </div>
             <div className="detail-row">
-              <dt>Customer PO</dt>
+              <dt>{P.customerPo}</dt>
               <dd>
                 {String(order.customerPoNo)} · {formatDate(String(order.customerPoDate))}
               </dd>
@@ -91,48 +88,43 @@ export function ContractPrintPage() {
           </dl>
         </header>
         <section>
-          <h2 className="panel-title">Customer</h2>
+          <h2 className="panel-title">{P.customer}</h2>
           <p>
             <strong>{String(customer?.legalName || customer?.name || order.customerId)}</strong>
-            {customer?.gstin ? <span className="muted"> · GSTIN {String(customer.gstin)}</span> : null}
+            {customer?.gstin ? <span className="muted">{P.gstin(String(customer.gstin))}</span> : null}
           </p>
-          {site && (
-            <p className="muted">
-              Installation site: {String(site.line1)}, {String(site.city)} {String(site.pincode ?? '')}
-            </p>
-          )}
+          {site && <p className="muted">{P.site(`${String(site.line1)}, ${String(site.city)} ${String(site.pincode ?? '')}`.trim())}</p>}
         </section>
         <section>
-          <h2 className="panel-title">Scope of supply</h2>
+          <h2 className="panel-title">{P.scope}</h2>
           <LinesTable lines={view.lines} />
           <p>
-            <strong>Contract value: {formatMoney(Number(contract.contractValue))}</strong> (incl. GST) — {amountInWords(Number(contract.contractValue))}
+            <strong>{P.value(formatMoney(Number(contract.contractValue)))}</strong>
+            {P.inclGst(amountInWords(Number(contract.contractValue)))}
           </p>
         </section>
         <section>
-          <h2 className="panel-title">Payment schedule</h2>
+          <h2 className="panel-title">{P.schedule}</h2>
           <ul className="plain-list bullets">
             {view.milestones.map((m) => (
-              <li key={m.id}>
-                {String(m.label)} — {String(m.percent)}% ({formatMoney(Number(m.amount))}) due {formatDate(String(m.dueDate))}
-              </li>
+              <li key={m.id}>{P.milestone(String(m.label), String(m.percent), formatMoney(Number(m.amount)), formatDate(String(m.dueDate)))}</li>
             ))}
           </ul>
         </section>
-        {TERMS.filter(([k]) => contract[k] && contract[k] !== 'Not applicable.').map(([k, label]) => (
+        {TERMS.filter((k) => contract[k] && contract[k] !== P.notApplicable).map((k) => (
           <section key={k}>
-            <h2 className="panel-title">{label}</h2>
+            <h2 className="panel-title">{FC[k]}</h2>
             <p>{String(contract[k])}</p>
           </section>
         ))}
         <footer className="orders-print-sign">
           <div>
-            <p className="muted small">For {organization.name}</p>
-            <p>Authorised signatory</p>
+            <p className="muted small">{P.forCompany(organization.name)}</p>
+            <p>{P.signatory}</p>
           </div>
           <div>
-            <p className="muted small">For the customer</p>
-            <p>{contract.signedAt ? `Signed electronically by ${contract.signedBy} on ${formatDate(String(contract.signedAt))} (simulated)` : 'Signature pending'}</p>
+            <p className="muted small">{P.forCustomer}</p>
+            <p>{contract.signedAt ? P.signed(String(contract.signedBy), formatDate(String(contract.signedAt))) : P.pending}</p>
           </div>
         </footer>
       </article>

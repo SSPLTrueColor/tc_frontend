@@ -69,7 +69,7 @@ export const routeDistanceKm = (points: Point[]) => Math.round(points.slice(1).r
 /** Head office (Assumption: Andheri East, Mumbai) — geofence centre for office-based staff. */
 export const OFFICE: Point & { label: string } = { lat: 19.1136, lng: 72.8697, label: 'Head office, Andheri (E), Mumbai' };
 
-/** Office-based roles are geo-fenced (ATT-02); field roles check in anywhere. */
+/** Office-based roles are geo-fenced (ATT-02); field roles can check-in anywhere. */
 export const OFFICE_ROLES = ['admin', 'coordinator', 'scm', 'store', 'accounts', 'profiling'];
 export const isOfficeRole = (roleId: string) => OFFICE_ROLES.includes(roleId);
 

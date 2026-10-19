@@ -26,7 +26,8 @@ export function SortableTable<R>({ rows, columns, rowKey, label, initialSort }: 
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(PAGE_SIZES[0]);
   const sorted = useMemo(() => {
-    const col = sort && columns.find((c) => c.key === sort.key);
+    if (!sort) return rows;
+    const col = columns.find((c) => c.key === sort.key);
     if (!col?.sort) return rows;
     const f = col.sort;
     return [...rows].sort((a, b) => {

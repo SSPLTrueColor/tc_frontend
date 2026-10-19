@@ -1,4 +1,4 @@
-/** Small UI pieces shared by the orders pages and record tabs. */
+/** Small UI pieces shared by the Sales Orders & Contracts pages and record tabs. */
 import type { ReactNode } from 'react';
 import { formatMoney } from '../../lib/format';
 import { cx } from '../../lib/format';
@@ -8,6 +8,9 @@ import { amountInWords } from '../../services/lookups';
 import { EmptyValue } from '../../components/primitives/display';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { InlineAlert } from '../../components/primitives/feedback';
+import { L } from '../../constants/labels';
+
+const O = L.orders;
 
 export function Field({ id, label, required, help, error, children, wide }: { id: string; label: string; required?: boolean; help?: string; error?: string; children: ReactNode; wide?: boolean }) {
   return (
@@ -16,7 +19,7 @@ export function Field({ id, label, required, help, error, children, wide }: { id
         <label className="field-label" htmlFor={id}>
           {label} {required && <span className="req">*</span>}
         </label>
-        {help && <InfoTip text={help} label={`About ${label}`} />}
+        {help && <InfoTip text={help} label={O.common.about(label)} />}
       </span>
       {children}
       {error && (
@@ -43,8 +46,8 @@ export function FilePick({ id, value, onPick, accept = '.pdf,.jpg,.jpeg,.png', i
           if (f) onPick(f.name, f.size);
         }}
       />
-      {value && <span className="muted small">Attached: {value}</span>}
-      <span className="muted small">PDF, JPG or PNG up to {getPolicies().maxFileMb} MB · simulated upload (file not stored)</span>
+      {value && <span className="muted small">{O.file.attached(value)}</span>}
+      <span className="muted small">{O.file.hint(getPolicies().maxFileMb)}</span>
     </div>
   );
 }
@@ -67,7 +70,7 @@ export function LinesTable({
   if (!lines.length)
     return (
       <p className="muted">
-        <EmptyValue label="No lines" />
+        <EmptyValue label={O.lines.none} />
       </p>
     );
   const ref = new Map((diffAgainst ?? []).map((l) => [l.productId, l]));
@@ -77,26 +80,26 @@ export function LinesTable({
         <thead>
           <tr>
             <th scope="col">#</th>
-            <th scope="col">Item</th>
-            <th scope="col">HSN/SAC</th>
+            <th scope="col">{O.table.item}</th>
+            <th scope="col">{O.table.hsn}</th>
             <th scope="col" className="th-num">
-              Qty
+              {O.table.qty}
             </th>
             <th scope="col" className="th-num">
-              List price
+              {O.table.listPrice}
             </th>
             <th scope="col" className="th-num">
-              Discount %
+              {O.table.discountPct}
             </th>
             <th scope="col" className="th-num">
-              GST
+              {O.table.gst}
             </th>
             <th scope="col" className="th-num">
-              Net
+              {O.table.net}
             </th>
             {editable && onRemove && (
               <th scope="col">
-                <span className="sr-only">Remove</span>
+                <span className="sr-only">{O.actions.remove}</span>
               </th>
             )}
           </tr>
@@ -111,14 +114,14 @@ export function LinesTable({
                 <td>{i + 1}</td>
                 <td>
                   {l.description}
-                  {isNew && <span className="tag tone-warning orders-tag">Not in quotation</span>}
-                  {changed && <span className="tag tone-info orders-tag">Changed</span>}
-                  {priceSource?.[i] && <div className="muted small">Price: {priceSource[i]}</div>}
+                  {isNew && <span className="tag tone-warning orders-tag">{O.lines.notInQuotation}</span>}
+                  {changed && <span className="tag tone-info orders-tag">{O.lines.changed}</span>}
+                  {priceSource?.[i] && <div className="muted small">{O.lines.price(priceSource[i])}</div>}
                 </td>
                 <td className="mono small">{l.hsnSac || <EmptyValue />}</td>
                 <td className="num">
                   {editable ? (
-                    <input className="input input-compact orders-num" type="number" min={1} step={1} value={l.qty} aria-label={`Quantity, line ${i + 1}`} onChange={(e) => onChange?.(i, { qty: Number(e.target.value) })} />
+                    <input className="input input-compact orders-num" type="number" min={1} step={1} value={l.qty} aria-label={O.lines.qtyAria(i + 1)} onChange={(e) => onChange?.(i, { qty: Number(e.target.value) })} />
                   ) : (
                     l.qty
                   )}
@@ -133,7 +136,7 @@ export function LinesTable({
                       max={100}
                       step={0.5}
                       value={l.discountAmt ? lineDiscountPct(l) : l.discountPct ?? 0}
-                      aria-label={`Discount percent, line ${i + 1}`}
+                      aria-label={O.lines.discountAria(i + 1)}
                       onChange={(e) => onChange?.(i, { discountPct: Number(e.target.value), discountAmt: 0 })}
                     />
                   ) : (
@@ -143,12 +146,12 @@ export function LinesTable({
                 <td className="num">{l.gstRate}%</td>
                 <td className="num">
                   {formatMoney(lineNet(l))}
-                  {lineDiscount(l) > 0 && <div className="muted small">of {formatMoney(lineGross(l))}</div>}
+                  {lineDiscount(l) > 0 && <div className="muted small">{O.lines.of(formatMoney(lineGross(l)))}</div>}
                 </td>
                 {editable && onRemove && (
                   <td>
                     <button type="button" className="link small" onClick={() => onRemove(i)}>
-                      Remove
+                      {O.actions.remove}
                     </button>
                   </td>
                 )}
@@ -170,22 +173,22 @@ export function TotalsBlock({ t, intraState }: { t: OrderTotals; intraState: boo
   );
   return (
     <dl className="detail-list orders-totals">
-      {row('Subtotal', t.subtotal)}
-      {t.discountTotal > 0 && row('Discount', -t.discountTotal)}
-      {t.freight > 0 && row('Freight', t.freight)}
-      {t.insurance > 0 && row('Insurance', t.insurance)}
-      {row('Taxable value', t.taxable)}
+      {row(O.totals.subtotal, t.subtotal)}
+      {t.discountTotal > 0 && row(O.totals.discount, -t.discountTotal)}
+      {t.freight > 0 && row(O.totals.freight, t.freight)}
+      {t.insurance > 0 && row(O.totals.insurance, t.insurance)}
+      {row(O.totals.taxable, t.taxable)}
       {intraState ? (
         <>
-          {row('CGST', t.cgst)}
-          {row('SGST', t.sgst)}
+          {row(O.totals.cgst, t.cgst)}
+          {row(O.totals.sgst, t.sgst)}
         </>
       ) : (
-        row('IGST', t.igst)
+        row(O.totals.igst, t.igst)
       )}
-      {row('Order value', t.grandTotal, true)}
+      {row(O.totals.orderValue, t.grandTotal, true)}
       <div className="detail-row">
-        <dt>In words</dt>
+        <dt>{O.totals.inWords}</dt>
         <dd className="small">{amountInWords(t.grandTotal)}</dd>
       </div>
     </dl>
@@ -194,14 +197,14 @@ export function TotalsBlock({ t, intraState }: { t: OrderTotals; intraState: boo
 
 export function DiffAlert({ diff, tolerance }: { diff: LineDiff; tolerance: number }) {
   const reasons: string[] = [];
-  if (diff.added.length) reasons.push(`${diff.added.length} line(s) not in the quotation`);
-  if (diff.removed.length) reasons.push(`${diff.removed.length} quotation line(s) removed`);
-  if (Math.abs(diff.valueChangePct) > tolerance) reasons.push(`value ${diff.valueChangePct > 0 ? '+' : ''}${diff.valueChangePct}% vs quotation (tolerance ±${tolerance}%)`);
-  if (diff.discountIncreased) reasons.push('discount higher than quoted');
+  if (diff.added.length) reasons.push(O.diff.added(diff.added.length));
+  if (diff.removed.length) reasons.push(O.diff.removed(diff.removed.length));
+  if (Math.abs(diff.valueChangePct) > tolerance) reasons.push(O.diff.value(diff.valueChangePct, tolerance));
+  if (diff.discountIncreased) reasons.push(O.diff.discount);
   if (!reasons.length && !diff.changed.length && !diff.valueChangePct) return null;
   return (
-    <InlineAlert tone={reasons.length ? 'warning' : 'info'} title={reasons.length ? 'Differs from the accepted quotation — needs re-approval' : 'Small changes vs the quotation'}>
-      {reasons.length ? reasons.join(' · ') : `${diff.changed.length} line(s) changed, value ${diff.valueChangePct}% (within ±${tolerance}%).`}
+    <InlineAlert tone={reasons.length ? 'warning' : 'info'} title={reasons.length ? O.diff.reapprovalTitle : O.diff.smallTitle}>
+      {reasons.length ? reasons.join(' · ') : O.diff.small(diff.changed.length, diff.valueChangePct, tolerance)}
     </InlineAlert>
   );
 }

@@ -20,6 +20,10 @@ import { appendAudit, emitEvent } from './ledger';
 import { getResource, masterLabel } from './registry';
 import { type Db, ServiceError } from './types';
 import { inactiveMasterErrors, isEmpty, isVisible, validateValues } from './validation';
+import { L } from '../constants/labels';
+
+const E = L.common.errors;
+const AU = L.common.audit;
 
 function applyHiddenPolicy(res: ResourceDefinition, values: Record<string, unknown>) {
   res.fields.forEach((f) => {
@@ -79,7 +83,7 @@ export function displayText(f: FieldDefinition, v: unknown, actor?: Actor): stri
     case 'people':
       return (v as string[]).map((id) => recordTitle(f.relation!.resource, id, actor)).join(', ');
     case 'image':
-      return 'Image';
+      return E.image;
     case 'date':
       return formatDate(String(v));
     case 'datetime':
@@ -87,11 +91,11 @@ export function displayText(f: FieldDefinition, v: unknown, actor?: Actor): stri
     case 'money':
       return formatMoney(Number(v));
     case 'boolean':
-      return v ? 'Yes' : 'No';
+      return v ? L.common.actions.yes : L.common.actions.no;
     case 'progress':
       return pct(Number(v));
     case 'lineitems':
-      return `${(v as unknown[]).length} item(s)`;
+      return E.items((v as unknown[]).length);
     case 'number':
       return `${v}${f.unit ? ` ${f.unit}` : ''}`;
     default:
@@ -119,10 +123,10 @@ export function project(actor: Actor, res: ResourceDefinition, raw: RecordData):
 
 export function getRecord(actor: Actor, resKey: string, id: string): Projected {
   const res = getResource(resKey);
-  if (perm(actor, resKey).read === 'none') throw new ServiceError('forbidden', `You do not have access to ${res.labelPlural}.`);
+  if (perm(actor, resKey).read === 'none') throw new ServiceError('forbidden', E.noAccessTo(res.labelPlural));
   const raw = getDb().records[resKey]?.find((r) => r.id === id);
   // Not-found and not-authorized are indistinguishable to avoid disclosure across workspaces/scopes.
-  if (!raw || !canReadRecord(actor, res, raw)) throw new ServiceError('not_found', `${res.label} ${id} was not found or you do not have access.`);
+  if (!raw || !canReadRecord(actor, res, raw)) throw new ServiceError('not_found', E.notFoundOrNoAccess(res.label, id));
   return project(actor, res, raw);
 }
 
@@ -147,7 +151,7 @@ export interface QueryResult {
  */
 export function queryRecords(actor: Actor, resKey: string, q: Query = {}): QueryResult {
   const res = getResource(resKey);
-  if (perm(actor, resKey).read === 'none') throw new ServiceError('forbidden', `You do not have access to ${res.labelPlural}.`);
+  if (perm(actor, resKey).read === 'none') throw new ServiceError('forbidden', E.noAccessTo(res.labelPlural));
   const fields = new Map(res.fields.map((f) => [f.key, f]));
   const ignored = new Set<string>();
   const resolveFactory = (r: RecordData) => (key: string) => {
@@ -226,8 +230,8 @@ function diff(res: ResourceDefinition, before: Record<string, unknown>, after: R
     changes.push({
       field: f.key,
       label: f.label,
-      before: red ? '[redacted]' : f.type === 'lineitems' ? 'previous items' : displayText(f, a, actor) || 'N/A',
-      after: red ? '[redacted]' : f.type === 'lineitems' ? 'updated items' : displayText(f, b, actor) || 'N/A',
+      before: red ? E.redacted : f.type === 'lineitems' ? E.previousItems : displayText(f, a, actor) || E.na,
+      after: red ? E.redacted : f.type === 'lineitems' ? E.updatedItems : displayText(f, b, actor) || E.na,
     });
   }
   return changes;
@@ -251,7 +255,7 @@ export interface WriteOptions {
 
 export function createRecord(actor: Actor, resKey: string, input: Record<string, unknown>, opts: WriteOptions = {}): Projected {
   const res = getResource(resKey);
-  if (!perm(actor, resKey).create) throw new ServiceError('forbidden', `Your role cannot create ${res.labelPlural.toLowerCase()}.`);
+  if (!perm(actor, resKey).create) throw new ServiceError('forbidden', E.cannotCreate(res.labelPlural.toLowerCase()));
   return commit((d) => {
     if (opts.idempotencyKey && d.idempotency[opts.idempotencyKey]) {
       const existing = d.records[resKey].find((r) => r.id === d.idempotency[opts.idempotencyKey!]);
@@ -271,7 +275,7 @@ export function createRecord(actor: Actor, resKey: string, input: Record<string,
     hooks.beforeCreate?.({ d, actor, correlationId }, candidate);
     const editable = new Set(res.fields.filter((f) => fieldAccess(actor, res, f, 'create') === 'edit').map((f) => f.key));
     const errors = { ...validateValues(res, candidate, editable), ...inactiveMasterErrors(res, candidate) };
-    if (Object.keys(errors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: errors });
+    if (Object.keys(errors).length) throw new ServiceError('validation', L.common.form.fixHighlighted, { fieldErrors: errors });
 
     const at = nowIso();
     const record: RecordData = {
@@ -285,7 +289,7 @@ export function createRecord(actor: Actor, resKey: string, input: Record<string,
     };
     d.records[resKey] = [record, ...(d.records[resKey] ?? [])];
     if (opts.idempotencyKey) d.idempotency[opts.idempotencyKey] = record.id;
-    appendAudit(d, actor, { action: 'create', resource: resKey, recordId: record.id, summary: `Created ${res.label.toLowerCase()} ${record.id}`, correlationId });
+    appendAudit(d, actor, { action: 'create', resource: resKey, recordId: record.id, summary: AU.created(res.label.toLowerCase(), record.id), correlationId });
     emitEvent(d, actor, { eventType: `${resKey}.created`, resourceId: res.id, recordId: record.id, correlationId, idempotencyKey: opts.idempotencyKey, payload: { id: record.id } });
     hooks.afterCreate?.({ d, actor, correlationId }, record);
     return project(actor, res, record);
@@ -297,13 +301,13 @@ export function updateRecord(actor: Actor, resKey: string, id: string, patch: Re
   return commit((d) => {
     const idx = d.records[resKey].findIndex((r) => r.id === id);
     const current = d.records[resKey][idx];
-    if (!current || !canReadRecord(actor, res, current)) throw new ServiceError('not_found', `${res.label} ${id} was not found or you do not have access.`);
-    if (!canUpdateRecord(actor, res, current)) throw new ServiceError('forbidden', `Your role cannot edit this ${res.label.toLowerCase()}.`);
+    if (!current || !canReadRecord(actor, res, current)) throw new ServiceError('not_found', E.notFoundOrNoAccess(res.label, id));
+    if (!canUpdateRecord(actor, res, current)) throw new ServiceError('forbidden', E.cannotEdit(res.label.toLowerCase()));
     if (current.version !== expectedVersion) {
-      throw new ServiceError('version_conflict', `${res.label} ${id} was changed by someone else (now version ${current.version}). Reload to see the latest before saving.`);
+      throw new ServiceError('version_conflict', E.versionConflict(res.label, id, current.version));
     }
     const { values, rejected } = pickWritable(actor, res, patch, 'update');
-    if (rejected.length) throw new ServiceError('forbidden', `You cannot change: ${rejected.join(', ')}.`);
+    if (rejected.length) throw new ServiceError('forbidden', E.cannotChangeFields(rejected.join(', ')));
     const candidate = { ...current, ...values };
     applyHiddenPolicy(res, candidate);
     const editable = new Set(Object.keys(values));
@@ -313,7 +317,7 @@ export function updateRecord(actor: Actor, resKey: string, id: string, patch: Re
     });
     const changed = Object.fromEntries(Object.entries(values).filter(([k, v]) => JSON.stringify(v ?? null) !== JSON.stringify(current[k] ?? null)));
     const errors = { ...validateValues(res, candidate, editable), ...inactiveMasterErrors(res, changed) };
-    if (Object.keys(errors).length) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: errors });
+    if (Object.keys(errors).length) throw new ServiceError('validation', L.common.form.fixHighlighted, { fieldErrors: errors });
     const correlationId = uid('cor');
     const hooks = hooksFor(resKey);
     hooks.beforeUpdate?.({ d, actor, correlationId }, current, candidate);
@@ -321,7 +325,7 @@ export function updateRecord(actor: Actor, resKey: string, id: string, patch: Re
     if (!changes.length) return project(actor, res, current);
     const next: RecordData = { ...candidate, version: current.version + 1, updatedAt: nowIso() };
     d.records[resKey][idx] = next;
-    appendAudit(d, actor, { action: 'update', resource: resKey, recordId: id, summary: `Updated ${changes.map((c) => c.label).join(', ')}`, changes, correlationId });
+    appendAudit(d, actor, { action: 'update', resource: resKey, recordId: id, summary: AU.updated(changes.map((c) => c.label).join(', ')), changes, correlationId });
     emitEvent(d, actor, { eventType: `${resKey}.updated`, resourceId: res.id, recordId: id, correlationId, payload: { fields: changes.map((c) => c.field), version: next.version } });
     hooks.afterUpdate?.({ d, actor, correlationId }, current, next);
     return project(actor, res, next);
@@ -336,8 +340,8 @@ export function availableTransitions(actor: Actor, res: ResourceDefinition, reco
     .filter((t) => t.from.includes(current))
     .map((t) => {
       let reason: string | undefined;
-      if (!raw || !canUpdateRecord(actor, res, raw)) reason = `Your role (${actor.role.label}) cannot update this record`;
-      else if (t.capability && !can(actor, t.capability)) reason = `Requires the "${t.capability}" permission`;
+      if (!raw || !canUpdateRecord(actor, res, raw)) reason = E.roleCannotUpdate(actor.role.label);
+      else if (t.capability && !can(actor, t.capability)) reason = E.requiresPermission(t.capability);
       return { ...t, disabledReason: reason };
     });
 }
@@ -345,17 +349,17 @@ export function availableTransitions(actor: Actor, res: ResourceDefinition, reco
 export function transitionRecord(actor: Actor, resKey: string, id: string, to: string, expectedVersion: number, extra: Record<string, unknown> = {}): Projected {
   const res = getResource(resKey);
   const lc = res.lifecycle;
-  if (!lc) throw new ServiceError('invalid_state', `${res.label} has no lifecycle.`);
+  if (!lc) throw new ServiceError('invalid_state', E.noLifecycle(res.label));
   return commit((d) => {
     const idx = d.records[resKey].findIndex((r) => r.id === id);
     const current = d.records[resKey][idx];
-    if (!current || !canReadRecord(actor, res, current)) throw new ServiceError('not_found', `${res.label} ${id} was not found.`);
-    if (!canUpdateRecord(actor, res, current)) throw new ServiceError('forbidden', `Your role cannot change this ${res.label.toLowerCase()}.`);
-    if (current.version !== expectedVersion) throw new ServiceError('version_conflict', `${res.label} ${id} changed since you loaded it. Reload and try again.`);
+    if (!current || !canReadRecord(actor, res, current)) throw new ServiceError('not_found', E.notFound(res.label, id));
+    if (!canUpdateRecord(actor, res, current)) throw new ServiceError('forbidden', E.cannotChange(res.label.toLowerCase()));
+    if (current.version !== expectedVersion) throw new ServiceError('version_conflict', E.changedSinceLoad(res.label, id));
     const from = String(current[lc.field]);
     const t = lc.transitions.find((x) => x.to === to && x.from.includes(from));
-    if (!t) throw new ServiceError('invalid_state', `Cannot move from "${masterLabel(res.fields.find((f) => f.key === lc.field)!.master!, from)}" to "${to}".`);
-    if (t.capability && !can(actor, t.capability)) throw new ServiceError('forbidden', `"${t.action}" requires the ${t.capability} permission.`);
+    if (!t) throw new ServiceError('invalid_state', E.badTransition(masterLabel(res.fields.find((f) => f.key === lc.field)!.master!, from), masterLabel(res.fields.find((f) => f.key === lc.field)!.master!, to)));
+    if (t.capability && !can(actor, t.capability)) throw new ServiceError('forbidden', E.needsPermission(t.action, t.capability));
     const correlationId = uid('cor');
     const hooks = hooksFor(resKey);
     // `extra` carries values captured with the action (e.g. a lost reason); hooks validate them.
@@ -368,7 +372,7 @@ export function transitionRecord(actor: Actor, resKey: string, id: string, to: s
       action: 'transition',
       resource: resKey,
       recordId: id,
-      summary: `${t.action}: ${masterLabel(master, from)} → ${masterLabel(master, to)}`,
+      summary: AU.transition(t.action, masterLabel(master, from), masterLabel(master, to)),
       changes: [{ field: lc.field, label: 'Status', before: masterLabel(master, from), after: masterLabel(master, to) }],
       correlationId,
     });
@@ -381,10 +385,10 @@ export function transitionRecord(actor: Actor, resKey: string, id: string, to: s
 /** Soft delete (COM-10): the record moves to the recycle bin; an administrator can restore or purge it. */
 export function deleteRecord(actor: Actor, resKey: string, id: string) {
   const res = getResource(resKey);
-  if (!perm(actor, resKey).delete) throw new ServiceError('forbidden', `Your role cannot delete ${res.labelPlural.toLowerCase()}.`);
+  if (!perm(actor, resKey).delete) throw new ServiceError('forbidden', E.cannotDelete(res.labelPlural.toLowerCase()));
   commit((d) => {
     const current = d.records[resKey].find((r) => r.id === id);
-    if (!current || !canReadRecord(actor, res, current)) throw new ServiceError('not_found', `${res.label} ${id} was not found.`);
+    if (!current || !canReadRecord(actor, res, current)) throw new ServiceError('not_found', E.notFound(res.label, id));
     // Referential integrity: refuse deletes that would orphan related records.
     const refs: string[] = [];
     for (const other of Object.keys(d.records)) {
@@ -396,39 +400,39 @@ export function deleteRecord(actor: Actor, resKey: string, id: string) {
           if (n) refs.push(`${n} ${r.labelPlural.toLowerCase()}`);
         });
     }
-    if (refs.length) throw new ServiceError('invalid_state', `Cannot delete ${id}: referenced by ${refs.join(', ')}. Deactivate it instead.`);
+    if (refs.length) throw new ServiceError('invalid_state', E.referenced(id, refs.join(', ')));
     d.records[resKey] = d.records[resKey].filter((r) => r.id !== id);
     d.recycle.unshift({ id: uid('bin'), workspaceId: actor.workspaceId, resource: resKey, record: current, deletedAt: nowIso(), deletedBy: actor.user.id });
     const correlationId = uid('cor');
-    appendAudit(d, actor, { action: 'delete', resource: resKey, recordId: id, summary: `Moved ${res.label.toLowerCase()} ${id} to the recycle bin`, correlationId });
+    appendAudit(d, actor, { action: 'delete', resource: resKey, recordId: id, summary: AU.recycled(res.label.toLowerCase(), id), correlationId });
     emitEvent(d, actor, { eventType: `${resKey}.deleted`, resourceId: res.id, recordId: id, correlationId, payload: { id } });
   });
 }
 
 export function listRecycleBin(actor: Actor) {
-  if (!can(actor, 'recycle.manage')) throw new ServiceError('forbidden', 'Only administrators can open the recycle bin.');
+  if (!can(actor, 'recycle.manage')) throw new ServiceError('forbidden', E.recycleOnly);
   return getDb().recycle.filter((e) => e.workspaceId === actor.workspaceId);
 }
 
 export function restoreRecord(actor: Actor, binId: string) {
-  if (!can(actor, 'recycle.manage')) throw new ServiceError('forbidden', 'Only administrators can restore records.');
+  if (!can(actor, 'recycle.manage')) throw new ServiceError('forbidden', E.restoreOnly);
   commit((d) => {
     const entry = d.recycle.find((e) => e.id === binId && e.workspaceId === actor.workspaceId);
-    if (!entry) throw new ServiceError('not_found', 'This item is no longer in the recycle bin.');
-    if (d.records[entry.resource].some((r) => r.id === entry.record.id)) throw new ServiceError('conflict', `${entry.record.id} already exists.`);
+    if (!entry) throw new ServiceError('not_found', E.notInBin);
+    if (d.records[entry.resource].some((r) => r.id === entry.record.id)) throw new ServiceError('conflict', E.alreadyExists(entry.record.id));
     d.records[entry.resource] = [{ ...entry.record, version: entry.record.version + 1, updatedAt: nowIso() }, ...d.records[entry.resource]];
     d.recycle = d.recycle.filter((e) => e.id !== binId);
-    appendAudit(d, actor, { action: 'restore', resource: entry.resource, recordId: entry.record.id, summary: `Restored ${entry.record.id} from the recycle bin`, correlationId: uid('cor') });
+    appendAudit(d, actor, { action: 'restore', resource: entry.resource, recordId: entry.record.id, summary: AU.restored(entry.record.id), correlationId: uid('cor') });
   });
 }
 
 export function purgeRecord(actor: Actor, binId: string) {
-  if (!can(actor, 'recycle.manage')) throw new ServiceError('forbidden', 'Only administrators can delete permanently.');
+  if (!can(actor, 'recycle.manage')) throw new ServiceError('forbidden', E.purgeOnly);
   commit((d) => {
     const entry = d.recycle.find((e) => e.id === binId && e.workspaceId === actor.workspaceId);
     if (!entry) return;
     d.recycle = d.recycle.filter((e) => e.id !== binId);
-    appendAudit(d, actor, { action: 'purge', resource: entry.resource, recordId: entry.record.id, summary: `Permanently deleted ${entry.record.id}`, correlationId: uid('cor') });
+    appendAudit(d, actor, { action: 'purge', resource: entry.resource, recordId: entry.record.id, summary: AU.purged(entry.record.id), correlationId: uid('cor') });
   });
 }
 
@@ -454,12 +458,12 @@ export function insertRecordIn(ctx: HookContext, resKey: string, values: Record<
   hooksFor(resKey).beforeCreate?.(ctx, candidate);
   if (opts.validate !== false) {
     const errors = validateValues(res, candidate);
-    if (Object.keys(errors).length) throw new ServiceError('validation', `Could not create ${res.label.toLowerCase()}: ${Object.values(errors).join('; ')}`, { fieldErrors: errors });
+    if (Object.keys(errors).length) throw new ServiceError('validation', E.couldNotCreate(res.label.toLowerCase(), Object.values(errors).join('; ')), { fieldErrors: errors });
   }
   const at = nowIso();
   const record: RecordData = { ...candidate, id: nextId(d, res), workspaceId: actor.workspaceId, version: 1, createdAt: at, updatedAt: at, createdBy: actor.user.id };
   d.records[resKey] = [record, ...(d.records[resKey] ?? [])];
-  appendAudit(d, actor, { action: 'create', actorType: 'workflow', resource: resKey, recordId: record.id, summary: `Created ${res.label.toLowerCase()} ${record.id} automatically`, correlationId });
+  appendAudit(d, actor, { action: 'create', actorType: 'workflow', resource: resKey, recordId: record.id, summary: AU.createdAuto(res.label.toLowerCase(), record.id), correlationId });
   emitEvent(d, actor, { eventType: `${resKey}.created`, resourceId: res.id, recordId: record.id, correlationId, payload: { id: record.id, automatic: true } });
   hooksFor(resKey).afterCreate?.(ctx, record);
   return record;
@@ -470,13 +474,13 @@ export function patchRecordIn(ctx: HookContext, resKey: string, id: string, patc
   const { d, actor, correlationId } = ctx;
   const res = getResource(resKey);
   const idx = (d.records[resKey] ?? []).findIndex((r) => r.id === id);
-  if (idx < 0) throw new ServiceError('not_found', `${res.label} ${id} was not found.`);
+  if (idx < 0) throw new ServiceError('not_found', E.notFound(res.label, id));
   const before = d.records[resKey][idx];
   const next: RecordData = { ...before, ...patch, version: before.version + 1, updatedAt: nowIso() };
   const changes = diff(res, before, next, actor);
   d.records[resKey][idx] = next;
   if (changes.length) {
-    appendAudit(d, actor, { action: res.lifecycle && res.lifecycle.field in patch ? 'transition' : 'update', actorType: 'workflow', resource: resKey, recordId: id, summary: summary ?? `Updated ${changes.map((c) => c.label).join(', ')} automatically`, changes, correlationId });
+    appendAudit(d, actor, { action: res.lifecycle && res.lifecycle.field in patch ? 'transition' : 'update', actorType: 'workflow', resource: resKey, recordId: id, summary: summary ?? AU.updatedAuto(changes.map((c) => c.label).join(', ')), changes, correlationId });
     emitEvent(d, actor, { eventType: `${resKey}.updated`, resourceId: res.id, recordId: id, correlationId, payload: { fields: changes.map((c) => c.field), automatic: true } });
   }
   return next;

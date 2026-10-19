@@ -18,6 +18,12 @@ import { VoiceButton } from '../../../components/crm/VoiceButton';
 import { SlaChips, SpottedDialog } from '../components/TicketExtensions';
 import { OfflineBar } from './MyJobsPage';
 import { useStep } from './useStep';
+import { L } from '../../../constants/labels';
+import { ROUTES, toPath } from '../../../constants/routes';
+
+const S = L.service;
+const P = S.pages.myJob;
+const ST = P.steps;
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
@@ -60,7 +66,7 @@ function SignaturePad({ onSigned }: { onSigned: (signed: boolean) => void }) {
       <canvas
         ref={ref}
         className="svc-signature"
-        aria-label="Customer signature pad"
+        aria-label={P.signaturePad}
         onPointerDown={(e) => {
           drawing.current = true;
           const ctx = e.currentTarget.getContext('2d')!;
@@ -87,7 +93,7 @@ function SignaturePad({ onSigned }: { onSigned: (signed: boolean) => void }) {
           onSigned(false);
         }}
       >
-        Clear signature
+        {S.actions.clearSignature}
       </Button>
     </>
   );
@@ -96,7 +102,7 @@ function SignaturePad({ onSigned }: { onSigned: (signed: boolean) => void }) {
 const fileNames = (files: FileList | null, maxMb: number): { names: string; error?: string } => {
   const list = Array.from(files ?? []);
   const big = list.find((f) => f.size > maxMb * 1024 * 1024);
-  if (big) return { names: '', error: `${big.name} is larger than ${maxMb} MB` };
+  if (big) return { names: '', error: P.fileTooBig(big.name, maxMb) };
   return { names: list.map((f) => f.name).join(', ') };
 };
 
@@ -125,8 +131,8 @@ export function MyJobPage() {
   if (q.error)
     return (
       <div className="page">
-        <PageHeader title="Job" />
-        <ErrorState title="Job not available" onRetry={q.retry}>
+        <PageHeader title={P.titleLoading} />
+        <ErrorState title={P.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       </div>
@@ -134,7 +140,7 @@ export function MyJobPage() {
   if (!t)
     return (
       <div className="page">
-        <PageHeader title="Job" />
+        <PageHeader title={P.titleLoading} />
         <Skeleton rows={8} />
       </div>
     );
@@ -148,91 +154,91 @@ export function MyJobPage() {
 
   return (
     <div className="page">
-      <PageHeader title={`Job ${t.id}`} description="Accept, travel, check in, record work and get the customer’s sign-off. Works offline: steps sync when you are back online." />
+      <PageHeader title={P.title(t.id)} description={P.description} />
       <OfflineBar />
       <section className="panel">
         <div className="svc-job-top">
           <StatusChip label={masterValue('ticketStatus', status)?.label ?? status} tone={masterValue('ticketStatus', status)?.tone} />
           <StatusChip label={masterValue('ticketPriority', t.priority)?.label ?? s(t.priority)} tone={masterValue('ticketPriority', t.priority)?.tone} />
-          <StatusChip label={`Coverage: ${masterValue('coverage', t.coverage)?.label ?? 'N/A'}`} tone={masterValue('coverage', t.coverage)?.tone} />
-          {!!t.repeatOfId && <Badge tone="danger">Repeat of {s(t.repeatOfId)}</Badge>}
+          <StatusChip label={P.coverage(masterValue('coverage', t.coverage)?.label ?? S.sla.chips.not_applicable)} tone={masterValue('coverage', t.coverage)?.tone} />
+          {!!t.repeatOfId && <Badge tone="danger">{S.banner.repeatOf(s(t.repeatOfId))}</Badge>}
         </div>
         <h2 className="panel-title">{customerName(t.customerId)}</h2>
         <p>{s(t.description)}</p>
         <p className="muted small">
-          {machine ? `${s(machine.serialNo)} · ${s(machine.model)}` : 'No machine'} · reported {formatDateTime(s(t.reportedAt))}
+          {machine ? `${s(machine.serialNo)} · ${s(machine.model)}` : P.noMachine} · {P.reported(formatDateTime(s(t.reportedAt)))}
         </p>
         <SlaChips record={t} />
-        {!mine && <InlineAlert tone="info">This job is assigned to someone else; you can view it but steps are for the assigned engineer.</InlineAlert>}
+        {!mine && <InlineAlert tone="info">{P.notMine}</InlineAlert>}
       </section>
 
       <section className="panel">
-        <h2 className="panel-title">Next step</h2>
+        <h2 className="panel-title">{P.nextStep}</h2>
         <div className="svc-steps">
           {status === 'assigned' && (
             <>
-              <Button variant="primary" size="default" loading={busy === 'Accept'} onClick={() => run('Accept', () => serviceApi.accept(actor, t.id, v), 'Job accepted')}>
-                Accept job
+              <Button variant="primary" size="default" loading={busy === ST.accept} onClick={() => run(ST.accept, () => serviceApi.accept(actor, t.id, v), S.toasts.jobAccepted)}>
+                {S.actions.acceptJob}
               </Button>
-              <Button size="default" onClick={() => run('Reject', () => serviceApi.reject(actor, t.id, v), 'Job returned to the coordinator')}>
-                Reject
+              <Button size="default" loading={busy === ST.reject} onClick={() => run(ST.reject, () => serviceApi.reject(actor, t.id, v), S.toasts.jobRejected)}>
+                {S.actions.rejectJob}
               </Button>
             </>
           )}
           {['accepted', 'reopened', 'in_progress'].includes(status) && !visit && (
-            <Button variant="primary" size="default" loading={busy === 'Start travel'} onClick={() => run('Start travel', () => serviceApi.startTravel(actor, t.id, v), 'Travel started')}>
-              Start travel
+            <Button variant="primary" size="default" loading={busy === ST.travel} onClick={() => run(ST.travel, () => serviceApi.startTravel(actor, t.id, v), S.toasts.travelStarted)}>
+              {S.actions.startTravel}
             </Button>
           )}
           {['accepted', 'reopened', 'in_progress'].includes(status) && visit?.status === 'travelling' && (
             <Button
               variant="primary"
               size="default"
-              loading={busy === 'Check in'}
+              loading={busy === ST.checkIn}
               onClick={async () => {
                 const at = await locate(t.customerId);
-                run('Check in', () => serviceApi.checkIn(actor, t.id, at, v), at.mock ? 'Checked in (location simulated — browser location unavailable)' : 'Checked in at site');
+                run(ST.checkIn, () => serviceApi.checkIn(actor, t.id, at, v), at.mock ? S.toasts.checkedInSimulated : S.toasts.checkedIn);
               }}
             >
-              Check in at site
+              {S.actions.checkIn}
             </Button>
           )}
           {status === 'in_progress' && (
             <>
-              <Button size="default" onClick={() => run('Waiting for parts', () => serviceApi.waiting(actor, t.id, v, 'waiting_parts'), 'Marked waiting for parts')}>
-                Waiting for parts
+              <Button size="default" onClick={() => run(ST.waitingParts, () => serviceApi.waiting(actor, t.id, v, 'waiting_parts'), S.toasts.waitingParts)}>
+                {S.actions.waitingParts}
               </Button>
-              <Button size="default" onClick={() => run('Waiting for customer', () => serviceApi.waiting(actor, t.id, v, 'waiting_customer'), 'SLA paused — waiting for customer')}>
-                Waiting for customer
+              <Button size="default" onClick={() => run(ST.waitingCustomer, () => serviceApi.waiting(actor, t.id, v, 'waiting_customer'), S.toasts.waitingCustomer)}>
+                {S.actions.waitingCustomer}
               </Button>
             </>
           )}
           {['waiting_parts', 'waiting_customer'].includes(status) && (
-            <Button variant="primary" size="default" onClick={() => run('Resume work', () => serviceApi.waiting(actor, t.id, v, 'in_progress'), 'Work resumed')}>
-              Resume work
+            <Button variant="primary" size="default" onClick={() => run(ST.resume, () => serviceApi.waiting(actor, t.id, v, 'in_progress'), S.toasts.resumed)}>
+              {S.actions.resumeWork}
             </Button>
           )}
-          {status === 'customer_confirmation' && <InlineAlert tone="success">Resolved — the customer has the job card and the feedback link.</InlineAlert>}
+          {status === 'customer_confirmation' && <InlineAlert tone="success">{P.resolved}</InlineAlert>}
           <Button size="default" icon="message" onClick={() => setDialog('activity')}>
-            Log activity
+            {S.actions.logActivity}
           </Button>
-          <Button size="default" icon="sparkles" disabledReason={t.spottedLeadId ? `Lead ${s(t.spottedLeadId)} created` : undefined} onClick={() => setDialog('spotted')}>
-            Opportunity spotted
+          <Button size="default" icon="sparkles" disabledReason={t.spottedLeadId ? P.leadCreated(s(t.spottedLeadId)) : undefined} onClick={() => setDialog('spotted')}>
+            {S.actions.opportunitySpotted}
           </Button>
-          <Link className="btn btn-secondary btn-default" to={`/knowledgeArticles?q=${encodeURIComponent(s(machine?.model) || s(t.category))}`}>
-            <span className="btn-label">Knowledge base</span>
+          <Link className="btn btn-secondary btn-default" to={toPath(ROUTES.knowledgeBase, {}, { q: s(machine?.model) || undefined, category: machine ? undefined : s(t.category) || undefined })}>
+            <span className="btn-label">{S.actions.knowledgeBase}</span>
           </Link>
         </div>
       </section>
 
       {visit?.status === 'on_site' && (
         <section className="panel">
-          <h2 className="panel-title">Job card</h2>
+          <h2 className="panel-title">{P.jobCard}</h2>
           <div className="form-grid cols-2">
             {(
               [
-                ['diagnosis', 'Diagnosis'],
-                ['workDone', 'Work performed'],
+                ['diagnosis', S.fields.serviceVisits.diagnosis],
+                ['workDone', S.fields.serviceVisits.workDone],
               ] as const
             ).map(([k, l]) => (
               <div key={k} className="form-field span-all">
@@ -247,14 +253,14 @@ export function MyJobPage() {
             ))}
             <div className="form-field span-all">
               <label className="field-label" htmlFor="jc-parts">
-                Parts used
+                {S.fields.serviceVisits.partsUsed}
               </label>
-              <input id="jc-parts" className="input" maxLength={300} placeholder="e.g. 1 × print head DX5, damper kit" value={work.partsUsed} onChange={(e) => setWork({ ...work, partsUsed: e.target.value })} />
+              <input id="jc-parts" className="input" maxLength={300} placeholder={P.partsPlaceholder} value={work.partsUsed} onChange={(e) => setWork({ ...work, partsUsed: e.target.value })} />
             </div>
             {(
               [
-                ['photosBefore', 'Photos / videos before'],
-                ['photosAfter', 'Photos / videos after'],
+                ['photosBefore', S.fields.serviceVisits.photosBefore],
+                ['photosAfter', S.fields.serviceVisits.photosAfter],
               ] as const
             ).map(([k, l]) => (
               <div key={k} className="form-field">
@@ -279,82 +285,82 @@ export function MyJobPage() {
             ))}
             <div className="form-field">
               <label className="field-label" htmlFor="jc-counter">
-                Print counter (m²)
+                {P.counter}
               </label>
               <input id="jc-counter" className="input" inputMode="numeric" value={work.printCounter} onChange={(e) => setWork({ ...work, printCounter: e.target.value.replace(/\D/g, '') })} />
             </div>
             <div className="form-field">
               <label className="field-label" htmlFor="jc-ink">
-                Ink consumption since last visit (ml)
+                {P.ink}
               </label>
               <input id="jc-ink" className="input" inputMode="numeric" value={work.inkUsedMl} onChange={(e) => setWork({ ...work, inkUsedMl: e.target.value.replace(/\D/g, '') })} />
             </div>
-            {fileError && <p className="field-error span-all">{fileError} (photos are stored as file names only in this prototype)</p>}
+            {fileError && <p className="field-error span-all">{fileError} {P.fileNote}</p>}
             <div className="span-all">
               <Button
                 variant="primary"
-                loading={busy === 'Save job card'}
-                onClick={() => run('Save job card', () => serviceApi.saveWork(actor, t.id, { ...work, printCounter: num(work.printCounter), inkUsedMl: num(work.inkUsedMl) }, v), 'Job card saved')}
+                loading={busy === ST.save}
+                onClick={() => run(ST.save, () => serviceApi.saveWork(actor, t.id, { ...work, printCounter: num(work.printCounter), inkUsedMl: num(work.inkUsedMl) }, v), S.toasts.jobCardSaved)}
               >
-                Save job card
+                {S.actions.saveJobCard}
               </Button>
             </div>
           </div>
 
           <h2 className="panel-title" style={{ marginTop: 16 }}>
-            Check out & customer sign-off
+            {P.checkOutHeading}
           </h2>
           <div className="form-grid">
-            <div className="segmented" role="radiogroup" aria-label="Sign-off method">
+            <div className="segmented" role="radiogroup" aria-label={P.signOffMethod}>
               {(['otp', 'signature'] as const).map((m) => (
                 <button key={m} type="button" role="radio" aria-checked={method === m} className={`seg-btn${method === m ? ' is-on' : ''}`} onClick={() => setMethod(m)}>
-                  {m === 'otp' ? 'One-time code' : 'Signature'}
+                  {S.masters.signOffMethod.values[m]}
                 </button>
               ))}
             </div>
             {method === 'otp' ? (
               <div className="form-field">
                 {otp ? (
-                  <InlineAlert tone="info" title="Simulated SMS to the customer">
-                    The customer’s phone shows <strong className="mono">{otp}</strong>. Ask them to read it out.
+                  <InlineAlert tone="info" title={P.otpTitle}>
+                    {P.otpBody} <strong className="mono">{otp}</strong>. {P.otpAsk}
                   </InlineAlert>
                 ) : (
-                  <Button onClick={() => setOtp(requestSignOffOtp(t.id))}>Send code to customer</Button>
+                  <Button onClick={() => setOtp(requestSignOffOtp(t.id))}>{S.actions.sendCode}</Button>
                 )}
                 <label className="field-label" htmlFor="jc-otp">
-                  Code from the customer
+                  {P.code}
                 </label>
                 <input id="jc-otp" className="input" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
               </div>
             ) : (
               <div className="form-field">
-                <span className="field-label">Customer signature</span>
+                <span className="field-label">{P.signature}</span>
                 <SignaturePad onSigned={setSigned} />
               </div>
             )}
             <label className="row-gap">
-              <input type="checkbox" checked={resolve} onChange={(e) => setResolve(e.target.checked)} /> Problem fixed — resolve the ticket and send the job card and feedback link
+              <input type="checkbox" checked={resolve} onChange={(e) => setResolve(e.target.checked)} /> {P.resolveCheck}
             </label>
             <div>
               <Button
                 variant="primary"
                 size="default"
-                loading={busy === 'Check out'}
-                disabledReason={method === 'otp' && code.length !== 6 ? 'Enter the 6-digit code' : method === 'signature' && !signed ? 'Customer must sign' : undefined}
+                loading={busy === ST.checkOut}
+                disabledReason={method === 'otp' && code.length !== 6 ? P.enterCode : method === 'signature' && !signed ? P.mustSign : undefined}
                 onClick={async () => {
                   // Persist the latest job-card text first so "resolve" sees the work performed.
-                  if (work.workDone.trim() && work.workDone !== s(visit.workDone)) await run('Save job card', () => serviceApi.saveWork(actor, t.id, { ...work, printCounter: num(work.printCounter), inkUsedMl: num(work.inkUsedMl) }), 'Job card saved');
-                  const ok = await run('Check out', () => serviceApi.checkOut(actor, t.id, { method, otp: code, signed, resolve }), resolve ? 'Checked out — ticket resolved, job card sent' : 'Checked out');
+                  if (work.workDone.trim() && work.workDone !== s(visit.workDone)) await run(ST.save, () => serviceApi.saveWork(actor, t.id, { ...work, printCounter: num(work.printCounter), inkUsedMl: num(work.inkUsedMl) }), S.toasts.jobCardSaved);
+                  const ok = await run(ST.checkOut, () => serviceApi.checkOut(actor, t.id, { method, otp: code, signed, resolve }), resolve ? S.toasts.checkedOutResolved : S.toasts.checkedOut);
                   if (ok) {
                     setOtp(null);
                     setCode('');
                   }
                 }}
               >
-                Check out
+                {S.actions.checkOut}
               </Button>
             </div>
-            <p className="muted small">Check-in {visit.checkInAt ? formatDateTime(s(visit.checkInAt)) : 'N/A'} · now {formatDateTime(nowLocal())}</p>
+            <p className="muted small">{P.times(visit.checkInAt ? formatDateTime(s(visit.checkInAt)) : S.sla.chips.not_applicable, formatDateTime(nowLocal()))}</p>
           </div>
         </section>
       )}
@@ -364,7 +370,7 @@ export function MyJobPage() {
           onClose={() => setDialog(null)}
           defaultType="visit"
           parent={{ parentResource: 'tickets', parentId: t.id, parentLabel: `${t.id} · ${customerName(t.customerId)}`, customerId: s(t.customerId) || undefined }}
-          onLogged={() => toast('Logged on the ticket timeline')}
+          onLogged={() => toast(S.toasts.loggedOnTimeline)}
         />
       )}
       {dialog === 'spotted' && <SpottedDialog ticketId={t.id} onClose={() => setDialog(null)} />}

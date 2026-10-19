@@ -30,6 +30,7 @@ export const customers: ResourceDefinition = {
   module: 'customers',
   label: LC.records.customers.one,
   labelPlural: LC.records.customers.many,
+  recordPageTitle: L.nav.pages.customer360.title,
   icon: 'building',
   version: 1,
   idPrefix: 'C',

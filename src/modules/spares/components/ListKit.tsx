@@ -2,7 +2,10 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { IconButton } from '../../../components/primitives/Button';
 import { Icon } from '../../../components/primitives/Icon';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
+import { L } from '../../../constants/labels';
 import { cx } from '../../../lib/format';
+
+const T = L.spares.common;
 
 export interface Column<T> {
   key: string;
@@ -19,7 +22,27 @@ const PAGE_SIZES = [25, 50, 100];
  * Computed (non-resource) lists: client-side search, sortable headers and pagination with the
  * template's table classes. Filters are passed in already applied by the page.
  */
-export function SimpleTable<T>({ rows, columns, rowKey, search, initialSort, label }: { rows: T[]; columns: Column<T>[]; rowKey: (r: T) => string; search: (r: T) => string; initialSort?: { key: string; dir: 'asc' | 'desc' }; label: string }) {
+export function SimpleTable<T>({
+  rows,
+  columns,
+  rowKey,
+  search,
+  initialSort,
+  label,
+  tools,
+  emptyText,
+}: {
+  rows: T[];
+  columns: Column<T>[];
+  rowKey: (r: T) => string;
+  search: (r: T) => string;
+  initialSort?: { key: string; dir: 'asc' | 'desc' };
+  label: string;
+  /** Filters and summary shown on the toolbar line after the search box. */
+  tools?: ReactNode;
+  /** Shown when filters leave no rows (and nothing is typed in search). */
+  emptyText?: string;
+}) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState(initialSort ?? null);
   const [page, setPage] = useState(0);
@@ -52,8 +75,8 @@ export function SimpleTable<T>({ rows, columns, rowKey, search, initialSort, lab
           <input
             type="search"
             className="input input-compact"
-            placeholder="Search"
-            aria-label={`Search ${label}`}
+            placeholder={T.search}
+            aria-label={T.searchAria(label)}
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
@@ -61,6 +84,7 @@ export function SimpleTable<T>({ rows, columns, rowKey, search, initialSort, lab
             }}
           />
         </div>
+        {tools}
       </div>
       <div className="sp-table-wrap">
         <table className="mini-table" aria-label={label}>
@@ -96,7 +120,7 @@ export function SimpleTable<T>({ rows, columns, rowKey, search, initialSort, lab
             {!shown.length && (
               <tr>
                 <td colSpan={columns.length} className="muted">
-                  No rows match “{q}”.
+                  {q.trim() ? T.noMatch(q) : (emptyText ?? T.noRows)}
                 </td>
               </tr>
             )}
@@ -105,22 +129,19 @@ export function SimpleTable<T>({ rows, columns, rowKey, search, initialSort, lab
       </div>
       <div className="grid-footer">
         <span className="grid-footer-range" aria-live="polite">
-          <strong>
-            {filtered.length ? p * size + 1 : 0}–{Math.min(filtered.length, (p + 1) * size)}
-          </strong>{' '}
-          of {filtered.length}
+          <strong>{T.range(filtered.length ? p * size + 1 : 0, Math.min(filtered.length, (p + 1) * size))}</strong> {T.of(filtered.length)}
         </span>
-        <nav className="grid-pages" aria-label="Pagination">
-          <IconButton icon="chevron-left" label="Previous page" disabledReason={p === 0 ? 'First page' : undefined} onClick={() => setPage(p - 1)} />
+        <nav className="grid-pages" aria-label={T.pagination}>
+          <IconButton icon="chevron-left" label={T.previousPage} disabledReason={p === 0 ? T.firstPage : undefined} onClick={() => setPage(p - 1)} />
           <span className="muted small">
-            Page {p + 1} of {pages}
+            {T.pageOf(p + 1, pages)}
           </span>
-          <IconButton icon="chevron-right" label="Next page" disabledReason={p >= pages - 1 ? 'Last page' : undefined} onClick={() => setPage(p + 1)} />
+          <IconButton icon="chevron-right" label={T.nextPage} disabledReason={p >= pages - 1 ? T.lastPage : undefined} onClick={() => setPage(p + 1)} />
         </nav>
         <SelectMenu
-          label="Rows per page"
+          label={T.rowsPerPage}
           value={size}
-          options={PAGE_SIZES.map((n) => ({ value: n, label: `${n} / page` }))}
+          options={PAGE_SIZES.map((n) => ({ value: n, label: T.perPage(n) }))}
           onChange={(n) => {
             setSize(n);
             setPage(0);

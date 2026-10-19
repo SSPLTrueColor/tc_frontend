@@ -1197,6 +1197,33 @@ input[type='radio'] {
   flex-direction: column;
   gap: 4px;
 }
+/* Rail fits the window: brand (top) and profile (bottom) stay put, the icons between scroll. */
+.rail {
+  height: 100%;
+  min-height: 0;
+}
+.rail-scroll {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+.rail-scroll::-webkit-scrollbar {
+  display: none;
+}
+.rail-foot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding-top: 6px;
+}
 .rail-bottom {
   margin-top: auto;
 }
@@ -1253,6 +1280,10 @@ input[type='radio'] {
 .sidebar-title {
   font-size: var(--fs-secondary);
   font-weight: var(--fw-semibold);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sidebar-scroll {
   flex: 1;
@@ -1377,6 +1408,7 @@ input[type='radio'] {
 .workspace {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }

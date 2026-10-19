@@ -212,7 +212,7 @@ export function NewLeadPage() {
                             setValue('customerId', c.id);
                           }}
                         >
-                          {A.useCustomer(String(c.name), c.id)}
+                          {A.pickCustomer(String(c.name), c.id)}
                         </Button>
                       ))}
                     </InlineAlert>

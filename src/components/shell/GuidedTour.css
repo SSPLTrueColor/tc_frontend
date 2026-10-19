@@ -1,0 +1,67 @@
+/* First-login guided tour (COM-12). Light styling built on the template tokens. */
+.tour {
+  display: grid;
+  gap: 12px;
+}
+.tour p {
+  margin: 0;
+  color: var(--s-text-secondary);
+}
+.tour .tour-step {
+  color: var(--s-text-muted);
+}
+.tour-modules {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tour-modules li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-accent-subtle);
+  color: var(--s-accent-text);
+  font-weight: var(--fw-medium);
+}
+.tour-dots {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tour-dots li {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--s-border-strong);
+  transition: width 0.2s var(--ease), background 0.2s var(--ease);
+}
+.tour-dots li.is-done {
+  background: var(--s-accent-subtle);
+}
+.tour-dots li.is-current {
+  width: 18px;
+  border-radius: 3px;
+  background: var(--s-accent);
+}
+/* Rail icons of the modules the current tour step talks about */
+.rail-item.is-tour-highlight {
+  box-shadow: 0 0 0 2px var(--s-accent);
+  animation: tour-pulse 1.6s var(--ease) infinite;
+}
+@keyframes tour-pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--s-accent-subtle);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-item.is-tour-highlight {
+    animation: none;
+  }
+}

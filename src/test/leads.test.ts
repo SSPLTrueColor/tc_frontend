@@ -5,7 +5,9 @@ import { logActivity } from '../services/activities';
 import { createRecord, updateRecord, getRecord, insertRecordIn } from '../services/runtime';
 import { commit } from '../services/db';
 import { scoreLead } from '../domain/modules/leads/computed';
-import { autoAssign, disqualifyLead, nurtureLead, ownerDivisionError, parseCsv, previewImport, qualifyLead, sweepLeads, toImportRows } from '../services/leads/rules';
+import { autoAssign, disqualifyLead, notAttendedLeads, nurtureLead, ownerDivisionError, parseCsv, previewImport, qualifyLead, sweepLeads, toImportRows } from '../services/leads/rules';
+import { leadsApi } from '../services/api/leads';
+import { L } from '../constants/labels';
 import { addDays, nowLocal, todayKey } from '../lib/dates';
 import '../domain/extensions/index';
 
@@ -110,5 +112,36 @@ describe('leads module', () => {
     expect(prev[0].errors).toEqual([]);
     expect(prev[0].division).toBe('TX');
     expect(prev[1].errors.length).toBeGreaterThanOrEqual(3);
+  });
+  it('Not Attended Leads: open new leads past the SLA, role-scoped, oldest first', () => {
+    if (!has('customers')) return;
+    const admin = actorFor('u_rahul', 'tc');
+    const lead = getDb().records.leads.find((l) => l.status === 'new')!;
+    // Push one lead well past the SLA with no contact logged.
+    lead.createdAt = new Date(Date.now() - 72 * 3_600_000).toISOString();
+    lead.firstContactAt = null;
+    const out = notAttendedLeads(admin);
+    expect(out.slaHours).toBeGreaterThan(0);
+    const row = out.rows.find((r) => r.lead.id === lead.id)!;
+    expect(row).toBeTruthy();
+    expect(row.ageHours).toBeGreaterThanOrEqual(71);
+    expect(row.overHours).toBe(row.ageHours - out.slaHours);
+    expect(out.rows.every((r) => r.lead.status === 'new' && !r.lead.firstContactAt)).toBe(true);
+    for (let i = 1; i < out.rows.length; i++) expect(out.rows[i - 1].ageHours).toBeGreaterThanOrEqual(out.rows[i].ageHours);
+    // A sales executive only sees leads they own.
+    const exec = actorFor('u_sneha', 'tc');
+    expect(notAttendedLeads(exec).rows.every((r) => r.ownerId === exec.staffId)).toBe(true);
+  });
+
+  it('exposes the async Not Attended Leads service and BRD labels', async () => {
+    expect(typeof leadsApi.notAttended).toBe('function');
+    expect(L.leads.actions.convertToOpportunity).toBe('Convert to Opportunity');
+    expect(L.leads.actions.logFollowUp).toBe('Log Follow-up');
+    expect(L.leads.fields.leads.productType).toBe('Product type');
+    expect(L.leads.masters.lostReason.values.bought_competitor).toBe('Bought Competitor');
+    expect(L.leads.masters.leadSource.values.indiamart).toBe('B2B Marketplaces (IndiaMART)');
+    const res = appPack.resources.find((r) => r.key === 'leads')!;
+    expect(res.fields.find((f) => f.key === 'productType')!.label).toBe('Product type');
+    expect(appPack.resources.find((r) => r.key === 'leadScoringRules')!.labelPlural).toBe('Lead Scoring Rules');
   });
 });

@@ -27,6 +27,10 @@ import { FormDrawer, QuickCreateDialog, WizardDialog } from '../components/resou
 import { RecordInspector } from '../components/resource/RecordInspector';
 import { ColumnManager, FilterButton, ViewBar } from '../components/resource/ViewControls';
 import { PageHeader } from '../components/shell/PageHeader';
+import { L } from '../constants/labels';
+
+const C = L.common;
+const LS = L.common.list;
 
 const PAGE_SIZES = [25, 50, 100, 250, 500]; // above 100 rows the table virtualizes (renders only visible rows)
 
@@ -139,20 +143,20 @@ export function ResourcePage() {
   const rowMenu = (r: RecordData): MenuItem[] => {
     const raw = getDb().records[resource].find((x) => x.id === r.id);
     return [
-      { id: 'open', label: 'Open in inspector', icon: 'eye', onSelect: () => open(r.id) },
-      { id: 'page', label: 'Open full page', icon: 'layout-dashboard', onSelect: () => navigate(recordPagePath(actor.workspaceId, res.key, r.id)) },
+      { id: 'open', label: LS.openInInspector, icon: 'eye', onSelect: () => open(r.id) },
+      { id: 'page', label: LS.openFullPage, icon: 'layout-dashboard', onSelect: () => navigate(recordPagePath(actor.workspaceId, res.key, r.id)) },
       ...availableTransitions(actor, res, r).map((t, i) => ({
         id: `t-${t.to}`,
         label: t.action,
         icon: 'chevron-right',
         separatorBefore: i === 0,
-        disabledReason: t.disabledReason ?? (t.confirm ? 'Open the record to confirm this action' : undefined),
+        disabledReason: t.disabledReason ?? (t.confirm ? C.confirm.openToConfirm : undefined),
         onSelect: () => {
           try {
             transitionRecord(actor, resource, r.id, t.to, raw!.version);
-            toast(`${r.id}: ${t.action}`);
+            toast(C.toasts.actionDone(r.id, t.action));
           } catch (e) {
-            toast(e instanceof ServiceError ? e.message : 'Action failed', 'danger');
+            toast(e instanceof ServiceError ? e.message : C.toasts.actionFailed, 'danger');
           }
         },
       })),
@@ -164,9 +168,9 @@ export function ResourcePage() {
       const cols = working.columns.filter((c) => !c.hidden).map((c) => c.key);
       const csv = exportCsv(actor, res, rows, cols.includes('id') ? cols : ['id', ...cols]);
       downloadText(`${res.key}-${todayKey()}.csv`, csv);
-      toast(`Exported ${rows.length} rows (masked fields stay masked)`);
+      toast(C.toasts.exported(rows.length));
     } catch (e) {
-      toast(e instanceof ServiceError ? e.message : 'Export failed', 'danger');
+      toast(e instanceof ServiceError ? e.message : C.toasts.exportFailed, 'danger');
     }
   };
 
@@ -178,7 +182,7 @@ export function ResourcePage() {
     return sets[0].filter((t) => sets.every((s) => s.some((x) => x.to === t.to)));
   })();
 
-  const exportReason = perm(actor, resource).export ? undefined : `${actor.role.label} cannot export ${res.labelPlural.toLowerCase()}`;
+  const exportReason = perm(actor, resource).export ? undefined : LS.cannotExport(actor.role.label, res.labelPlural.toLowerCase());
 
   return (
     <div className={cx('page page-resource', `page-res-${res.key}`, peek && 'has-inspector')}>
@@ -201,15 +205,15 @@ export function ResourcePage() {
           />
           <div className="view-tools view-tools-primary">
             <Button icon="download" onClick={() => doExport(result.rows)} disabledReason={exportReason}>
-              Export
+              {C.actions.export}
             </Button>
             {res.form.wizard && perm(actor, resource).create && (
               <Button onClick={() => setCreating({ mode: 'quick' })} icon="plus">
-                Quick add
+                {C.actions.quickAdd}
               </Button>
             )}
-            <Button icon="plus" onClick={primary} /* same look as Export (owner rule) */ disabledReason={perm(actor, resource).create ? undefined : `${actor.role.label} cannot create ${res.labelPlural.toLowerCase()}`}>
-              {res.form.primaryLabel ?? `New ${res.label.toLowerCase()}`}
+            <Button icon="plus" onClick={primary} /* same look as Export (owner rule) */ disabledReason={perm(actor, resource).create ? undefined : LS.cannotCreate(actor.role.label, res.labelPlural.toLowerCase())}>
+              {res.form.primaryLabel ?? C.actions.newRecord(res.label)}
             </Button>
           </div>
         </div>
@@ -217,15 +221,15 @@ export function ResourcePage() {
         <div className="view-tools view-tools-row">
           <div className="search-field">
             <IconSearch />
-            <input type="search" className="input input-compact" placeholder="Search" aria-label={`Search ${res.labelPlural.toLowerCase()}`} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            <input type="search" className="input input-compact" placeholder={LS.search} aria-label={LS.searchAria(res.labelPlural.toLowerCase())} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
           <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
           {/* Rich views only (rows with several lines): switch between 2-line and 3-line rows */}
           {view.type === 'table' && (view.rowLines ?? 1) > 1 && (
-            <div className="segmented row-lines-toggle" role="radiogroup" aria-label="Lines per row">
+            <div className="segmented row-lines-toggle" role="radiogroup" aria-label={LS.linesPerRow}>
               {([2, 3] as const).map((n) => (
                 <button key={n} type="button" role="radio" aria-checked={working.rowLines === n} className={cx('seg-btn', working.rowLines === n && 'is-on')} onClick={() => setWorking((w) => ({ ...w, rowLines: n }))}>
-                  {n === 2 ? '2 lines' : '3 lines'}
+                  {LS.lines(n)}
                 </button>
               ))}
             </div>
@@ -233,34 +237,34 @@ export function ResourcePage() {
           <span className="spacer" />
           {!isPaged && !selected.size && (
             <span className="toolbar-count muted" aria-live="polite">
-              {result.total} {result.total === 1 ? res.label.toLowerCase() : res.labelPlural.toLowerCase()}
+              {LS.count(result.total, res.label.toLowerCase(), res.labelPlural.toLowerCase())}
             </span>
           )}
           {selected.size > 0 && (
             <>
               <span className="viewbar-divider" aria-hidden="true" />
-              <div className="bulk-tools" role="region" aria-label="Bulk actions">
-                <strong className="bulk-count">{selected.size} selected</strong>
+              <div className="bulk-tools" role="region" aria-label={LS.bulkActions}>
+                <strong className="bulk-count">{LS.selected(selected.size)}</strong>
                 <Button
                   ref={bulkRef}
                   iconRight="chevron-down"
                   onClick={() => setBulkOpen((o) => !o)}
-                  disabledReason={!res.lifecycle ? 'No bulk status actions for this record type' : !bulkActions.length ? 'No action applies to all selected rows' : undefined}
+                  disabledReason={!res.lifecycle ? LS.noBulkStatus : !bulkActions.length ? LS.noCommonAction : undefined}
                 >
-                  Change status
+                  {C.actions.changeStatus}
                 </Button>
                 <Button icon="download" onClick={() => doExport(selectedRows)} disabledReason={exportReason}>
-                  Export selected
+                  {C.actions.exportSelected}
                 </Button>
               <Menu
                 open={bulkOpen}
                 onClose={() => setBulkOpen(false)}
                 anchor={bulkRef}
-                label="Bulk status actions"
+                label={LS.bulkStatusActions}
                 align="start"
                 items={bulkActions.map((t) => ({
                   id: t.to,
-                  label: `${t.action} (${selectedRows.length})`,
+                  label: LS.bulkActionCount(t.action, selectedRows.length),
                   onSelect: () => {
                     let ok = 0;
                     const failed: string[] = [];
@@ -273,7 +277,7 @@ export function ResourcePage() {
                         failed.push(r.id);
                       }
                     });
-                    toast(`${t.action}: ${ok} updated${failed.length ? `, ${failed.length} skipped (${failed.join(', ')})` : ''}`, failed.length ? 'info' : 'success');
+                    toast(C.toasts.bulkResult(t.action, ok, failed), failed.length ? 'info' : 'success');
                     setSelected(new Set());
                   },
                 }))}
@@ -295,20 +299,20 @@ export function ResourcePage() {
             />
           )}
         </div>
-        {staleView && <InlineAlert tone="warning">The requested view is unavailable (deleted or not shared with you). Showing “{view.name}”.</InlineAlert>}
+        {staleView && <InlineAlert tone="warning">{LS.staleView(view.name)}</InlineAlert>}
         {/* Owner rule: the "All of: …" filter-chip line is hidden — active filters show as the dot on "Filters";
             the record count and bulk actions moved to the search line.
         {working.filter.children.length > 0 && (
           <div className="subbar">
-            <FadeScroller className="subbar-chips" label="Active filters">
+            <FadeScroller className="subbar-chips" label={LS.activeFilters}>
               <FilterChips res={res} filter={working.filter} onChange={setFilter} actor={actor} />
             </FadeScroller>
           </div>
         )} */}
-        {unavailable.length > 0 && <InlineAlert tone="info">Some conditions in this view use fields your role cannot query; they are ignored.</InlineAlert>}
+        {unavailable.length > 0 && <InlineAlert tone="info">{LS.ignoredConditions}</InlineAlert>}
         <div className={cx('content-surface', isPaged && result.total > 0 && 'is-table')}>
           {queryError ? (
-            <ErrorState title={`Could not load ${res.labelPlural.toLowerCase()}`} onRetry={query.retry}>
+            <ErrorState title={LS.loadError(res.labelPlural.toLowerCase())} onRetry={query.retry}>
               {queryError}
             </ErrorState>
           ) : firstLoad ? (
@@ -327,7 +331,7 @@ export function ResourcePage() {
           ) : result.total === 0 ? (
             <EmptyState
               icon="search"
-              title={search || working.filter.children.length ? 'No matching records' : `No ${res.labelPlural.toLowerCase()} yet`}
+              title={search || working.filter.children.length ? LS.noMatching : LS.noneYet(res.labelPlural.toLowerCase())}
               action={
                 search || working.filter.children.length ? (
                   <Button
@@ -337,12 +341,12 @@ export function ResourcePage() {
                       update({ q: undefined, f: undefined });
                     }}
                   >
-                    Clear search and filters
+                    {LS.clearSearchFilters}
                   </Button>
                 ) : undefined
               }
             >
-              {search || working.filter.children.length ? 'Try a different search or remove a filter.' : 'Records you create will appear here.'}
+              {search || working.filter.children.length ? LS.tryDifferent : LS.willAppear}
             </EmptyState>
           ) : (
             <>
@@ -420,8 +424,8 @@ export function FilterChips({ res, filter, onChange, actor }: { res: ReturnType<
   const opText = (c: FilterCondition) => {
     const f = res.fields.find((x) => x.key === c.field);
     const isDate = f && (f.type === 'date' || f.type === 'datetime');
-    if (isDate && c.operator === 'gte') return 'from';
-    if (isDate && c.operator === 'lte') return 'until';
+    if (isDate && c.operator === 'gte') return LS.from;
+    if (isDate && c.operator === 'lte') return LS.until;
     return OPERATOR_LABELS[c.operator];
   };
   const valueText = (c: FilterCondition): string => {
@@ -434,19 +438,19 @@ export function FilterChips({ res, filter, onChange, actor }: { res: ReturnType<
     return displayText(f, c.value, actor);
   };
   return (
-    <div className="filter-chips" aria-label="Active filters">
-      <span className="muted small">{filter.join === 'and' ? 'All of' : 'Any of'}:</span>
+    <div className="filter-chips" aria-label={LS.activeFilters}>
+      <span className="muted small">{filter.join === 'and' ? LS.allOfJoin : LS.anyOfJoin}:</span>
       {conds.map((c) => (
         <span key={c.id} className="filter-chip">
           <span>
             {res.fields.find((f) => f.key === c.field)?.label ?? c.field} {opText(c)} {valueText(c)}
           </span>
-          <button type="button" aria-label="Remove filter" onClick={() => onChange({ ...filter, children: filter.children.filter((x) => x.id !== c.id) })}>
+          <button type="button" aria-label={LS.removeFilter} onClick={() => onChange({ ...filter, children: filter.children.filter((x) => x.id !== c.id) })}>
             ×
           </button>
         </span>
       ))}
-      {groups > 0 && <span className="filter-chip">+ {groups} nested group(s)</span>}
+      {groups > 0 && <span className="filter-chip">{LS.nestedGroups(groups)}</span>}
     </div>
   );
 }
@@ -464,7 +468,7 @@ export function RecordPage() {
   return (
     <div className="page">
       <PageHeader
-        title={visible ? `${res.label} ${recordId}` : res.label}
+        title={visible ? (res.recordPageTitle ? `${res.recordPageTitle} · ${recordId}` : `${res.label} ${recordId}`) : res.recordPageTitle ?? res.label}
         onBack={() => navigate(recordPeekPath(actor.workspaceId, res.key, recordId))}
       />
       <div className="record-page">
@@ -490,24 +494,24 @@ function GridFooter({ page, pageCount, pageSize, total, noun, onPage, onSize }: 
         <strong>
           {from}–{to}
         </strong>{' '}
-        of {total.toLocaleString()} {noun}
+        {LS.ofTotal(total.toLocaleString('en-IN'), noun)}
       </span>
-      <nav className="grid-pages" aria-label="Pagination">
-        <IconButton icon="chevron-left" label="Previous page" disabledReason={page === 0 ? 'First page' : undefined} onClick={() => onPage(page - 1)} />
+      <nav className="grid-pages" aria-label={LS.pagination}>
+        <IconButton icon="chevron-left" label={LS.previousPage} disabledReason={page === 0 ? LS.firstPage : undefined} onClick={() => onPage(page - 1)} />
         {pages.map((p, i) =>
           p === 'gap' ? (
             <span key={`g${i}`} className="grid-page-gap" aria-hidden="true">
               …
             </span>
           ) : (
-            <button key={p} type="button" className={cx('grid-page', p === page && 'is-current')} aria-current={p === page ? 'page' : undefined} aria-label={`Page ${p + 1}`} onClick={() => onPage(p)}>
+            <button key={p} type="button" className={cx('grid-page', p === page && 'is-current')} aria-current={p === page ? 'page' : undefined} aria-label={LS.page(p + 1)} onClick={() => onPage(p)}>
               {p + 1}
             </button>
           ),
         )}
-        <IconButton icon="chevron-right" label="Next page" disabledReason={page >= pageCount - 1 ? 'Last page' : undefined} onClick={() => onPage(page + 1)} />
+        <IconButton icon="chevron-right" label={LS.nextPage} disabledReason={page >= pageCount - 1 ? LS.lastPage : undefined} onClick={() => onPage(page + 1)} />
       </nav>
-      <SelectMenu label="Rows per page" value={pageSize} options={PAGE_SIZES.map((n) => ({ value: n, label: `${n} / page` }))} onChange={onSize} />
+      <SelectMenu label={LS.rowsPerPage} value={pageSize} options={PAGE_SIZES.map((n) => ({ value: n, label: LS.perPage(n) }))} onChange={onSize} />
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { L } from '../../constants/labels';
 import { addDays, todayKey } from '../../lib/dates';
+import { recordPeekPath, resourcePath } from '../../lib/routes';
 import { formatMoney } from '../../lib/format';
 import { errorMessage } from '../../services/api/client';
 import { quotationsApi } from '../../services/api/quotations';
@@ -9,7 +11,7 @@ import { listPriceFor } from '../../services/lookups';
 import { discountApprovalLevels, getPolicies } from '../../services/policies';
 import { activeMasterValues, masterLabel } from '../../services/registry';
 import { computeTotals, GST_RATES, lineAmounts, type QuoteLine, validateLines } from '../../services/quotations/pricing';
-import { applyPriceList, type EditorData } from '../../services/quotations/workflow';
+import { applyPriceList, type EditorData, levelName } from '../../services/quotations/workflow';
 import { ServiceError } from '../../services/types';
 import type { RecordData } from '../../metadata/types';
 import { Button, IconButton } from '../../components/primitives/Button';
@@ -23,11 +25,15 @@ import { useUnsavedGuard } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { TotalsBlock } from './LinesTable';
 
+const T = L.quotations;
+const E = T.editor;
+const F = T.fields.quotations;
+
 const LINE_TYPE_BY_PRODUCT: Record<string, string> = { machine: 'machine', ink: 'ink', paper: 'consumable', fabric: 'consumable', spares: 'spares_kit', service: 'installation', software: 'software' };
 
 const emptyLine = (): QuoteLine => ({ productId: null, description: '', lineType: 'accessory', qty: 1, listPrice: 0, discountPct: 0, discountAmt: 0, hsnSac: '', gstRate: 18, landedCost: null, priceLocked: false });
 
-/** /quotations/new?opportunity=<id> and /quotations/:recordId/edit — FR-035 … FR-041, FR-046. */
+/** ROUTES.quotationNew (?opportunity=<id>) and ROUTES.quotationEdit — FR-035 … FR-041, FR-046. */
 export function QuoteEditorPage() {
   const { recordId } = useParams();
   const [params] = useSearchParams();
@@ -50,12 +56,12 @@ function EditorLoader({ recordId, oppId }: { recordId?: string; oppId?: string }
       alive = false;
     };
   }, [nonce]); // eslint-disable-line react-hooks/exhaustive-deps
-  const title = recordId ? 'Edit quotation' : 'New quotation';
+  const title = recordId ? E.titleEdit : E.titleNew;
   if (state.error)
     return (
       <div className="page">
         <PageHeader title={title} />
-        <ErrorState title="Could not open the quotation editor" onRetry={() => setNonce((n) => n + 1)}>
+        <ErrorState title={E.loadError} onRetry={() => setNonce((n) => n + 1)}>
           {state.error}
         </ErrorState>
       </div>
@@ -72,9 +78,9 @@ function EditorLoader({ recordId, oppId }: { recordId?: string; oppId?: string }
     return (
       <div className="page">
         <PageHeader title={title} />
-        <ErrorState title="This quotation cannot be edited">
-          {d.quote.record.isLatest ? `${d.quote.record.quoteNo} is ${masterLabel('quoteStatus', d.quote.record.status).toLowerCase()}. Only drafts can be edited — revise it to create the next revision.` : `${d.quote.record.quoteNo} is an older revision.`}{' '}
-          <Link to={`/quotations?peek=${d.quote.record.id}`}>Open quotation</Link>
+        <ErrorState title={E.cannotEdit}>
+          {d.quote.record.isLatest ? E.cannotEditStatus(String(d.quote.record.quoteNo), masterLabel('quoteStatus', d.quote.record.status)) : E.cannotEditOld(String(d.quote.record.quoteNo))}{' '}
+          <Link to={recordPeekPath('tc', 'quotations', d.quote.record.id)}>{T.actions.openQuotation}</Link>
         </ErrorState>
       </div>
     );
@@ -82,8 +88,8 @@ function EditorLoader({ recordId, oppId }: { recordId?: string; oppId?: string }
     return (
       <div className="page">
         <PageHeader title={title} />
-        <EmptyState icon="receipt" title="No open opportunity to quote on">
-          Quotations are prepared for an opportunity. Qualify a lead or open an opportunity first.
+        <EmptyState icon="receipt" title={E.noOpportunity}>
+          {E.noOpportunityBody}
         </EmptyState>
       </div>
     );
@@ -106,7 +112,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<'' | 'draft' | 'submit'>('');
-  const back = existing ? `/quotations?peek=${existing.id}` : initialOpp ? `/opportunities?peek=${initialOpp.id}` : '/quotations';
+  const back = existing ? recordPeekPath('tc', 'quotations', existing.id) : initialOpp ? recordPeekPath('tc', 'opportunities', initialOpp.id) : resourcePath('tc', 'quotations');
   const guard = useUnsavedGuard(dirty, () => navigate(back));
 
   const opp: RecordData | undefined = data.opportunities.find((o) => o.id === header.opportunityId);
@@ -143,7 +149,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
   const sameState = placeOfSupply === getPolicies().companyGstState;
 
   const products = data.products;
-  const productOpts = [{ value: '', label: 'Custom line (no product)' }, ...products.map((p) => ({ value: p.id, label: `${p.name} (${p.sku ?? p.id})` }))];
+  const productOpts = [{ value: '', label: E.customLine }, ...products.map((p) => ({ value: p.id, label: `${p.name} (${p.sku ?? p.id})` }))];
   const contacts = data.contacts.filter((c) => c.customerId === customerId);
   const terms = data.terms.filter((t) => !divisionId || t.divisionId === divisionId);
 
@@ -173,14 +179,14 @@ function QuoteEditor({ data }: { data: EditorData }) {
   const save = async (submit: boolean) => {
     setErrors({});
     const e: Record<string, string> = {};
-    if (!header.opportunityId) e.opportunityId = 'Choose the opportunity';
-    if (String(header.validUntil) < quoteDate) e.validUntil = 'Validity must end on or after the quotation date';
+    if (!header.opportunityId) e.opportunityId = E.chooseOpportunity;
+    if (String(header.validUntil) < quoteDate) e.validUntil = F.validUntilCompare;
     if (lineErrors.length) e.lines = lineErrors.join(' · ');
-    if (!lines.length) e.lines = 'Add at least one line item';
-    if (submit && levels.length && reason.trim().length < 5) e.reason = 'Give a reason for the discount (at least 5 characters)';
+    if (!lines.length) e.lines = E.needLine;
+    if (submit && levels.length && reason.trim().length < 5) e.reason = E.needReason;
     if (Object.keys(e).length) {
       setErrors(e);
-      toast('Please fix the highlighted fields', 'danger');
+      toast(E.fixFields, 'danger');
       return;
     }
     setBusy(submit ? 'submit' : 'draft');
@@ -189,9 +195,10 @@ function QuoteEditor({ data }: { data: EditorData }) {
       setDirty(false);
       if (submit) {
         const r = await quotationsApi.submit(actor, saved.record.id, saved.record.version, reason);
-        toast(r.status === 'approved' ? `${saved.record.quoteNo ?? saved.record.id} approved — ready to send` : `${saved.record.quoteNo ?? saved.record.id} sent for approval (${r.approvalId})`);
-      } else toast(`${saved.record.quoteNo ?? saved.record.id} saved as draft`);
-      navigate(`/quotations?peek=${saved.record.id}`);
+        const no = String(saved.record.quoteNo ?? saved.record.id);
+        toast(r.status === 'approved' ? E.submittedApproved(no) : E.submittedPending(no, String(r.approvalId)));
+      } else toast(E.savedDraft(String(saved.record.quoteNo ?? saved.record.id)));
+      navigate(recordPeekPath('tc', 'quotations', saved.record.id));
     } catch (err) {
       if (err instanceof ServiceError && err.fieldErrors) setErrors(err.fieldErrors);
       toast(errorMessage(err), 'danger');
@@ -200,22 +207,22 @@ function QuoteEditor({ data }: { data: EditorData }) {
     }
   };
 
-  const title = existing ? `Edit ${existing.quoteNo}` : 'New quotation';
+  const title = existing ? E.titleEditNo(String(existing.quoteNo)) : E.titleNew;
   return (
     <div className="page">
-      <PageHeader title={title} description="Prices come from the active price list; discounts above your limit go for approval. Totals and GST are recalculated by the service when you save." />
+      <PageHeader title={title} description={E.description} />
       <div className="full-form panel qt-editor">
-        {!!data.quote?.record.rejectNote && <InlineAlert tone="warning" title="Returned to draft">{String(data.quote.record.rejectNote)}</InlineAlert>}
-        <h2 className="panel-title">Quotation</h2>
+        {!!data.quote?.record.rejectNote && <InlineAlert tone="warning" title={T.banner.returnedToDraft}>{String(data.quote.record.rejectNote)}</InlineAlert>}
+        <h2 className="panel-title">{T.sections.quotations.header}</h2>
         <div className="form-grid">
           <div className="form-field">
             <label className="field-label" htmlFor="qt-opp">
-              Opportunity <span className="req">*</span>
+              {F.opportunityId} <span className="req">*</span>
             </label>
             <SelectMenu
               id="qt-opp"
               block
-              label="Opportunity"
+              label={F.opportunityId}
               value={String(header.opportunityId ?? '')}
               invalid={!!errors.opportunityId}
               disabled={!!existing}
@@ -229,47 +236,47 @@ function QuoteEditor({ data }: { data: EditorData }) {
             {errors.opportunityId && <p className="field-error">{errors.opportunityId}</p>}
           </div>
           <div className="form-field">
-            <span className="field-label">Customer</span>
+            <span className="field-label">{F.customerId}</span>
             <span className="field-readonly">{customer?.name ?? <EmptyValue />}</span>
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="qt-contact">
-              Contact person
+              {F.contactId}
             </label>
-            <SelectMenu id="qt-contact" block label="Contact person" value={String(header.contactId ?? '')} placeholder={contacts.length ? 'Select…' : 'No contacts for this customer'} options={contacts.map((c) => ({ value: c.id, label: `${c.name}${c.designation ? ` · ${c.designation}` : ''}` }))} onChange={(v) => set('contactId', v)} />
+            <SelectMenu id="qt-contact" block label={F.contactId} value={String(header.contactId ?? '')} placeholder={contacts.length ? T.common.select : E.noContacts} options={contacts.map((c) => ({ value: c.id, label: `${c.name}${c.designation ? ` · ${c.designation}` : ''}` }))} onChange={(v) => set('contactId', v)} />
           </div>
           <div className="form-field">
-            <span className="field-label">Division</span>
+            <span className="field-label">{F.divisionId}</span>
             <span className="field-readonly">{divisionId ? masterLabel('division', divisionId) : <EmptyValue />}</span>
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="qt-date">
-              Quotation date <span className="req">*</span>
+              {F.quoteDate} <span className="req">*</span>
             </label>
-            <DatePicker id="qt-date" block label="Quotation date" value={quoteDate} clearable={false} onChange={(v) => set('quoteDate', v ?? todayKey())} />
+            <DatePicker id="qt-date" block label={F.quoteDate} value={quoteDate} clearable={false} onChange={(v) => set('quoteDate', v ?? todayKey())} />
           </div>
           <div className="form-field">
             <span className="field-label-row">
               <label className="field-label" htmlFor="qt-valid">
-                Valid until <span className="req">*</span>
+                {F.validUntil} <span className="req">*</span>
               </label>
-              <InfoTip text={`Default ${getPolicies().quoteValidityDays} days. The quotation expires automatically after this date.`} label="About validity" />
+              <InfoTip text={F.validUntilHelp(getPolicies().quoteValidityDays)} label={E.aboutValidity} />
             </span>
-            <DatePicker id="qt-valid" block label="Valid until" value={String(header.validUntil ?? '')} invalid={!!errors.validUntil} clearable={false} onChange={(v) => set('validUntil', v ?? '')} />
+            <DatePicker id="qt-valid" block label={F.validUntil} value={String(header.validUntil ?? '')} invalid={!!errors.validUntil} clearable={false} onChange={(v) => set('validUntil', v ?? '')} />
             {errors.validUntil && <p className="field-error">{errors.validUntil}</p>}
           </div>
           <div className="form-field">
             <span className="field-label-row">
               <label className="field-label" htmlFor="qt-pos">
-                Place of supply <span className="req">*</span>
+                {F.placeOfSupply} <span className="req">*</span>
               </label>
-              <InfoTip text="Same state as True Colors’ GST registration → CGST + SGST; any other state → IGST." label="About place of supply" />
+              <InfoTip text={F.placeOfSupplyHelp} label={E.aboutPlace} />
             </span>
-            <SelectMenu id="qt-pos" block label="Place of supply" value={placeOfSupply} options={activeMasterValues('state').map((s) => ({ value: s.key, label: `${s.label} (${s.key})` }))} onChange={(v) => set('placeOfSupply', v)} />
+            <SelectMenu id="qt-pos" block label={F.placeOfSupply} value={placeOfSupply} options={activeMasterValues('state').map((s) => ({ value: s.key, label: `${s.label} (${s.key})` }))} onChange={(v) => set('placeOfSupply', v)} />
           </div>
         </div>
 
-        <h2 className="panel-title qt-section">Line items</h2>
+        <h2 className="panel-title qt-section">{T.tabs.lineItems}</h2>
         <div className="line-items">
           <ol className="qt-line-list">
             {priced.map((l, i) => {
@@ -284,34 +291,34 @@ function QuoteEditor({ data }: { data: EditorData }) {
                   <div className="qt-line-grid">
                     <div className="form-field qt-span-2">
                       <label className="field-label" htmlFor={`${id}-p`}>
-                        Product
+                        {E.product}
                       </label>
-                      <SelectMenu id={`${id}-p`} label={`Line ${i + 1} product`} block value={String(lines[i].productId ?? '')} options={productOpts} onChange={(v) => pickProduct(i, v)} />
+                      <SelectMenu id={`${id}-p`} label={E.lineProduct(i + 1)} block value={String(lines[i].productId ?? '')} options={productOpts} onChange={(v) => pickProduct(i, v)} />
                     </div>
                     <div className="form-field">
                       <label className="field-label" htmlFor={`${id}-t`}>
-                        Type
+                        {E.type}
                       </label>
-                      <SelectMenu id={`${id}-t`} label={`Line ${i + 1} type`} block value={lines[i].lineType} options={activeMasterValues('quoteLineType').map((t) => ({ value: t.key, label: t.label }))} onChange={(v) => setLine(i, { lineType: v })} />
+                      <SelectMenu id={`${id}-t`} label={E.lineType(i + 1)} block value={lines[i].lineType} options={activeMasterValues('quoteLineType').map((t) => ({ value: t.key, label: t.label }))} onChange={(v) => setLine(i, { lineType: v })} />
                     </div>
                     <div className="form-field qt-span-2">
                       <label className="field-label" htmlFor={`${id}-d`}>
-                        Description
+                        {E.description_}
                       </label>
                       <input id={`${id}-d`} className="input" maxLength={200} value={lines[i].description} onChange={(e) => setLine(i, { description: e.target.value })} />
                     </div>
                     <div className="form-field">
                       <label className="field-label" htmlFor={`${id}-q`}>
-                        Qty
+                        {T.lineTable.qty}
                       </label>
                       <input id={`${id}-q`} className="input num" inputMode="numeric" value={String(lines[i].qty)} onChange={(e) => setLine(i, { qty: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
                     </div>
                     <div className="form-field">
                       <span className="field-label-row">
                         <label className="field-label" htmlFor={`${id}-lp`}>
-                          List price
+                          {T.lineTable.listPrice}
                         </label>
-                        {l.priceLocked && <InfoTip text="From the active price list — sales users cannot change list prices." label="About the list price" />}
+                        {l.priceLocked && <InfoTip text={E.priceLocked} label={E.aboutListPrice} />}
                       </span>
                       {l.priceLocked ? (
                         <span id={`${id}-lp`} className="field-readonly num">
@@ -326,7 +333,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                     </div>
                     <div className="form-field">
                       <label className="field-label" htmlFor={`${id}-dc`}>
-                        Discount
+                        {T.lineTable.discount}
                       </label>
                       <div className="qt-disc">
                         <input
@@ -340,7 +347,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                           }}
                         />
                         <SelectMenu
-                          label={`Line ${i + 1} discount unit`}
+                          label={E.lineDiscountUnit(i + 1)}
                           value={byAmount ? 'amt' : 'pct'}
                           options={[
                             { value: 'pct', label: '%' },
@@ -352,18 +359,18 @@ function QuoteEditor({ data }: { data: EditorData }) {
                     </div>
                     <div className="form-field">
                       <label className="field-label" htmlFor={`${id}-g`}>
-                        GST
+                        {T.lineTable.gst}
                       </label>
-                      <SelectMenu id={`${id}-g`} label={`Line ${i + 1} GST rate`} block value={l.gstRate} options={GST_RATES.map((r) => ({ value: r, label: `${r}%` }))} onChange={(v) => setLine(i, { gstRate: v })} />
+                      <SelectMenu id={`${id}-g`} label={E.lineGst(i + 1)} block value={l.gstRate} options={GST_RATES.map((r) => ({ value: r, label: `${r}%` }))} onChange={(v) => setLine(i, { gstRate: v })} />
                     </div>
                     <div className="form-field">
                       <label className="field-label" htmlFor={`${id}-h`}>
-                        HSN / SAC
+                        {T.lineTable.hsnSac}
                       </label>
                       <input id={`${id}-h`} className="input mono" maxLength={8} value={lines[i].hsnSac} onChange={(e) => setLine(i, { hsnSac: e.target.value.replace(/\D/g, '') })} />
                     </div>
                     <div className="form-field">
-                      <span className="field-label">Net</span>
+                      <span className="field-label">{T.lineTable.net}</span>
                       <span className="field-readonly num">
                         <strong>{formatMoney(a.net)}</strong>
                       </span>
@@ -371,14 +378,14 @@ function QuoteEditor({ data }: { data: EditorData }) {
                   </div>
                   <IconButton
                     icon="trash"
-                    label={`Remove line ${i + 1}`}
+                    label={E.removeLine(i + 1)}
                     className="qt-line-del"
-                    disabledReason={lines.length === 1 ? 'A quotation needs at least one line' : undefined}
+                    disabledReason={lines.length === 1 ? E.needOneLine : undefined}
                     onClick={() =>
                       confirmDelete({
-                        title: `Remove line ${i + 1}?`,
-                        message: `“${lines[i].description || 'Untitled line'}” is removed from this quotation. Other lines are not affected.`,
-                        confirmLabel: 'Remove',
+                        title: E.removeLineTitle(i + 1),
+                        message: E.removeLineBody(lines[i].description || E.untitledLine),
+                        confirmLabel: T.actions.remove,
                         onConfirm: () => {
                           setLines((ls) => ls.filter((_, j) => j !== i));
                           setDirty(true);
@@ -397,10 +404,10 @@ function QuoteEditor({ data }: { data: EditorData }) {
               setDirty(true);
             }}
           >
-            Add line
+            {T.actions.addLine}
           </Button>
           {(errors.lines || (dirty && lineErrors.length > 0)) && (
-            <InlineAlert tone="danger" title="Check the line items">
+            <InlineAlert tone="danger" title={E.checkLines}>
               {(errors.lines ?? lineErrors.join(' · ')).split(' · ').slice(0, 4).join(' · ')}
             </InlineAlert>
           )}
@@ -410,7 +417,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
           <div className="form-grid cols-2 qt-extras">
             <div className="form-field">
               <label className="field-label" htmlFor="qt-freight">
-                Freight
+                {F.freight}
               </label>
               <div className="input-affix has-start">
                 <span className="affix affix-start">₹</span>
@@ -419,7 +426,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
             </div>
             <div className="form-field">
               <label className="field-label" htmlFor="qt-ins">
-                Insurance
+                {F.insurance}
               </label>
               <div className="input-affix has-start">
                 <span className="affix affix-start">₹</span>
@@ -427,45 +434,45 @@ function QuoteEditor({ data }: { data: EditorData }) {
               </div>
             </div>
             <p className="muted small span-all">
-              {sameState ? 'Intra-state supply: CGST + SGST.' : 'Inter-state supply: IGST.'} Freight and insurance are taxed at the rate of the main item.
+              {sameState ? T.tabContent.intraState : T.tabContent.interState} {T.tabContent.extrasTaxed}
             </p>
             {levels.length > 0 ? (
               <div className="span-all">
-                <InlineAlert tone="warning" title={`Discount ${totals.maxDiscountPct}% needs approval`}>
-                  {levels.map((l) => l.label).join(' → ')}. Submitting starts the approval; you can send the quotation once it is approved.
+                <InlineAlert tone="warning" title={E.needsApproval(totals.maxDiscountPct)}>
+                  {E.needsApprovalBody(levels.map(levelName).join(' → '))}
                 </InlineAlert>
                 <div className="form-field">
                   <label className="field-label" htmlFor="qt-reason">
-                    Reason for the discount <span className="req">*</span>
+                    {T.dialogs.submit.reason} <span className="req">*</span>
                   </label>
                   <textarea id="qt-reason" className="input textarea" rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={!!errors.reason || undefined} />
                   {errors.reason && <p className="field-error">{errors.reason}</p>}
                 </div>
               </div>
             ) : (
-              <p className="muted small span-all">Highest discount {totals.maxDiscountPct}% — within the limit, approved automatically on submit.</p>
+              <p className="muted small span-all">{E.withinLimit(totals.maxDiscountPct)}</p>
             )}
           </div>
           <TotalsBlock t={totals} showMargin={data.showMargin} />
         </div>
 
         <h2 className="panel-title qt-section dialog-title-row">
-          Commercial terms
-          <InfoTip text="Pick a division template, then adjust the wording for this customer." label="About terms" />
+          {T.tabs.terms}
+          <InfoTip text={E.termsHelp} label={E.aboutTerms} />
         </h2>
         <div className="form-grid cols-2">
           <div className="form-field span-all">
             <label className="field-label" htmlFor="qt-tpl">
-              Terms template
+              {F.termsTemplateId}
             </label>
-            <SelectMenu id="qt-tpl" block label="Terms template" value={String(header.termsTemplateId ?? '')} placeholder={terms.length ? 'Select a template…' : 'No templates for this division'} options={terms.map((t) => ({ value: t.id, label: `${t.name}${t.isDefault ? ' (default)' : ''}` }))} onChange={applyTemplate} />
+            <SelectMenu id="qt-tpl" block label={F.termsTemplateId} value={String(header.termsTemplateId ?? '')} placeholder={terms.length ? E.selectTemplate : E.noTemplates} options={terms.map((t) => ({ value: t.id, label: `${t.name}${t.isDefault ? E.defaultSuffix : ''}` }))} onChange={applyTemplate} />
           </div>
           {(
             [
-              ['paymentTerms', 'Payment terms'],
-              ['deliveryTerms', 'Delivery timeline'],
-              ['warrantyTerms', 'Warranty'],
-              ['installationTerms', 'Installation terms'],
+              ['paymentTerms', F.paymentTerms],
+              ['deliveryTerms', F.deliveryTerms],
+              ['warrantyTerms', F.warrantyTerms],
+              ['installationTerms', F.installationTerms],
             ] as const
           ).map(([k, label]) => (
             <div className="form-field" key={k}>
@@ -478,13 +485,13 @@ function QuoteEditor({ data }: { data: EditorData }) {
         </div>
 
         <div className="full-form-bar">
-          <Button onClick={guard.requestClose}>Cancel</Button>
+          <Button onClick={guard.requestClose}>{T.actions.cancel}</Button>
           <span className="spacer" />
           <Button loading={busy === 'draft'} disabled={!!busy} onClick={() => void save(false)}>
-            Save draft
+            {T.actions.saveDraft}
           </Button>
           <Button variant="primary" loading={busy === 'submit'} disabled={!!busy} onClick={() => void save(true)}>
-            {levels.length ? 'Save & submit for approval' : 'Save & approve'}
+            {T.actions.saveAndSubmit}
           </Button>
         </div>
       </div>

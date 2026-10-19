@@ -223,3 +223,30 @@
 .qt-editor .full-form-bar {
   flex-wrap: wrap;
 }
+
+/* Record tabs: Commercial Terms text and Approval history. */
+.qt-pre {
+  white-space: pre-wrap;
+}
+.qt-approval {
+  display: grid;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--s-border);
+}
+.qt-approval:last-child {
+  border-bottom: 0;
+}
+
+/* Pending Approvals page. */
+.qt-pending-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.qt-pending-actions {
+  display: flex;
+  gap: var(--sp-1);
+  flex-wrap: wrap;
+}

@@ -1,5 +1,5 @@
 /**
- * Installed-base demo data: ~120 machines at machine customers, warranties (some expiring
+ * Installed Base demo data: ~120 machines at machine customers, warranties (some expiring
  * within 90 days), AMC/CMC contracts in every state, PM visits, components, usage readings,
  * training records, a few resales/relocations, and installation jobs for delivered machine orders.
  * Tolerates missing upstream data (no customers or machine products → nothing is seeded).
@@ -9,7 +9,7 @@ import { fyCode, fyLabel } from '../lib/fy';
 import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
 
-export const rev = 3;
+export const rev = 4;
 
 function addMonths(dateKey: string, months: number): string {
   const d = parseLocal(dateKey);
@@ -201,7 +201,7 @@ export function seed(ctx: SeedContext): void {
         pmVisitsPerYear: type === 'cmc' ? 4 : 2,
         value: baseValue,
         billingFrequency: rnd.pick(['annual', 'annual', 'half_yearly', 'quarterly']),
-        slaTerms: type === 'cmc' ? 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Parts and labour included.' : 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Labour and preventive visits included; parts chargeable.',
+        slaTerms: type === 'cmc' ? 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Parts and labour included.' : 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Labour and PM visits included; parts chargeable.',
         status: 'renewed',
         ownerId: ownerOf(c),
         serviceOwnerId: coordinatorFor(String(m.divisionId)),
@@ -241,7 +241,7 @@ export function seed(ctx: SeedContext): void {
       pmVisitsPerYear: type === 'cmc' ? 4 : 2,
       value: Math.round(baseValue * 1.05),
       billingFrequency: 'annual',
-      slaTerms: type === 'cmc' ? 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Parts and labour included.' : 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Labour and preventive visits included; parts chargeable.',
+      slaTerms: type === 'cmc' ? 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Parts and labour included.' : 'Critical calls: response 1 h, on site 4 h, resolution 8 h. Labour and PM visits included; parts chargeable.',
       status,
       ownerId: ownerOf(c),
       serviceOwnerId: coordinatorFor(String(m.divisionId)),

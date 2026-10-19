@@ -1,6 +1,7 @@
 /** Cross-module integrity of the merged domain pack and the full demo seed. */
 import { appModules, appPack, appRoles } from '../domain/pack';
 import { slugOf } from '../constants/routes';
+import { RESOURCE_PAGES } from '../domain/sidebar';
 import { createDb } from '../services/db';
 
 const db = createDb(new Date('2026-10-19T10:00:00'));
@@ -32,7 +33,7 @@ describe('domain pack integrity', () => {
     // A module page with the same path as a resource (e.g. /attendance "My day") replaces its list by design.
     const navRes = new Set(appModules.flatMap((m) => m.resources));
     const pagePaths = new Set(appModules.flatMap((m) => (m.pages ?? []).map((p) => p.path)));
-    expect(appPack.resources.map((r) => r.key).filter((k) => !navRes.has(k) && !pagePaths.has(`/${slugOf(k)}`))).toEqual([]);
+    expect(appPack.resources.map((r) => r.key).filter((k) => !navRes.has(k) && !pagePaths.has(`/${slugOf(k)}`) && !(k in RESOURCE_PAGES))).toEqual([]);
   });
 });
 

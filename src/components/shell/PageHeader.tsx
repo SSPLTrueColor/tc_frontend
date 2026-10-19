@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { InfoTip } from '../primitives/InfoTip';
 import { Icon } from '../primitives/Icon';
+import { L } from '../../constants/labels';
 
 export { InfoTip };
 
@@ -17,7 +18,7 @@ export function PageHeader({ title, description, actions, onBack }: { title: str
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => setSlot(document.getElementById(TOPBAR_TITLE_SLOT)), []);
   useEffect(() => {
-    document.title = `${title} · True Color CRM`;
+    document.title = L.common.docTitle(title);
   }, [title]);
   return (
     <>
@@ -25,7 +26,7 @@ export function PageHeader({ title, description, actions, onBack }: { title: str
         createPortal(
           <>
             {onBack && (
-              <button type="button" className="page-back" aria-label="Back" data-tooltip="Back" onClick={onBack}>
+              <button type="button" className="page-back" aria-label={L.common.actions.back} data-tooltip={L.common.actions.back} onClick={onBack}>
                 <Icon name="chevron-left" size={20} />
               </button>
             )}

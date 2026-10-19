@@ -24,7 +24,7 @@ describe('theme changer', () => {
 
   it('custom palettes are saved, applied, edited and deleted per user', () => {
     const actor = actorFor('u_rahul', 'tc');
-    const id = saveCustomPalette(actor, { name: 'Clinic teal', accent: '#0f766e', sidebar: '#f3faf9', rail: '#13201f' });
+    const id = saveCustomPalette(actor, { name: 'Brand teal', accent: '#0f766e', sidebar: '#f3faf9', rail: '#13201f' });
     expect(getSettings('u_rahul').palette).toBe(id);
     saveCustomPalette(actor, { id, name: 'Teal 2', accent: '#0f766e', sidebar: '#f3faf9', rail: '#13201f' });
     expect(getSettings('u_rahul').customPalettes.map((p) => p.name)).toEqual(['Teal 2']);

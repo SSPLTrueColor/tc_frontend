@@ -1,17 +1,21 @@
 /**
- * Orders demo data: machine orders from the seeded accepted quotations, spread across every status
+ * Sales Orders & Contracts demo data: machine orders from the seeded accepted quotations, spread across every status
  * (pending approval → completed, plus holds and a cancellation), with payment milestones (some
  * overdue), dispatches (some delayed), processing details and contracts; and 6 months of repeat
  * consumables orders for ink / paper / fabric customers (reorder prediction, achievement).
- * Imports only lib/* (no services: the store seeds before services are ready).
+ * Imports only lib/* and labels (no services: the store seeds before services are ready).
  */
+import { L } from '../constants/labels';
 import { addDays } from '../lib/dates';
 import { fyLabel } from '../lib/fy';
 import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 2;
+export const rev = 3;
+
+const S = L.orders.seed;
+const MS = L.orders.schedule;
 
 /** Same default as policies.companyGstState (seeds may not import services). */
 const COMPANY_GST_STATE = '27';
@@ -173,7 +177,7 @@ export function seed(ctx: SeedContext): void {
     .filter((q) => q.status === 'accepted' && q.isLatest !== false && Array.isArray(q.lines) && (q.lines as Line[]).length)
     .sort((a, b) => String(a.acceptedAt ?? a.quoteDate).localeCompare(String(b.acceptedAt ?? b.quoteDate)));
   const machineQs = accepted.filter(isMachine);
-  // Keep the newest accepted machine quotation without an order so "Generate sales order" can be demoed.
+  // Keep the newest accepted machine quotation without an order so "Generate Sales Order" can be demoed.
   if (machineQs.length >= 5) machineQs.pop();
   const otherQs = accepted.filter((q) => !isMachine(q));
   const statusOf = new Map<string, string>();
@@ -215,7 +219,7 @@ export function seed(ctx: SeedContext): void {
       siteAddressId: site?.id ?? null,
       placeOfSupply: pos,
       ...t,
-      changeSummary: 'Same as quotation',
+      changeSummary: L.orders.diff.same,
       paymentTerms: q.paymentTerms ?? null,
       deliveryTerms: q.deliveryTerms ?? null,
       warrantyTerms: q.warrantyTerms ?? null,
@@ -232,10 +236,10 @@ export function seed(ctx: SeedContext): void {
       customsStatus: machine ? (rank >= RANK.ready_for_dispatch ? 'cleared' : rank >= RANK.processing ? rnd.pick(['pending', 'filed']) : 'not_applicable') : 'not_applicable',
       machineReady: rank >= RANK.ready_for_dispatch,
       pdiDone: rank >= RANK.ready_for_dispatch,
-      processingNotes: rank === RANK.processing && machine ? 'Container booked; awaiting vessel arrival at Nhava Sheva.' : null,
-      holdReason: status === 'on_hold' ? 'Customer requested to delay delivery until the new shed is ready.' : null,
+      processingNotes: rank === RANK.processing && machine ? S.processingNote : null,
+      holdReason: status === 'on_hold' ? S.holdReason : null,
       statusBeforeHold: status === 'on_hold' ? 'payment_received' : null,
-      cancelReason: status === 'cancelled' ? 'Customer funding fell through; advance to be refunded via ERP.' : null,
+      cancelReason: status === 'cancelled' ? S.cancelReason : null,
       deliveredAt: null,
       completedAt: status === 'completed' ? clamp(addDays(orderDate, rnd.int(85, 110))) : null,
       lines,
@@ -246,11 +250,11 @@ export function seed(ctx: SeedContext): void {
       order,
       machine
         ? [
-            ['Advance', 30, 7],
-            ['Before dispatch', 60, 45],
-            ['On installation', 10, 75],
+            [MS.advance, 30, 7],
+            [MS.beforeDispatch, 60, 45],
+            [MS.onInstallation, 10, 75],
           ]
-        : [['Payment (30-day credit)', 100, 30]],
+        : [[MS.credit, 100, 30]],
       machine ? paidUpTo : status === 'completed' ? 1 : 0,
       status === 'completed' && i % 3 === 0,
     );
@@ -269,17 +273,17 @@ export function seed(ctx: SeedContext): void {
         version: 1,
         status: rank >= RANK.processing ? 'signed' : 'draft',
         contractValue: order.grandTotal,
-        paymentTerms: order.paymentTerms ?? 'As per the payment schedule of the sales order.',
-        deliveryTerms: order.deliveryTerms ?? 'Delivery within 8–10 weeks of advance receipt.',
-        loadingTerms: 'Unloading, crane / hydra and positioning at site are in the customer’s scope and cost.',
-        installationTerms: order.installationTerms ?? 'Installation and commissioning by True Colors engineers.',
-        warrantyTerms: order.warrantyTerms ?? '12 months from installation sign-off.',
-        sparesTerms: 'Spare parts supplied at the prevailing price list for 7 years from installation.',
-        inkCommitment: 'Genuine True Colors inks during warranty at contract prices.',
-        amcTerms: 'AMC offered after warranty at 8% of machine value per year.',
+        paymentTerms: order.paymentTerms ?? L.orders.notices.defaultPaymentTerms,
+        deliveryTerms: order.deliveryTerms ?? S.shortDelivery,
+        loadingTerms: L.orders.templates.machine.loadingTerms,
+        installationTerms: order.installationTerms ?? S.installation,
+        warrantyTerms: order.warrantyTerms ?? S.warranty,
+        sparesTerms: L.orders.templates.machine.sparesTerms,
+        inkCommitment: S.ink,
+        amcTerms: S.amc,
         sentAt: rank >= RANK.processing ? `${addDays(orderDate, 3)}T10:00:00.000Z` : null,
         signedAt: rank >= RANK.processing ? `${addDays(orderDate, 4)}T15:00:00.000Z` : null,
-        signedBy: rank >= RANK.processing ? 'Customer director' : null,
+        signedBy: rank >= RANK.processing ? S.signedBy : null,
       });
     }
   });
@@ -336,9 +340,9 @@ export function seed(ctx: SeedContext): void {
         siteAddressId: null,
         placeOfSupply: pos,
         ...t,
-        changeSummary: prev ? 'Repeat order' : 'First consumables order',
-        paymentTerms: '100% within 30 days of invoice.',
-        deliveryTerms: 'Dispatch within 3 working days from stock.',
+        changeSummary: prev ? L.orders.diff.repeat : L.orders.diff.firstConsumables,
+        paymentTerms: S.consumablesPayment,
+        deliveryTerms: S.consumablesDelivery,
         status,
         financeCheck: false,
         erpPushedAt: status !== 'pending_approval' ? `${addDays(orderDate, 1)}T09:00:00.000Z` : null,
@@ -353,7 +357,7 @@ export function seed(ctx: SeedContext): void {
         lines,
       };
       orders.push(order);
-      addMilestones(order, [['Payment (30-day credit)', 100, 30]], status === 'completed' && !(ci % 5 === 2 && k === 0) ? 1 : 0);
+      addMilestones(order, [[MS.credit, 100, 30]], status === 'completed' && !(ci % 5 === 2 && k === 0) ? 1 : 0);
       if (RANK[status] >= RANK.dispatched) addDispatch(order, status);
       prev = order;
     }
@@ -362,9 +366,9 @@ export function seed(ctx: SeedContext): void {
   // ---------------------------------------------------------------- open approvals for pending orders (SO-04)
   const employees = R.employees ?? [];
   const LEVEL: Record<string, { capability: string; label: string }> = {
-    sales_manager: { capability: 'orders.approve.manager', label: 'Reporting manager (Sales manager)' },
-    division_head: { capability: 'approve.l2', label: 'Division head' },
-    management: { capability: 'approve.l3', label: 'Management (MD)' },
+    sales_manager: { capability: 'orders.approve.manager', label: L.roles.approvalLevels[1] },
+    division_head: { capability: 'approve.l2', label: L.roles.approvalLevels[2] },
+    management: { capability: 'approve.l3', label: L.roles.approvalLevels[3] },
   };
   orders
     .filter((o) => o.status === 'pending_approval')
@@ -382,8 +386,8 @@ export function seed(ctx: SeedContext): void {
         recordId: o.id,
         requestedBy: requester.id,
         requestedAt: String(o.createdAt),
-        reason: o.repeatOfId ? 'Repeat consumables order' : 'New order from accepted quotation.',
-        summary: `Sales order ${o.orderNo} · ₹${Number(o.grandTotal).toLocaleString('en-IN')}`,
+        reason: o.repeatOfId ? L.orders.approvals.reasonRepeat : L.orders.approvals.reasonNew(''),
+        summary: L.orders.approvals.summary(String(o.orderNo), `₹${Number(o.grandTotal).toLocaleString('en-IN')}`),
         amount: Number(o.grandTotal),
         divisionIds: [String(o.divisionId)],
         levels: [mgr && LEVEL[String(mgr.roleId)] ? { ...base, label: `${base.label.replace(/ \(.*\)$/, '')} — ${mgr.fullName}`, approverStaffId: mgr.id } : base],

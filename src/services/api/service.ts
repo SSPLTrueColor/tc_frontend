@@ -8,6 +8,7 @@ import { call } from './client';
 import { engineerLoads, suggestEngineers, territoryGrid, unassignedTickets } from '../service/board';
 import { acceptJob, checkIn, checkOut, myJobs, rejectJob, saveWork, setWaiting, startTravel, type WorkInput } from '../service/jobs';
 import { assignPm, completePm, pmChecklist, pmSchedule, raisePmTicket } from '../service/pm';
+import { searchArticles, type KbQuery } from '../service/kb';
 import {
   assignTicket,
   createTicketFromChannel,
@@ -47,6 +48,7 @@ export const loaders = {
   myJobs: (actor: Actor) => swept(actor, () => myJobs(actor)),
   job: (actor: Actor, id: string) => () => getRecord(actor, 'tickets', id).record,
   pm: (actor: Actor) => swept(actor, () => pmSchedule(actor)),
+  knowledgeBase: (actor: Actor, q: KbQuery) => () => searchArticles(actor, q),
 };
 
 export const serviceApi = {
@@ -73,6 +75,9 @@ export const serviceApi = {
   completePm: (actor: Actor, id: string, input: Parameters<typeof completePm>[2]) => call(() => completePm(actor, id, input)),
   raisePmTicket: (actor: Actor, id: string) => call(() => raisePmTicket(actor, id)),
   checklistFor: (machineId: unknown) => pmChecklist(byId('machines', machineId)),
+  checklistForVisit: (pmId: string) => pmChecklist(byId('machines', byId('pmVisits', pmId)?.machineId)),
+  /** Active service engineers the actor may see (assignment pickers and filters). */
+  engineerOptions: (actor: Actor) => engineerLoads(actor).map((e) => ({ value: e.id, label: e.name })),
 };
 
 /** Public pages (no sign-in): customer portal and feedback link. */

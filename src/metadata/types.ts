@@ -266,6 +266,8 @@ export interface ResourceDefinition {
   ownerField?: string;
   /** Division-scoped row access: field holding a division key (or keys). Falls back to the owner's divisions. */
   divisionField?: string;
+  /** Title of the full record page (e.g. "Customer 360° View"); defaults to "<label> <id>". */
+  recordPageTitle?: string;
   /** Id series: 'seq' = PREFIX-1001; 'fy' = PREFIX-2627-00001 (Indian financial year, April–March). */
   idFormat?: 'seq' | 'fy';
   description: string;

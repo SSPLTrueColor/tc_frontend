@@ -9,6 +9,10 @@ import { canDecide, decideApproval } from '../services/workflow';
 import { computeTotals, diffLines, type QuoteLine } from '../services/orders/lines';
 import * as so from '../services/orders/orders';
 import { generateContract, sendForSignature, signContract } from '../services/orders/contracts';
+import { L } from '../constants/labels';
+import { ROUTES } from '../constants/routes';
+import { appPack } from '../domain/pack';
+import { routes as orderRoutes } from '../modules/orders/routes';
 
 const line = (p: Partial<QuoteLine>): QuoteLine => ({ productId: 'P1', description: 'Printer', qty: 1, listPrice: 1_000_000, gstRate: 18, ...p });
 
@@ -159,5 +163,75 @@ describe('sales order flow', () => {
     expect(() => signContract(owner, c.id, '000000', 'X')).toThrow();
     signContract(owner, c.id, otp, 'Mr Shah');
     expect(getDb().records.salesContracts.find((x) => x.id === c.id)!.status).toBe('signed');
+  });
+});
+
+describe('Sales Orders & Contracts terminology and routes (GLOSSARY)', () => {
+  it('uses Title Case BRD status values, with Hold instead of On hold', () => {
+    const st = appPack.masters.find((m) => m.key === 'soStatus')!;
+    expect(st.values.map((v) => v.label)).toEqual(['Pending Approval', 'Confirmed', 'Payment Pending', 'Payment Received', 'Processing', 'Ready for Dispatch', 'Dispatched', 'Delivered', 'Installation', 'Completed', 'Hold', 'Cancelled']);
+    expect(appPack.masters.find((m) => m.key === 'dispatchStatus')!.values.map((v) => v.label)).toEqual(['In Transit', 'Delivered']);
+    expect(appPack.masters.find((m) => m.key === 'orderKind')!.label).toBe('Order Type');
+  });
+  it('labels records and fields per GLOSSARY §2.2', () => {
+    const so = appPack.resources.find((r) => r.key === 'salesOrders')!;
+    const label = (k: string) => so.fields.find((f) => f.key === k)!.label;
+    expect(so.labelPlural).toBe('Sales Orders');
+    expect([label('orderNo'), label('ownerId'), label('orderKind'), label('invoiceNo'), label('ewayBill'), label('pdiDone')]).toEqual(['Order number', 'Sales executive', 'Order type', 'Invoice number', 'E-way bill reference', 'Pre-dispatch inspection']);
+    const dsp = appPack.resources.find((r) => r.key === 'dispatches')!;
+    expect(dsp.labelPlural).toBe('Dispatch & Delivery');
+    expect(dsp.fields.find((f) => f.key === 'podFileName')!.label).toBe('Signed proof of delivery');
+    expect(so.views.some((v) => v.id === 'v_so_processing')).toBe(false);
+  });
+  it('registers one page per route on the new paths', () => {
+    expect(orderRoutes.map((r) => r.path).sort()).toEqual([ROUTES.orderProcessing, ROUTES.paymentSchedule, ROUTES.salesContractPdf, ROUTES.salesOrderEdit, ROUTES.salesOrderNew].sort());
+    expect(orderRoutes.some((r) => r.path === ROUTES.salesOrders || r.path.startsWith('/orders'))).toBe(false);
+    expect(L.nav.pages.salesContractPdf.title).toBe('Sales Contract PDF');
+  });
+});
+
+describe('Order Processing (SO-08) and Push to ERP (SO-09)', () => {
+  beforeEach(() => __setDb(createDb(new Date())));
+  const scm = () => actorFor('u_rajesh', 'tc');
+
+  it('lists approved, undispatched orders; only Import / SCM may edit', () => {
+    const board = so.processingBoard(scm());
+    const orders = getDb().records.salesOrders ?? [];
+    if (!orders.length) return;
+    expect(board.every((r) => ['confirmed', 'payment_pending', 'payment_received', 'processing', 'ready_for_dispatch', 'on_hold'].includes(String(r.order.status)))).toBe(true);
+    expect(board.every((r) => r.canEdit)).toBe(true);
+    const viewer = so.processingBoard(actorFor('u_swati', 'tc'));
+    expect(viewer.every((r) => !r.canEdit)).toBe(true);
+  });
+
+  it('validates processing input and saves it for SCM', () => {
+    const row = so.processingBoard(scm()).find((r) => r.order.orderKind === 'machine' && r.order.status !== 'on_hold');
+    if (!row) return;
+    const o = row.order;
+    const base: so.ProcessingInput = { poToPrincipalNo: 'TCL/IMP/1', poToPrincipalDate: String(o.orderDate), shipmentEta: '', customsStatus: 'pending', machineReady: false, pdiDone: false };
+    expect(so.validateProcessing(o, { ...base, pdiDone: true }).pdiDone).toBe(L.orders.errors.pdiNeedsReady);
+    expect(so.validateProcessing(o, { ...base, machineReady: true }).machineReady).toBe(L.orders.errors.readyNeedsCustoms);
+    expect(so.validateProcessing(o, { ...base, poToPrincipalNo: '' }).poToPrincipalNo).toBe(L.orders.errors.principalNoRequired);
+    expect(so.validateProcessing(o, { ...base, poToPrincipalDate: '2099-01-01' }).poToPrincipalDate).toBe(L.orders.errors.principalDateFuture);
+    expect(so.validateProcessing(o, { ...base, shipmentEta: '2000-01-01' }).shipmentEta).toBe(L.orders.errors.etaBeforePo);
+    expect(() => so.updateProcessing(actorFor('u_karan', 'tc'), o.id, base, o.version)).toThrow(ServiceError);
+    expect(() => so.updateProcessing(scm(), o.id, { ...base, pdiDone: true }, o.version)).toThrow(ServiceError);
+    so.updateProcessing(scm(), o.id, { ...base, customsStatus: 'cleared', machineReady: true, pdiDone: true }, o.version);
+    const saved = getDb().records.salesOrders.find((x) => x.id === o.id)!;
+    expect([saved.poToPrincipalNo, saved.customsStatus, saved.machineReady, saved.pdiDone]).toEqual(['TCL/IMP/1', 'cleared', true, true]);
+  });
+
+  it('Push to ERP returns invoice number, date and e-way bill for approved orders only', () => {
+    const d = getDb();
+    const approved = (d.records.salesOrders ?? []).find((o) => o.status === 'confirmed' && !o.invoiceNo);
+    const pending = (d.records.salesOrders ?? []).find((o) => o.status === 'pending_approval');
+    const accounts = actorFor('u_swati', 'tc');
+    if (pending) expect(() => so.pushToErp(accounts, pending.id)).toThrow(L.orders.errors.erpNotApproved);
+    if (!approved) return;
+    expect(() => so.pushToErp(actorFor('u_karan', 'tc'), approved.id)).toThrow(ServiceError);
+    const r = so.pushToErp(accounts, approved.id);
+    expect(String(r.invoiceNo)).toMatch(/^INV\//);
+    expect(r.invoiceDate).toBeTruthy();
+    expect(String(r.ewayBill)).toMatch(/^[0-9]{12}$/);
   });
 });

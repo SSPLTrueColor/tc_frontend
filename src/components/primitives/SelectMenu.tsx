@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { cx } from '../../lib/format';
 import { Icon } from './Icon';
 import { Popover } from './overlay';
+import { L } from '../../constants/labels';
 
 export interface SelectMenuOption<T extends string | number> {
   value: T;
@@ -21,7 +22,7 @@ export function SelectMenu<T extends string | number>({
   onChange,
   label,
   id,
-  placeholder = 'Select…',
+  placeholder = L.common.pickers.select,
   disabled,
   invalid,
   describedBy,
@@ -122,8 +123,8 @@ export function SelectMenu<T extends string | number>({
         {withSearch && (
           <input
             className="input input-compact select-menu-search"
-            placeholder="Search…"
-            aria-label={`Search ${label}`}
+            placeholder={L.common.pickers.search}
+            aria-label={L.common.pickers.searchIn(label)}
             value={q}
             data-autofocus
             onChange={(e) => {
@@ -160,7 +161,7 @@ export function SelectMenu<T extends string | number>({
               {o.value === value && <Icon name="check" size={14} />}
             </li>
           ))}
-          {!shown.length && <li className="select-menu-empty muted">No matches</li>}
+          {!shown.length && <li className="select-menu-empty muted">{L.common.states.noMatches}</li>}
         </ul>
       </Popover>
     </>

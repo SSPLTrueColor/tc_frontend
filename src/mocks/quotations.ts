@@ -1,9 +1,10 @@
 /**
- * Quotations demo data: per-division terms templates and ~70 quotations (incl. revisions) for the
+ * Quotations demo data: per-division terms templates and ~70 quotations (incl. versions R0, R1 …) for the
  * seeded opportunities — drafts (some with discounts that need approval), approved, sent, under
  * negotiation, accepted with a customer PO, rejected and expired. Prices come from the seeded
  * price lists, so totals match what the editor would calculate.
  */
+import { L } from '../constants/labels';
 import { addDays, parseLocal } from '../lib/dates';
 import { fyLabel } from '../lib/fy';
 import type { RecordData } from '../metadata/types';
@@ -16,12 +17,12 @@ const COMPANY_STATE = '27';
 const VALIDITY_DAYS = 30;
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 4;
+export const rev = 5;
 
 // Default discount bands (BR-17), mirrored because policies are not readable while seeding.
-const L1 = { capability: 'approve.l1', label: 'Sales manager' };
-const L2 = { capability: 'approve.l2', label: 'Division head' };
-const L3 = { capability: 'approve.l3', label: 'Management (MD)' };
+const L1 = { capability: 'approve.l1', label: L.roles.approvalLevels[1] };
+const L2 = { capability: 'approve.l2', label: L.roles.approvalLevels[2] };
+const L3 = { capability: 'approve.l3', label: L.roles.approvalLevels[3] };
 const levelsFor = (pct: number) => (pct <= 5 ? [] : pct <= 10 ? [L1] : pct <= 15 ? [L1, L2] : [L1, L2, L3]);
 
 const DIV_NAME: Record<string, string> = { TX: 'Textile', INK: 'Ink', POD: 'Commercial – POD', LBL: 'Commercial – Label', PPR: 'Paper', FAB: 'Fabric' };
@@ -51,10 +52,10 @@ export function seed(ctx: SeedContext): void {
   R.termsTemplates ??= [];
   R.quotations ??= [];
 
-  // ---- 1. Terms templates: one default per division, plus an export variant for Textile.
+  // ---- 1. Terms & Conditions templates: one default per division, plus an export variant for Textile.
   const tplByDiv = new Map<string, RecordData>();
   Object.keys(DIV_NAME).forEach((div) => {
-    const t: RecordData = { ...ctx.base(300), id: ctx.nextId('termsTemplates', 'TT'), name: `${DIV_NAME[div]} — standard terms`, divisionId: div, isDefault: true, status: 'active', ...terms(div) };
+    const t: RecordData = { ...ctx.base(300), id: ctx.nextId('termsTemplates', 'TT'), name: `${DIV_NAME[div]} — Standard Terms & Conditions`, divisionId: div, isDefault: true, status: 'active', ...terms(div) };
     R.termsTemplates.push(t);
     tplByDiv.set(div, t);
   });
@@ -93,7 +94,7 @@ export function seed(ctx: SeedContext): void {
   const buildLines = (o: RecordData, discount: number): QuoteLine[] => {
     const div = String(o.divisionId);
     const lines: QuoteLine[] = [];
-    const isMachine = MACHINE_DIVS.includes(div) && (o.oppType === 'new_machine' || o.oppType === 'upgrade' || o.productType === 'machine');
+    const isMachine = MACHINE_DIVS.includes(div) && (o.oppType === 'new_machine' || o.oppType === 'upgrade' || o.oppType === 'additional_machine' || o.productType === 'machine');
     if (isMachine) {
       const main = priced.find((p) => p.id === o.productId && p.productType === 'machine') ?? rnd.pick(ofDiv(div, 'machine').length ? ofDiv(div, 'machine') : priced.filter((p) => p.productType === 'machine'));
       if (main) lines.push(line(main, 1, discount));
@@ -233,7 +234,7 @@ export function seed(ctx: SeedContext): void {
     } else if (stage === 'negotiation') {
       const r0 = make(o, { quoteDate: ago(rnd.int(28, 45)), status: 'superseded', revision: 0, isLatest: false, discount: Math.min(disc, 5) });
       const lines = (r0.lines as QuoteLine[]).map((l, k) => (k === 0 ? { ...l, discountPct: Math.max(l.discountPct, disc) } : l));
-      make(o, { quoteDate: ago(rnd.int(1, 20)), status: rnd.chance(0.5) ? 'negotiation' : 'sent', revision: 1, root: r0, isLatest: true, discount: disc, note: 'Revised discount on the machine after the customer’s counter-offer', lines });
+      make(o, { quoteDate: ago(rnd.int(1, 20)), status: rnd.chance(0.5) ? 'negotiation' : 'sent', revision: 1, root: r0, isLatest: true, discount: disc, note: 'Updated machine discount after the customer’s counter-offer', lines });
     } else if (stage === 'won') {
       const wonDay = o.wonAt ? Math.max(1, Math.round((ctx.now.getTime() - new Date(String(o.wonAt)).getTime()) / 86_400_000)) : rnd.int(5, 60);
       let root: RecordData | undefined;

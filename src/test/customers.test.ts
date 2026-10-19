@@ -8,6 +8,11 @@ import { ServiceError } from '../services/types';
 import { nameSimilarity, normaliseName } from '../services/customers/duplicates';
 import { convertContactToLead, mergeCustomers, previewTransfer, transferOwnership } from '../services/customers/operations';
 import { rowsFromCsv } from '../services/customers/importContacts';
+import { deletePoolContact, listPoolContacts } from '../services/customers/pool';
+import { customer360, customer360Overview, customerDocuments } from '../services/customers/view360';
+import { getRecordTabs } from '../components/resource/extensions';
+import { getResource } from '../services/registry';
+import { L } from '../constants/labels';
 
 const admin = () => actorFor('u_rahul', 'tc');
 const expectValidation = (fn: () => unknown, field: string) => {
@@ -114,5 +119,40 @@ describe('customers module', () => {
     expect(rows.every((c) => c.ownerId === karan.staffId)).toBe(true);
     const other = getDb().records.customers.find((c) => c.ownerId !== karan.staffId)!;
     expect(() => updateRecord(karan, 'customers', other.id, { name: 'X' }, other.version)).toThrow(ServiceError);
+  });
+
+  it('lists the Contact Pool (CUS-05): unlinked contacts plus converted ones, scoped to the actor', () => {
+    const pool = listPoolContacts(admin());
+    expect(pool.length).toBe(25);
+    expect(pool.every((p) => !p.contact.customerId || p.contact.poolStatus === 'converted')).toBe(true);
+    const karan = actorFor('u_karan', 'tc');
+    expect(listPoolContacts(karan).every((p) => p.contact.ownerId === karan.staffId)).toBe(true);
+    deletePoolContact(admin(), pool[0].contact.id);
+    expect(listPoolContacts(admin()).length).toBe(24);
+    expect(() => deletePoolContact(karan, pool[1].contact.id)).toThrow(ServiceError);
+  });
+
+  it('builds the Customer 360° View model: sites, linked sets, payment schedule, feedback, documents', () => {
+    const c = getDb().records.customers.find((x) => getDb().records.addresses.some((a) => a.customerId === x.id))!;
+    const v = customer360(admin(), c.id);
+    expect(v.sites.length).toBeGreaterThan(0);
+    for (const k of ['leads', 'opportunities', 'quotations', 'salesOrders', 'machines', 'warranties', 'amcContracts', 'tickets'] as const) expect(Array.isArray(v[k].rows)).toBe(true);
+    expect(v.payments.rows.every((r) => r.amount >= 0)).toBe(true);
+    expect(v.feedback.rows.every((f) => f.rating !== undefined || f.comment)).toBe(true);
+    const o = customer360Overview(admin(), c.id);
+    expect(o.counts.sites).toBe(v.sites.length);
+    expect(Array.isArray(customerDocuments(admin(), c.id))).toBe(true);
+  });
+
+  it('uses glossary terms: Site record, Customer 360° tab order, Converted to Lead', async () => {
+    await Promise.resolve();
+    expect(getResource('addresses').label).toBe('Site');
+    expect(getResource('contacts').fields.find((f) => f.key === 'buyingRole')?.label).toBe(L.customers.fields.contacts.buyingRole);
+    const labels = getRecordTabs('customers').map((t) => t.label);
+    const want = ['Overview', 'Contacts', 'Sites', 'Leads', 'Opportunities', 'Quotations', 'Sales Orders', 'Payment Status', 'Installed Machines', 'Warranty & AMC', 'Service Tickets', 'Feedback', 'Consumables', 'Training Records', 'Key Account Plan', 'Activity History', 'Documents'];
+    const idx = want.map((w) => labels.indexOf(w));
+    expect(idx.every((i) => i >= 0)).toBe(true);
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+    expect(L.customers.masters.poolStatus.values.converted).toBe('Converted to Lead');
   });
 });

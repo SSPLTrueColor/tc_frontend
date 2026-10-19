@@ -14,11 +14,15 @@ import { ErrorState, InlineAlert, Skeleton, useToast } from '../../components/pr
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { DiffAlert, Field, LinesTable, TotalsBlock } from './components';
+import { L } from '../../constants/labels';
+import { recordPeekPath } from '../../lib/routes';
 
-/** FR-051 / BR-22: customise an order before dispatch; differences beyond tolerance re-trigger approval. */
+const O = L.orders;
+const P = O.pages.editOrder;
+
+/** SO-03 / BR-22: customise a sales order before dispatch; differences beyond tolerance re-trigger approval. */
 export function EditOrderPage() {
-  const { recordId = '', id = '' } = useParams();
-  const orderId = recordId || id;
+  const { recordId: orderId = '' } = useParams();
   const actor = useActor();
   const navigate = useNavigate();
   const toast = useToast();
@@ -45,8 +49,8 @@ export function EditOrderPage() {
   if (view.error)
     return (
       <div className="page">
-        <PageHeader title="Edit sales order" />
-        <ErrorState title="Order unavailable" onRetry={view.retry}>
+        <PageHeader title={P.title} />
+        <ErrorState title={P.unavailable} onRetry={view.retry}>
           {view.error}
         </ErrorState>
       </div>
@@ -54,7 +58,7 @@ export function EditOrderPage() {
   if (!view.data || !lines)
     return (
       <div className="page">
-        <PageHeader title="Edit sales order" />
+        <PageHeader title={P.title} />
         <Skeleton rows={8} />
       </div>
     );
@@ -63,10 +67,10 @@ export function EditOrderPage() {
   if (!v.canEditLines)
     return (
       <div className="page">
-        <PageHeader title={`Edit ${o.orderNo}`} />
-        <ErrorState title="Not editable">{v.canEdit ? 'Lines can only change before the order is dispatched, and not while it is on hold or cancelled.' : `Your role (${actor.role.label}) cannot change this order.`}</ErrorState>
+        <PageHeader title={P.titleFor(String(o.orderNo))} />
+        <ErrorState title={P.notEditable}>{v.canEdit ? P.notEditableBody : P.roleCannot(actor.role.label)}</ErrorState>
         <p className="center">
-          <Link to={`/salesOrders?peek=${encodeURIComponent(o.id)}`}>Back to the order</Link>
+          <Link to={recordPeekPath(actor.workspaceId, 'salesOrders', o.id)}>{O.actions.backToOrder}</Link>
         </p>
       </div>
     );
@@ -84,10 +88,11 @@ export function EditOrderPage() {
     setError('');
     try {
       const r = await updateOrderLines(actor, o.id, { lines, freight, insurance, version, note });
-      toast(r.reapproval ? `${o.orderNo} saved — sent back for approval (${r.summary})` : `${o.orderNo} saved`, r.reapproval ? 'info' : 'success');
-      navigate(`/salesOrders?peek=${encodeURIComponent(o.id)}`);
+      toast(r.reapproval ? P.savedReapproval(String(o.orderNo), r.summary) : P.saved(String(o.orderNo)), r.reapproval ? 'info' : 'success');
+      navigate(recordPeekPath(actor.workspaceId, 'salesOrders', o.id));
     } catch (e) {
       setError(errorMessage(e));
+      toast(errorMessage(e), 'danger');
     } finally {
       setBusy(false);
     }
@@ -96,29 +101,29 @@ export function EditOrderPage() {
   return (
     <div className="page">
       <PageHeader
-        title={`Edit ${o.orderNo}`}
-        description="Change quantities, discounts, freight or add products. Prices come from the quotation or today’s price list and cannot be edited here."
+        title={P.titleFor(String(o.orderNo))}
+        description={P.description}
         actions={
           <>
-            <Button onClick={() => navigate(-1)}>Cancel</Button>
+            <Button onClick={() => navigate(-1)}>{O.actions.cancel}</Button>
             <Button variant="primary" loading={busy} onClick={save}>
-              {willReapprove ? 'Save and send for re-approval' : 'Save changes'}
+              {willReapprove ? O.actions.saveAndReapprove : O.actions.saveChanges}
             </Button>
           </>
         }
       />
-      {v.quotation ? <DiffAlert diff={diff} tolerance={tol} /> : willReapprove && <InlineAlert tone="warning" title="Needs re-approval">The change is beyond ±{tol}% or raises the discount.</InlineAlert>}
+      {v.quotation ? <DiffAlert diff={diff} tolerance={tol} /> : willReapprove && <InlineAlert tone="warning" title={P.reapprovalTitle}>{P.reapprovalBody(tol)}</InlineAlert>}
       <section className="panel">
         <LinesTable lines={lines} editable diffAgainst={v.quotation ? v.quotationLines : undefined} onChange={(i, p) => setLines(lines.map((l, j) => (j === i ? { ...l, ...p } : l)))} onRemove={lines.length > 1 ? (i) => setLines(lines.filter((_, j) => j !== i)) : undefined} />
         <div className="form-grid">
-          <Field id="eo-add" label="Add product" help="Only products with a valid list price today can be added.">
+          <Field id="eo-add" label={P.addProduct} help={P.addProductHelp}>
             <SelectMenu
               id="eo-add"
               block
               searchable
-              label="Add product"
+              label={P.addProduct}
               value={adding}
-              placeholder={products.data ? (addable.length ? 'Choose a product…' : 'No other priced products') : 'Loading…'}
+              placeholder={products.data ? (addable.length ? P.chooseProduct : P.noProducts) : P.loading}
               disabled={!addable.length}
               options={addable.map((p) => ({ value: p.id, label: `${p.name} (${p.sku})` }))}
               onChange={(pid) => {
@@ -129,13 +134,13 @@ export function EditOrderPage() {
               }}
             />
           </Field>
-          <Field id="eo-freight" label="Freight (₹)">
+          <Field id="eo-freight" label={P.freight}>
             <input id="eo-freight" className="input" type="number" min={0} value={freight} onChange={(e) => setFreight(Math.max(0, Number(e.target.value)))} />
           </Field>
-          <Field id="eo-ins" label="Insurance (₹)">
+          <Field id="eo-ins" label={P.insurance}>
             <input id="eo-ins" className="input" type="number" min={0} value={insurance} onChange={(e) => setInsurance(Math.max(0, Number(e.target.value)))} />
           </Field>
-          <Field id="eo-note" label="Reason for the change" wide help="Shown to the approver when re-approval is needed.">
+          <Field id="eo-note" label={P.note} wide help={P.noteHelp}>
             <textarea id="eo-note" className="input textarea" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
         </div>

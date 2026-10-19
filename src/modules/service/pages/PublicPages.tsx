@@ -10,6 +10,11 @@ import { Button } from '../../../components/primitives/Button';
 import { ErrorState, InlineAlert, Skeleton } from '../../../components/primitives/feedback';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import '../service.css';
+import { L } from '../../../constants/labels';
+
+const S = L.service;
+const FB = S.pages.feedback;
+const PT = S.pages.portal;
 
 function PublicShell({ title, children }: { title: string; children: React.ReactNode }) {
   useEffect(() => {
@@ -24,11 +29,11 @@ function PublicShell({ title, children }: { title: string; children: React.React
           </span>
           <div>
             <h1 className="login-title">{title}</h1>
-            <p className="muted">{organization.name} · service</p>
+            <p className="muted">{S.pages.publicShell.subtitle(organization.name)}</p>
           </div>
         </div>
         {children}
-        <p className="muted small login-foot">Prototype · demo data only · nothing is sent.</p>
+        <p className="muted small login-foot">{S.pages.publicShell.foot}</p>
       </div>
     </main>
   );
@@ -53,13 +58,13 @@ export function FeedbackPage() {
       .then(setData)
       .catch((e) => setError(errorMessage(e)));
   };
-  useEffect(load, [token]);  
+  useEffect(load, [token]);
   const submit = async (resolved: boolean) => {
     setBusy(true);
     setError('');
     try {
       await publicApi.submitFeedback(token, { rating, comment, resolved });
-      setDone(resolved ? 'Thank you! Your confirmation and rating were recorded.' : 'Thank you. We have re-opened your complaint and an engineer will contact you.');
+      setDone(resolved ? FB.thanksResolved : FB.thanksReopened);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -67,22 +72,22 @@ export function FeedbackPage() {
     }
   };
   return (
-    <PublicShell title="Rate our service">
+    <PublicShell title={L.nav.pages.feedback.title}>
       {error && !data ? (
-        <ErrorState title="Could not open the feedback form" onRetry={load}>
+        <ErrorState title={FB.loadError} onRetry={load}>
           {error}
         </ErrorState>
       ) : data === undefined ? (
         <Skeleton rows={4} />
       ) : data === null ? (
-        <ErrorState title="Link not valid">This feedback link is not valid. Please contact True Colors service.</ErrorState>
+        <ErrorState title={FB.invalidTitle}>{FB.invalidBody}</ErrorState>
       ) : done ? (
-        <InlineAlert tone="success" title="Feedback received">
+        <InlineAlert tone="success" title={FB.received}>
           {done}
         </InlineAlert>
       ) : !data.canRespond ? (
-        <InlineAlert tone="info" title={data.rating ? 'Feedback already received' : 'Not ready for feedback'}>
-          {data.rating ? `You rated ticket ${data.id} ${data.rating}/5. Thank you!` : `Ticket ${data.id} is still being worked on.`}
+        <InlineAlert tone="info" title={data.rating ? FB.alreadyReceived : FB.notReady}>
+          {data.rating ? FB.alreadyRated(data.id, data.rating) : FB.stillOpen(data.id)}
         </InlineAlert>
       ) : (
         <div className="form-grid">
@@ -90,13 +95,13 @@ export function FeedbackPage() {
             <strong>{data.id}</strong> · {data.customer}
             {data.machine ? ` · ${data.machine}` : ''}
           </p>
-          <p className="muted small">Your complaint: {data.description}</p>
-          {data.resolution && <p className="small">Work done: {data.resolution}</p>}
+          <p className="muted small">{FB.yourComplaint(data.description)}</p>
+          {data.resolution && <p className="small">{FB.workDone(data.resolution)}</p>}
           <fieldset className="form-field">
             <legend className="field-label">
-              How satisfied are you? <span className="req">*</span>
+              {FB.howSatisfied} <span className="req">*</span>
             </legend>
-            <div className="svc-stars" role="radiogroup" aria-label="Rating 1 to 5">
+            <div className="svc-stars" role="radiogroup" aria-label={FB.ratingAria}>
               {[1, 2, 3, 4, 5].map((n) => (
                 <button key={n} type="button" role="radio" aria-checked={rating === n} className={rating >= n ? 'is-on' : ''} onClick={() => setRating(n)}>
                   {n}
@@ -106,7 +111,7 @@ export function FeedbackPage() {
           </fieldset>
           <div className="form-field">
             <label className="field-label" htmlFor="fb-comment">
-              Comments
+              {FB.comments}
             </label>
             <textarea id="fb-comment" className="input textarea" rows={3} maxLength={1000} value={comment} onChange={(e) => setComment(e.target.value)} />
           </div>
@@ -115,11 +120,11 @@ export function FeedbackPage() {
               {error}
             </p>
           )}
-          <Button variant="primary" size="default" loading={busy} disabledReason={rating ? undefined : 'Choose a rating'} onClick={() => submit(true)}>
-            Yes, it’s fixed — submit
+          <Button variant="primary" size="default" loading={busy} disabledReason={rating ? undefined : FB.chooseRating} onClick={() => submit(true)}>
+            {S.actions.submitFixed}
           </Button>
-          <Button size="default" disabledReason={rating ? undefined : 'Choose a rating'} onClick={() => submit(false)}>
-            No, the problem is not resolved
+          <Button size="default" disabledReason={rating ? undefined : FB.chooseRating} onClick={() => submit(false)}>
+            {S.actions.submitNotResolved}
           </Button>
         </div>
       )}
@@ -127,7 +132,7 @@ export function FeedbackPage() {
   );
 }
 
-/** FR-075 customer portal (public): identify by mobile or machine serial, then log a complaint. */
+/** Customer Portal – Log Ticket (FR-075, SRV-01, public): identify by mobile or machine serial, then log a service ticket. */
 export function PortalPage() {
   const [query, setQuery] = useState('');
   const [match, setMatch] = useState<PortalMatch | null>(null);
@@ -143,7 +148,7 @@ export function PortalPage() {
     setErrors({});
     try {
       const m = await publicApi.identify(query);
-      if (!m) setErrors({ query: 'We could not find this mobile number or serial number. Please call our service desk.' });
+      if (!m) setErrors({ query: PT.notFound });
       setMatch(m);
       setMachineId(m?.machines[0]?.id ?? '');
     } catch (e) {
@@ -167,10 +172,10 @@ export function PortalPage() {
     }
   };
   return (
-    <PublicShell title="Report a problem">
+    <PublicShell title={L.nav.pages.portalLogTicket.title}>
       {created ? (
-        <InlineAlert tone="success" title={`Complaint ${created} logged`}>
-          We have sent you a WhatsApp confirmation. Our engineer will contact you shortly.
+        <InlineAlert tone="success" title={PT.loggedTitle(created)}>
+          {PT.loggedBody}
         </InlineAlert>
       ) : !match ? (
         <form
@@ -182,51 +187,51 @@ export function PortalPage() {
         >
           <div className="form-field">
             <label className="field-label" htmlFor="pt-q">
-              Registered mobile number or machine serial number <span className="req">*</span>
+              {PT.identify} <span className="req">*</span>
             </label>
             <input id="pt-q" className="input" value={query} onChange={(e) => setQuery(e.target.value)} aria-invalid={!!errors.query || undefined} autoFocus />
             {errors.query && <p className="field-error">{errors.query}</p>}
           </div>
           {errors.form && <p className="field-error">{errors.form}</p>}
-          <Button type="submit" variant="primary" size="default" loading={busy} disabledReason={query.trim().length < 4 ? 'Enter your mobile or serial number' : undefined}>
-            Continue
+          <Button type="submit" variant="primary" size="default" loading={busy} disabledReason={query.trim().length < 4 ? PT.enterQuery : undefined}>
+            {S.actions.continue}
           </Button>
         </form>
       ) : (
         <div className="form-grid">
           <p>
-            Welcome, <strong>{match.customerName}</strong>
+            {PT.welcome} <strong>{match.customerName}</strong>
           </p>
           {match.machines.length > 0 && (
             <div className="form-field">
               <label className="field-label" htmlFor="pt-m">
-                Machine
+                {PT.machine}
               </label>
-              <SelectMenu id="pt-m" block label="Machine" value={machineId} options={[...match.machines.map((m) => ({ value: m.id, label: `${m.serialNo} · ${m.model}` })), { value: '', label: 'Not about a machine (ink, paper, fabric)' }]} onChange={setMachineId} />
+              <SelectMenu id="pt-m" block label={PT.machine} value={machineId} options={[...match.machines.map((m) => ({ value: m.id, label: `${m.serialNo} · ${m.model}` })), { value: '', label: PT.noMachine }]} onChange={setMachineId} />
             </div>
           )}
           <div className="form-field">
             <label className="field-label" htmlFor="pt-c">
-              What is the problem about?
+              {PT.category}
             </label>
-            <SelectMenu id="pt-c" block label="Category" value={category} options={activeMasterValues('complaintCategory').map((v) => ({ value: v.key, label: v.label }))} onChange={setCategory} />
+            <SelectMenu id="pt-c" block label={PT.category} value={category} options={activeMasterValues('complaintCategory').map((v) => ({ value: v.key, label: v.label }))} onChange={setCategory} />
           </div>
           <label className="row-gap">
-            <input type="checkbox" checked={down} onChange={(e) => setDown(e.target.checked)} /> The machine is down / production has stopped
+            <input type="checkbox" checked={down} onChange={(e) => setDown(e.target.checked)} /> {PT.down}
           </label>
           <div className="form-field">
             <label className="field-label" htmlFor="pt-d">
-              Describe the problem <span className="req">*</span>
+              {PT.describe} <span className="req">*</span>
             </label>
             <textarea id="pt-d" className="input textarea" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={!!errors.description || undefined} />
             {errors.description && <p className="field-error">{errors.description}</p>}
           </div>
           {errors.form && !errors.description && <p className="field-error">{errors.form}</p>}
           <Button variant="primary" size="default" loading={busy} onClick={submit}>
-            Submit complaint
+            {S.actions.submitTicket}
           </Button>
           <Button variant="ghost" onClick={() => setMatch(null)}>
-            Not you? Start again
+            {S.actions.startAgain}
           </Button>
         </div>
       )}

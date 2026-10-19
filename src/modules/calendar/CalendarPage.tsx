@@ -8,6 +8,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import rrulePlugin from '@fullcalendar/rrule';
 import type { DateSelectArg, DatesSetArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core';
 import type { EventResizeDoneArg } from '@fullcalendar/interaction';
+import { L } from '../../constants/labels';
 import { istNow } from '../../lib/clock';
 import { addDays, formatDate, formatDateTime, formatTime } from '../../lib/dates';
 import { cx } from '../../lib/format';
@@ -31,14 +32,10 @@ import { MiniMonth } from './MiniMonth';
 import './calendar.css';
 
 type ViewId = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'agenda';
-const VIEWS: { id: ViewId; label: string }[] = [
-  { id: 'dayGridMonth', label: 'Month' },
-  { id: 'timeGridWeek', label: 'Week' },
-  { id: 'timeGridDay', label: 'Day' },
-  { id: 'agenda', label: 'Agenda' },
-];
+const C = L.calendar;
+const VIEWS: { id: ViewId; label: string }[] = (['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'agenda'] as const).map((id) => ({ id, label: C.page.views[id] }));
 const STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
-const SOURCE_LABEL: Record<string, string> = { tasks: 'Tasks', demos: 'Demos', pmVisits: 'PM schedule', installations: 'Installation jobs', leads: 'Leads', opportunities: 'Opportunities' };
+const SOURCE_LABEL: Record<string, string> = C.sources;
 const FREQ = { daily: 'daily', weekly: 'weekly', monthly: 'monthly' } as const;
 
 /** With a named time zone and no zone plugin, FullCalendar Dates are "UTC-coerced": their UTC fields are the IST wall clock. */
@@ -68,7 +65,7 @@ function toFc(i: CalItem): EventInput {
 }
 
 type Prompt =
-  | { kind: 'scope'; title: string; verb: string; resolve: (v: 'this' | 'all' | null) => void }
+  | { kind: 'scope'; title: string; verb: 'move' | 'edit' | 'delete'; resolve: (v: 'this' | 'all' | null) => void }
   | { kind: 'overlap'; lines: string[]; resolve: (keep: boolean) => void };
 
 /**
@@ -152,14 +149,14 @@ export function CalendarPage() {
     const oldStart = wall(info.oldEvent.start, info.oldEvent.allDay);
     const oldEnd = info.oldEvent.end ? wall(info.oldEvent.end, info.oldEvent.allDay) : oldStart;
     let scope: 'this' | 'all' | null = 'all';
-    if (item.recurrence !== 'none') scope = await ask<'this' | 'all' | null>((resolve) => ({ kind: 'scope', title: 'Reschedule recurring event', verb: 'Move', resolve }));
+    if (item.recurrence !== 'none') scope = await ask<'this' | 'all' | null>((resolve) => ({ kind: 'scope', title: C.dialogs.rescheduleTitle, verb: 'move', resolve }));
     if (!scope) return info.revert();
     if (!(await overlapOk({ id: item.id, ...next, assigneeId: item.assigneeId }, scope === 'this' ? item.id : undefined))) return info.revert();
     try {
       if (item.recurrence === 'none') await calendarService.move(actor, item.recordId, next, item.version);
       else if (scope === 'all') await calendarService.shiftSeries(actor, item.recordId, { start: oldStart, end: info.oldEvent.allDay ? addDays(oldEnd, -1) : oldEnd }, next, item.version);
       else await calendarService.updateOccurrence(actor, item.recordId, oldStart, next, item.version);
-      toast(`${item.title}: ${allDay ? formatDate(start) : `${formatDateTime(start)}–${formatTime(end)}`}${scope === 'this' && item.recurrence !== 'none' ? ' (this occurrence)' : ''}`);
+      toast(C.toasts.moved(item.title, allDay ? formatDate(start) : `${formatDateTime(start)}–${formatTime(end)}`, scope === 'this' && item.recurrence !== 'none'));
     } catch (e) {
       info.revert();
       toast(errorMessage(e), 'danger');
@@ -194,7 +191,7 @@ export function CalendarPage() {
     const { item, start, end } = detail;
     setDetail(null);
     if (item.recurrence === 'none') return setDialog({ kind: 'edit', item, scope: 'all' });
-    const scope = await ask<'this' | 'all' | null>((resolve) => ({ kind: 'scope', title: 'Edit recurring event', verb: 'Edit', resolve }));
+    const scope = await ask<'this' | 'all' | null>((resolve) => ({ kind: 'scope', title: C.dialogs.editTitle, verb: 'edit', resolve }));
     if (scope) setDialog({ kind: 'edit', item, scope, occurrence: { start, end } });
   };
 
@@ -203,24 +200,24 @@ export function CalendarPage() {
     const { item, start } = detail;
     setDetail(null);
     if (item.recurrence !== 'none') {
-      const scope = await ask<'this' | 'all' | null>((resolve) => ({ kind: 'scope', title: 'Delete recurring event', verb: 'Delete', resolve }));
+      const scope = await ask<'this' | 'all' | null>((resolve) => ({ kind: 'scope', title: C.dialogs.deleteTitle, verb: 'delete', resolve }));
       if (!scope) return;
       try {
         if (scope === 'this') await calendarService.deleteOccurrence(actor, item.recordId, start, item.version);
         else await calendarService.remove(actor, item.recordId);
-        toast(scope === 'this' ? 'This occurrence was removed' : 'The whole series moved to the recycle bin');
+        toast(scope === 'this' ? C.toasts.occurrenceRemoved : C.toasts.seriesDeleted);
       } catch (e) {
         toast(errorMessage(e), 'danger');
       }
       return;
     }
     confirmDelete({
-      title: `Delete “${item.title}”?`,
-      message: 'The event moves to the recycle bin; an administrator can restore it. Linked records are not changed.',
+      title: C.dialogs.deleteConfirmTitle(item.title),
+      message: C.dialogs.deleteConfirmMessage,
       onConfirm: async () => {
         try {
           await calendarService.remove(actor, item.recordId);
-          toast('Event deleted');
+          toast(C.toasts.deleted);
         } catch (e) {
           toast(errorMessage(e), 'danger');
         }
@@ -228,12 +225,12 @@ export function CalendarPage() {
     });
   };
 
-  const header = <PageHeader title="Calendar" description="Your meetings, demos, visits, calls and service work. Drag to reschedule, drag across empty slots to create. India Standard Time; weeks start on Monday." />;
+  const header = <PageHeader title={L.nav.pages.calendar.title} description={C.page.description} />;
   if (query.error)
     return (
       <div className="page">
         {header}
-        <ErrorState title="Could not load the calendar" onRetry={query.retry}>
+        <ErrorState title={C.page.loadError} onRetry={query.retry}>
           {query.error}
         </ErrorState>
       </div>
@@ -245,13 +242,13 @@ export function CalendarPage() {
       {header}
       <div className={cx('cal-layout', !sideOpen && 'is-side-closed')}>
         {sideOpen && (
-          <aside className="cal-side panel" aria-label="Calendar filters">
-            <Button variant="primary" size="default" icon="plus" className="cal-create" onClick={() => setDialog({ kind: 'create', start: `${cursor < today ? today : cursor}T10:00`, end: `${cursor < today ? today : cursor}T11:00`, allDay: false })} disabledReason={canCreate ? undefined : `${actor.role.label} cannot create calendar events`}>
-              Create
+          <aside className="cal-side panel" aria-label={C.page.filters}>
+            <Button variant="primary" size="default" icon="plus" className="cal-create" onClick={() => setDialog({ kind: 'create', start: `${cursor < today ? today : cursor}T10:00`, end: `${cursor < today ? today : cursor}T11:00`, allDay: false })} disabledReason={canCreate ? undefined : C.page.cannotCreate(actor.role.label)}>
+              {C.page.create}
             </Button>
             <MiniMonth selected={cursor} today={today} marked={marked} onPick={(d) => api()?.gotoDate(d)} />
             <section className="cal-filter">
-              <h3 className="cal-filter-title">Event types</h3>
+              <h3 className="cal-filter-title">{C.page.eventTypes}</h3>
               <ul className="cal-legend">
                 {typeValues.map((t) => (
                   <li key={t.key}>
@@ -274,11 +271,11 @@ export function CalendarPage() {
               </ul>
             </section>
             <section className="cal-filter">
-              <h3 className="cal-filter-title">Assigned to</h3>
-              <SelectMenu block searchable label="Assigned to" value={person} options={[{ value: 'all', label: 'Everyone I can see' }, { value: 'me', label: 'Only me' }, ...people]} onChange={setPerson} />
+              <h3 className="cal-filter-title">{C.page.assignedUser}</h3>
+              <SelectMenu block searchable label={C.page.assignedUser} value={person} options={[{ value: 'all', label: C.page.everyone }, { value: 'me', label: C.page.onlyMe }, ...people]} onChange={setPerson} />
             </section>
             <section className="cal-filter">
-              <h3 className="cal-filter-title">Status</h3>
+              <h3 className="cal-filter-title">{C.page.status}</h3>
               <ul className="cal-legend">
                 {STATUSES.map((st) => (
                   <li key={st}>
@@ -300,18 +297,18 @@ export function CalendarPage() {
               </ul>
               <label className="cal-check">
                 <input type="checkbox" checked={withModules} onChange={(e) => setWithModules(e.target.checked)} />
-                Tasks, demos, PM &amp; follow-ups
+                {C.page.withModules}
               </label>
             </section>
           </aside>
         )}
 
-        <section className="cal-main panel" aria-label="Calendar">
+        <section className="cal-main panel" aria-label={C.page.region}>
           <div className="cal-toolbar">
-            <IconButton icon="panel-left" label={sideOpen ? 'Hide calendar panel' : 'Show calendar panel'} aria-pressed={sideOpen} onClick={() => setSideOpen((o) => !o)} />
-            <Button onClick={() => go('today')}>Today</Button>
-            <IconButton icon="chevron-left" label="Previous" onClick={() => go('prev')} />
-            <IconButton icon="chevron-right" label="Next" onClick={() => go('next')} />
+            <IconButton icon="panel-left" label={sideOpen ? C.page.hidePanel : C.page.showPanel} aria-pressed={sideOpen} onClick={() => setSideOpen((o) => !o)} />
+            <Button onClick={() => go('today')}>{C.page.today}</Button>
+            <IconButton icon="chevron-left" label={C.page.previous} onClick={() => go('prev')} />
+            <IconButton icon="chevron-right" label={C.page.next} onClick={() => go('next')} />
             <h2 className="cal-title" aria-live="polite">
               {title}
             </h2>
@@ -319,13 +316,13 @@ export function CalendarPage() {
             {!sideOpen && (
               <Button
                 icon="plus"
-                aria-label="Create event"
+                aria-label={C.page.createEvent}
                 variant="primary"
                 onClick={() => setDialog({ kind: 'create', start: `${cursor < today ? today : cursor}T10:00`, end: `${cursor < today ? today : cursor}T11:00`, allDay: false })}
-                disabledReason={canCreate ? undefined : `${actor.role.label} cannot create calendar events`}
+                disabledReason={canCreate ? undefined : C.page.cannotCreate(actor.role.label)}
               />
             )}
-            <div className="segmented" role="radiogroup" aria-label="Calendar view">
+            <div className="segmented" role="radiogroup" aria-label={C.page.viewGroup}>
               {VIEWS.map((v) => (
                 <button key={v.id} type="button" role="radio" aria-checked={view === v.id} className={cx('seg-btn', view === v.id && 'is-on')} onClick={() => changeView(v.id)}>
                   {v.label}
@@ -363,7 +360,7 @@ export function CalendarPage() {
                   setCursor(d.view.type === 'dayGridMonth' || d.view.type === 'agenda' ? (wall(d.view.currentStart, true) <= today && today < wall(d.view.currentEnd, true) ? today : wall(d.view.currentStart, true)) : wall(mid, true));
                 }}
                 dayMaxEvents={3}
-                moreLinkText={(n) => `+${n} more`}
+                moreLinkText={(n) => C.page.more(n)}
                 nowIndicator
                 businessHours={{ daysOfWeek: [1, 2, 3, 4, 5, 6], startTime: '09:00', endTime: '18:00' }}
                 slotMinTime="07:00:00"
@@ -371,7 +368,7 @@ export function CalendarPage() {
                 scrollTime="08:30:00"
                 slotDuration="00:30:00"
                 slotEventOverlap={false}
-                allDayText="All day"
+                allDayText={C.page.allDay}
                 eventTimeFormat={clock12}
                 slotLabelFormat={clock12}
                 eventMinHeight={22}
@@ -381,7 +378,7 @@ export function CalendarPage() {
                   timeGridWeek: { dayHeaderFormat: { weekday: 'short', day: 'numeric' } },
                   timeGridDay: { dayHeaderFormat: { weekday: 'long', day: 'numeric', month: 'long' } },
                   // Agenda: like Google's Schedule — from the shown day, four weeks, grouped by date.
-                  agenda: { type: 'list', duration: { weeks: 4 }, dateAlignment: 'day', listDayFormat: { weekday: 'long', day: 'numeric', month: 'short' }, listDaySideFormat: false, noEventsContent: 'Nothing scheduled in these four weeks.' },
+                  agenda: { type: 'list', duration: { weeks: 4 }, dateAlignment: 'day', listDayFormat: { weekday: 'long', day: 'numeric', month: 'short' }, listDaySideFormat: false, noEventsContent: C.page.agendaEmpty },
                 }}
                 eventDidMount={(arg) => {
                   // The drag/selection mirror has no item; only real events get the full-text tooltip.
@@ -405,37 +402,37 @@ export function CalendarPage() {
           open
           size="sm"
           title={prompt.title}
-          description="This event repeats. Change only the one you picked, or every event in the series?"
+          description={C.dialogs.scopeDescription}
           onClose={() => (prompt.resolve(null), setPrompt(null))}
           footer={
             <>
               <Button onClick={() => (prompt.resolve(null), setPrompt(null))} data-autofocus>
-                Cancel
+                {C.dialogs.cancel}
               </Button>
-              <Button onClick={() => (prompt.resolve('this'), setPrompt(null))}>{prompt.verb} this event</Button>
-              <Button variant={prompt.verb === 'Delete' ? 'danger' : 'primary'} onClick={() => (prompt.resolve('all'), setPrompt(null))}>
-                {prompt.verb} all events
+              <Button onClick={() => (prompt.resolve('this'), setPrompt(null))}>{C.dialogs.thisEvent(C.dialogs.verbs[prompt.verb])}</Button>
+              <Button variant={prompt.verb === 'delete' ? 'danger' : 'primary'} onClick={() => (prompt.resolve('all'), setPrompt(null))}>
+                {C.dialogs.allEvents(C.dialogs.verbs[prompt.verb])}
               </Button>
             </>
           }
         >
-          <p className="muted">“All events” changes the whole series. “This event” changes only the occurrence you picked.</p>
+          <p className="muted">{C.dialogs.scopeHelp}</p>
         </Dialog>
       )}
       {prompt?.kind === 'overlap' && (
         <Dialog
           open
           size="sm"
-          title="This overlaps another event"
-          description="The same person is already booked at that time."
+          title={C.dialogs.overlapTitle}
+          description={C.dialogs.overlapDescription}
           onClose={() => (prompt.resolve(false), setPrompt(null))}
           footer={
             <>
               <Button onClick={() => (prompt.resolve(false), setPrompt(null))} data-autofocus>
-                Undo move
+                {C.dialogs.undoMove}
               </Button>
               <Button variant="primary" onClick={() => (prompt.resolve(true), setPrompt(null))}>
-                Keep anyway
+                {C.dialogs.keepAnyway}
               </Button>
             </>
           }
@@ -465,31 +462,31 @@ function EventDetail({ detail, onEdit, onDelete }: { detail: { item: CalItem; st
       </div>
       <dl className="detail-list">
         <div className="detail-row">
-          <dt>When</dt>
+          <dt>{C.detail.when}</dt>
           <dd>
             {when}
-            {i.recurrence !== 'none' && <span className="muted small"> · repeats {masterLabel('calRecurrence', i.recurrence).toLowerCase()}{i.recurrenceUntil ? ` until ${formatDate(i.recurrenceUntil)}` : ''}</span>}
+            {i.recurrence !== 'none' && <span className="muted small">{C.detail.repeats(masterLabel('calRecurrence', i.recurrence), i.recurrenceUntil ? formatDate(i.recurrenceUntil) : undefined)}</span>}
           </dd>
         </div>
         <div className="detail-row">
-          <dt>Type</dt>
+          <dt>{C.detail.type}</dt>
           <dd>
             {type?.label ?? i.type} <StatusChip label={masterLabel('calEventStatus', i.status)} tone={i.status === 'completed' ? 'success' : i.status === 'cancelled' ? 'neutral' : 'info'} />
           </dd>
         </div>
         <div className="detail-row">
-          <dt>Assigned to</dt>
+          <dt>{C.detail.assignedUser}</dt>
           <dd>{recordTitle('employees', i.assigneeId, actor) || '—'}</dd>
         </div>
         {i.attendeeIds.length > 0 && (
           <div className="detail-row">
-            <dt>Attendees</dt>
+            <dt>{C.detail.attendees}</dt>
             <dd>{i.attendeeIds.map((a) => recordTitle('employees', a, actor)).join(', ')}</dd>
           </div>
         )}
         {(i.linkResource || i.source !== 'event') && (
           <div className="detail-row">
-            <dt>Linked record</dt>
+            <dt>{C.detail.linkedRecord}</dt>
             <dd>
               <Link className="rel-link" to={recordPeekPath(actor.workspaceId, i.source === 'event' ? i.linkResource! : i.source === 'leads' || i.source === 'opportunities' ? i.source : i.source, i.source === 'event' ? i.linkId! : i.recordId)}>
                 {i.source === 'event' ? i.linkLabel ?? i.linkId : `${SOURCE_LABEL[i.source]} · ${i.recordId}`}
@@ -499,28 +496,28 @@ function EventDetail({ detail, onEdit, onDelete }: { detail: { item: CalItem; st
         )}
         {i.location && (
           <div className="detail-row">
-            <dt>Where</dt>
+            <dt>{C.detail.where}</dt>
             <dd>{i.location}</dd>
           </div>
         )}
         {i.notes && (
           <div className="detail-row">
-            <dt>Notes</dt>
+            <dt>{C.detail.notes}</dt>
             <dd className="clamp-2">{i.notes}</dd>
           </div>
         )}
       </dl>
       {i.source === 'event' ? (
         <div className="cal-detail-actions">
-          <Button icon="trash" variant="ghost" onClick={onDelete} disabledReason={i.editable ? undefined : 'Only people who can edit this event can delete it'}>
-            Delete
+          <Button icon="trash" variant="ghost" onClick={onDelete} disabledReason={i.editable ? undefined : C.detail.cannotDelete}>
+            {C.detail.delete}
           </Button>
-          <Button icon="pencil" variant="primary" onClick={onEdit} disabledReason={i.editable ? undefined : 'You can view this event but not change it'}>
-            Edit
+          <Button icon="pencil" variant="primary" onClick={onEdit} disabledReason={i.editable ? undefined : C.detail.cannotEdit}>
+            {C.detail.edit}
           </Button>
         </div>
       ) : (
-        <p className="muted small">From {SOURCE_LABEL[i.source]} — open the record to reschedule it.</p>
+        <p className="muted small">{C.detail.fromModule(SOURCE_LABEL[i.source])}</p>
       )}
     </div>
   );

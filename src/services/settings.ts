@@ -1,6 +1,7 @@
 /** Settings Resolver: personal preferences (local-only) layered on platform constraints. */
 import { nowIso } from '../lib/clock';
 import type { Actor } from './authz';
+import { L } from '../constants/labels';
 import { commit, defaultSettings, getDb } from './db';
 import type { PersonalSettings } from './types';
 
@@ -44,7 +45,7 @@ export function toggleFavorite(actor: Actor, entry: { label: string; path: strin
 export function saveCustomPalette(actor: Actor, p: { id?: string; name: string; accent: string; sidebar: string; rail: string }) {
   const s = getSettings(actor.user.id);
   const id = p.id ?? `custom-${Date.now().toString(36)}`;
-  const entry = { id, name: p.name.trim() || 'My palette', accent: p.accent, sidebar: p.sidebar, rail: p.rail, custom: true };
+  const entry = { id, name: p.name.trim() || L.common.theme.defaultName, accent: p.accent, sidebar: p.sidebar, rail: p.rail, custom: true };
   const exists = s.customPalettes.some((x) => x.id === id);
   updateSettings(actor.user.id, { customPalettes: exists ? s.customPalettes.map((x) => (x.id === id ? entry : x)) : [...s.customPalettes, entry], palette: id });
   return id;
@@ -53,6 +54,13 @@ export function saveCustomPalette(actor: Actor, p: { id?: string; name: string; 
 export function deleteCustomPalette(actor: Actor, id: string) {
   const s = getSettings(actor.user.id);
   updateSettings(actor.user.id, { customPalettes: s.customPalettes.filter((x) => x.id !== id), palette: s.palette === id ? 'violet' : s.palette });
+}
+
+/** First-login walkthrough (COM-12): shown once per user until finished or skipped; Help can reopen it. */
+export const tourPending = (userId: string) => !getSettings(userId).tourSeenAt;
+export function markTourSeen(userId: string) {
+  if (getSettings(userId).tourSeenAt) return;
+  updateSettings(userId, { tourSeenAt: nowIso() });
 }
 
 /** Role switcher: becomes another demo user without the sign-in screen (still audited). */

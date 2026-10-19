@@ -4,6 +4,7 @@
  */
 import type { RecordData } from '../../metadata/types';
 import { normaliseMobile } from '../../lib/validators';
+import { L } from '../../constants/labels';
 
 export const FUZZY_THRESHOLD = 0.85;
 
@@ -104,7 +105,7 @@ export function findDuplicateGroups(customers: RecordData[], contacts: RecordDat
     const g = norm.gstin(c.gstin);
     if (g) byGstin.set(g, [...(byGstin.get(g) ?? []), c.id]);
   });
-  byGstin.forEach((ids, g) => ids.length > 1 && groups.push({ kind: 'gstin', reason: `Same GSTIN ${g}`, ids }));
+  byGstin.forEach((ids, g) => ids.length > 1 && groups.push({ kind: 'gstin', reason: L.customers.duplicates.reasons.gstin(g), ids }));
   const seen = new Set<string>();
   for (let i = 0; i < customers.length; i++) {
     for (let j = i + 1; j < customers.length; j++) {
@@ -114,7 +115,7 @@ export function findDuplicateGroups(customers: RecordData[], contacts: RecordDat
       const key = [a.id, b.id].sort().join('|');
       if (score >= FUZZY_THRESHOLD && !seen.has(key) && !(norm.gstin(a.gstin) && norm.gstin(a.gstin) === norm.gstin(b.gstin))) {
         seen.add(key);
-        groups.push({ kind: 'name', reason: `Similar names (${Math.round(score * 100)}%)`, ids: [a.id, b.id], score });
+        groups.push({ kind: 'name', reason: L.customers.duplicates.reasons.name(Math.round(score * 100)), ids: [a.id, b.id], score });
       }
     }
   }
@@ -123,6 +124,6 @@ export function findDuplicateGroups(customers: RecordData[], contacts: RecordDat
     const m = norm.mobile(c.mobile);
     if (m) byPhone.set(m, [...(byPhone.get(m) ?? []), c.id]);
   });
-  byPhone.forEach((ids, m) => ids.length > 1 && groups.push({ kind: 'contact', reason: `Contacts share mobile ${m}`, ids }));
+  byPhone.forEach((ids, m) => ids.length > 1 && groups.push({ kind: 'contact', reason: L.customers.duplicates.reasons.contact(m), ids }));
   return groups;
 }

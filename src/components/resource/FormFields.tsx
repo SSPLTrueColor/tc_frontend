@@ -22,6 +22,7 @@ import { Button, IconButton } from '../primitives/Button';
 import { Menu, type MenuItem } from '../primitives/overlay';
 import { Icon } from '../primitives/Icon';
 import { FieldValue } from './FieldValue';
+import { L } from '../../constants/labels';
 
 type Values = Record<string, unknown>;
 
@@ -96,7 +97,7 @@ export function FieldInput({
         <label className="switch">
           <input id={id} type="checkbox" role="switch" checked={!!value} onChange={(e) => onChange(e.target.checked)} aria-describedby={describedBy} />
           <span className="switch-track" aria-hidden="true" />
-          <span>{value ? 'Yes' : 'No'}</span>
+          <span>{value ? L.common.actions.yes : L.common.actions.no}</span>
         </label>
       );
     case 'master': {
@@ -113,9 +114,9 @@ export function FieldInput({
           invalid={invalid}
           describedBy={describedBy}
           disabled={field.masterParentField ? !parent : undefined}
-          placeholder={field.masterParentField && !parent ? 'Choose the parent value first' : 'Select…'}
+          placeholder={field.masterParentField && !parent ? L.common.form.chooseParentFirst : L.common.form.select}
           options={[
-            ...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: 'None' }] : []),
+            ...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []),
             ...(current && !current.active ? [{ value: current.key, label: `${current.label} (inactive)` }] : []),
             ...opts.map((o) => ({ value: o.key, label: o.label })),
           ]}
@@ -164,8 +165,8 @@ export function FieldInput({
           invalid={invalid}
           describedBy={describedBy}
           disabled={!!dependent || !opts.length}
-          placeholder={dependent ? 'Choose the related record first' : opts.length ? 'Select…' : 'No options available'}
-          options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: 'None' }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
+          placeholder={dependent ? L.common.form.chooseRelatedFirst : opts.length ? L.common.form.select : L.common.form.noOptions}
+          options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
           onChange={(v) => onChange(v || null)}
         />
       );
@@ -231,10 +232,10 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
                 </th>
               ))}
               <th scope="col" className="num">
-                Amount
+                {L.common.form.amount}
               </th>
               <th scope="col">
-                <span className="sr-only">Row actions</span>
+                <span className="sr-only">{L.common.form.rowActions}</span>
               </th>
             </tr>
           </thead>
@@ -243,18 +244,18 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
               <tr key={i}>
                 {cols.map((c) => (
                   <td key={c.key}>
-                    <LineCell col={c} value={row[c.key]} onChange={(v) => set(i, c.key, v)} label={`Row ${i + 1} ${c.label}`} />
+                    <LineCell col={c} value={row[c.key]} onChange={(v) => set(i, c.key, v)} label={L.common.form.rowLabel(i + 1, c.label)} />
                   </td>
                 ))}
                 <td className="num">{formatMoney((Number(row.qty) || 0) * (Number(row.unitPrice) || 0))}</td>
                 <td className="li-actions">
                   {/* one ⋯ menu per row (Move up / Move down / Remove) instead of three icons */}
                   <RowMenu
-                    label={`Row ${i + 1}`}
+                    label={L.common.form.row(i + 1)}
                     items={[
-                      { id: 'up', label: 'Move up', icon: 'arrow-up', onSelect: () => move(i, -1), disabledReason: i === 0 ? 'Already first' : undefined },
-                      { id: 'down', label: 'Move down', icon: 'arrow-down', onSelect: () => move(i, 1), disabledReason: i === value.length - 1 ? 'Already last' : undefined },
-                      { id: 'rm', label: 'Remove line', icon: 'trash', danger: true, separatorBefore: true, onSelect: () => onChange(value.filter((_, j) => j !== i)) },
+                      { id: 'up', label: L.common.form.moveUpRow, icon: 'arrow-up', onSelect: () => move(i, -1), disabledReason: i === 0 ? L.common.form.alreadyFirst : undefined },
+                      { id: 'down', label: L.common.form.moveDownRow, icon: 'arrow-down', onSelect: () => move(i, 1), disabledReason: i === value.length - 1 ? L.common.form.alreadyLast : undefined },
+                      { id: 'rm', label: L.common.form.removeLine, icon: 'trash', danger: true, separatorBefore: true, onSelect: () => onChange(value.filter((_, j) => j !== i)) },
                     ]}
                   />
                 </td>
@@ -263,7 +264,7 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
             {!value.length && (
               <tr>
                 <td colSpan={cols.length + 2} className="muted li-empty">
-                  No line items yet.
+                  {L.common.form.noLineItems}
                 </td>
               </tr>
             )}
@@ -272,7 +273,7 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
             <tr>
               <td colSpan={cols.length}>
                 <Button icon="plus" onClick={() => onChange([...value, { serviceCode: '', description: '', qty: 1, unitPrice: 0 }])}>
-                  Add line
+                  {L.common.form.addLine}
                 </Button>
               </td>
               <td className="num li-total">{formatMoney(totalCents / 100)}</td>
@@ -304,7 +305,7 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
       />
     );
   }
-  return <input className="input input-compact" aria-label={label} placeholder={col.key === 'description' ? 'Optional description' : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+  return <input className="input input-compact" aria-label={label} placeholder={col.key === 'description' ? L.common.form.optionalDescription : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
 }
 
 function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
@@ -353,7 +354,7 @@ export function FormField({
               <Icon name="lock" size={12} /> Masked
             </span>
           )}
-          {access === 'view' && !field.computed && !field.readOnly && !field.system && <span className="field-flag">Read-only for your role</span>}
+          {access === 'view' && !field.computed && !field.readOnly && !field.system && <span className="field-flag">{L.common.form.readOnlyFlag}</span>}
         </span>
         <div className="field-readonly">
           <FieldValue field={field} value={record ? record[field.key] : values[field.key]} access={access} actor={actor} />
@@ -369,7 +370,7 @@ export function FormField({
           {field.label}
           {required ? <span className="req"> *</span> : <span className="optional"> (optional)</span>}
         </label>
-        {field.help && <InfoTip text={field.help} label={`About ${field.label}`} />}
+        {field.help && <InfoTip text={field.help} label={L.common.form.about(field.label)} />}
       </span>
       <FieldInput
         field={field}
@@ -477,7 +478,7 @@ export function ErrorSummary({ errors, res, message }: { errors: Record<string, 
   return (
     <div className="error-summary" role="alert" tabIndex={-1} data-error-summary>
       <strong>
-        <Icon name="alert" size={14} /> {message ?? 'Please fix the following:'}
+        <Icon name="alert" size={14} /> {message ?? L.common.form.fixFollowing}
       </strong>
       {keys.length > 0 && (
         <ul>
@@ -522,11 +523,11 @@ function ImageInput({ id, label, value, onChange, describedBy }: { id: string; l
             reader.readAsDataURL(file);
           }}
         />
-        {value ? 'Replace' : 'Upload'}
+        {value ? L.common.actions.replace : L.common.actions.upload}
       </label>
       {value && (
         <button type="button" className="multi-clear" onClick={() => onChange(null)}>
-          Remove
+          {L.common.actions.remove}
         </button>
       )}
     </span>

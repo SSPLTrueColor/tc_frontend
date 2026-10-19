@@ -3,6 +3,7 @@ import { cx } from '../../lib/format';
 import { Icon } from './Icon';
 import { OverflowChips } from './OverflowChips';
 import { Popover } from './overlay';
+import { L } from '../../constants/labels';
 
 export interface MultiOption {
   value: string;
@@ -22,7 +23,7 @@ export function MultiSelectMenu({
   onChange,
   label,
   id,
-  emptyLabel = 'Select…',
+  emptyLabel = L.common.pickers.select,
   block,
   invalid,
   describedBy,
@@ -123,8 +124,8 @@ export function MultiSelectMenu({
         <div className="multi-search">
           <Icon name="search" size={14} />
           <input
-            placeholder="Search…"
-            aria-label={`Search ${label}`}
+            placeholder={L.common.pickers.search}
+            aria-label={L.common.pickers.searchIn(label)}
             value={q}
             data-autofocus
             onChange={(e) => {
@@ -162,7 +163,7 @@ export function MultiSelectMenu({
                 {allState === 'all' && <Icon name="check" size={12} />}
                 {allState === 'some' && <span className="multi-dash" />}
               </span>
-              <span>{allState === 'all' ? 'Deselect all' : 'Select all'}</span>
+              <span>{allState === 'all' ? L.common.pickers.deselectAll : L.common.pickers.selectAll}</span>
             </li>
           )}
           {shown.length > 0 && <li className="multi-divider" role="presentation" />}
@@ -187,13 +188,13 @@ export function MultiSelectMenu({
               </li>
             );
           })}
-          {!shown.length && <li className="select-menu-empty muted">No matches</li>}
+          {!shown.length && <li className="select-menu-empty muted">{L.common.states.noMatches}</li>}
         </ul>
         {values.length > 0 && (
           <div className="multi-foot">
             <span className="muted">{values.length} selected</span>
             <button type="button" className="multi-clear" onClick={() => onChange([])}>
-              Clear all
+              {L.common.pickers.clearAll}
             </button>
           </div>
         )}

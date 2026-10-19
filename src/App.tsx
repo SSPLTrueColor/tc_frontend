@@ -11,7 +11,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { RecordPage, ResourcePage } from './pages/ResourcePage';
 import { FullPageFormPage, InboxPage } from './pages/WorkPages';
-import { AccessPage, AuditPage, EventsPage, SettingsPage, StudioPage } from './pages/AdminPages';
+import { AccessPage, AuditPage, MastersPage, SettingsPage } from './pages/AdminPages';
 import { OutboxPage } from './pages/DemoPages';
 import { moduleRoutes } from './modules/routes';
 import { LEGACY_REDIRECTS, ROUTES, keyOfSlug, slugOf } from './constants/routes';
@@ -43,7 +43,7 @@ function LegacyRedirect({ to }: { to: string }) {
 function RequireSession({ children }: { children: ReactNode }) {
   useRevision();
   const location = useLocation();
-  if (!isSignedIn()) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  if (!isSignedIn()) return <Navigate to={ROUTES.login} replace state={{ from: location.pathname + location.search }} />;
   return <>{children}</>;
 }
 
@@ -73,10 +73,9 @@ function Workspace() {
           <Route path="/" element={<Navigate to={ROUTES.dashboard} replace />} />
           <Route path={ROUTES.dashboard} element={<DashboardPage />} />
           <Route path={ROUTES.notifications} element={<InboxPage />} />
-          <Route path={ROUTES.masters} element={<StudioPage />} />
+          <Route path={ROUTES.masters} element={<MastersPage />} />
           <Route path={ROUTES.rolesPermissions} element={<AccessPage />} />
           <Route path={ROUTES.auditTrail} element={<AuditPage />} />
-          <Route path="/admin/event-trace" element={<EventsPage />} />
           <Route path={ROUTES.sentMessages} element={<OutboxPage />} />
           <Route path={ROUTES.demoSettings} element={<SettingsPage />} />
           {moduleRoutes

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { cx } from '../../lib/format';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { L } from '../../constants/labels';
 
 // ---------------------------------------------------------------- layer stack
 // Escape closes only the topmost layer (§1.5).
@@ -126,7 +127,7 @@ export function Dialog({ open, onClose, title, description, children, footer, si
           <IconButton icon="x" label="Close dialog" onClick={onClose} /> */}
         </header>
         <div className="dialog-body">{children}</div>
-        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>Cancel</Button>}</footer>
+        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>{L.common.actions.cancel}</Button>}</footer>
       </div>
     </div>,
     document.body,
@@ -173,7 +174,7 @@ export function ConfirmHost() {
       footer={
         <>
           <Button onClick={() => setCur(null)} data-autofocus>
-            Cancel
+            {L.common.actions.cancel}
           </Button>
           <Button
             variant="danger"
@@ -183,7 +184,7 @@ export function ConfirmHost() {
               c?.onConfirm();
             }}
           >
-            {cur?.confirmLabel ?? 'Delete'}
+            {cur?.confirmLabel ?? L.common.actions.delete}
           </Button>
         </>
       }
@@ -235,7 +236,7 @@ export function Drawer({
           <IconButton icon="x" label="Close panel" onClick={onClose} /> */}
         </header>
         <div className="drawer-body">{children}</div>
-        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>Cancel</Button>}</footer>
+        <footer className="dialog-footer">{footer ?? <Button onClick={onClose}>{L.common.actions.cancel}</Button>}</footer>
       </div>
     </div>,
     document.body,

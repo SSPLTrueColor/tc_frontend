@@ -1,5 +1,7 @@
 import { Fragment, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { L } from '../../constants/labels';
+import { recordPeekPath, resourcePath } from '../../lib/routes';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { addDays, formatDate, startOfWeek, todayKey } from '../../lib/dates';
 import { cx, formatMoney } from '../../lib/format';
@@ -9,45 +11,48 @@ import { can, perm } from '../../services/authz';
 import { downloadText } from '../../services/exporter';
 import { periodLabel, periodRange, periodStartFor } from '../../services/field/rules';
 import { useActor } from '../../services/hooks';
-import { masterLabel } from '../../services/registry';
+import { activeMasterValues, masterLabel } from '../../services/registry';
 import { Button, IconButton } from '../../components/primitives/Button';
 import { Badge, EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { InfoTip } from '../../components/primitives/InfoTip';
-import { Meter, metricValue, Stat } from './common';
+import { Meter, metricValue, PAGE_SIZE, Pager, SearchBox, Stat } from './common';
+
+const T = L.nav.pages;
 
 // ---------------------------------------------------------------- Payroll export (ATT-08)
 
 export function PayrollExportPage() {
+  const P = L.field.pages.payrollExport;
   const actor = useActor();
   const toast = useToast();
   const q = useServiceQuery(() => fieldApi.approvedClaims(actor), [actor.user.id]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  if (!can(actor, 'expense.export')) return <NoAccess what="the payroll export" />;
+  if (!can(actor, 'expense.export')) return <NoAccess what={P.noAccess} />;
   const rows = q.data ?? [];
   const chosen = rows.filter((r) => selected.has(r.id));
   const total = chosen.reduce((s, r) => s + Number(r.amount), 0);
   return (
     <div className="page">
-      <PageHeader title="Payroll export" description="Approved expense claims ready for payroll. Exporting downloads a CSV and marks the claims “Exported to payroll” (logged in the audit trail)." />
+      <PageHeader title={T.payrollExport.title} description={P.description} />
       <div className="toolbar">
         <span className="toolbar-count muted">
-          {selected.size} selected · {formatMoney(total)}
+          {P.selected(selected.size, formatMoney(total))}
         </span>
         <span className="spacer" />
         <Button
           variant="primary"
           icon="download"
           loading={busy}
-          disabledReason={!selected.size ? 'Select approved claims first' : undefined}
+          disabledReason={!selected.size ? P.selectFirst : undefined}
           onClick={async () => {
             setBusy(true);
             try {
               const csv = await fieldApi.exportClaims(actor, [...selected]);
-              downloadText(`payroll-expenses-${todayKey()}.csv`, csv);
-              toast(`${selected.size} claim(s) exported to payroll`);
+              downloadText(P.fileName(todayKey()), csv);
+              toast(P.exported(selected.size));
               setSelected(new Set());
             } catch (e) {
               toast(errorMessage(e), 'danger');
@@ -56,12 +61,12 @@ export function PayrollExportPage() {
             }
           }}
         >
-          Export to payroll
+          {L.field.actions.exportToPayroll}
         </Button>
       </div>
       <div className="content-surface">
         {q.error ? (
-          <ErrorState title="Could not load approved claims" onRetry={q.retry}>
+          <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
           </ErrorState>
         ) : !q.data ? (
@@ -72,14 +77,14 @@ export function PayrollExportPage() {
               <thead>
                 <tr>
                   <th scope="col">
-                    <input type="checkbox" aria-label="Select all" checked={selected.size === rows.length} onChange={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map((r) => r.id)))} />
+                    <input type="checkbox" aria-label={P.selectAll} checked={selected.size === rows.length} onChange={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map((r) => r.id)))} />
                   </th>
-                  <th scope="col">Claim</th>
-                  <th scope="col">Date</th>
-                  <th scope="col">Employee</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Km</th>
-                  <th scope="col">Amount</th>
+                  <th scope="col">{P.claim}</th>
+                  <th scope="col">{P.date}</th>
+                  <th scope="col">{P.user}</th>
+                  <th scope="col">{P.type}</th>
+                  <th scope="col">{P.km}</th>
+                  <th scope="col">{P.amount}</th>
                 </tr>
               </thead>
               <tbody>
@@ -88,7 +93,7 @@ export function PayrollExportPage() {
                     <td>
                       <input
                         type="checkbox"
-                        aria-label={`Select ${r.id}`}
+                        aria-label={P.selectOne(r.id)}
                         checked={selected.has(r.id)}
                         onChange={() => {
                           const n = new Set(selected);
@@ -99,7 +104,7 @@ export function PayrollExportPage() {
                       />
                     </td>
                     <td>
-                      <Link to={`/expenseClaims?peek=${r.id}`}>{r.id}</Link>
+                      <Link to={recordPeekPath(actor.workspaceId, 'expenseClaims', r.id)}>{r.id}</Link>
                       <div className="muted small">{String(r.description)}</div>
                     </td>
                     <td className="nowrap">{formatDate(String(r.claimDate))}</td>
@@ -113,8 +118,8 @@ export function PayrollExportPage() {
             </table>
           </div>
         ) : (
-          <EmptyState icon="receipt" title="Nothing to export">
-            Claims appear here after the manager and Accounts approve them.
+          <EmptyState icon="receipt" title={P.emptyTitle}>
+            {P.emptyBody}
           </EmptyState>
         )}
       </div>
@@ -122,13 +127,7 @@ export function PayrollExportPage() {
   );
 }
 
-// ---------------------------------------------------------------- Achievement (TGT-02, TGT-05)
-
-const PERIODS = [
-  { value: 'month', label: 'Month' },
-  { value: 'quarter', label: 'Quarter' },
-  { value: 'year', label: 'Financial year' },
-];
+// ---------------------------------------------------------------- Target vs Actual (TGT-02, TGT-05)
 
 function shiftPeriod(type: string, start: string, n: number) {
   const months = type === 'year' ? 12 : type === 'quarter' ? 3 : 1;
@@ -137,75 +136,134 @@ function shiftPeriod(type: string, start: string, n: number) {
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}-01`;
 }
 
-export function AchievementPage() {
+type TvaSort = 'pct_asc' | 'pct_desc' | 'name';
+
+export function TargetVsActualPage() {
+  const P = L.targets.pages.targetVsActual;
   const actor = useActor();
   const [params, setParams] = useSearchParams();
   const type = params.get('period') ?? 'quarter';
   const start = periodStartFor(type, params.get('start') ?? todayKey());
   const [open, setOpen] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [metric, setMetric] = useState('all');
+  const [sort, setSort] = useState<TvaSort>('pct_asc');
+  const [page, setPage] = useState(0);
   const q = useServiceQuery(() => fieldApi.achievement(actor, type, start), [actor.user.id, type, start]);
-  if (perm(actor, 'targets').read === 'none') return <NoAccess what="targets" />;
-  const rows = q.data ?? [];
-  const avg = rows.length ? Math.round(rows.reduce((s, r) => s + r.pct, 0) / rows.length) : 0;
+  if (perm(actor, 'targets').read === 'none') return <NoAccess what={L.targets.records.targets.many} />;
+  const all = q.data ?? [];
+  const needle = search.trim().toLowerCase();
+  const rows = all
+    .filter((r) => (!needle || String(r.target.name).toLowerCase().includes(needle)) && (metric === 'all' || r.target.metric === metric))
+    .sort((a, b) => (sort === 'name' ? String(a.target.name).localeCompare(String(b.target.name)) : sort === 'pct_desc' ? b.pct - a.pct : a.pct - b.pct));
+  const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const avg = all.length ? Math.round(all.reduce((s, r) => s + r.pct, 0) / all.length) : 0;
   const { to } = periodRange(type, start);
   const elapsed = Math.min(100, Math.max(0, Math.round(((Date.parse(todayKey()) - Date.parse(start)) / (Date.parse(to) - Date.parse(start))) * 100)));
+  const periods = (['month', 'quarter', 'year'] as const).map((value) => ({ value, label: P.periods[value] }));
+  const resetPage = <V,>(fn: (v: V) => void) => (v: V) => {
+    fn(v);
+    setPage(0);
+  };
   return (
     <div className="page">
-      <PageHeader title="Target achievement" description="Target vs actual, calculated automatically: order value and quantity from confirmed sales orders (by order date), collections from payments received, new customers from first orders, activities from the activity log." />
-      <div className="toolbar">
-        <SelectMenu label="Period type" value={type} options={PERIODS} onChange={(v) => setParams({ period: v, start: periodStartFor(v, todayKey()) })} />
-        <IconButton icon="chevron-left" label="Previous period" onClick={() => setParams({ period: type, start: shiftPeriod(type, start, -1) })} />
+      <PageHeader title={T.targetVsActual.title} description={P.description} />
+      <div className="toolbar field-toolbar">
+        <SelectMenu label={P.periodType} value={type} options={periods} onChange={(v) => setParams({ period: v, start: periodStartFor(v, todayKey()) })} />
+        <IconButton icon="chevron-left" label={P.previous} onClick={() => setParams({ period: type, start: shiftPeriod(type, start, -1) })} />
         <strong>{periodLabel(type, start)}</strong>
-        <IconButton icon="chevron-right" label="Next period" onClick={() => setParams({ period: type, start: shiftPeriod(type, start, 1) })} />
+        <IconButton icon="chevron-right" label={P.next} onClick={() => setParams({ period: type, start: shiftPeriod(type, start, 1) })} />
         <span className="spacer" />
-        <Button icon="download" disabledReason={!rows.length ? 'No targets to export' : !perm(actor, 'targets').export ? 'Your role cannot export targets' : undefined} onClick={() => downloadText(`target-achievement-${start}.csv`, fieldApi.achievementCsv(rows))}>
-          Export for incentives
+        <Button icon="download" disabledReason={!all.length ? P.noRows : !perm(actor, 'targets').export ? P.noExport : undefined} onClick={() => downloadText(P.fileName(start), fieldApi.achievementCsv(rows))}>
+          {P.export}
         </Button>
       </div>
       {q.error ? (
-        <ErrorState title="Could not calculate achievement" onRetry={q.retry}>
+        <ErrorState title={P.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       ) : !q.data ? (
         <Skeleton rows={8} />
       ) : (
         <>
-          <section className="stats" aria-label="Summary">
-            <Stat label="Targets" value={rows.length} />
-            <Stat label="Average achievement" value={`${avg}%`} sub={`${elapsed}% of the period elapsed`} />
-            <Stat label="Achieved (≥ 100%)" value={rows.filter((r) => r.pct >= 100).length} />
-            <Stat label="Behind pace" value={rows.filter((r) => r.pct < elapsed).length} sub="Below the share of the period elapsed" />
+          <section className="stats" aria-label={P.summaryAria}>
+            <Stat label={P.targets} value={all.length} />
+            <Stat label={P.average} value={`${avg}%`} sub={P.elapsed(elapsed)} />
+            <Stat label={P.achieved} value={all.filter((r) => r.pct >= 100).length} />
+            <Stat label={P.behind} value={all.filter((r) => r.pct < elapsed).length} sub={P.behindSub} />
           </section>
+          <div className="toolbar field-toolbar">
+            <SearchBox value={search} onChange={resetPage(setSearch)} label={P.search} placeholder={P.searchPlaceholder} />
+            <SelectMenu label={P.metricFilter} value={metric} options={[{ value: 'all', label: P.allMetrics }, ...activeMasterValues('targetMetric').map((v) => ({ value: v.key, label: v.label }))]} onChange={resetPage(setMetric)} />
+            <SelectMenu
+              label={P.sortLabel}
+              value={sort}
+              options={[
+                { value: 'pct_asc', label: P.sortPctAsc },
+                { value: 'pct_desc', label: P.sortPctDesc },
+                { value: 'name', label: P.sortName },
+              ]}
+              onChange={(v) => setSort(v as TvaSort)}
+            />
+          </div>
           <div className="content-surface">
-            {rows.length ? (
+            {!all.length ? (
+              <EmptyState
+                icon="activity"
+                title={P.emptyTitle}
+                action={
+                  perm(actor, 'targets').create ? (
+                    <Link className="btn btn-primary" to={resourcePath(actor.workspaceId, 'targets')}>
+                      <span className="btn-label">{P.setTargets}</span>
+                    </Link>
+                  ) : undefined
+                }
+              >
+                {P.emptyBody(periodLabel(type, start))}
+              </EmptyState>
+            ) : !rows.length ? (
+              <EmptyState icon="search" title={P.noMatchTitle}>
+                {P.noMatchBody}
+              </EmptyState>
+            ) : (
               <div className="table-scroll">
                 <table className="mini-table">
                   <thead>
                     <tr>
-                      <th scope="col">Target</th>
-                      <th scope="col">Metric</th>
-                      <th scope="col">Target</th>
-                      <th scope="col">Actual</th>
-                      <th scope="col">Achievement</th>
+                      <th scope="col">{P.colTarget}</th>
+                      <th scope="col">{P.colMetric}</th>
+                      <th scope="col" className="num">
+                        {P.colValue}
+                      </th>
+                      <th scope="col" className="num">
+                        {P.colActual}
+                      </th>
+                      <th scope="col">{P.colPct}</th>
                       <th scope="col">
-                        <span className="sr-only">Drill-down</span>
+                        <span className="sr-only">{P.drillDown}</span>
                       </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
+                    {pageRows.map((r) => (
                       <Fragment key={r.target.id}>
                         <tr>
                           <td>
-                            <Link to={`/targets?peek=${r.target.id}`}>{String(r.target.name)}</Link>
+                            <Link to={recordPeekPath(actor.workspaceId, 'targets', r.target.id)}>{String(r.target.name)}</Link>
                           </td>
                           <td>{masterLabel('targetMetric', r.target.metric)}</td>
                           <td className="num">{metricValue(r.target.metric, Number(r.target.targetValue))}</td>
                           <td className="num">{metricValue(r.target.metric, r.actual)}</td>
                           <td>
-                            <Meter pct={r.pct} label={`${String(r.target.name)} achievement`} />
+                            <Meter pct={r.pct} label={P.achievementAria(String(r.target.name))} />
                           </td>
-                          <td>{r.members.length > 0 && <Button variant="ghost" onClick={() => setOpen(open === r.target.id ? null : r.target.id)} aria-expanded={open === r.target.id}>{open === r.target.id ? 'Hide people' : `${r.members.length} ${r.members.length === 1 ? "person" : "people"}`}</Button>}</td>
+                          <td>
+                            {r.members.length > 0 && (
+                              <Button variant="ghost" onClick={() => setOpen(open === r.target.id ? null : r.target.id)} aria-expanded={open === r.target.id}>
+                                {open === r.target.id ? P.hidePeople : P.people(r.members.length)}
+                              </Button>
+                            )}
+                          </td>
                         </tr>
                         {open === r.target.id && (
                           <tr>
@@ -214,7 +272,7 @@ export function AchievementPage() {
                                 {r.members.map((m) => (
                                   <li key={m.employee.id}>
                                     {String(m.employee.fullName)}: <strong>{metricValue(r.target.metric, m.actual)}</strong>
-                                    {Number(r.target.targetValue) > 0 && <span className="muted"> · {Math.round((m.actual / Number(r.target.targetValue)) * 100)}% of the {String(r.target.scopeType)} target</span>}
+                                    {Number(r.target.targetValue) > 0 && <span className="muted">{P.memberShare(Math.round((m.actual / Number(r.target.targetValue)) * 100), masterLabel('targetScope', r.target.scopeType).toLowerCase())}</span>}
                                   </li>
                                 ))}
                               </ul>
@@ -226,96 +284,120 @@ export function AchievementPage() {
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <EmptyState icon="activity" title="No targets for this period" action={perm(actor, 'targets').create ? <Link className="btn btn-primary" to="/targets"><span className="btn-label">Set targets</span></Link> : undefined}>
-                Targets set for {periodLabel(type, start)} appear here with their achievement.
-              </EmptyState>
             )}
           </div>
+          <Pager page={page} total={rows.length} onPage={setPage} />
         </>
       )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------- Weekly scorecard (TGT-03)
+// ---------------------------------------------------------------- Weekly Activity Scorecard (TGT-03)
 
-export function ScorecardPage() {
+export function ActivityScorecardPage() {
+  const P = L.targets.pages.activityScorecard;
   const actor = useActor();
   const [params, setParams] = useSearchParams();
   const week = startOfWeek(params.get('week') ?? todayKey());
+  const [search, setSearch] = useState('');
+  const [role, setRole] = useState('all');
+  const [page, setPage] = useState(0);
   const q = useServiceQuery(() => fieldApi.scorecard(actor, week), [actor.user.id, week]);
-  const rows = q.data ?? [];
-  const max = Math.max(1, ...rows.map((r) => r.total));
-  const cols: [keyof (typeof rows)[number], string][] = [
-    ['calls', 'Calls'],
-    ['visits', 'Visits'],
-    ['demos', 'Demos'],
-    ['quotations', 'Quotations'],
-    ['referrals', 'Referrals'],
-  ];
+  const all = q.data ?? [];
+  const needle = search.trim().toLowerCase();
+  const rows = all.filter((r) => (!needle || String(r.employee.fullName).toLowerCase().includes(needle)) && (role === 'all' || r.employee.roleId === role));
+  const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const max = Math.max(1, ...all.map((r) => r.total));
+  const cols = (['calls', 'visits', 'demos', 'quotations', 'referrals'] as const).map((k) => [k, P.cols[k]] as const);
+  const roles = [...new Set(all.map((r) => String(r.employee.roleId)))];
   return (
     <div className="page">
-      <PageHeader title="Weekly scorecard" description="Calls, visits, demos, quotations and referrals per person for the week (Monday–Sunday), generated from CRM data — no manual reporting." />
-      <div className="toolbar">
-        <IconButton icon="chevron-left" label="Previous week" onClick={() => setParams({ week: addDays(week, -7) })} />
-        <strong>Week of {formatDate(week)}</strong>
-        <IconButton icon="chevron-right" label="Next week" onClick={() => setParams({ week: addDays(week, 7) })} disabledReason={addDays(week, 7) > todayKey() ? 'Future week' : undefined} />
+      <PageHeader title={T.activityScorecard.title} description={P.description} />
+      <div className="toolbar field-toolbar">
+        <IconButton icon="chevron-left" label={P.previous} onClick={() => setParams({ week: addDays(week, -7) })} />
+        <strong>{L.field.common.weekOf(formatDate(week))}</strong>
+        <IconButton icon="chevron-right" label={P.next} onClick={() => setParams({ week: addDays(week, 7) })} disabledReason={addDays(week, 7) > todayKey() ? P.futureWeek : undefined} />
+        <span className="spacer" />
+        <SearchBox
+          value={search}
+          onChange={(v) => {
+            setSearch(v);
+            setPage(0);
+          }}
+          label={P.search}
+          placeholder={P.searchPlaceholder}
+        />
+        <SelectMenu
+          label={P.roleFilter}
+          value={role}
+          options={[{ value: 'all', label: P.allRoles }, ...roles.map((r) => ({ value: r, label: masterLabel('role', r) }))]}
+          onChange={(v) => {
+            setRole(v);
+            setPage(0);
+          }}
+        />
       </div>
       <div className="content-surface">
         {q.error ? (
-          <ErrorState title="Could not build the scorecard" onRetry={q.retry}>
+          <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
           </ErrorState>
         ) : !q.data ? (
           <Skeleton rows={8} />
-        ) : rows.length ? (
+        ) : !all.length ? (
+          <EmptyState icon="check-square" title={P.emptyTitle}>
+            {P.emptyBody}
+          </EmptyState>
+        ) : !rows.length ? (
+          <EmptyState icon="search" title={P.noMatchTitle}>
+            {P.noMatchBody}
+          </EmptyState>
+        ) : (
           <div className="table-scroll">
             <table className="mini-table">
               <thead>
                 <tr>
-                  <th scope="col">Person</th>
-                  <th scope="col">Role</th>
-                  {cols.map(([, l]) => (
-                    <th key={l} scope="col" className="num">
+                  <th scope="col">{P.person}</th>
+                  <th scope="col">{P.role}</th>
+                  {cols.map(([k, l]) => (
+                    <th key={k} scope="col" className="num">
                       {l}
                     </th>
                   ))}
-                  <th scope="col">Total</th>
+                  <th scope="col">{P.total}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {pageRows.map((r) => (
                   <tr key={r.employee.id} className={cx(r.employee.id === actor.staffId && 'is-selected')}>
                     <td>{String(r.employee.fullName)}</td>
                     <td>{masterLabel('role', r.employee.roleId)}</td>
-                    {cols.map(([k, l]) => (
-                      <td key={l} className="num">
-                        {r[k] as number}
+                    {cols.map(([k]) => (
+                      <td key={k} className="num">
+                        {r[k]}
                       </td>
                     ))}
                     <td>
-                      <Meter pct={Math.round((r.total / max) * 100)} label={`${String(r.employee.fullName)} activity`} />
-                      <span className="sr-only">{r.total} activities</span>
+                      <Meter pct={Math.round((r.total / max) * 100)} label={P.activityAria(String(r.employee.fullName))} />
+                      <span className="sr-only">{P.activities(r.total)}</span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        ) : (
-          <EmptyState icon="check-square" title="No one to score">
-            The scorecard covers you and the people in your scope.
-          </EmptyState>
         )}
       </div>
+      <Pager page={page} total={rows.length} onPage={setPage} />
     </div>
   );
 }
 
-// ---------------------------------------------------------------- Leaderboard (TGT-04)
+// ---------------------------------------------------------------- Leaderboards & Recognition (TGT-04)
 
-export function LeaderboardPage() {
+export function LeaderboardsPage() {
+  const P = L.targets.pages.leaderboards;
   const actor = useActor();
   const [params, setParams] = useSearchParams();
   const month = periodStartFor('month', params.get('month') ?? todayKey());
@@ -324,15 +406,15 @@ export function LeaderboardPage() {
   const d = q.data;
   return (
     <div className="page">
-      <PageHeader title="Leaderboard" description="Monthly ranking within the division by booked order value, with target achievement, Deal of the Month and recognition badges." />
-      <div className="toolbar">
-        {d && d.divisions.length > 1 && <SelectMenu label="Division" value={d.division} options={d.divisions.map((x) => ({ value: x, label: masterLabel('division', x) }))} onChange={(v) => setParams({ division: v, month })} />}
-        <IconButton icon="chevron-left" label="Previous month" onClick={() => setParams({ ...(division ? { division } : {}), month: shiftPeriod('month', month, -1) })} />
+      <PageHeader title={T.leaderboards.title} description={P.description} />
+      <div className="toolbar field-toolbar">
+        {d && d.divisions.length > 1 && <SelectMenu label={P.division} value={d.division} options={d.divisions.map((x) => ({ value: x, label: masterLabel('division', x) }))} onChange={(v) => setParams({ division: v, month })} />}
+        <IconButton icon="chevron-left" label={P.previous} onClick={() => setParams({ ...(division ? { division } : {}), month: shiftPeriod('month', month, -1) })} />
         <strong>{periodLabel('month', month)}</strong>
-        <IconButton icon="chevron-right" label="Next month" onClick={() => setParams({ ...(division ? { division } : {}), month: shiftPeriod('month', month, 1) })} disabledReason={shiftPeriod('month', month, 1) > todayKey() ? 'Future month' : undefined} />
+        <IconButton icon="chevron-right" label={P.next} onClick={() => setParams({ ...(division ? { division } : {}), month: shiftPeriod('month', month, 1) })} disabledReason={shiftPeriod('month', month, 1) > todayKey() ? P.futureMonth : undefined} />
       </div>
       {q.error ? (
-        <ErrorState title="Could not load the leaderboard" onRetry={q.retry}>
+        <ErrorState title={P.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       ) : !d ? (
@@ -342,8 +424,8 @@ export function LeaderboardPage() {
           <section className="panel">
             <div className="panel-head">
               <h2 className="panel-title dialog-title-row">
-                Deal of the Month
-                <InfoTip text="Largest confirmed sales order in the division this month." label="About Deal of the Month" />
+                {P.dealOfTheMonth}
+                <InfoTip text={P.dealHelp} label={P.dealHelpLabel} />
               </h2>
             </div>
             {d.dealOfTheMonth ? (
@@ -351,16 +433,16 @@ export function LeaderboardPage() {
                 <span className="stat-label">{d.dealOfTheMonth.customer}</span>
                 <span className="stat-value">{formatMoney(d.dealOfTheMonth.value)}</span>
                 <span className="stat-sub">
-                  <Link to={`/salesOrders?peek=${d.dealOfTheMonth.orderId}`}>{d.dealOfTheMonth.orderNo}</Link> · {String(d.dealOfTheMonth.owner?.fullName ?? '')}
+                  <Link to={recordPeekPath(actor.workspaceId, 'salesOrders', d.dealOfTheMonth.orderId)}>{d.dealOfTheMonth.orderNo}</Link> · {String(d.dealOfTheMonth.owner?.fullName ?? '')}
                 </span>
               </div>
             ) : (
-              <EmptyState icon="star" title="No confirmed orders yet this month" />
+              <EmptyState icon="star" title={P.noDeal} />
             )}
           </section>
           <section className="panel">
             <div className="panel-head">
-              <h2 className="panel-title">{masterLabel('division', d.division)} ranking</h2>
+              <h2 className="panel-title">{P.ranking(masterLabel('division', d.division))}</h2>
             </div>
             {d.ranking.length ? (
               <ol className="flow-list">
@@ -369,20 +451,18 @@ export function LeaderboardPage() {
                     <span className={`tag tone-${i === 0 ? 'accent' : i < 3 ? 'info' : 'neutral'}`}>#{i + 1}</span>
                     <span className="flow-main">
                       <span className="flow-title">{String(r.employee.fullName)}</span>
-                      <span className="muted small">
-                        {formatMoney(r.orderValue)} · {r.orders} order(s){r.targetPct !== null ? ` · ${r.targetPct}% of target` : ''}
-                      </span>
+                      <span className="muted small">{P.rankLine(formatMoney(r.orderValue), r.orders, r.targetPct)}</span>
                     </span>
                     {r.badges.map((b) => (
-                      <Badge key={b} tone={b === 'Top performer' || b === 'Target achieved' ? 'success' : 'accent'}>
-                        {b}
+                      <Badge key={b} tone={b === 'topPerformer' || b === 'targetAchieved' ? 'success' : 'accent'}>
+                        {L.targets.badges[b]}
                       </Badge>
                     ))}
                   </li>
                 ))}
               </ol>
             ) : (
-              <EmptyState icon="users" title="No sales people in this division" />
+              <EmptyState icon="users" title={P.emptyRanking} />
             )}
           </section>
         </div>

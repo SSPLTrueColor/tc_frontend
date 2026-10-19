@@ -9,6 +9,7 @@ import { type Actor, can } from './authz';
 import { commit, getDb } from './db';
 import { appendAudit } from './ledger';
 import { type ApprovalLevel, ServiceError } from './types';
+import { L } from '../constants/labels';
 
 export interface Policies {
   /** True Colors' own GST registration state code (Q-10). Same state → CGST+SGST, else IGST. */
@@ -61,9 +62,9 @@ export interface Policies {
   maxFileMb: number;
 }
 
-const L1: ApprovalLevel = { capability: 'approve.l1', label: 'Sales manager' };
-const L2: ApprovalLevel = { capability: 'approve.l2', label: 'Division head' };
-const L3: ApprovalLevel = { capability: 'approve.l3', label: 'Management (MD)' };
+const L1: ApprovalLevel = { capability: 'approve.l1', label: L.roles.approvalLevels[1] };
+const L2: ApprovalLevel = { capability: 'approve.l2', label: L.roles.approvalLevels[2] };
+const L3: ApprovalLevel = { capability: 'approve.l3', label: L.roles.approvalLevels[3] };
 const crit = (r: number, a: number, s: number) => ({ response: r, arrival: a, resolution: s });
 
 export const DEFAULT_POLICIES: Policies = {
@@ -90,10 +91,10 @@ export const DEFAULT_POLICIES: Policies = {
     low: { cmc: crit(8, 48, 96), amc: crit(8, 48, 96), warranty: crit(8, 48, 96), none: crit(24, 72, 120) },
   },
   escalation: [
-    { afterHours: 0, to: 'Service Manager' },
-    { afterHours: 4, to: 'Service Head' },
-    { afterHours: 8, to: 'GM' },
-    { afterHours: 24, to: 'MD' },
+    { afterHours: 0, to: L.roles.escalationLevels[1] },
+    { afterHours: 4, to: L.roles.escalationLevels[2] },
+    { afterHours: 8, to: L.roles.escalationLevels[3] },
+    { afterHours: 24, to: L.roles.escalationLevels[4] },
   ],
   repeatComplaintDays: 30,
   reopenWindowDays: 15,
@@ -114,10 +115,10 @@ export function getPolicies(): Policies {
 }
 
 export function updatePolicies(actor: Actor, patch: Partial<Policies>) {
-  if (!can(actor, 'config.publish')) throw new ServiceError('forbidden', 'Only administrators can change business policies.');
+  if (!can(actor, 'config.publish')) throw new ServiceError('forbidden', L.common.errors.policiesOnly);
   commit((d) => {
     d.config.policies = { ...(d.config.policies ?? {}), ...patch };
-    appendAudit(d, actor, { action: 'config.policies', summary: `Business policies changed: ${Object.keys(patch).join(', ')} (${nowIso().slice(0, 10)})`, correlationId: uid('cor') });
+    appendAudit(d, actor, { action: 'config.policies', summary: L.common.audit.policiesChanged(Object.keys(patch).join(', '), nowIso().slice(0, 10)), correlationId: uid('cor') });
   });
 }
 

@@ -5,9 +5,10 @@ import { Button, IconButton } from './Button';
 import { Icon } from './Icon';
 import { Popover } from './overlay';
 import { SelectMenu } from './SelectMenu';
+import { L } from '../../constants/labels';
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const MONTHS = L.common.pickers.months;
+const WEEKDAYS = L.common.pickers.weekdays;
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /**
@@ -115,7 +116,7 @@ export function DatePicker({
     emit(dateKey || today, `${pad(H)}:${pad(m)}`);
   };
 
-  const display = value ? (withTime ? `${formatDate(value)} ${formatTime(value)}` : formatDate(value)) : placeholder ?? (withTime ? 'Select date & time' : 'Select date');
+  const display = value ? (withTime ? `${formatDate(value)} ${formatTime(value)}` : formatDate(value)) : placeholder ?? (withTime ? L.common.pickers.selectDateTime : L.common.pickers.selectDate);
 
   return (
     <>
@@ -137,11 +138,11 @@ export function DatePicker({
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={trigger} label={`${label} calendar`} width={withTime ? 300 : 280} className="date-pop">
         <div className="dp-head">
-          <IconButton icon="chevron-left" label="Previous month" onClick={() => moveFocus(shiftMonth(focusKey, -1))} />
+          <IconButton icon="chevron-left" label={L.common.pickers.previousMonth} onClick={() => moveFocus(shiftMonth(focusKey, -1))} />
           <strong aria-live="polite">
             {MONTHS[Number(month.slice(5, 7)) - 1]} {month.slice(0, 4)}
           </strong>
-          <IconButton icon="chevron-right" label="Next month" onClick={() => moveFocus(shiftMonth(focusKey, 1))} />
+          <IconButton icon="chevron-right" label={L.common.pickers.nextMonth} onClick={() => moveFocus(shiftMonth(focusKey, 1))} />
         </div>
         <div className="dp-weekdays" aria-hidden="true">
           {WEEKDAYS.map((w) => (
@@ -168,15 +169,15 @@ export function DatePicker({
         </div>
         {withTime && (
           <div className="dp-time">
-            <span className="field-label">Time</span>
-            <SelectMenu label="Hour" value={String(h12)} options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: pad(i + 1) }))} onChange={(v) => setTime(Number(v), mm, ampm)} searchable={false} />
-            <SelectMenu label="Minute" value={String(mm - (mm % 5))} options={Array.from({ length: 12 }, (_, i) => ({ value: String(i * 5), label: pad(i * 5) }))} onChange={(v) => setTime(h12, Number(v), ampm)} searchable={false} />
-            <SelectMenu label="AM or PM" value={ampm} options={[{ value: 'AM', label: 'AM' }, { value: 'PM', label: 'PM' }]} onChange={(v) => setTime(h12, mm, v)} />
+            <span className="field-label">{L.common.pickers.time}</span>
+            <SelectMenu label={L.common.pickers.hour} value={String(h12)} options={Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: pad(i + 1) }))} onChange={(v) => setTime(Number(v), mm, ampm)} searchable={false} />
+            <SelectMenu label={L.common.pickers.minute} value={String(mm - (mm % 5))} options={Array.from({ length: 12 }, (_, i) => ({ value: String(i * 5), label: pad(i * 5) }))} onChange={(v) => setTime(h12, Number(v), ampm)} searchable={false} />
+            <SelectMenu label={L.common.pickers.ampm} value={ampm} options={[{ value: 'AM', label: 'AM' }, { value: 'PM', label: 'PM' }]} onChange={(v) => setTime(h12, mm, v)} />
           </div>
         )}
         <div className="dp-foot">
           <Button variant="ghost" onClick={() => pick(today)}>
-            Today
+            {L.common.actions.today}
           </Button>
           <span className="spacer" />
           {clearable && value && (
@@ -188,7 +189,7 @@ export function DatePicker({
                 trigger.current?.focus();
               }}
             >
-              Clear
+              {L.common.actions.clear}
             </Button>
           )}
           {withTime && (
@@ -200,7 +201,7 @@ export function DatePicker({
                 trigger.current?.focus();
               }}
             >
-              Done
+              {L.common.actions.done}
             </Button>
           )}
         </div>

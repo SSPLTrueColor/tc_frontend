@@ -5,6 +5,7 @@
 import { appPack, demoUsers, workspaces } from '../domain/pack';
 import type { FieldDefinition, MasterDefinition, MasterValue, ResourceDefinition } from '../metadata/types';
 import { getDb } from './db';
+import { L } from '../constants/labels';
 
 const resourceCache = new Map<string, { key: string; def: ResourceDefinition }>();
 
@@ -53,7 +54,7 @@ export function getResource(key: string): ResourceDefinition {
           ...base.form,
           sections: [
             ...base.form.sections,
-            { id: 'custom', title: 'Additional fields', description: 'Added in Configuration studio', fields: custom.map((c) => c.key), columns: 2 },
+            { id: 'custom', title: L.common.form.additionalFields, description: L.common.form.additionalFieldsDescription, fields: custom.map((c) => c.key), columns: 2 },
           ],
         },
       }

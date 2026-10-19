@@ -16,6 +16,7 @@ import { allResources, getResource } from '../registry';
 import { insertRecordIn, patchRecordIn } from '../runtime';
 import { userOfStaff } from '../lookups';
 import { ServiceError } from '../types';
+import { L } from '../../constants/labels';
 import { findDuplicateGroups } from './duplicates';
 
 export const isRegistered = (resKey: string) => allResources().some((r) => r.key === resKey);
@@ -23,7 +24,7 @@ export const isRegistered = (resKey: string) => allResources().some((r) => r.key
 // ---------------------------------------------------------------- duplicates & merge
 
 export function listDuplicateGroups(actor: Actor) {
-  if (!can(actor, 'customers.merge')) throw new ServiceError('forbidden', 'Only administrators can review duplicates.');
+  if (!can(actor, 'customers.merge')) throw new ServiceError('forbidden', L.customers.messages.onlyAdminDuplicates);
   const d = getDb();
   const ws = (r: RecordData) => r.workspaceId === actor.workspaceId;
   return findDuplicateGroups((d.records.customers ?? []).filter(ws), (d.records.contacts ?? []).filter(ws));
@@ -46,13 +47,13 @@ function customerRefFields(): { resKey: string; field: string }[] {
  * survivor are filled from the duplicate, and the duplicate goes to the recycle bin.
  */
 export function mergeCustomers(actor: Actor, keepId: string, removeId: string): { moved: number } {
-  if (!can(actor, 'customers.merge')) throw new ServiceError('forbidden', 'Only administrators can merge customers.');
-  if (keepId === removeId) throw new ServiceError('validation', 'Choose two different customers.');
+  if (!can(actor, 'customers.merge')) throw new ServiceError('forbidden', L.customers.messages.onlyAdminMerge);
+  if (keepId === removeId) throw new ServiceError('validation', L.customers.messages.mergeSame);
   return commit((d) => {
     const all = d.records.customers ?? [];
     const keep = all.find((c) => c.id === keepId && c.workspaceId === actor.workspaceId);
     const drop = all.find((c) => c.id === removeId && c.workspaceId === actor.workspaceId);
-    if (!keep || !drop) throw new ServiceError('not_found', 'One of the customers no longer exists.');
+    if (!keep || !drop) throw new ServiceError('not_found', L.customers.messages.mergeMissing);
     const correlationId = uid('cor');
     let moved = 0;
     for (const { resKey, field } of customerRefFields()) {
@@ -71,10 +72,10 @@ export function mergeCustomers(actor: Actor, keepId: string, removeId: string): 
       if (Array.isArray(a) || Array.isArray(b)) fill[f.key] = [...new Set([...((a as string[]) ?? []), ...((b as string[]) ?? [])])];
       else if ((a === undefined || a === null || a === '') && b !== undefined && b !== null && b !== '') fill[f.key] = b;
     });
-    patchRecordIn({ d, actor, correlationId }, 'customers', keepId, fill, `Merged ${removeId} (${String(drop.name)}) into this customer`);
+    patchRecordIn({ d, actor, correlationId }, 'customers', keepId, fill, L.customers.messages.mergeHistory(removeId, String(drop.name)));
     d.records.customers = d.records.customers.filter((c) => c.id !== removeId);
     d.recycle.unshift({ id: uid('bin'), workspaceId: actor.workspaceId, resource: 'customers', record: drop, deletedAt: nowIso(), deletedBy: actor.user.id });
-    appendAudit(d, actor, { action: 'customers.merge', resource: 'customers', recordId: keepId, summary: `Merged ${removeId} “${String(drop.name)}” into ${keepId}: ${moved} linked record(s) re-pointed; duplicate moved to the recycle bin`, correlationId });
+    appendAudit(d, actor, { action: 'customers.merge', resource: 'customers', recordId: keepId, summary: L.customers.messages.mergeAudit(removeId, String(drop.name), keepId, moved), correlationId });
     return { moved };
   });
 }
@@ -92,11 +93,11 @@ interface TransferTarget {
   open: (r: RecordData) => boolean;
 }
 const TARGETS: TransferTarget[] = [
-  { resKey: 'customers', field: 'ownerId', label: 'Accounts', open: () => true },
-  { resKey: 'contacts', field: 'ownerId', label: 'Contacts', open: () => true },
-  { resKey: 'leads', field: 'ownerId', label: 'Open leads', open: (r) => OPEN_LEAD.includes(String(r.status)) },
-  { resKey: 'opportunities', field: 'ownerId', label: 'Open opportunities', open: (r) => OPEN_OPP.includes(String(r.stage)) },
-  { resKey: 'tasks', field: 'assigneeId', label: 'Open tasks', open: (r) => OPEN_TASK.includes(String(r.status)) },
+  { resKey: 'customers', field: 'ownerId', label: L.customers.transfer.targets.customers, open: () => true },
+  { resKey: 'contacts', field: 'ownerId', label: L.customers.transfer.targets.contacts, open: () => true },
+  { resKey: 'leads', field: 'ownerId', label: L.customers.transfer.targets.leads, open: (r) => OPEN_LEAD.includes(String(r.status)) },
+  { resKey: 'opportunities', field: 'ownerId', label: L.customers.transfer.targets.opportunities, open: (r) => OPEN_OPP.includes(String(r.stage)) },
+  { resKey: 'tasks', field: 'assigneeId', label: L.customers.transfer.targets.tasks, open: (r) => OPEN_TASK.includes(String(r.status)) },
 ];
 
 export function canTransfer(actor: Actor) {
@@ -105,7 +106,7 @@ export function canTransfer(actor: Actor) {
 
 /** What a transfer would move (closed records always keep their original owner). */
 export function previewTransfer(actor: Actor, fromStaffId: string) {
-  if (!canTransfer(actor)) throw new ServiceError('forbidden', 'Your role cannot transfer ownership.');
+  if (!canTransfer(actor)) throw new ServiceError('forbidden', L.customers.messages.noTransfer);
   const d = getDb();
   return TARGETS.filter((t) => isRegistered(t.resKey)).map((t) => {
     const res = getResource(t.resKey);
@@ -115,25 +116,25 @@ export function previewTransfer(actor: Actor, fromStaffId: string) {
 }
 
 export function transferOwnership(actor: Actor, fromStaffId: string, toStaffId: string, reason: string): { moved: Record<string, number> } {
-  if (!canTransfer(actor)) throw new ServiceError('forbidden', 'Your role cannot transfer ownership.');
-  if (!fromStaffId || !toStaffId) throw new ServiceError('validation', 'Choose both employees.', { fieldErrors: { from: !fromStaffId ? 'Required' : '', to: !toStaffId ? 'Required' : '' } });
-  if (fromStaffId === toStaffId) throw new ServiceError('validation', 'Choose a different new owner.', { fieldErrors: { to: 'Must differ from the current owner' } });
-  if (reason.trim().length < 5) throw new ServiceError('validation', 'Give a reason (at least 5 characters).', { fieldErrors: { reason: 'At least 5 characters' } });
+  if (!canTransfer(actor)) throw new ServiceError('forbidden', L.customers.messages.noTransfer);
+  if (!fromStaffId || !toStaffId) throw new ServiceError('validation', L.customers.messages.chooseBoth, { fieldErrors: { from: !fromStaffId ? L.customers.messages.required : '', to: !toStaffId ? L.customers.messages.required : '' } });
+  if (fromStaffId === toStaffId) throw new ServiceError('validation', L.customers.messages.chooseDifferent, { fieldErrors: { to: L.customers.messages.mustDiffer } });
+  if (reason.trim().length < 5) throw new ServiceError('validation', L.customers.messages.reasonMin, { fieldErrors: { reason: L.customers.messages.reasonMinField } });
   return commit((d) => {
     const to = (d.records.employees ?? []).find((e) => e.id === toStaffId);
-    if (!to || to.status === 'inactive') throw new ServiceError('validation', 'The new owner must be an active employee.', { fieldErrors: { to: 'Inactive or unknown employee' } });
+    if (!to || to.status === 'inactive') throw new ServiceError('validation', L.customers.messages.inactiveOwner, { fieldErrors: { to: L.customers.messages.inactiveOwnerField } });
     const ctx = { d, actor, correlationId: uid('cor') };
     const moved: Record<string, number> = {};
     for (const t of TARGETS) {
       if (!isRegistered(t.resKey)) continue;
       const res = getResource(t.resKey);
       const ids = (d.records[t.resKey] ?? []).filter((r) => r.workspaceId === actor.workspaceId && r[t.field] === fromStaffId && t.open(r) && canReadRecord(actor, res, r)).map((r) => r.id);
-      ids.forEach((id) => patchRecordIn(ctx, t.resKey, id, { [t.field]: toStaffId }, `Ownership transferred (${reason.trim()})`));
+      ids.forEach((id) => patchRecordIn(ctx, t.resKey, id, { [t.field]: toStaffId }, L.customers.messages.transferHistory(reason.trim())));
       moved[t.label] = ids.length;
     }
-    appendAudit(d, actor, { action: 'ownership.transfer', resource: 'employees', recordId: fromStaffId, summary: `Transferred ${Object.entries(moved).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ')} from ${fromStaffId} to ${toStaffId} — ${reason.trim()}`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'ownership.transfer', resource: 'employees', recordId: fromStaffId, summary: L.customers.messages.transferAudit(Object.entries(moved).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', '), fromStaffId, toStaffId, reason.trim()), correlationId: ctx.correlationId });
     const u = userOfStaff(toStaffId);
-    if (u && u.id !== actor.user.id) notify(d, { userId: u.id, workspaceId: actor.workspaceId, kind: 'assignment', title: `${actor.user.name} transferred ${Object.values(moved).reduce((a, b) => a + b, 0)} records to you`, link: { page: 'customers' } });
+    if (u && u.id !== actor.user.id) notify(d, { userId: u.id, workspaceId: actor.workspaceId, kind: 'assignment', title: L.customers.messages.transferNotify(actor.user.name, Object.values(moved).reduce((a, b) => a + b, 0)), link: { page: 'customers' } });
     return { moved };
   });
 }
@@ -156,25 +157,25 @@ export interface ConvertInput {
 }
 
 export function convertContactToLead(actor: Actor, input: ConvertInput): { leadId: string; customerId: string } {
-  if (!isRegistered('leads')) throw new ServiceError('invalid_state', 'Lead management is not available yet in this build — the contact was not changed.');
-  if (!perm(actor, 'leads').create) throw new ServiceError('forbidden', 'Your role cannot create leads.');
+  if (!isRegistered('leads')) throw new ServiceError('invalid_state', L.customers.messages.leadsUnavailable);
+  if (!perm(actor, 'leads').create) throw new ServiceError('forbidden', L.customers.messages.noLeadCreate);
   const errors: Record<string, string> = {};
-  if (!input.divisionId) errors.divisionId = 'Division is required';
-  if (!input.productType) errors.productType = 'Product interest is required';
-  if (!input.ownerId) errors.ownerId = 'Lead owner is required';
-  if (!input.nextFollowUpAt) errors.nextFollowUpAt = 'Next follow-up date is required';
-  else if (input.nextFollowUpAt < todayKey()) errors.nextFollowUpAt = 'Date cannot be in the past';
+  if (!input.divisionId) errors.divisionId = L.customers.messages.divisionRequired;
+  if (!input.productType) errors.productType = L.customers.messages.productTypeRequired;
+  if (!input.ownerId) errors.ownerId = L.customers.messages.leadOwnerRequired;
+  if (!input.nextFollowUpAt) errors.nextFollowUpAt = L.customers.messages.followUpRequired;
+  else if (input.nextFollowUpAt < todayKey()) errors.nextFollowUpAt = L.customers.messages.followUpPast;
   return commit((d) => {
     const contact = (d.records.contacts ?? []).find((c) => c.id === input.contactId);
-    if (!contact || !canReadRecord(actor, getResource('contacts'), contact)) throw new ServiceError('not_found', 'Contact not found.');
-    if (contact.poolStatus === 'converted') throw new ServiceError('invalid_state', 'This contact was already converted to a lead.');
-    if (contact.source === 'exhibition' && !input.eventName?.trim()) errors.eventName = 'Event name is required for exhibition contacts';
+    if (!contact || !canReadRecord(actor, getResource('contacts'), contact)) throw new ServiceError('not_found', L.customers.messages.contactNotFound);
+    if (contact.poolStatus === 'converted') throw new ServiceError('invalid_state', L.customers.messages.alreadyConverted);
+    if (contact.source === 'exhibition' && !input.eventName?.trim()) errors.eventName = L.customers.messages.eventRequired;
     if (!contact.customerId) {
-      if (!input.companyName?.trim()) errors.companyName = 'Company name is required for a pool contact';
-      if (!input.territoryId) errors.territoryId = 'Territory is required';
-      if (!input.billingState) errors.billingState = 'State is required';
+      if (!input.companyName?.trim()) errors.companyName = L.customers.messages.companyRequired;
+      if (!input.territoryId) errors.territoryId = L.customers.messages.territoryRequired;
+      if (!input.billingState) errors.billingState = L.customers.messages.stateRequired;
     }
-    if (Object.values(errors).some(Boolean)) throw new ServiceError('validation', 'Please fix the highlighted fields.', { fieldErrors: errors });
+    if (Object.values(errors).some(Boolean)) throw new ServiceError('validation', L.customers.messages.fixFields, { fieldErrors: errors });
     const ctx = { d, actor, correlationId: uid('cor') };
     let customerId = String(contact.customerId ?? '');
     if (!customerId) {
@@ -190,7 +191,7 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
       customerId = created.id;
     }
     // Link the contact first: the lead requires a contact of its own customer.
-    patchRecordIn(ctx, 'contacts', contact.id, { customerId, divisionIds: [...new Set([...((contact.divisionIds as string[]) ?? []), input.divisionId])] }, 'Linked to company on conversion');
+    patchRecordIn(ctx, 'contacts', contact.id, { customerId, divisionIds: [...new Set([...((contact.divisionIds as string[]) ?? []), input.divisionId])] }, L.customers.messages.linkedOnConversion);
     const lead = insertRecordIn(ctx, 'leads', {
       customerId,
       contactId: contact.id,
@@ -204,9 +205,9 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
       nextFollowUpAt: input.nextFollowUpAt,
       city: contact.city ?? '',
     });
-    patchRecordIn(ctx, 'contacts', contact.id, { poolStatus: 'converted' }, `Converted to lead ${lead.id}`);
+    patchRecordIn(ctx, 'contacts', contact.id, { poolStatus: 'converted' }, L.customers.messages.convertedHistory(lead.id));
     const owner = userOfStaff(input.ownerId);
-    if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'assignment', title: `New lead ${lead.id} from contact ${String(contact.name)}`, link: { resource: 'leads', recordId: lead.id } });
+    if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'assignment', title: L.customers.messages.convertNotify(lead.id, String(contact.name)), link: { resource: 'leads', recordId: lead.id } });
     return { leadId: lead.id, customerId };
   });
 }
@@ -218,13 +219,13 @@ export function syncFromErp(actor: Actor, customerId: string) {
   const res = getResource('customers');
   return commit((d) => {
     const c = (d.records.customers ?? []).find((x) => x.id === customerId);
-    if (!c || !canReadRecord(actor, res, c)) throw new ServiceError('not_found', 'Customer not found.');
-    if (!canUpdateRecord(actor, res, c) && !can(actor, 'approve.finance')) throw new ServiceError('forbidden', 'Your role cannot refresh ERP figures for this customer.');
+    if (!c || !canReadRecord(actor, res, c)) throw new ServiceError('not_found', L.customers.messages.customerNotFound);
+    if (!canUpdateRecord(actor, res, c) && !can(actor, 'approve.finance')) throw new ServiceError('forbidden', L.customers.messages.noErpRefresh);
     const seed = [...customerId].reduce((a, ch) => a + ch.charCodeAt(0), 0) + new Date().getDate();
     const limit = Number(c.creditLimit) || (5 + (seed % 46)) * 100_000;
     const outstanding = Math.round(limit * (((seed * 37) % 70) / 100));
     const overdue = seed % 3 === 0 ? Math.round(outstanding * 0.3) : 0;
-    patchRecordIn({ d, actor, correlationId: uid('cor') }, 'customers', customerId, { creditLimit: limit, outstanding, overdue, erpSyncedAt: nowLocal() }, 'Credit and outstanding refreshed from ERP (simulated)');
+    patchRecordIn({ d, actor, correlationId: uid('cor') }, 'customers', customerId, { creditLimit: limit, outstanding, overdue, erpSyncedAt: nowLocal() }, L.customers.messages.erpHistory);
     return { creditLimit: limit, outstanding, overdue };
   });
 }

@@ -1,18 +1,27 @@
-/** Record tabs on a sales order: Lines, Payments, Processing, Dispatch, Contract. */
-import { useState } from 'react';
+/**
+ * Sales order record tabs (GLOSSARY §1.2): Changes vs Quotation, Approval, Payment Schedule, Order Processing,
+ * ERP Invoice, Dispatch & Delivery, Sales Contract, Hold / Cancellation. Details and Activity are shared tabs.
+ */
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
+import { L } from '../../constants/labels';
+import { ROUTES, toPath } from '../../constants/routes';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { addDays, formatDate, todayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
-import { call, errorMessage } from '../../services/api/client';
-import { orderView, recordPaymentReceipt, savePaymentSchedule, generateSalesContract, sendContractForSignature, signSalesContract } from '../../services/api/orders';
+import { recordEditPath, recordPeekPath } from '../../lib/routes';
+import { errorMessage } from '../../services/api/client';
+import { orderView, pushOrderToErp, recordPaymentReceipt, savePaymentSchedule, generateSalesContract, sendContractForSignature, signSalesContract, updateOrderProcessing } from '../../services/api/orders';
 import { can, canUpdateRecord } from '../../services/authz';
 import { useActor } from '../../services/hooks';
-import { getResource, masterValue } from '../../services/registry';
-import { updateRecord } from '../../services/runtime';
+import { getResource, getUser, masterValue } from '../../services/registry';
 import { getPolicies } from '../../services/policies';
-import type { ScheduleRow } from '../../services/orders/orders';
+import { approvalTypeLabel } from '../../services/workflow';
+import { APPROVAL, type ScheduleRow } from '../../services/orders/orders';
+import type { Approval } from '../../services/types';
+import { ServiceError } from '../../services/types';
+import { SO_PROCESSING_STATUSES, CUSTOMS_STATUSES } from '../../domain/modules/orders';
 import { Button } from '../../components/primitives/Button';
 import { DatePicker } from '../../components/primitives/DatePicker';
 import { DateText, EmptyValue } from '../../components/primitives/display';
@@ -22,13 +31,18 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { DiffAlert, Field, LinesTable, TotalsBlock } from './components';
 import { ConfirmDeliveryDialog } from './OrderActions';
 
+const O = L.orders;
+const D = L.dispatch;
+const F = O.fields.salesOrders;
+const R = O.record;
+
 function useOrder(record: RecordExtensionProps['record'], actor: RecordExtensionProps['actor']) {
   return useServiceQuery(() => orderView(actor, record.id), [record.id, actor.user.id]);
 }
 
 function Loading({ q }: { q: { error: string | null; retry: () => void } }) {
   return q.error ? (
-    <ErrorState title="Could not load" onRetry={q.retry}>
+    <ErrorState title={O.common.loadError} onRetry={q.retry}>
       {q.error}
     </ErrorState>
   ) : (
@@ -36,12 +50,25 @@ function Loading({ q }: { q: { error: string | null; retry: () => void } }) {
   );
 }
 
-const chip = (master: string, key: unknown) => {
+export const chip = (master: string, key: unknown) => {
   const v = masterValue(master, key);
   return v ? <StatusChip label={v.label} tone={v.tone} /> : <EmptyValue />;
 };
 
-// ---------------------------------------------------------------- Lines
+const APPROVAL_TONE: Record<Approval['status'], 'warning' | 'success' | 'danger' | 'neutral'> = { pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'neutral' };
+const approvalChip = (a: Approval) => <StatusChip label={O.approvals.status[a.status]} tone={APPROVAL_TONE[a.status]} />;
+const userName = (id: string | undefined) => (id ? getUser(id)?.name ?? id : '');
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="detail-row">
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Changes vs Quotation (SO-03)
 
 export function LinesTab({ actor, record }: RecordExtensionProps) {
   const q = useOrder(record, actor);
@@ -50,7 +77,7 @@ export function LinesTab({ actor, record }: RecordExtensionProps) {
   const o = v.order;
   return (
     <div className="details">
-      {v.diff && <DiffAlert diff={v.diff} tolerance={getPolicies().soTolerancePct} />}
+      {v.diff ? <DiffAlert diff={v.diff} tolerance={getPolicies().soTolerancePct} /> : <InlineAlert tone="info">{O.diff.noQuotation}</InlineAlert>}
       <LinesTable lines={v.lines} diffAgainst={v.quotation ? v.quotationLines : undefined} />
       <TotalsBlock
         t={{ subtotal: Number(o.subtotal), discountTotal: Number(o.discountTotal), freight: Number(o.freight) || 0, insurance: Number(o.insurance) || 0, taxable: Number(o.taxable), cgst: Number(o.cgst), sgst: Number(o.sgst), igst: Number(o.igst), grandTotal: Number(o.grandTotal), maxDiscountPct: Number(o.maxDiscountPct) }}
@@ -58,8 +85,8 @@ export function LinesTab({ actor, record }: RecordExtensionProps) {
       />
       {v.canEditLines && (
         <p>
-          <Link className="btn btn-secondary" to={`/salesOrders/${encodeURIComponent(o.id)}/edit`}>
-            <span className="btn-label">Edit lines</span>
+          <Link className="btn btn-secondary" to={recordEditPath('salesOrders', o.id)}>
+            <span className="btn-label">{O.actions.editLines}</span>
           </Link>
         </p>
       )}
@@ -67,7 +94,75 @@ export function LinesTab({ actor, record }: RecordExtensionProps) {
   );
 }
 
-// ---------------------------------------------------------------- Payments (FR-055 / BR-25)
+// ---------------------------------------------------------------- Approval (SO-04)
+
+function ApprovalList({ list }: { list: Approval[] }) {
+  return (
+    <div className="table-scroll">
+      <table className="mini-table">
+        <thead>
+          <tr>
+            <th scope="col">{O.table.type}</th>
+            <th scope="col">{O.table.requested}</th>
+            <th scope="col">{O.table.reason}</th>
+            <th scope="col">{O.table.levels}</th>
+            <th scope="col">{O.table.status}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((a) => (
+            <tr key={a.id}>
+              <td>
+                {approvalTypeLabel(a.type)}
+                <div className="muted small mono">{a.id}</div>
+              </td>
+              <td className="nowrap">
+                <DateText value={a.requestedAt.slice(0, 10)} />
+                <div className="muted small">{userName(a.requestedBy)}</div>
+              </td>
+              <td>{a.reason || <EmptyValue />}</td>
+              <td>
+                {a.levels.map((l, i) => {
+                  const d = a.decisions.find((x) => x.level === i);
+                  return (
+                    <div key={i} className="small">
+                      {R.level(i + 1, a.levels.length, l.label)}
+                      {d && <div className="muted">{R.decidedBy(userName(d.by), O.approvals.status[d.decision], d.note)}</div>}
+                    </div>
+                  );
+                })}
+              </td>
+              <td>{approvalChip(a)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function ApprovalTab({ actor, record }: RecordExtensionProps) {
+  const q = useOrder(record, actor);
+  if (!q.data) return <Loading q={q} />;
+  const list = q.data.approvals.filter((a) => a.type === APPROVAL);
+  return (
+    <div className="details">
+      <dl className="detail-list">
+        <Row label={F.status}>{chip('soStatus', q.data.order.status)}</Row>
+        <Row label={F.financeCheck}>{q.data.order.financeCheck ? O.common.yes : O.common.no}</Row>
+      </dl>
+      {list.length ? (
+        <ApprovalList list={list} />
+      ) : (
+        <EmptyState icon="check-square" title={R.noApprovals}>
+          {R.noApprovalsBody}
+        </EmptyState>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Payment Schedule (SO-07 / BR-25)
 
 export function PaymentsTab({ actor, record }: RecordExtensionProps) {
   const q = useOrder(record, actor);
@@ -78,39 +173,32 @@ export function PaymentsTab({ actor, record }: RecordExtensionProps) {
   const closed = ['completed', 'cancelled'].includes(String(v.order.status));
   const received = v.milestones.reduce((t, m) => t + (Number(m.receivedAmount) || 0), 0);
   const total = Number(v.order.grandTotal);
+  const FM = O.fields.paymentMilestones;
   return (
     <div className="details">
       <dl className="detail-list">
-        <div className="detail-row">
-          <dt>Received</dt>
-          <dd>
-            {formatMoney(received)} of {formatMoney(total)}
-          </dd>
-        </div>
-        <div className="detail-row">
-          <dt>Outstanding</dt>
-          <dd>{formatMoney(Math.max(0, total - received))}</dd>
-        </div>
+        <Row label={R.received}>{R.receivedOf(formatMoney(received), formatMoney(total))}</Row>
+        <Row label={R.outstanding}>{formatMoney(Math.max(0, total - received))}</Row>
       </dl>
       {v.milestones.length ? (
         <div className="table-scroll">
           <table className="mini-table">
             <thead>
               <tr>
-                <th scope="col">Milestone</th>
+                <th scope="col">{FM.label}</th>
                 <th scope="col" className="th-num">
-                  Share
+                  {FM.percent}
                 </th>
                 <th scope="col" className="th-num">
-                  Amount
+                  {FM.amount}
                 </th>
-                <th scope="col">Due</th>
+                <th scope="col">{FM.dueDate}</th>
                 <th scope="col" className="th-num">
-                  Received
+                  {FM.receivedAmount}
                 </th>
-                <th scope="col">Status</th>
+                <th scope="col">{FM.status}</th>
                 <th scope="col">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{O.table.actions}</span>
                 </th>
               </tr>
             </thead>
@@ -128,7 +216,7 @@ export function PaymentsTab({ actor, record }: RecordExtensionProps) {
                   <td>
                     {can(actor, 'orders.receipts') && m.status !== 'received' && !['pending_approval', 'cancelled'].includes(String(v.order.status)) && (
                       <Button size="compact" onClick={() => setReceipt(m.id)}>
-                        Record receipt
+                        {O.actions.recordReceipt}
                       </Button>
                     )}
                   </td>
@@ -138,14 +226,17 @@ export function PaymentsTab({ actor, record }: RecordExtensionProps) {
           </table>
         </div>
       ) : (
-        <EmptyState icon="calendar-clock" title="No payment schedule" />
+        <EmptyState icon="calendar-clock" title={R.noSchedule} />
       )}
       <div className="row-gap">
-        <Button onClick={() => setEditing(true)} disabledReason={!v.canEdit ? `Read-only for ${actor.role.label}` : closed ? 'The order is closed' : undefined}>
-          Edit schedule
+        <Button onClick={() => setEditing(true)} disabledReason={!v.canEdit ? O.common.readOnly(actor.role.label) : closed ? R.closed : undefined}>
+          {O.actions.editSchedule}
         </Button>
+        <Link className="link small" to={ROUTES.paymentSchedule}>
+          {O.actions.allMilestones}
+        </Link>
       </div>
-      <p className="muted small">Receipts and outstanding amounts come from the ERP (simulated: Accounts records what the ERP reports). Reminders go to the sales owner {getPolicies().paymentReminderDaysBefore} days before and after each due date.</p>
+      <p className="muted small">{R.erpNote(getPolicies().paymentReminderDaysBefore)}</p>
       {editing && <ScheduleDialog orderId={v.order.id} orderDate={String(v.order.orderDate)} rows={v.milestones.map((m) => ({ id: m.id, label: String(m.label), percent: Number(m.percent), dueDate: String(m.dueDate), received: Number(m.receivedAmount) || 0 }))} onClose={() => setEditing(false)} />}
       {receipt && <ReceiptDialog milestone={v.milestones.find((m) => m.id === receipt)!} onClose={() => setReceipt(null)} />}
     </div>
@@ -160,16 +251,17 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
   const [busy, setBusy] = useState(false);
   const total = Math.round(rows.reduce((t, r) => t + (Number(r.percent) || 0), 0) * 100) / 100;
   const set = (i: number, p: Partial<ScheduleRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const FM = O.fields.paymentMilestones;
   return (
     <Dialog
       open
       onClose={onClose}
       size="lg"
-      title="Payment schedule"
-      description="Advance, milestone and balance payments. The shares must total 100%. Milestones with receipts cannot be removed."
+      title={R.scheduleTitle}
+      description={R.scheduleDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{O.actions.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
@@ -178,16 +270,17 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
               setError('');
               try {
                 await savePaymentSchedule(actor, orderId, rows.map(({ id, label, percent, dueDate }) => ({ id, label, percent: Number(percent), dueDate })));
-                toast('Payment schedule saved');
+                toast(R.scheduleSaved);
                 onClose();
               } catch (e) {
                 setError(errorMessage(e));
+                toast(errorMessage(e), 'danger');
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Save schedule
+            {O.actions.saveSchedule}
           </Button>
         </>
       }
@@ -196,11 +289,11 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
         <table className="mini-table">
           <thead>
             <tr>
-              <th scope="col">Milestone</th>
-              <th scope="col">Share %</th>
-              <th scope="col">Due date</th>
+              <th scope="col">{FM.label}</th>
+              <th scope="col">{O.table.sharePct}</th>
+              <th scope="col">{FM.dueDate}</th>
               <th scope="col">
-                <span className="sr-only">Remove</span>
+                <span className="sr-only">{O.actions.remove}</span>
               </th>
             </tr>
           </thead>
@@ -208,17 +301,17 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
             {rows.map((r, i) => (
               <tr key={r.id ?? `new-${i}`}>
                 <td>
-                  <input className="input input-compact" aria-label={`Milestone ${i + 1} label`} value={r.label} maxLength={60} onChange={(e) => set(i, { label: e.target.value })} />
+                  <input className="input input-compact" aria-label={R.milestoneAria(i + 1, FM.label)} value={r.label} maxLength={60} onChange={(e) => set(i, { label: e.target.value })} />
                 </td>
                 <td>
-                  <input className="input input-compact orders-num" type="number" min={0} max={100} aria-label={`Milestone ${i + 1} share`} value={r.percent} onChange={(e) => set(i, { percent: Number(e.target.value) })} />
+                  <input className="input input-compact orders-num" type="number" min={0} max={100} aria-label={R.milestoneAria(i + 1, FM.percent)} value={r.percent} onChange={(e) => set(i, { percent: Number(e.target.value) })} />
                 </td>
                 <td>
-                  <DatePicker label={`Milestone ${i + 1} due date`} value={r.dueDate} onChange={(v) => set(i, { dueDate: v ?? '' })} clearable={false} />
+                  <DatePicker label={R.milestoneAria(i + 1, FM.dueDate)} value={r.dueDate} onChange={(v) => set(i, { dueDate: v ?? '' })} clearable={false} />
                 </td>
                 <td>
-                  <button type="button" className="link small" disabled={r.received > 0 || rows.length === 1} title={r.received > 0 ? 'Has receipts' : undefined} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
-                    Remove
+                  <button type="button" className="link small" disabled={r.received > 0 || rows.length === 1} title={r.received > 0 ? R.hasReceipts : undefined} onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+                    {O.actions.remove}
                   </button>
                 </td>
               </tr>
@@ -227,10 +320,10 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
         </table>
       </div>
       <div className="row-gap">
-        <Button icon="plus" onClick={() => setRows([...rows, { label: 'Balance', percent: Math.max(0, Math.round((100 - total) * 100) / 100), dueDate: addDays(orderDate, 60), received: 0 }])}>
-          Add milestone
+        <Button icon="plus" onClick={() => setRows([...rows, { label: O.schedule.balance, percent: Math.max(0, Math.round((100 - total) * 100) / 100), dueDate: addDays(orderDate, 60), received: 0 }])}>
+          {O.actions.addMilestone}
         </Button>
-        <span className={total === 100 ? 'muted small' : 'small text-danger'}>Total {total}%</span>
+        <span className={total === 100 ? 'muted small' : 'small text-danger'}>{R.total(total)}</span>
       </div>
       {error && (
         <p className="field-error" role="alert">
@@ -247,163 +340,203 @@ export function ReceiptDialog({ milestone, onClose }: { milestone: Record<string
   const outstanding = Math.round((Number(milestone.amount) - (Number(milestone.receivedAmount) || 0)) * 100) / 100;
   const [amount, setAmount] = useState(String(outstanding));
   const [date, setDate] = useState(todayKey());
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   return (
     <Dialog
       open
       onClose={onClose}
       size="sm"
-      title={`Record receipt · ${String(milestone.label)}`}
-      description="Simulates the receipt the ERP would report. Nothing is charged or collected here."
+      title={R.receiptTitle(String(milestone.label))}
+      description={R.receiptDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{O.actions.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
             onClick={async () => {
               setBusy(true);
+              setErrors({});
               try {
                 await recordPaymentReceipt(actor, milestone.id, Number(amount), date);
-                toast(`Receipt of ${formatMoney(Number(amount))} recorded`);
+                toast(R.receiptSaved(formatMoney(Number(amount))));
                 onClose();
               } catch (e) {
-                setError(errorMessage(e));
+                setErrors(e instanceof ServiceError && e.fieldErrors ? e.fieldErrors : { form: errorMessage(e) });
+                toast(errorMessage(e), 'danger');
               } finally {
                 setBusy(false);
               }
             }}
           >
-            Record receipt
+            {O.actions.recordReceipt}
           </Button>
         </>
       }
     >
       <div className="form-grid cols-2">
-        <Field id="rc-amount" label="Amount (₹)" required help={`Outstanding ${formatMoney(outstanding)}`}>
-          <input id="rc-amount" className="input" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} data-autofocus />
+        <Field id="rc-amount" label={R.receiptAmount} required help={R.receiptOutstanding(formatMoney(outstanding))} error={errors.amount}>
+          <input id="rc-amount" className="input" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={!!errors.amount || undefined} data-autofocus />
         </Field>
-        <Field id="rc-date" label="Received on" required>
-          <DatePicker id="rc-date" label="Received on" value={date} onChange={(v) => setDate(v ?? '')} />
+        <Field id="rc-date" label={R.receiptDate} required error={errors.receivedAt}>
+          <DatePicker id="rc-date" label={R.receiptDate} value={date} onChange={(v) => setDate(v ?? '')} invalid={!!errors.receivedAt} />
         </Field>
       </div>
-      {error && (
+      {errors.form && (
         <p className="field-error" role="alert">
-          {error}
+          {errors.form}
         </p>
       )}
     </Dialog>
   );
 }
 
-// ---------------------------------------------------------------- Processing (FR-056)
+// ---------------------------------------------------------------- Order Processing (SO-08)
 
 export function ProcessingTab({ actor, record }: RecordExtensionProps) {
   const q = useOrder(record, actor);
   const toast = useToast();
   const [form, setForm] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   if (!q.data) return <Loading q={q} />;
   const o = q.data.order;
-  const editable = can(actor, 'orders.process') && canUpdateRecord(actor, getResource('salesOrders'), o) && ['confirmed', 'payment_pending', 'payment_received', 'processing', 'ready_for_dispatch', 'on_hold'].includes(String(o.status));
+  const editable = can(actor, 'orders.process') && canUpdateRecord(actor, getResource('salesOrders'), o) && SO_PROCESSING_STATUSES.includes(String(o.status));
   const f = form ?? { poToPrincipalNo: o.poToPrincipalNo ?? '', poToPrincipalDate: o.poToPrincipalDate ?? '', shipmentEta: o.shipmentEta ?? '', customsStatus: o.customsStatus ?? 'not_applicable', machineReady: !!o.machineReady, pdiDone: !!o.pdiDone, processingNotes: o.processingNotes ?? '' };
   const set = (p: Record<string, unknown>) => setForm({ ...f, ...p });
-  const statusText = (b: unknown) => (b ? 'Yes' : 'No');
+  const yesNo = (b: unknown) => (b ? O.common.yes : O.common.no);
+  const link = (
+    <Link className="link small" to={ROUTES.orderProcessing}>
+      {L.nav.pages.orderProcessing.title}
+    </Link>
+  );
   if (!editable)
     return (
       <div className="details">
-        {!can(actor, 'orders.process') && <InlineAlert tone="info">Import / SCM updates processing. You can follow the progress here.</InlineAlert>}
+        {!can(actor, 'orders.process') && <InlineAlert tone="info">{R.processingViewOnly}</InlineAlert>}
         <dl className="detail-list">
-          <div className="detail-row">
-            <dt>PO to principal</dt>
-            <dd>{o.poToPrincipalNo ? `${o.poToPrincipalNo}${o.poToPrincipalDate ? ` · ${formatDate(String(o.poToPrincipalDate))}` : ''}` : <EmptyValue />}</dd>
-          </div>
-          <div className="detail-row">
-            <dt>Shipment ETA</dt>
-            <dd>{o.shipmentEta ? <DateText value={String(o.shipmentEta)} /> : <EmptyValue />}</dd>
-          </div>
-          <div className="detail-row">
-            <dt>Customs</dt>
-            <dd>{chip('customsStatus', o.customsStatus)}</dd>
-          </div>
-          <div className="detail-row">
-            <dt>Machine ready</dt>
-            <dd>{statusText(o.machineReady)}</dd>
-          </div>
-          <div className="detail-row">
-            <dt>Pre-dispatch inspection</dt>
-            <dd>{statusText(o.pdiDone)}</dd>
-          </div>
-          <div className="detail-row">
-            <dt>Notes</dt>
-            <dd>{o.processingNotes ? String(o.processingNotes) : <EmptyValue />}</dd>
-          </div>
+          <Row label={R.poToPrincipal}>{o.poToPrincipalNo ? `${o.poToPrincipalNo}${o.poToPrincipalDate ? ` · ${formatDate(String(o.poToPrincipalDate))}` : ''}` : <EmptyValue />}</Row>
+          <Row label={F.shipmentEta}>{o.shipmentEta ? <DateText value={String(o.shipmentEta)} /> : <EmptyValue />}</Row>
+          <Row label={F.customsStatus}>{chip('customsStatus', o.customsStatus)}</Row>
+          <Row label={F.machineReady}>{yesNo(o.machineReady)}</Row>
+          <Row label={F.pdiDone}>{yesNo(o.pdiDone)}</Row>
+          <Row label={R.notes}>{o.processingNotes ? String(o.processingNotes) : <EmptyValue />}</Row>
         </dl>
+        {link}
       </div>
     );
   return (
     <div className="details">
       <div className="form-grid cols-2">
-        <Field id="pr-po" label="PO to principal no.">
-          <input id="pr-po" className="input" maxLength={40} value={String(f.poToPrincipalNo)} onChange={(e) => set({ poToPrincipalNo: e.target.value })} />
+        <Field id="pr-po" label={F.poToPrincipalNo} error={errors.poToPrincipalNo}>
+          <input id="pr-po" className="input" maxLength={40} value={String(f.poToPrincipalNo)} onChange={(e) => set({ poToPrincipalNo: e.target.value })} aria-invalid={!!errors.poToPrincipalNo || undefined} />
         </Field>
-        <Field id="pr-po-date" label="PO to principal date">
-          <DatePicker id="pr-po-date" label="PO to principal date" value={String(f.poToPrincipalDate || '')} onChange={(v) => set({ poToPrincipalDate: v ?? '' })} />
+        <Field id="pr-po-date" label={F.poToPrincipalDate} error={errors.poToPrincipalDate}>
+          <DatePicker id="pr-po-date" label={F.poToPrincipalDate} value={String(f.poToPrincipalDate || '')} onChange={(v) => set({ poToPrincipalDate: v ?? '' })} invalid={!!errors.poToPrincipalDate} />
         </Field>
-        <Field id="pr-eta" label="Shipment ETA">
-          <DatePicker id="pr-eta" label="Shipment ETA" value={String(f.shipmentEta || '')} onChange={(v) => set({ shipmentEta: v ?? '' })} />
+        <Field id="pr-eta" label={F.shipmentEta} error={errors.shipmentEta}>
+          <DatePicker id="pr-eta" label={F.shipmentEta} value={String(f.shipmentEta || '')} onChange={(v) => set({ shipmentEta: v ?? '' })} invalid={!!errors.shipmentEta} />
         </Field>
-        <Field id="pr-customs" label="Customs">
-          <SelectMenu
-            id="pr-customs"
-            block
-            label="Customs"
-            value={String(f.customsStatus)}
-            options={['not_applicable', 'pending', 'filed', 'cleared'].map((k) => ({ value: k, label: masterValue('customsStatus', k)?.label ?? k }))}
-            onChange={(v) => set({ customsStatus: v })}
-          />
+        <Field id="pr-customs" label={F.customsStatus} error={errors.customsStatus}>
+          <SelectMenu id="pr-customs" block label={F.customsStatus} value={String(f.customsStatus)} options={CUSTOMS_STATUSES.map((k) => ({ value: k, label: masterValue('customsStatus', k)?.label ?? k }))} onChange={(v) => set({ customsStatus: v })} />
         </Field>
-        <label className="orders-check">
-          <input type="checkbox" checked={!!f.machineReady} onChange={(e) => set({ machineReady: e.target.checked })} /> Machine ready
-        </label>
-        <label className="orders-check">
-          <input type="checkbox" checked={!!f.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} /> Pre-dispatch inspection done
-        </label>
-        <Field id="pr-notes" label="Processing notes" wide>
+        <div>
+          <label className="orders-check">
+            <input type="checkbox" checked={!!f.machineReady} onChange={(e) => set({ machineReady: e.target.checked })} /> {F.machineReady}
+          </label>
+          {errors.machineReady && <p className="field-error">{errors.machineReady}</p>}
+        </div>
+        <div>
+          <label className="orders-check">
+            <input type="checkbox" checked={!!f.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} /> {F.pdiDone}
+          </label>
+          {errors.pdiDone && <p className="field-error">{errors.pdiDone}</p>}
+        </div>
+        <Field id="pr-notes" label={F.processingNotes} wide error={errors.processingNotes}>
           <textarea id="pr-notes" className="input textarea" rows={2} maxLength={1000} value={String(f.processingNotes)} onChange={(e) => set({ processingNotes: e.target.value })} />
         </Field>
       </div>
-      {error && <p className="field-error">{error}</p>}
+      {errors.form && <p className="field-error">{errors.form}</p>}
       <div className="row-gap">
         <Button
           variant="primary"
           loading={busy}
-          disabledReason={form ? undefined : 'No changes'}
+          disabledReason={form ? undefined : R.noChanges}
           onClick={async () => {
             setBusy(true);
-            setError('');
+            setErrors({});
             try {
-              const patch = { ...f, poToPrincipalDate: f.poToPrincipalDate || null, shipmentEta: f.shipmentEta || null };
-              await call(() => updateRecord(actor, 'salesOrders', o.id, patch, o.version));
-              toast('Processing status updated');
+              await updateOrderProcessing(
+                actor,
+                o.id,
+                { poToPrincipalNo: String(f.poToPrincipalNo ?? ''), poToPrincipalDate: String(f.poToPrincipalDate ?? ''), shipmentEta: String(f.shipmentEta ?? ''), customsStatus: String(f.customsStatus), machineReady: !!f.machineReady, pdiDone: !!f.pdiDone, processingNotes: String(f.processingNotes ?? '') },
+                o.version,
+              );
+              toast(R.processingSaved);
               setForm(null);
             } catch (e) {
-              setError(errorMessage(e));
+              setErrors(e instanceof ServiceError && e.fieldErrors ? e.fieldErrors : { form: errorMessage(e) });
+              toast(errorMessage(e), 'danger');
             } finally {
               setBusy(false);
             }
           }}
         >
-          Save processing
+          {O.actions.saveProcessing}
         </Button>
+        {link}
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- Dispatch (FR-060 / FR-061)
+// ---------------------------------------------------------------- ERP Invoice (SO-09)
+
+export function ErpInvoiceTab({ actor, record }: RecordExtensionProps) {
+  const q = useOrder(record, actor);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (!q.data) return <Loading q={q} />;
+  const o = q.data.order;
+  const approved = !['pending_approval', 'cancelled'].includes(String(o.status));
+  return (
+    <div className="details">
+      {!approved ? <InlineAlert tone="info">{R.erpBeforeApproval}</InlineAlert> : !o.invoiceNo && <InlineAlert tone="info">{R.erpPending}</InlineAlert>}
+      <dl className="detail-list">
+        <Row label={F.financeCheck}>{o.financeCheck ? O.common.yes : O.common.no}</Row>
+        <Row label={F.erpPushedAt}>{o.erpPushedAt ? <DateText value={String(o.erpPushedAt).slice(0, 10)} /> : <EmptyValue label={R.erpNotPushed} />}</Row>
+        <Row label={F.invoiceNo}>{o.invoiceNo ? <span className="mono">{String(o.invoiceNo)}</span> : <EmptyValue />}</Row>
+        <Row label={F.invoiceDate}>{o.invoiceDate ? <DateText value={String(o.invoiceDate)} /> : <EmptyValue />}</Row>
+        <Row label={F.ewayBill}>{o.ewayBill ? <span className="mono">{String(o.ewayBill)}</span> : <EmptyValue />}</Row>
+      </dl>
+      {approved && !o.invoiceNo && (
+        <div className="row-gap">
+          <Button
+            icon="reset"
+            loading={busy}
+            disabledReason={can(actor, 'orders.erp') ? undefined : O.disabled.erp}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const r = await pushOrderToErp(actor, o.id);
+                toast(R.erpReceived(String(r.invoiceNo)));
+              } catch (e) {
+                toast(errorMessage(e), 'danger');
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {O.actions.pushToErp}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Dispatch & Delivery (INS-01 / INS-02)
 
 export function DispatchTab({ actor, record }: RecordExtensionProps) {
   const q = useOrder(record, actor);
@@ -416,44 +549,29 @@ export function DispatchTab({ actor, record }: RecordExtensionProps) {
         list.map((d) => (
           <section key={d.id} className="detail-section">
             <h3 className="detail-section-title">
-              {d.id} · {String(d.transporter)} {chip('dispatchStatus', d.status)}
+              <Link to={recordPeekPath('tc', 'dispatches', d.id)}>{R.dispatchTitle(d.id, String(d.transporter))}</Link> {chip('dispatchStatus', d.status)}
             </h3>
             <dl className="detail-list">
-              <div className="detail-row">
-                <dt>LR / challan</dt>
-                <dd>
-                  {String(d.lrNumber)}
-                  {d.challanNo ? ` · ${d.challanNo}` : ''}
-                </dd>
-              </div>
-              <div className="detail-row">
-                <dt>Invoice / e-way bill</dt>
-                <dd>{[d.invoiceRef, d.ewayBill].filter(Boolean).join(' · ') || <EmptyValue />}</dd>
-              </div>
-              <div className="detail-row">
-                <dt>Dispatched</dt>
-                <dd>
-                  <DateText value={String(d.dispatchDate)} />
-                </dd>
-              </div>
-              <div className="detail-row">
-                <dt>Expected / actual</dt>
-                <dd>
-                  <DateText value={String(d.expectedDelivery)} /> / {d.actualDelivery ? <DateText value={String(d.actualDelivery)} /> : <EmptyValue label="Not yet" />}
-                  {!d.actualDelivery && String(d.expectedDelivery) < todayKey() && <span className="tag tone-danger orders-tag">Delayed</span>}
-                </dd>
-              </div>
-              <div className="detail-row">
-                <dt>Proof of delivery</dt>
-                <dd>{d.podFileName ? `${d.podFileName}${d.podPhotoName ? ` · photo ${d.podPhotoName}` : ''}` : <EmptyValue />}</dd>
-              </div>
+              <Row label={R.lrChallan}>
+                {String(d.lrNumber)}
+                {d.challanNo ? ` · ${d.challanNo}` : ''}
+              </Row>
+              <Row label={R.invoiceEway}>{[d.invoiceRef, d.ewayBill].filter(Boolean).join(' · ') || <EmptyValue />}</Row>
+              <Row label={R.dispatched}>
+                <DateText value={String(d.dispatchDate)} />
+              </Row>
+              <Row label={R.expectedActual}>
+                <DateText value={String(d.expectedDelivery)} /> / {d.actualDelivery ? <DateText value={String(d.actualDelivery)} /> : <EmptyValue label={O.common.notYet} />}
+                {!d.actualDelivery && String(d.expectedDelivery) < todayKey() && <span className="tag tone-danger orders-tag">{O.common.delayed}</span>}
+              </Row>
+              <Row label={R.pod}>{d.podFileName ? `${d.podFileName}${d.podPhotoName ? R.podPhoto(String(d.podPhotoName)) : ''}` : <EmptyValue />}</Row>
             </dl>
-            {d.status === 'in_transit' && can(actor, 'orders.dispatch') && <Button onClick={() => setDelivering(d.id)}>Confirm delivery</Button>}
+            {d.status === 'in_transit' && can(actor, 'orders.dispatch') && <Button onClick={() => setDelivering(d.id)}>{D.actions.confirmDelivery}</Button>}
           </section>
         ))
       ) : (
-        <EmptyState icon="send" title="Not dispatched yet">
-          {q.data.order.status === 'ready_for_dispatch' ? 'Use “Record dispatch” above.' : 'The order is dispatched once it is ready for dispatch.'}
+        <EmptyState icon="send" title={R.notDispatched}>
+          {q.data.order.status === 'ready_for_dispatch' ? R.notDispatchedReady : R.notDispatchedLater}
         </EmptyState>
       )}
       {delivering && <ConfirmDeliveryDialog dispatch={list.find((x) => x.id === delivering)!} onClose={() => setDelivering(null)} />}
@@ -461,7 +579,7 @@ export function DispatchTab({ actor, record }: RecordExtensionProps) {
   );
 }
 
-// ---------------------------------------------------------------- Contract (FR-053 / FR-054)
+// ---------------------------------------------------------------- Sales Contract (SO-05 / SO-06)
 
 export function ContractTab({ actor, record }: RecordExtensionProps) {
   const q = useOrder(record, actor);
@@ -477,7 +595,7 @@ export function ContractTab({ actor, record }: RecordExtensionProps) {
     setBusy(true);
     try {
       const c = await generateSalesContract(actor, v.order.id);
-      toast(`${c.contractNo} generated`);
+      toast(R.contractGenerated(String(c.contractNo)));
     } catch (e) {
       toast(errorMessage(e), 'danger');
     } finally {
@@ -486,64 +604,75 @@ export function ContractTab({ actor, record }: RecordExtensionProps) {
   };
   return (
     <div className="details">
-      {!approved && <InlineAlert tone="info">“Generate sales contract” becomes available once the order is approved.</InlineAlert>}
+      {!approved && <InlineAlert tone="info">{R.contractAfterApproval}</InlineAlert>}
       {current ? (
         <section className="detail-section">
           <h3 className="detail-section-title">
-            {String(current.contractNo)} · version {String(current.version)} {chip('contractStatus', current.status)}
+            <Link to={recordPeekPath('tc', 'salesContracts', current.id)}>{R.contractHeading(String(current.contractNo), String(current.version))}</Link> {chip('contractStatus', current.status)}
           </h3>
           <dl className="detail-list">
-            <div className="detail-row">
-              <dt>Value</dt>
-              <dd>{formatMoney(Number(current.contractValue))}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>Signed</dt>
-              <dd>{current.signedAt ? <>{String(current.signedBy)} · <DateText value={String(current.signedAt)} showTime /></> : <EmptyValue label="Not signed" />}</dd>
-            </div>
+            <Row label={R.contractValue}>{formatMoney(Number(current.contractValue))}</Row>
+            <Row label={R.contractSigned}>
+              {current.signedAt ? (
+                <>
+                  {String(current.signedBy)} · <DateText value={String(current.signedAt)} showTime />
+                </>
+              ) : (
+                <EmptyValue label={O.common.notSigned} />
+              )}
+            </Row>
           </dl>
           <div className="row-gap">
-            <Link className="btn btn-secondary" to={`/orders/${encodeURIComponent(v.order.id)}/contract/print`}>
-              <span className="btn-label">Print / PDF</span>
+            <Link className="btn btn-secondary" to={toPath(ROUTES.salesContractPdf, { recordId: v.order.id })}>
+              <span className="btn-label">{O.actions.viewPdf}</span>
             </Link>
-            <Link className="btn btn-secondary" to={`/salesContracts?peek=${encodeURIComponent(current.id)}`}>
-              <span className="btn-label">Edit terms</span>
+            <Link className="btn btn-secondary" to={recordPeekPath('tc', 'salesContracts', current.id)}>
+              <span className="btn-label">{O.actions.editTerms}</span>
             </Link>
             {['draft', 'sent_for_signature'].includes(String(current.status)) && (
               <Button
-                disabledReason={can(actor, 'orders.contract') ? undefined : 'Your role cannot send contracts'}
+                disabledReason={can(actor, 'orders.contract') ? undefined : O.disabled.sendContract}
                 onClick={async () => {
                   try {
                     const r = await sendContractForSignature(actor, current.id);
                     setSign({ id: current.id, otp: r.otp });
-                    toast(r.to ? `Signing request e-mailed to ${r.to} (simulated)` : 'Signing request created (no consenting e-mail contact)', 'info');
+                    toast(r.to ? R.signingSent(r.to) : R.signingCreated, 'info');
                   } catch (e) {
                     toast(errorMessage(e), 'danger');
                   }
                 }}
               >
-                Send for e-signature
+                {O.actions.sendForSignature}
               </Button>
             )}
             {current.status !== 'signed' && (
-              <Button loading={busy} onClick={generate} disabledReason={canGenerate ? undefined : 'Your role cannot generate contracts'}>
-                New version
+              <Button loading={busy} onClick={generate} disabledReason={canGenerate ? undefined : O.disabled.contract}>
+                {O.actions.newContractVersion}
               </Button>
             )}
           </div>
         </section>
       ) : (
-        <EmptyState icon="scroll-text" title="No contract yet" action={<Button variant="primary" loading={busy} onClick={generate} disabledReason={!approved ? 'Order not approved yet' : canGenerate ? undefined : 'Your role cannot generate contracts'}>Generate sales contract</Button>}>
-          Uses the {String(v.order.divisionId)} division template with the order’s payment, delivery and warranty terms.
+        <EmptyState
+          icon="scroll-text"
+          title={R.noContract}
+          action={
+            <Button variant="primary" loading={busy} onClick={generate} disabledReason={!approved ? O.disabled.notApproved : canGenerate ? undefined : O.disabled.contract}>
+              {O.actions.generateSalesContract}
+            </Button>
+          }
+        >
+          {R.noContractBody(String(v.order.divisionId))}
         </EmptyState>
       )}
       {v.contracts.filter((c) => c.status === 'superseded').length > 0 && (
         <p className="muted small">
-          Earlier versions:{' '}
-          {v.contracts
-            .filter((c) => c.status === 'superseded')
-            .map((c) => `v${c.version}`)
-            .join(', ')}
+          {R.earlierVersions(
+            v.contracts
+              .filter((c) => c.status === 'superseded')
+              .map((c) => `v${c.version}`)
+              .join(', '),
+          )}
         </p>
       )}
       {sign && <SignDialog contractId={sign.id} otp={sign.otp} onClose={() => setSign(null)} />}
@@ -556,46 +685,76 @@ export function SignDialog({ contractId, otp, onClose }: { contractId: string; o
   const toast = useToast();
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   return (
     <Dialog
       open
       onClose={onClose}
       size="sm"
-      title="Customer e-signature (simulated)"
-      description="In the live system the customer signs on the e-signature provider’s page. Here you play the customer."
+      title={R.signTitle}
+      description={R.signDescription}
       footer={
         <>
-          <Button onClick={onClose}>Later</Button>
+          <Button onClick={onClose}>{O.actions.later}</Button>
           <Button
             variant="primary"
             onClick={async () => {
+              setErrors({});
               try {
                 await signSalesContract(actor, contractId, code, name);
-                toast('Contract signed');
+                toast(R.signed);
                 onClose();
               } catch (e) {
-                setError(errorMessage(e));
+                setErrors(e instanceof ServiceError && e.fieldErrors ? e.fieldErrors : { form: errorMessage(e) });
+                toast(errorMessage(e), 'danger');
               }
             }}
           >
-            Sign contract
+            {O.actions.signContract}
           </Button>
         </>
       }
     >
-      <InlineAlert tone="info" title="Simulated one-time code">
-        The customer’s code is <strong className="mono">{otp}</strong>.
+      <InlineAlert tone="info" title={R.otpTitle}>
+        {R.otpBody} <strong className="mono">{otp}</strong>.
       </InlineAlert>
       <div className="form-grid cols-2">
-        <Field id="sg-name" label="Signer name" required>
+        <Field id="sg-name" label={R.signerName} required error={errors.signerName}>
           <input id="sg-name" className="input" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} data-autofocus />
         </Field>
-        <Field id="sg-otp" label="One-time code" required>
+        <Field id="sg-otp" label={R.otp} required error={errors.otp}>
           <input id="sg-otp" className="input" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
         </Field>
       </div>
-      {error && <p className="field-error">{error}</p>}
+      {errors.form && <p className="field-error">{errors.form}</p>}
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------- Hold / Cancellation (SO-10)
+
+export function HoldCancelTab({ actor, record }: RecordExtensionProps) {
+  const q = useOrder(record, actor);
+  if (!q.data) return <Loading q={q} />;
+  const o = q.data.order;
+  const list = q.data.approvals.filter((a) => a.type !== APPROVAL);
+  const before = o.statusBeforeHold ? masterValue('soStatus', o.statusBeforeHold)?.label ?? String(o.statusBeforeHold) : '';
+  return (
+    <div className="details">
+      {o.status === 'on_hold' && <InlineAlert tone="danger" title={O.banner.hold}>{before ? R.onHoldSince(before) : String(o.holdReason ?? '')}</InlineAlert>}
+      <dl className="detail-list">
+        <Row label={F.status}>{chip('soStatus', o.status)}</Row>
+        <Row label={F.holdReason}>{o.holdReason ? String(o.holdReason) : <EmptyValue />}</Row>
+        <Row label={F.cancelReason}>{o.cancelReason ? String(o.cancelReason) : <EmptyValue />}</Row>
+      </dl>
+      <h3 className="detail-section-title">{R.holdHistory}</h3>
+      {list.length ? (
+        <ApprovalList list={list} />
+      ) : (
+        <EmptyState icon="alert" title={R.noHoldHistory}>
+          {R.noHoldHistoryBody}
+        </EmptyState>
+      )}
+    </div>
   );
 }

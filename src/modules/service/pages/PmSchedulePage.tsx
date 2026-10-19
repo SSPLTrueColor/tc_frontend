@@ -1,14 +1,16 @@
-import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useServiceQuery } from '../../../hooks/useServiceQuery';
 import { formatDate } from '../../../lib/dates';
+import { recordNewPath, recordPagePath, resourcePath } from '../../../lib/routes';
+import { L } from '../../../constants/labels';
 import { errorMessage } from '../../../services/api/client';
 import { loaders, serviceApi } from '../../../services/api/service';
-import { can } from '../../../services/authz';
-import { getDb } from '../../../services/db';
+import { can, perm } from '../../../services/authz';
 import { useActor } from '../../../services/hooks';
-import { masterValue } from '../../../services/registry';
+import { activeMasterValues, masterValue } from '../../../services/registry';
 import { recordTitle } from '../../../services/runtime';
+import { filterPm, type PmSort, type PmTab } from '../../../services/service/pm';
 import { ServiceError } from '../../../services/types';
 import { Button, IconButton } from '../../../components/primitives/Button';
 import { EmptyValue } from '../../../components/primitives/display';
@@ -17,31 +19,50 @@ import { Dialog } from '../../../components/primitives/overlay';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import { PageHeader } from '../../../components/shell/PageHeader';
 
-type Tab = 'due' | 'overdue' | 'missed' | 'done';
+const S = L.service;
+const P = S.pages.pmSchedule;
 const PAGE = 25;
+const TABS: PmTab[] = ['all', 'due', 'overdue', 'missed', 'done'];
+const SORTS: PmSort[] = ['due_asc', 'due_desc', 'customer'];
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
+const tabLabel = (t: PmTab) => (t === 'all' ? P.all : S.masters.pmStatus.values[t]);
 
-/** FR-085: PM schedule by status with assignment, model-wise checklist completion and PM tickets. */
+/**
+ * PM Schedule (FR-085, SRV-11): one page for the auto-generated schedule and the PM visit list —
+ * status tabs, search, service engineer / division filters, sort, pagination, assignment,
+ * model-wise checklist completion and PM service tickets. PM visit records open at /pm-visits/:id.
+ */
 export function PmSchedulePage() {
   const actor = useActor();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
-  const tab = (params.get('tab') as Tab) || 'due';
-  const [search, setSearch] = useState(params.get('q') ?? '');
-  const [page, setPage] = useState(0);
+  const tab = (TABS.includes(params.get('tab') as PmTab) ? params.get('tab') : 'due') as PmTab;
+  const search = params.get('q') ?? '';
+  const engineerId = params.get('engineer') ?? '';
+  const divisionId = params.get('division') ?? '';
+  const sort = SORTS.includes(params.get('sort') as PmSort) ? (params.get('sort') as PmSort) : undefined;
+  const page = Math.max(0, Number(params.get('page') ?? 0) || 0);
+  const peek = params.get('peek');
   const [completing, setCompleting] = useState<string | null>(null);
   const q = useServiceQuery(loaders.pm(actor), [actor.user.id]);
   const desk = can(actor, 'ticket.assign');
-  const engineers = useMemo(
-    () =>
-      (getDb().records.employees ?? [])
-        .filter((e) => e.roleId === 'engineer' && e.status !== 'inactive')
-        .map((e) => ({ value: e.id, label: s(e.fullName) })),
-    [],
-  );
-  const rows = (q.data ?? []).filter((p) => p.status === tab && (!search || `${p.id} ${p.machineLabel} ${p.model} ${p.customerLabel}`.toLowerCase().includes(search.toLowerCase())));
-  const sorted = tab === 'done' ? [...rows].sort((a, b) => s(b.completedAt).localeCompare(s(a.completedAt))) : rows;
-  const counts = (k: Tab) => (q.data ?? []).filter((p) => p.status === k).length;
+  const engineers = serviceApi.engineerOptions(actor);
+  const divisions = activeMasterValues('division').map((d) => ({ value: d.key, label: d.label }));
+
+  // Old list links (/pm-visits?peek=ID) arrive here; open the record page instead.
+  if (peek) return <Navigate to={recordPagePath(actor.workspaceId, 'pmVisits', peek)} replace />;
+
+  const update = (patch: Record<string, string | undefined>) => {
+    const next = new URLSearchParams(params);
+    Object.entries({ page: undefined, ...patch }).forEach(([k, v]) => (v ? next.set(k, v) : next.delete(k)));
+    setParams(next, { replace: true });
+  };
+  const all = q.data ?? [];
+  const rows = filterPm(all, { tab, q: search, engineerId, divisionId, sort });
+  const counts = (t: PmTab) => (t === 'all' ? all.length : all.filter((p) => p.status === t).length);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  const current = Math.min(page, pages - 1);
+  const filtered = !!(search || engineerId || divisionId);
   const act = async (p: Promise<unknown>, ok: string) => {
     try {
       await p;
@@ -52,67 +73,78 @@ export function PmSchedulePage() {
   };
   return (
     <div className="page">
-      <PageHeader title="PM schedule" description="Preventive maintenance visits generated from warranties and AMC/CMC contracts. Overdue = past the due date; missed = more than 30 days overdue." />
-      <Tabs<Tab>
-        label="PM status"
-        value={tab}
-        onChange={(t) => {
-          setPage(0);
-          setParams({ tab: t });
-        }}
-        tabs={[
-          { id: 'due', label: 'Due', count: counts('due') },
-          { id: 'overdue', label: 'Overdue', count: counts('overdue') },
-          { id: 'missed', label: 'Missed', count: counts('missed') },
-          { id: 'done', label: 'Done', count: counts('done') },
-        ]}
+      <PageHeader
+        title={L.nav.pages.pmSchedule.title}
+        description={P.description}
+        actions={
+          perm(actor, 'pmVisits').create ? (
+            <Link className="btn btn-primary" to={recordNewPath('pmVisits')}>
+              <span className="btn-label">{S.actions.newPmVisit}</span>
+            </Link>
+          ) : undefined
+        }
       />
-      <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder="Search machine, model, customer" aria-label="Search PM visits" value={search} onChange={(e) => (setSearch(e.target.value), setPage(0))} />
-        <span className="toolbar-count muted">{sorted.length} visits</span>
+      <Tabs<PmTab> label={P.tabsLabel} value={tab} onChange={(t) => update({ tab: t })} tabs={TABS.map((t) => ({ id: t, label: tabLabel(t), count: q.data ? counts(t) : undefined }))} />
+      <div className="toolbar" style={{ flexWrap: 'wrap' }}>
+        <input type="search" className="input input-compact" placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => update({ q: e.target.value || undefined })} />
+        <SelectMenu
+          label={P.engineerFilter}
+          value={engineerId}
+          options={[{ value: '', label: P.allEngineers }, { value: '__none', label: P.unassigned }, ...engineers]}
+          onChange={(v) => update({ engineer: v || undefined })}
+        />
+        <SelectMenu label={P.divisionFilter} value={divisionId} options={[{ value: '', label: P.allDivisions }, ...divisions]} onChange={(v) => update({ division: v || undefined })} />
+        <SelectMenu<PmSort> label={P.sortLabel} value={sort ?? (tab === 'done' ? 'due_desc' : 'due_asc')} options={SORTS.map((k) => ({ value: k, label: P.sorts[k] }))} onChange={(v) => update({ sort: v })} />
+        {filtered && (
+          <Button variant="ghost" onClick={() => update({ q: undefined, engineer: undefined, division: undefined })}>
+            {S.actions.clearFilters}
+          </Button>
+        )}
         <span className="spacer" />
-        <Link to="/pmVisits" className="link small">
-          Full list with filters
-        </Link>
+        <span className="toolbar-count muted">{P.count(rows.length)}</span>
       </div>
       <div className="content-surface">
         {q.error ? (
-          <ErrorState title="Could not load the PM schedule" onRetry={q.retry}>
+          <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
           </ErrorState>
         ) : !q.data ? (
           <Skeleton rows={8} />
-        ) : !sorted.length ? (
-          <EmptyState icon="calendar-clock" title={search ? 'No matching PM visits' : `No ${tab} PM visits`} />
+        ) : !rows.length ? (
+          <EmptyState icon="calendar-clock" title={filtered ? P.emptySearch : tab === 'all' ? P.emptyAll : P.empty(tabLabel(tab).toLowerCase())} />
         ) : (
           <>
             <div className="table-scroll">
               <table className="mini-table">
                 <thead>
                   <tr>
-                    <th scope="col">Due</th>
-                    <th scope="col">Machine</th>
-                    <th scope="col">Customer</th>
-                    <th scope="col">Engineer</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Actions</th>
+                    <th scope="col">{P.cols.due}</th>
+                    <th scope="col">{P.cols.machine}</th>
+                    <th scope="col">{P.cols.customer}</th>
+                    <th scope="col">{P.cols.engineer}</th>
+                    <th scope="col">{P.cols.status}</th>
+                    <th scope="col">{P.cols.actions}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.slice(page * PAGE, page * PAGE + PAGE).map((p) => {
+                  {rows.slice(current * PAGE, current * PAGE + PAGE).map((p) => {
                     const st = masterValue('pmStatus', p.status);
                     const mineOrDesk = desk || p.engineerId === actor.staffId;
+                    const open = p.status !== 'done';
                     return (
                       <tr key={p.id}>
                         <td className="nowrap">{formatDate(s(p.dueDate))}</td>
                         <td>
-                          <Link to={`/pmVisits?peek=${p.id}`}>{p.machineLabel}</Link>
-                          <div className="muted small">{p.model}</div>
+                          <Link to={recordPagePath(actor.workspaceId, 'pmVisits', p.id)}>{p.machineLabel}</Link>
+                          <div className="muted small">
+                            {p.id}
+                            {p.model ? ` · ${p.model}` : ''}
+                          </div>
                         </td>
                         <td>{p.customerLabel}</td>
                         <td>
-                          {desk && p.status !== 'done' ? (
-                            <SelectMenu label={`Engineer for ${p.id}`} value={s(p.engineerId)} placeholder="Assign…" options={engineers} onChange={(v) => void act(serviceApi.assignPm(actor, p.id, v), 'Engineer assigned')} />
+                          {desk && open ? (
+                            <SelectMenu label={P.engineerFor(p.id)} value={s(p.engineerId)} placeholder={P.assignPlaceholder} options={engineers} onChange={(v) => void act(serviceApi.assignPm(actor, p.id, v), S.toasts.pmAssigned)} />
                           ) : p.engineerId ? (
                             recordTitle('employees', p.engineerId)
                           ) : (
@@ -121,14 +153,14 @@ export function PmSchedulePage() {
                         </td>
                         <td>{st && <StatusChip label={st.label} tone={st.tone} />}</td>
                         <td className="nowrap">
-                          {p.status !== 'done' && (
-                            <Button disabledReason={mineOrDesk ? undefined : 'Assigned to another engineer'} onClick={() => setCompleting(p.id)}>
-                              Complete
+                          {open && (
+                            <Button disabledReason={mineOrDesk ? undefined : P.otherEngineer} onClick={() => setCompleting(p.id)}>
+                              {S.actions.complete}
                             </Button>
                           )}
-                          {desk && p.status !== 'done' && !p.ticketId && <IconButton icon="plus" label="Raise PM ticket" onClick={() => void act(serviceApi.raisePmTicket(actor, p.id), 'PM ticket raised')} />}
+                          {desk && open && !p.ticketId && <IconButton icon="plus" label={S.actions.raisePmTicket} onClick={() => void act(serviceApi.raisePmTicket(actor, p.id), S.toasts.pmTicketRaised)} />}
                           {!!p.ticketId && (
-                            <Link className="link small" to={`/tickets?peek=${s(p.ticketId)}`}>
+                            <Link className="link small" to={resourcePath(actor.workspaceId, 'tickets', { peek: s(p.ticketId) })}>
                               {s(p.ticketId)}
                             </Link>
                           )}
@@ -140,15 +172,10 @@ export function PmSchedulePage() {
               </table>
             </div>
             <div className="grid-footer">
-              <span className="grid-footer-range">
-                <strong>
-                  {page * PAGE + 1}–{Math.min(sorted.length, (page + 1) * PAGE)}
-                </strong>{' '}
-                of {sorted.length}
-              </span>
-              <nav className="grid-pages" aria-label="Pagination">
-                <IconButton icon="chevron-left" label="Previous page" disabledReason={page === 0 ? 'First page' : undefined} onClick={() => setPage(page - 1)} />
-                <IconButton icon="chevron-right" label="Next page" disabledReason={(page + 1) * PAGE >= sorted.length ? 'Last page' : undefined} onClick={() => setPage(page + 1)} />
+              <span className="grid-footer-range">{S.pager.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)}</span>
+              <nav className="grid-pages" aria-label={S.pager.label}>
+                <IconButton icon="chevron-left" label={S.pager.prev} disabledReason={current === 0 ? S.pager.first : undefined} onClick={() => update({ page: String(current - 1) })} />
+                <IconButton icon="chevron-right" label={S.pager.next} disabledReason={current + 1 >= pages ? S.pager.last : undefined} onClick={() => update({ page: String(current + 1) })} />
               </nav>
             </div>
           </>
@@ -162,8 +189,7 @@ export function PmSchedulePage() {
 function CompletePmDialog({ pmId, onClose }: { pmId: string; onClose: () => void }) {
   const actor = useActor();
   const toast = useToast();
-  const pm = (getDb().records.pmVisits ?? []).find((p) => p.id === pmId);
-  const items = serviceApi.checklistFor(pm?.machineId);
+  const items = serviceApi.checklistForVisit(pmId);
   const [ok, setOk] = useState<boolean[]>(items.map(() => true));
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
@@ -173,11 +199,11 @@ function CompletePmDialog({ pmId, onClose }: { pmId: string; onClose: () => void
       open
       onClose={onClose}
       size="md"
-      title={`Complete PM visit · ${pmId}`}
-      description="Model-wise checklist. Untick anything that failed and describe it; raise a breakdown ticket if a repair is needed."
+      title={P.completeTitle(pmId)}
+      description={P.completeDescription}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{S.actions.cancel}</Button>
           <Button
             variant="primary"
             loading={busy}
@@ -186,7 +212,7 @@ function CompletePmDialog({ pmId, onClose }: { pmId: string; onClose: () => void
               setError({});
               try {
                 await serviceApi.completePm(actor, pmId, { results: items.map((item, i) => ({ item, ok: ok[i] })), notes });
-                toast('PM visit completed');
+                toast(S.toasts.pmCompleted);
                 onClose();
               } catch (e) {
                 setError(e instanceof ServiceError && e.fieldErrors ? e.fieldErrors : { form: errorMessage(e) });
@@ -195,7 +221,7 @@ function CompletePmDialog({ pmId, onClose }: { pmId: string; onClose: () => void
               }
             }}
           >
-            Mark done
+            {S.actions.markCompleted}
           </Button>
         </>
       }
@@ -211,7 +237,7 @@ function CompletePmDialog({ pmId, onClose }: { pmId: string; onClose: () => void
       </ul>
       <div className="form-field">
         <label className="field-label" htmlFor="pm-notes">
-          Findings {ok.some((x) => !x) && <span className="req">*</span>}
+          {P.findings} {ok.some((x) => !x) && <span className="req">*</span>}
         </label>
         <textarea id="pm-notes" className="input textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} aria-invalid={!!error.notes || undefined} />
         {error.notes && <p className="field-error">{error.notes}</p>}

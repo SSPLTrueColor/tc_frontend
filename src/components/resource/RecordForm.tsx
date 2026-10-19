@@ -15,6 +15,11 @@ import { InlineAlert, useToast } from '../primitives/feedback';
 import { Dialog, Drawer } from '../primitives/overlay';
 import { ErrorSummary, FormSections } from './FormFields';
 import { EmptyValue } from '../primitives/display';
+import { applyFormLayout, divisionOf } from '../../services/formLayouts';
+import { L } from '../../constants/labels';
+
+const C = L.common;
+const F = L.common.form;
 
 type Values = Record<string, unknown>;
 
@@ -119,7 +124,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
         } else if (e.code === 'version_conflict') {
           setVersionConflict(e.message);
         } else setMessage(e.message);
-      } else setMessage('Unexpected error — nothing was saved.');
+      } else setMessage(C.toasts.nothingSaved);
       return null;
     } finally {
       setSubmitting(false);
@@ -148,28 +153,28 @@ export function ConflictPanel({ form, onOverride }: { form: RecordFormState; onO
   const canOverride = can(form.actor, 'schedule.override');
   return (
     <div className="conflict-panel" role={form.conflicts ? 'alert' : 'status'}>
-      <InlineAlert tone={blocking ? 'danger' : 'warning'} title={blocking ? 'Scheduling conflict' : 'Scheduling warning'}>
+      <InlineAlert tone={blocking ? 'danger' : 'warning'} title={blocking ? F.schedulingConflict : F.schedulingWarning}>
         <ul className="plain-list">
           {list.map((c, i) => (
             <li key={i}>{c.message}</li>
           ))}
         </ul>
         {blocking ? (
-          <p>Rooms are exclusive. Choose another time or room.</p>
+          <p>{F.conflictBlocking}</p>
         ) : !canOverride ? (
-          <p>Choose another time, or ask a manager to save it with an override.</p>
+          <p>{F.conflictAskManager}</p>
         ) : form.conflicts ? (
           <div className="override">
             <label className="field-label" htmlFor="override-reason">
-              Override reason (audited)
+              {F.overrideReason}
             </label>
-            <input id="override-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Agreed with the customer by phone" />
+            <input id="override-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={F.overridePlaceholder} />
             <Button variant="danger" disabled={reason.trim().length < 5} onClick={() => onOverride(reason)}>
-              Book anyway
+              {F.overrideAction}
             </Button>
           </div>
         ) : (
-          <p>You can save with an audited override reason.</p>
+          <p>{F.canOverride}</p>
         )}
       </InlineAlert>
     </div>
@@ -179,10 +184,10 @@ export function ConflictPanel({ form, onOverride }: { form: RecordFormState; onO
 function VersionConflict({ form }: { form: RecordFormState }) {
   if (!form.versionConflict) return null;
   return (
-    <InlineAlert tone="warning" title="This record changed">
+    <InlineAlert tone="warning" title={F.recordChanged}>
       {form.versionConflict}{' '}
       <Button size="compact" icon="reset" onClick={form.reload}>
-        Reload latest (discards your edits)
+        {F.reloadLatest}
       </Button>
     </InlineAlert>
   );
@@ -196,14 +201,14 @@ export function useUnsavedGuard(dirty: boolean, onClose: () => void) {
     <Dialog
       open={asking}
       onClose={() => setAsking(false)}
-      title="Discard unsaved changes?"
-      description="Your edits have not been saved."
+      title={C.confirm.unsavedTitle}
+      description={C.confirm.unsavedDescription}
       size="sm"
       role="alertdialog"
       footer={
         <>
           <Button onClick={() => setAsking(false)} data-autofocus>
-            Keep editing
+            {C.actions.keepEditing}
           </Button>
           <Button
             variant="danger"
@@ -212,18 +217,20 @@ export function useUnsavedGuard(dirty: boolean, onClose: () => void) {
               onClose();
             }}
           >
-            Discard
+            {C.actions.discard}
           </Button>
         </>
       }
     >
-      <p className="muted">Closing will lose the changes you made in this form.</p>
+      <p className="muted">{C.confirm.unsavedBody}</p>
     </Dialog>
   );
   return { requestClose, dialog };
 }
 
 function FormBody({ form, fieldKeys, sectionIds, children, layout }: { form: RecordFormState; fieldKeys?: string[]; sectionIds?: string[]; children?: ReactNode; layout?: 'simple' | 'canvas' }) {
+  // Per-division form layout (ADM-05): registered by Administration in src/services/formLayouts.ts; no-op when none.
+  const res = applyFormLayout(form.res, divisionOf(form.res, form.values));
   return (
     <form
       className="record-form"
@@ -235,7 +242,7 @@ function FormBody({ form, fieldKeys, sectionIds, children, layout }: { form: Rec
       <VersionConflict form={form} />
       <ErrorSummary errors={form.errors} res={form.res} message={form.message && !form.conflicts ? form.message : undefined} />
       <FormSections
-        res={form.res}
+        res={res}
         fieldKeys={fieldKeys}
         sectionIds={sectionIds}
         values={form.values}
@@ -280,7 +287,7 @@ function QuickCreateInner({ resKey, onClose, initial, onCreated, onMoreFields }:
   const save = async (overrideReason?: string) => {
     const out = await form.submit({ overrideReason });
     if (out) {
-      toast(`${form.res.label} ${out.record.id} created`);
+      toast(C.toasts.created(form.res.label, out.record.id));
       onCreated(out.record);
       onClose();
     }
@@ -290,18 +297,18 @@ function QuickCreateInner({ resKey, onClose, initial, onCreated, onMoreFields }:
       <Dialog
         open
         onClose={guard.requestClose}
-        title={`New ${form.res.label.toLowerCase()}`}
-        description="Quick create — only the essentials. Use More fields for the full form."
+        title={F.newTitle(form.res.label)}
+        description={F.quickCreateDescription}
         footer={
           <>
             {onMoreFields && (
               <Button variant="ghost" onClick={() => onMoreFields(form.values)} className="mr-auto">
-                More fields…
+                {C.actions.moreFields}
               </Button>
             )}
-            <Button onClick={guard.requestClose}>Cancel</Button>
+            <Button onClick={guard.requestClose}>{C.actions.cancel}</Button>
             <Button variant="primary" loading={form.submitting} onClick={() => save()}>
-              Create
+              {C.actions.create}
             </Button>
           </>
         }
@@ -331,7 +338,7 @@ function FormDrawerInner({ resKey, recordId, onClose, initial, onSaved }: { resK
   const save = async (overrideReason?: string) => {
     const out = await form.submit({ overrideReason });
     if (out) {
-      toast(recordId ? `${out.record.id} saved` : `${form.res.label} ${out.record.id} created`);
+      toast(recordId ? C.toasts.saved(out.record.id) : C.toasts.created(form.res.label, out.record.id));
       onSaved?.(out.record);
       onClose();
     }
@@ -341,13 +348,13 @@ function FormDrawerInner({ resKey, recordId, onClose, initial, onSaved }: { resK
       <FormFrame
         kind="form"
         onClose={guard.requestClose}
-        title={`${recordId ? `Edit ${form.res.label.toLowerCase()} ${recordId}` : `New ${form.res.label.toLowerCase()}`}${form.dirty ? ' · unsaved' : ''}`}
+        title={`${recordId ? F.editTitle(form.res.label, recordId) : F.newTitle(form.res.label)}${form.dirty ? F.unsavedSuffix : ''}`}
         layoutSwitch={<LayoutSwitch />}
         footer={
           <>
-            <Button onClick={guard.requestClose}>Cancel</Button>
+            <Button onClick={guard.requestClose}>{C.actions.cancel}</Button>
             <Button variant="primary" loading={form.submitting} onClick={() => save()}>
-              {recordId ? 'Save changes' : 'Create'}
+              {recordId ? C.actions.saveChanges : C.actions.create}
             </Button>
           </>
         }
@@ -367,10 +374,10 @@ function LayoutSwitch() {
   const actor = useActor();
   const layout = getSettings(actor.user.id).formLayout ?? 'simple';
   return (
-    <div className="segmented form-layout-switch" role="radiogroup" aria-label="Form layout">
+    <div className="segmented form-layout-switch" role="radiogroup" aria-label={F.layout}>
       {(['simple', 'canvas'] as const).map((l) => (
         <button key={l} type="button" role="radio" aria-checked={layout === l} className={cx('seg-btn', layout === l && 'is-on')} onClick={() => updateSettings(actor.user.id, { formLayout: l })}>
-          {l === 'simple' ? 'Simple' : 'Canvas'}
+          {l === 'simple' ? F.simple : F.canvas}
         </button>
       ))}
     </div>
@@ -408,7 +415,7 @@ function WizardInner({ resKey, onClose, onCreated }: { resKey: string; onClose: 
   const [step, setStep] = useState(saved?.step ?? 0);
   const [resumed] = useState(!!saved);
   const toast = useToast();
-  const steps = form.res.form.wizard ?? [{ id: 'all', title: 'Details', sections: form.res.form.sections.map((s) => s.id) }];
+  const steps = form.res.form.wizard ?? [{ id: 'all', title: F.details, sections: form.res.form.sections.map((s) => s.id) }];
   const isReview = step === steps.length;
 
   // Autosave draft (debounced) — local only.
@@ -436,7 +443,7 @@ function WizardInner({ resKey, onClose, onCreated }: { resKey: string; onClose: 
     const out = await form.submit();
     if (out) {
       clearDraft();
-      toast(`${form.res.label} ${out.record.id} registered`);
+      toast(C.toasts.registered(form.res.label, out.record.id));
       onCreated(out.record);
       onClose();
     }
@@ -446,7 +453,7 @@ function WizardInner({ resKey, onClose, onCreated }: { resKey: string; onClose: 
     <FormFrame
       kind="wizard"
       onClose={onClose}
-      title={`Register ${form.res.label.toLowerCase()}`}
+      title={C.actions.registerRecord(form.res.label)}
       footer={
         <>
           {resumed || form.dirty ? (
@@ -458,32 +465,34 @@ function WizardInner({ resKey, onClose, onCreated }: { resKey: string; onClose: 
                 onClose();
               }}
             >
-              Discard draft
+              {C.actions.discardDraft}
             </Button>
           ) : null}
-          <Button onClick={onClose} title="Closes the wizard; your draft is kept">Cancel</Button>
-          {step > 0 && <Button onClick={() => setStep((s) => s - 1)}>Back</Button>}
+          <Button onClick={onClose} title={F.wizardCancelTip}>
+            {C.actions.cancel}
+          </Button>
+          {step > 0 && <Button onClick={() => setStep((s) => s - 1)}>{C.actions.back}</Button>}
           {isReview ? (
             <Button variant="primary" loading={form.submitting} onClick={finish}>
-              Register
+              {C.actions.register}
             </Button>
           ) : (
             <Button variant="primary" onClick={next}>
-              Next
+              {C.actions.next}
             </Button>
           )}
         </>
       }
     >
-      <ol className="wizard-steps" aria-label="Progress">
-        {[...steps.map((s) => s.title), 'Review'].map((t, i) => (
+      <ol className="wizard-steps" aria-label={F.progress}>
+        {[...steps.map((s) => s.title), F.review].map((t, i) => (
           <li key={t} className={i === step ? 'is-current' : i < step ? 'is-done' : ''} aria-current={i === step ? 'step' : undefined}>
             <span className="wizard-num">{i + 1}</span>
             {t}
           </li>
         ))}
       </ol>
-      {resumed && step === 0 && !form.dirty && <InlineAlert tone="info">Resumed your saved draft.</InlineAlert>}
+      {resumed && step === 0 && !form.dirty && <InlineAlert tone="info">{F.resumedDraft}</InlineAlert>}
       {isReview ? (
         <div className="review">
           <ErrorSummary errors={form.errors} res={form.res} message={form.message} />

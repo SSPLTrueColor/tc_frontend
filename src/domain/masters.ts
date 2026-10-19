@@ -2,6 +2,10 @@ import type { MasterDefinition, MasterValue, Tone } from '../metadata/types';
 import { L } from '../constants/labels';
 
 const M = L.common.masters;
+/** Lead-related shared masters: wording owned by the leads labels (L.leads.masters). */
+const LM = L.leads.masters;
+/** Customer-related shared masters: wording owned by the customers labels (L.customers.masters). */
+const CM = L.customers.masters;
 
 const v = (key: string, label: string, tone: Tone = 'neutral', parent?: string): Omit<MasterValue, 'order'> => ({
   key,
@@ -110,39 +114,39 @@ export const appMasters: MasterDefinition[] = [
   master('taskStatus', M.taskStatus.label, [v('todo', M.taskStatus.values.todo, 'info'), v('in_progress', M.taskStatus.values.in_progress, 'warning'), v('done', M.taskStatus.values.done, 'success'), v('cancelled', M.taskStatus.values.cancelled, 'neutral')]),
   master('taskPriority', M.taskPriority.label, [v('low', M.taskPriority.values.low), v('medium', M.taskPriority.values.medium, 'info'), v('high', M.taskPriority.values.high, 'warning'), v('urgent', M.taskPriority.values.urgent, 'danger')]),
   // ---- shared business masters (used by several modules; see docs/CONTRACTS.md)
-  master('productType', M.productType.label, [
-    v('machine', M.productType.values.machine, 'accent'),
-    v('ink', M.productType.values.ink, 'info'),
-    v('paper', M.productType.values.paper),
-    v('fabric', M.productType.values.fabric, 'success'),
-    v('spares', M.productType.values.spares),
-    v('service', M.productType.values.service),
-    v('software', M.productType.values.software),
+  master('productType', LM.productType.label, [
+    v('machine', LM.productType.values.machine, 'accent'),
+    v('ink', LM.productType.values.ink, 'info'),
+    v('paper', LM.productType.values.paper),
+    v('fabric', LM.productType.values.fabric, 'success'),
+    v('spares', LM.productType.values.spares),
+    v('service', LM.productType.values.service),
+    v('software', LM.productType.values.software),
   ]),
-  master('productSubType', M.productSubType.label, [v('textile', M.productSubType.values.textile), v('pod', M.productSubType.values.pod), v('label', M.productSubType.values.label), v('other', M.productSubType.values.other)]),
-  master('leadSource', M.leadSource.label, [
-    v('website', M.leadSource.values.website),
-    v('exhibition', M.leadSource.values.exhibition, 'accent'),
-    v('referral', M.leadSource.values.referral, 'success'),
-    v('dealer', M.leadSource.values.dealer),
-    v('social', M.leadSource.values.social),
-    v('meta_ads', M.leadSource.values.meta_ads),
-    v('google_ads', M.leadSource.values.google_ads),
-    v('indiamart', M.leadSource.values.indiamart),
-    v('cold_call', M.leadSource.values.cold_call),
-    v('walk_in', M.leadSource.values.walk_in),
-    v('agency', M.leadSource.values.agency),
+  master('productSubType', LM.productSubType.label, [v('textile', LM.productSubType.values.textile), v('pod', LM.productSubType.values.pod), v('label', LM.productSubType.values.label), v('other', LM.productSubType.values.other)]),
+  master('leadSource', LM.leadSource.label, [
+    v('website', LM.leadSource.values.website),
+    v('exhibition', LM.leadSource.values.exhibition, 'accent'),
+    v('referral', LM.leadSource.values.referral, 'success'),
+    v('dealer', LM.leadSource.values.dealer),
+    v('social', LM.leadSource.values.social),
+    v('meta_ads', LM.leadSource.values.meta_ads),
+    v('google_ads', LM.leadSource.values.google_ads),
+    v('indiamart', LM.leadSource.values.indiamart),
+    v('cold_call', LM.leadSource.values.cold_call),
+    v('walk_in', LM.leadSource.values.walk_in),
+    v('agency', LM.leadSource.values.agency),
   ]),
-  master('referrerType', M.referrerType.label, [v('customer', M.referrerType.values.customer), v('engineer', M.referrerType.values.engineer), v('employee', M.referrerType.values.employee), v('dealer', M.referrerType.values.dealer)]),
-  master('lostReason', M.lostReason.label, [
-    v('no_budget', M.lostReason.values.no_budget),
-    v('bought_competitor', M.lostReason.values.bought_competitor, 'danger'),
-    v('not_reachable', M.lostReason.values.not_reachable),
-    v('duplicate', M.lostReason.values.duplicate),
-    v('not_relevant', M.lostReason.values.not_relevant),
-    v('price', M.lostReason.values.price, 'warning'),
-    v('postponed', M.lostReason.values.postponed),
-    v('other', M.lostReason.values.other),
+  master('referrerType', LM.referrerType.label, [v('customer', LM.referrerType.values.customer), v('engineer', LM.referrerType.values.engineer), v('employee', LM.referrerType.values.employee), v('dealer', LM.referrerType.values.dealer)]),
+  master('lostReason', LM.lostReason.label, [
+    v('no_budget', LM.lostReason.values.no_budget),
+    v('bought_competitor', LM.lostReason.values.bought_competitor, 'danger'),
+    v('not_reachable', LM.lostReason.values.not_reachable),
+    v('duplicate', LM.lostReason.values.duplicate),
+    v('not_relevant', LM.lostReason.values.not_relevant),
+    v('price', LM.lostReason.values.price, 'warning'),
+    v('postponed', LM.lostReason.values.postponed),
+    v('other', LM.lostReason.values.other),
   ]),
   master('activityType', M.activityType.label, [
     v('call', M.activityType.values.call),
@@ -153,20 +157,20 @@ export const appMasters: MasterDefinition[] = [
     v('demo', M.activityType.values.demo),
     v('note', M.activityType.values.note),
   ]),
-  master('customerCategory', M.customerCategory.label, [
-    v('prospect', M.customerCategory.values.prospect, 'info'),
-    v('active', M.customerCategory.values.active, 'success'),
-    v('inactive', M.customerCategory.values.inactive),
-    v('dealer', M.customerCategory.values.dealer, 'accent'),
-    v('distributor', M.customerCategory.values.distributor, 'accent'),
+  master('customerCategory', CM.customerCategory.label, [
+    v('prospect', CM.customerCategory.values.prospect, 'info'),
+    v('active', CM.customerCategory.values.active, 'success'),
+    v('inactive', CM.customerCategory.values.inactive),
+    v('dealer', CM.customerCategory.values.dealer, 'accent'),
+    v('distributor', CM.customerCategory.values.distributor, 'accent'),
   ]),
-  master('segment', M.segment.label, [
-    v('fashion', M.segment.values.fashion),
-    v('job_work', M.segment.values.job_work),
-    v('trader', M.segment.values.trader),
-    v('mill', M.segment.values.mill),
-    v('packaging', M.segment.values.packaging),
-    v('commercial_print', M.segment.values.commercial_print),
+  master('segment', CM.segment.label, [
+    v('fashion', CM.segment.values.fashion),
+    v('job_work', CM.segment.values.job_work),
+    v('trader', CM.segment.values.trader),
+    v('mill', CM.segment.values.mill),
+    v('packaging', CM.segment.values.packaging),
+    v('commercial_print', CM.segment.values.commercial_print),
   ]),
   master('industry', M.industry.label, [
     v('textile', M.industry.values.textile),

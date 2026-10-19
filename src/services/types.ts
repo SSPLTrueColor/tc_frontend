@@ -164,6 +164,8 @@ export interface PersonalSettings {
   customPalettes: { id: string; name: string; accent: string; sidebar: string; rail: string; custom?: boolean }[];
   recents: { label: string; path: string; at: string }[];
   defaultViews: Record<string, string>;
+  /** First-login guided tour (COM-12): set when the user finishes or skips it. */
+  tourSeenAt?: string;
 }
 
 export interface Db {

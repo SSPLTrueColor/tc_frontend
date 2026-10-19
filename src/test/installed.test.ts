@@ -4,7 +4,11 @@ import { actorFor } from '../services/authz';
 import { createDb, getDb, __setDb } from '../services/db';
 import { addDays, todayKey } from '../lib/dates';
 import { createRecord, transitionRecord } from '../services/runtime';
-import { moveMachine, planRenewalSweep, renewContract, runRenewalSweep, signOffInstallation, startSignOffOtp } from '../services/installed/logic';
+import { moveMachine, planRenewalSweep, prepareRenewalQuotation, renewContract, runRenewalSweep, signOffInstallation, startSignOffOtp } from '../services/installed/logic';
+import { getResource, masterLabel } from '../services/registry';
+import { recordPagePath, resourcePath } from '../lib/routes';
+import { routes as installedRoutes } from '../modules/installed/routes';
+import { ROUTES } from '../constants/routes';
 import { coverageFor } from '../services/lookups';
 import { ServiceError } from '../services/types';
 
@@ -125,5 +129,43 @@ describe('installed base', () => {
     moveMachine(svc(), m.id, { moveType: 'resale', toCustomerId: to.id, toSiteAddressId: null, moveDate: todayKey(), reason: 'Sold' });
     expect(getDb().records.machines.find((x) => x.id === m.id)!.customerId).toBe(to.id);
     expect(getDb().records.machineMoves.some((x) => x.machineId === m.id && x.moveType === 'resale')).toBe(true);
+  });
+
+  it('uses the glossary terms for record names, field labels and statuses', () => {
+    expect(getResource('machines').labelPlural).toBe('Installed Base');
+    expect(getResource('machineComponents').labelPlural).toBe('Component Serial Numbers');
+    expect(getResource('machineReadings').labelPlural).toBe('Machine Usage Readings');
+    expect(getResource('machineMoves').labelPlural).toBe('Resale / Relocation History');
+    expect(getResource('amcContracts').label).toBe('AMC / CMC Contract');
+    const label = (res: string, key: string) => getResource(res).fields.find((f) => f.key === key)?.label;
+    expect(label('installations', 'engineerId')).toBe('Service engineer');
+    expect(label('machines', 'siteAddressId')).toBe('Installation site');
+    expect(label('machines', 'installDate')).toBe('Installation date');
+    expect(label('amcContracts', 'contractNo')).toBe('Contract number');
+    expect(label('amcContracts', 'pmVisitsPerYear')).toBe('Number of preventive visits');
+    expect(label('amcContracts', 'billingFrequency')).toBe('Billing schedule');
+    expect(masterLabel('installationStatus', 'site_ready')).toBe('Site Ready');
+    expect(masterLabel('amcStatus', 'due_for_renewal')).toBe('Due for Renewal');
+    expect(masterLabel('amcType', 'amc')).toBe('AMC – Labour Only');
+    expect(getResource('installations').lifecycle?.transitions[0].action).toBe('Verify Site Readiness');
+  });
+
+  it('routes: Renewals at /renewal-pipeline, resources on their glossary slugs', () => {
+    expect(installedRoutes.map((r) => r.path)).toEqual([ROUTES.renewalPipeline]);
+    expect(resourcePath('tc', 'installations')).toBe('/installation-jobs');
+    expect(resourcePath('tc', 'machines')).toBe('/installed-base');
+    expect(recordPagePath('tc', 'amcContracts', 'AMC-1')).toBe('/amc-cmc-contracts/AMC-1');
+  });
+
+  it('Create Renewal Quotation: ensures one renewal opportunity and reuses it', () => {
+    const d = getDb();
+    if (!Array.isArray(d.records.opportunities) || !Array.isArray(d.records.quotations)) return;
+    const c = d.records.amcContracts?.find((x) => x.status === 'active' && !x.renewalOpportunityId);
+    if (!c) return;
+    const opp = prepareRenewalQuotation(svc(), c.id);
+    expect(getDb().records.opportunities.some((o) => o.id === opp && o.amcContractId === c.id)).toBe(true);
+    expect(prepareRenewalQuotation(svc(), c.id)).toBe(opp);
+    const renewed = d.records.amcContracts.find((x) => x.status === 'renewed');
+    if (renewed) expect(() => prepareRenewalQuotation(svc(), renewed.id)).toThrow(ServiceError);
   });
 });

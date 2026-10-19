@@ -1,13 +1,12 @@
-/** Every report and every role overview runs on the full demo seed, respecting role scope. */
-import { demoUsers } from '../domain/pack';
+/** Every report runs on the full demo seed, respecting role scope; categories match the BRD report pages. */
 import { addDays, todayKey } from '../lib/dates';
 import { actorFor } from '../services/authz';
 import { createDb, __setDb } from '../services/db';
 import { listReports, runReport } from '../services/api/reports';
-import { REPORTS } from '../services/reports/catalog';
-import { overviewFor } from '../services/reports/dashboard';
+import { REPORT_GROUPS, REPORTS } from '../services/reports/catalog';
+import { L } from '../constants/labels';
 
-describe('reports and overviews on the demo seed', () => {
+describe('reports on the demo seed', () => {
   beforeAll(() => __setDb(createDb()));
 
   it('every report computes for the administrator with sane output', () => {
@@ -23,12 +22,27 @@ describe('reports and overviews on the demo seed', () => {
     expect(runReport(admin, 'open-tickets', {}).rows.length).toBeGreaterThan(0);
   });
 
-  it('builds an overview for every demo user', () => {
-    for (const u of demoUsers) {
-      const o = overviewFor(actorFor(u.id, 'tc'));
-      expect(o.sections.length, u.id).toBeGreaterThan(0);
-      o.sections.forEach((s) => s.tiles.forEach((t) => expect(t.label).toBeTruthy()));
-    }
+  it('groups reports under the eight BRD categories with URL-safe ids that never clash with a report id', () => {
+    expect(REPORT_GROUPS.map((g) => g.id)).toEqual(['kpis', 'customers', 'leads', 'quotations', 'sales-orders', 'installed-base', 'service', 'field-force']);
+    expect(REPORT_GROUPS.map((g) => g.label)).toContain(L.nav.pages.reportSalesOrders.title);
+    REPORTS.forEach((r) => {
+      expect(REPORT_GROUPS.some((g) => g.id === r.group), r.id).toBe(true);
+      expect(REPORT_GROUPS.some((g) => g.id === r.id), r.id).toBe(false);
+    });
+    REPORT_GROUPS.forEach((g) => expect(REPORTS.some((r) => r.group === g.id), g.id).toBe(true));
+  });
+
+  it('has a Referral Report (LEAD-12) in Lead Reports, counting referral leads only', () => {
+    const admin = actorFor('u_rahul', 'tc');
+    const def = REPORTS.find((r) => r.id === 'referrals');
+    expect(def?.group).toBe('leads');
+    expect(def?.title).toBe('Referral Report');
+    const f = { from: addDays(todayKey(), -730), to: todayKey() };
+    const res = runReport(admin, 'referrals', f);
+    expect(res.rows.length).toBeGreaterThan(0);
+    const total = res.rows.reduce((t, r) => t + Number(r.leads), 0);
+    expect(res.kpis?.[0].value).toBe(String(total));
+    expect(runReport(admin, 'referrals', { ...f, group: 'type' }).rows.length).toBeLessThanOrEqual(4);
   });
 
   it('scopes report data: a sales executive sees only their own orders', () => {

@@ -20,6 +20,7 @@ import { MaskedField, StatusChip } from '../primitives/feedback';
 import { DateText, EmptyValue } from '../primitives/display';
 import { OverflowChips } from '../primitives/OverflowChips';
 import { AvatarStack, ImageTile, PersonChip } from '../primitives/People';
+import { L } from '../../constants/labels';
 
 /** Subtitle of a related person (e.g. their role), from `personSubtitle`. */
 export function personSubtitle(field: FieldDefinition, resource: string, id: unknown): string | undefined {
@@ -83,9 +84,9 @@ export function FieldValue({
   if (access === 'mask') {
     if (isEmpty(value)) return <EmptyValue />;
     return (
-      <span className="restricted" data-tooltip="Restricted for your role">
+      <span className="restricted" data-tooltip={L.common.states.restrictedForRole}>
         <Icon name="lock" size={12} />
-        {value === RESTRICTED ? 'Restricted' : String(value)}
+        {value === RESTRICTED ? L.common.states.restricted : String(value)}
       </span>
     );
   }
@@ -179,7 +180,7 @@ export function FieldValue({
       return (
         <span className="bool">
           <Icon name={value ? 'check' : 'x'} size={14} />
-          {value ? 'Yes' : 'No'}
+          {value ? L.common.actions.yes : L.common.actions.no}
         </span>
       );
     case 'identifier':

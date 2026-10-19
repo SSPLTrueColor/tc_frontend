@@ -8,6 +8,7 @@ import { type Actor } from '../authz';
 import { getDb } from '../db';
 import { createRecord } from '../runtime';
 import { ServiceError } from '../types';
+import { L } from '../../constants/labels';
 import { exactContactMatches, normaliseName } from './duplicates';
 
 export const CONTACT_CSV_HEADERS = ['name', 'company', 'designation', 'mobile', 'email', 'city', 'source'] as const;
@@ -69,16 +70,16 @@ export function validateRows(raw: Omit<ImportRow, 'errors' | 'line' | 'customerI
   const seenMobile = new Map<string, number>();
   return raw.map((r, i) => {
     const row: ImportRow = { ...r, line: startLine + i, errors: [] };
-    if (!row.name.trim()) row.errors.push('Name is required');
-    if (!row.mobile.trim() && !row.email.trim()) row.errors.push('Mobile or email is required');
+    if (!row.name.trim()) row.errors.push(L.customers.import.errors.nameRequired);
+    if (!row.mobile.trim() && !row.email.trim()) row.errors.push(L.customers.import.errors.reachRequired);
     if (row.mobile.trim() && validateMobile(row.mobile)) row.errors.push(validateMobile(row.mobile)!);
     if (row.email.trim() && validateEmail(row.email)) row.errors.push(validateEmail(row.email)!);
-    if (row.source && !SOURCES.includes(row.source)) row.errors.push(`Unknown source “${row.source}”`);
+    if (row.source && !SOURCES.includes(row.source)) row.errors.push(L.customers.import.errors.unknownSource(row.source));
     const dup = exactContactMatches(contacts, { mobile: row.mobile, email: row.email });
     if (dup.length) row.duplicateOf = dup[0].id;
     const m = normaliseMobile(row.mobile);
     if (m) {
-      if (seenMobile.has(m)) row.errors.push(`Same mobile as line ${seenMobile.get(m)}`);
+      if (seenMobile.has(m)) row.errors.push(L.customers.import.errors.sameMobile(seenMobile.get(m)!));
       else seenMobile.set(m, row.line);
     }
     if (row.company.trim()) {
@@ -91,11 +92,11 @@ export function validateRows(raw: Omit<ImportRow, 'errors' | 'line' | 'customerI
 
 export function rowsFromCsv(text: string): ImportRow[] {
   const table = parseCsv(text);
-  if (!table.length) throw new ServiceError('validation', 'The file is empty.');
+  if (!table.length) throw new ServiceError('validation', L.customers.import.errors.empty);
   const header = table[0].map((h) => h.trim().toLowerCase());
   const missing = ['name', 'mobile', 'email'].filter((h) => !header.includes(h));
-  if (missing.length) throw new ServiceError('validation', `Missing column(s): ${missing.join(', ')}. Download the template to see the expected columns.`);
-  if (table.length > 501) throw new ServiceError('validation', 'Import at most 500 contacts at a time.');
+  if (missing.length) throw new ServiceError('validation', L.customers.import.errors.missingColumns(missing.join(', ')));
+  if (table.length > 501) throw new ServiceError('validation', L.customers.import.errors.tooMany);
   const col = (r: string[], k: string) => (header.indexOf(k) >= 0 ? (r[header.indexOf(k)] ?? '').trim() : '');
   return validateRows(table.slice(1).map((r) => ({ name: col(r, 'name'), company: col(r, 'company'), designation: col(r, 'designation'), mobile: col(r, 'mobile'), email: col(r, 'email'), city: col(r, 'city'), source: col(r, 'source') })));
 }
@@ -124,7 +125,7 @@ export function importRows(actor: Actor, rows: ImportRow[]): { created: string[]
       continue;
     }
     if (r.duplicateOf) {
-      skipped.push({ line: r.line, reason: `Already exists as ${r.duplicateOf}` });
+      skipped.push({ line: r.line, reason: L.customers.import.errors.alreadyExists(r.duplicateOf) });
       continue;
     }
     try {
@@ -142,7 +143,7 @@ export function importRows(actor: Actor, rows: ImportRow[]): { created: string[]
       });
       created.push(out.record.id);
     } catch (e) {
-      skipped.push({ line: r.line, reason: e instanceof Error ? e.message : 'Could not import' });
+      skipped.push({ line: r.line, reason: e instanceof Error ? e.message : L.customers.import.errors.couldNotImport });
     }
   }
   return { created, skipped };

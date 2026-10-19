@@ -172,7 +172,7 @@ export function returnRequisition(actor: Actor, id: string, reason: string, vers
   });
 }
 
-/** Store confirms the failed part arrived (enables an OEM warranty claim). */
+/** Store confirms the failed part arrived (enables a Warranty Claim (OEM)). */
 export function receiveDefective(actor: Actor, id: string, version: number) {
   if (!can(actor, 'spares.issue')) throw new ServiceError('forbidden', E.defectiveForbidden);
   return commit((d) => {

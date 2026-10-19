@@ -16,6 +16,11 @@ import { appendAudit, emitEvent, notify } from './ledger';
 import { getResource } from './registry';
 import type { HookContext } from './resourceHooks';
 import { type Approval, type ApprovalLevel, ServiceError } from './types';
+import { L } from '../constants/labels';
+import { ROUTES } from '../constants/routes';
+
+const E = L.common.errors;
+const AU = L.common.audit;
 
 export interface ApprovalType {
   label: string;
@@ -62,7 +67,7 @@ function notifyApprovers(ctx: HookContext, a: Approval) {
   demoUsers
     .map((u) => actorFor(u.id, a.workspaceId))
     .filter((x) => canDecide(x, a))
-    .forEach((x) => notify(ctx.d, { userId: x.user.id, workspaceId: a.workspaceId, kind: 'approval_request', title: `${level.label} approval needed: ${a.summary}`, link: { page: 'inbox' } }));
+    .forEach((x) => notify(ctx.d, { userId: x.user.id, workspaceId: a.workspaceId, kind: 'approval_request', title: L.common.notify.approvalNeeded(level.label, a.summary), link: { page: a.resource === 'quotations' ? ROUTES.quotationPendingApprovals.slice(1) : `${ROUTES.notifications.slice(1)}?tab=approvals` } }));
 }
 
 export interface ApprovalRequest {
@@ -82,8 +87,8 @@ export interface ApprovalRequest {
  */
 export function requestApprovalIn(ctx: HookContext, req: ApprovalRequest): Approval {
   const { d, actor } = ctx;
-  if (!req.levels.length) throw new ServiceError('invalid_state', 'No approval level is configured for this request.');
-  if (d.approvals.some((a) => a.recordId === req.recordId && a.type === req.type && a.status === 'pending')) throw new ServiceError('invalid_state', `An approval is already pending for ${req.recordId}.`);
+  if (!req.levels.length) throw new ServiceError('invalid_state', E.noApprovalLevel);
+  if (d.approvals.some((a) => a.recordId === req.recordId && a.type === req.type && a.status === 'pending')) throw new ServiceError('invalid_state', E.approvalPending(req.recordId));
   d.counters.approvals = (d.counters.approvals ?? 1000) + 1;
   const approval: Approval = {
     id: `APR-${d.counters.approvals}`,
@@ -104,7 +109,7 @@ export function requestApprovalIn(ctx: HookContext, req: ApprovalRequest): Appro
     version: 1,
   };
   d.approvals.unshift(approval);
-  appendAudit(d, actor, { action: 'approval.requested', resource: req.resource, recordId: req.recordId, summary: `Requested ${approvalTypeLabel(req.type).toLowerCase()} (${approval.id}): ${req.summary}`, correlationId: ctx.correlationId });
+  appendAudit(d, actor, { action: 'approval.requested', resource: req.resource, recordId: req.recordId, summary: AU.approvalRequested(approvalTypeLabel(req.type).toLowerCase(), approval.id, req.summary), correlationId: ctx.correlationId });
   emitEvent(d, actor, { eventType: 'approval.requested', recordId: req.recordId, correlationId: ctx.correlationId, payload: { approvalId: approval.id, type: req.type } });
   notifyApprovers(ctx, approval);
   return approval;
@@ -114,7 +119,7 @@ export function requestApproval(actor: Actor, req: ApprovalRequest): Approval {
   const res = getResource(req.resource);
   return commit((d) => {
     const rec = d.records[req.resource]?.find((r) => r.id === req.recordId);
-    if (!rec || !canReadRecord(actor, res, rec)) throw new ServiceError('not_found', `${res.label} ${req.recordId} was not found.`);
+    if (!rec || !canReadRecord(actor, res, rec)) throw new ServiceError('not_found', E.notFound(res.label, req.recordId));
     return requestApprovalIn({ d, actor, correlationId: uid('cor') }, req);
   });
 }
@@ -122,15 +127,15 @@ export function requestApproval(actor: Actor, req: ApprovalRequest): Approval {
 export function decideApproval(actor: Actor, approvalId: string, decision: 'approved' | 'rejected', note: string, expectedVersion: number): Approval {
   return commit((d) => {
     const a = d.approvals.find((x) => x.id === approvalId && x.workspaceId === actor.workspaceId);
-    if (!a) throw new ServiceError('not_found', 'Approval not found.');
-    if (a.version !== expectedVersion) throw new ServiceError('version_conflict', 'This approval changed since you opened it. Reload and try again.');
-    if (a.status !== 'pending') throw new ServiceError('invalid_state', `This request was already ${a.status}.`);
-    if (a.requestedBy === actor.user.id) throw new ServiceError('forbidden', 'Separation of duties: you cannot decide your own request.');
+    if (!a) throw new ServiceError('not_found', E.approvalNotFound);
+    if (a.version !== expectedVersion) throw new ServiceError('version_conflict', E.approvalChanged);
+    if (a.status !== 'pending') throw new ServiceError('invalid_state', E.approvalAlready(a.status));
+    if (a.requestedBy === actor.user.id) throw new ServiceError('forbidden', E.ownRequest);
     if (!canDecide(actor, a)) {
       const lv = a.levels[a.currentLevel];
-      throw new ServiceError('forbidden', lv.approverStaffId ? `Only the named approver (${lv.label}) can decide this level.` : `Only ${levelHolders(lv.capability).join(' / ')} can decide this level.`);
+      throw new ServiceError('forbidden', lv.approverStaffId ? E.namedApprover(lv.label) : E.onlyHolders(levelHolders(lv.capability).join(' / ')));
     }
-    if (decision === 'rejected' && note.trim().length < 5) throw new ServiceError('validation', 'Add a note explaining the rejection.', { fieldErrors: { note: 'Required when rejecting' } });
+    if (decision === 'rejected' && note.trim().length < 5) throw new ServiceError('validation', E.rejectNote, { fieldErrors: { note: E.rejectNoteField } });
     const at = nowIso();
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     a.decisions.push({ level: a.currentLevel, by: actor.user.id, at, decision, note: note.trim() });
@@ -139,7 +144,7 @@ export function decideApproval(actor: Actor, approvalId: string, decision: 'appr
     const def = types.get(a.type);
     if (decision === 'approved' && a.currentLevel < a.levels.length - 1) {
       a.currentLevel++;
-      appendAudit(d, actor, { action: 'approval.level_approved', resource: a.resource, recordId: a.recordId, summary: `${levelLabel} approved ${a.id}; sent to ${a.levels[a.currentLevel].label}`, correlationId: ctx.correlationId });
+      appendAudit(d, actor, { action: 'approval.level_approved', resource: a.resource, recordId: a.recordId, summary: AU.levelApproved(levelLabel, a.id, a.levels[a.currentLevel].label), correlationId: ctx.correlationId });
       notifyApprovers(ctx, a);
       return { ...a };
     }
@@ -149,9 +154,9 @@ export function decideApproval(actor: Actor, approvalId: string, decision: 'appr
     a.decisionNote = note.trim();
     if (decision === 'approved') def?.onApproved?.(ctx, a);
     else def?.onRejected?.(ctx, a);
-    appendAudit(d, actor, { action: 'approval.decided', resource: a.resource, recordId: a.recordId, summary: `${decision === 'approved' ? 'Approved' : 'Rejected'} ${a.id} at ${levelLabel} level${note ? ` — ${note}` : ''}`, correlationId: ctx.correlationId });
+    appendAudit(d, actor, { action: 'approval.decided', resource: a.resource, recordId: a.recordId, summary: AU.approvalDecided(decision === 'approved', a.id, levelLabel, note || undefined), correlationId: ctx.correlationId });
     emitEvent(d, actor, { eventType: 'approval.decided', recordId: a.recordId, correlationId: ctx.correlationId, payload: { approvalId: a.id, decision } });
-    notify(d, { userId: a.requestedBy, workspaceId: a.workspaceId, kind: 'approval_decision', title: `${a.summary} — ${decision}`, link: { resource: a.resource, recordId: a.recordId } });
+    notify(d, { userId: a.requestedBy, workspaceId: a.workspaceId, kind: 'approval_decision', title: L.common.notify.approvalDecision(a.summary, (L.common.inbox.status[decision] ?? decision).toLowerCase()), link: { resource: a.resource, recordId: a.recordId } });
     return { ...a };
   });
 }
@@ -160,10 +165,10 @@ export function decideApproval(actor: Actor, approvalId: string, decision: 'appr
 export function withdrawApproval(actor: Actor, approvalId: string) {
   commit((d) => {
     const a = d.approvals.find((x) => x.id === approvalId && x.workspaceId === actor.workspaceId);
-    if (!a || a.status !== 'pending') throw new ServiceError('invalid_state', 'Only pending requests can be withdrawn.');
-    if (a.requestedBy !== actor.user.id) throw new ServiceError('forbidden', 'Only the requester can withdraw a request.');
+    if (!a || a.status !== 'pending') throw new ServiceError('invalid_state', E.onlyPendingWithdraw);
+    if (a.requestedBy !== actor.user.id) throw new ServiceError('forbidden', E.onlyRequester);
     a.status = 'withdrawn';
     a.version++;
-    appendAudit(d, actor, { action: 'approval.withdrawn', resource: a.resource, recordId: a.recordId, summary: `Withdrew ${a.id}`, correlationId: uid('cor') });
+    appendAudit(d, actor, { action: 'approval.withdrawn', resource: a.resource, recordId: a.recordId, summary: AU.withdrew(a.id), correlationId: uid('cor') });
   });
 }

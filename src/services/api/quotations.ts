@@ -39,3 +39,7 @@ export const quotationsApi = {
   decideApproval: (actor: Actor, approvalId: string, decision: 'approved' | 'rejected', note: string, version: number) => call(() => decideQuoteApproval(actor, approvalId, decision, note, version)),
   sweep: () => call(() => runQuotationSweep(), { fast: true }),
 };
+
+/** Pending Approvals rows for `useServiceQuery`, which adds the simulated network round-trip (QUO-06 / QUO-14). */
+export const loadPendingApprovals = (actor: Actor) => pendingQuoteApprovals(actor);
+export type { PendingApprovalRow } from '../quotations/workflow';

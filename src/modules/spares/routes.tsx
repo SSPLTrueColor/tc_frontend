@@ -1,10 +1,17 @@
 import type { AppRoute } from '../types';
-import { LeakagePage, ReordersPage, StockAlertsPage } from './pages';
+import { ROUTES } from '../../constants/routes';
+import { DealerOrdersPage, RepeatOrdersPage } from './ConsumablesPages';
+import { LeakageListPage, MinimumLevelAlertsPage, ReorderPredictionPage } from './pages';
+import { EngineerStockPage, MainStoreStockPage } from './StockPages';
 import './spares.css';
 
-/** Spares & consumables pages that are not plain resource lists (resource lists are routed automatically). */
+/** Spare Parts (4.9) and Consumables (4.10) pages that are not plain resource lists (resource lists are routed automatically). */
 export const routes: AppRoute[] = [
-  { path: '/spares/stock-alerts', element: <StockAlertsPage /> },
-  { path: '/consumables/leakage', element: <LeakagePage /> },
-  { path: '/consumables/reorders', element: <ReordersPage /> },
+  { path: ROUTES.mainStoreStock, element: <MainStoreStockPage /> },
+  { path: ROUTES.engineerStock, element: <EngineerStockPage /> },
+  { path: ROUTES.minimumLevelAlerts, element: <MinimumLevelAlertsPage /> },
+  { path: ROUTES.repeatOrders, element: <RepeatOrdersPage /> },
+  { path: ROUTES.leakageList, element: <LeakageListPage /> },
+  { path: ROUTES.reorderPrediction, element: <ReorderPredictionPage /> },
+  { path: ROUTES.dealerOrders, element: <DealerOrdersPage /> },
 ];

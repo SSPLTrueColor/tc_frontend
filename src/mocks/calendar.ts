@@ -3,11 +3,11 @@ import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 2;
+export const rev = 3; // 3: event types renamed per GLOSSARY C-15 (field_visit, service_visit)
 
 type Draft = {
   title: string;
-  eventType: 'meeting' | 'demo' | 'customer_visit' | 'follow_up' | 'service' | 'internal';
+  eventType: 'meeting' | 'demo' | 'follow_up' | 'field_visit' | 'service_visit' | 'internal';
   day: number;
   /** "HH:mm" for timed events; omit for all-day. */
   at?: string;
@@ -32,7 +32,7 @@ const addMin = (hhmm: string, m: number) => {
 /**
  * 50 demo events from last month to next month (IST wall clock): recurring team rituals,
  * customer meetings and demos, overlapping bookings, multi-day exhibitions and training,
- * holidays, past (completed) and today's events — linked to seeded customers, leads and deals.
+ * holidays, past (completed) and today's events — linked to seeded customers, leads and opportunities.
  */
 export function seed(ctx: SeedContext): void {
   const { rnd, today } = ctx;
@@ -65,8 +65,8 @@ export function seed(ctx: SeedContext): void {
     { title: 'POD pipeline call', eventType: 'follow_up', day: monday(-2) + 2, at: '17:00', minutes: 30, user: PR, recurrence: 'weekly', untilDay: 60, location: 'Phone' },
 
     // Multi-day and all-day
-    { title: 'Gartex Texprocess India — stall B-14', eventType: 'customer_visit', day: 9, days: 3, user: S, attendees: [R, K], location: 'Pragati Maidan, New Delhi', notes: 'Exhibition: capture leads by visiting-card scan.' },
-    { title: 'Print Pack India — visitor', eventType: 'customer_visit', day: -18, days: 2, user: PR, location: 'Greater Noida' },
+    { title: 'Gartex Texprocess India — stall B-14', eventType: 'field_visit', day: 9, days: 3, user: S, attendees: [R, K], location: 'Pragati Maidan, New Delhi', notes: 'Exhibition: capture leads by visiting-card scan.' },
+    { title: 'Print Pack India — visitor', eventType: 'field_visit', day: -18, days: 2, user: PR, location: 'Greater Noida' },
     { title: 'RIP software training (new engineers)', eventType: 'internal', day: 4, days: 2, user: M, attendees: [RV, AJ], location: 'Surat demo centre' },
     { title: 'Diwali — office closed', eventType: 'internal', day: 13, days: 1, user: V, location: 'All offices' },
     { title: 'Quarter-end closing (Accounts)', eventType: 'internal', day: -20, days: 1, user: 'u_swati' },
@@ -75,11 +75,11 @@ export function seed(ctx: SeedContext): void {
     // Today
     { title: 'Demo: sublimation printer', eventType: 'demo', day: 0, at: '11:00', minutes: 90, user: K, attendees: [R], link: 'opportunity', location: 'Surat demo centre' },
     { title: 'Price negotiation call', eventType: 'follow_up', day: 0, at: '11:30', minutes: 45, user: R, link: 'opportunity', location: 'Phone' },
-    { title: 'Breakdown visit — print-head clog', eventType: 'service', day: 0, at: '14:00', minutes: 120, user: RV, link: 'ticket', location: 'Customer site' },
+    { title: 'Breakdown visit — print-head clog', eventType: 'service_visit', day: 0, at: '14:00', minutes: 120, user: RV, link: 'ticket', location: 'Customer site' },
     { title: 'Follow-up: revised quotation', eventType: 'follow_up', day: 0, at: '16:30', minutes: 30, user: K, link: 'lead' },
 
     // Overlapping bookings for the same person (warning demo)
-    { title: 'Site survey for installation', eventType: 'customer_visit', day: 1, at: '10:00', minutes: 120, user: K, link: 'customer', location: 'Customer site' },
+    { title: 'Site survey for installation', eventType: 'field_visit', day: 1, at: '10:00', minutes: 120, user: K, link: 'customer', location: 'Customer site' },
     { title: 'Ink trial results review', eventType: 'meeting', day: 1, at: '11:00', minutes: 60, user: K, link: 'customer' },
     { title: 'Label press demo', eventType: 'demo', day: 2, at: '15:00', minutes: 90, user: 'u_imran', link: 'opportunity', location: 'Delhi demo centre' },
     { title: 'Label press — pricing discussion', eventType: 'meeting', day: 2, at: '15:30', minutes: 60, user: 'u_imran', link: 'opportunity' },
@@ -87,26 +87,26 @@ export function seed(ctx: SeedContext): void {
 
   // Spread customer meetings, demos, calls and service visits over last month → next month.
   const kinds: Pick<Draft, 'eventType' | 'link'>[] = [
-    { eventType: 'customer_visit', link: 'customer' },
+    { eventType: 'field_visit', link: 'customer' },
     { eventType: 'demo', link: 'opportunity' },
     { eventType: 'follow_up', link: 'lead' },
     { eventType: 'meeting', link: 'opportunity' },
-    { eventType: 'service', link: 'ticket' },
+    { eventType: 'service_visit', link: 'ticket' },
   ];
-  const owners: Record<string, string[]> = { customer_visit: [K, R, SN, 'u_deepak', 'u_pooja'], demo: [K, PR, 'u_imran'], follow_up: [K, R, SN, PR], meeting: [R, S, PR], service: [RV, AJ, 'u_lakshmi', 'u_farhan'] };
+  const owners: Record<string, string[]> = { field_visit: [K, R, SN, 'u_deepak', 'u_pooja'], demo: [K, PR, 'u_imran'], follow_up: [K, R, SN, PR], meeting: [R, S, PR], service_visit: [RV, AJ, 'u_lakshmi', 'u_farhan'] };
   const titles: Record<string, string[]> = {
-    customer_visit: ['Account visit', 'Quarterly check-in visit', 'New contact introduction', 'Collection follow-up visit'],
+    field_visit: ['Field visit', 'Quarterly check-in visit', 'New contact introduction', 'Collection visit'],
     demo: ['Machine demo', 'Sample print review', 'Software walkthrough'],
     follow_up: ['Follow-up call', 'Quotation follow-up', 'Payment reminder call'],
     meeting: ['Proposal meeting', 'Commercial discussion', 'Decision-maker meeting'],
-    service: ['Preventive maintenance', 'Breakdown visit', 'Calibration visit'],
+    service_visit: ['PM visit', 'Breakdown visit', 'Calibration visit'],
   };
   const hours = ['10:00', '11:30', '12:00', '14:00', '15:30', '16:00'];
   for (let i = 0; i < 32; i++) {
     const k = kinds[i % kinds.length];
     const day = -30 + Math.round((i * 64) / 31) + rnd.int(-1, 1);
     if (day === 0) continue;
-    drafts.push({ title: rnd.pick(titles[k.eventType]), eventType: k.eventType, day, at: rnd.pick(hours), minutes: k.eventType === 'service' ? 120 : k.eventType === 'demo' ? 90 : rnd.pick([30, 45, 60]), user: rnd.pick(owners[k.eventType]), link: k.link, location: k.eventType === 'follow_up' ? 'Phone' : 'Customer site' });
+    drafts.push({ title: rnd.pick(titles[k.eventType]), eventType: k.eventType, day, at: rnd.pick(hours), minutes: k.eventType === 'service_visit' ? 120 : k.eventType === 'demo' ? 90 : rnd.pick([30, 45, 60]), user: rnd.pick(owners[k.eventType]), link: k.link, location: k.eventType === 'follow_up' ? 'Phone' : 'Customer site' });
   }
 
   const rows: RecordData[] = [];

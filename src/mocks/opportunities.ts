@@ -1,14 +1,14 @@
 /**
- * Opportunities demo data: ~90 deals over the last 6 months (from qualified leads and directly
+ * Opportunities demo data: ~90 opportunities over the last 6 months (from qualified leads and directly
  * for existing customers), demo-centre machines, demos and sample print requests, plus the
- * activities that make some deals current and others stagnant. Fictional companies only.
+ * activities that make some opportunities current and others stagnant (stagnation alert). Fictional companies only.
  */
 import { addDays } from '../lib/dates';
 import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 1;
+export const rev = 2; // 2: opportunity type 'Additional Machine' split from 'Upgrade'
 
 // Copy of the default stage probabilities (policies are not readable while the store seeds).
 const PROB: Record<string, number> = { needs_assessment: 10, demo: 25, proposal: 50, negotiation: 75, won: 100, lost: 0 };
@@ -53,7 +53,7 @@ export function seed(ctx: SeedContext): void {
   R.demoMachines = machines.map(([name, location, divisionId]) => ({ ...ctx.base(400), id: ctx.nextId('demoMachines', 'DMC'), name, location, divisionId, status: 'active' }));
 
   const customers = R.customers ?? [];
-  if (!customers.length) return; // upstream customers not seeded yet — nothing to link deals to.
+  if (!customers.length) return; // upstream customers not seeded yet — nothing to link opportunities to.
   const contacts = R.contacts ?? [];
   const products = R.products ?? [];
   const employees = R.employees ?? [];
@@ -121,7 +121,7 @@ export function seed(ctx: SeedContext): void {
     const o: RecordData = {
       ...ctx.base(createdDays, 'system'),
       id: ctx.nextId('opportunities', 'OPP', 'fy', createdAt),
-      name: `${input.oppType === 'renewal' ? 'AMC renewal' : input.oppType === 'amc' ? 'AMC' : baseName} — ${String(customer.name)}`.slice(0, 120),
+      name: `${input.oppType === 'renewal' ? 'AMC Renewal' : input.oppType === 'amc' ? 'AMC' : baseName} — ${String(customer.name)}`.slice(0, 120),
       customerId: customer.id,
       contactId: input.contactId ?? contacts.find((c) => c.customerId === customer.id)?.id ?? null,
       divisionId: division,
@@ -186,12 +186,12 @@ export function seed(ctx: SeedContext): void {
     const divs = ((customer.divisionIds as string[] | undefined) ?? []).filter((d) => OWNERS[d]);
     const division = divs.length ? rnd.pick(divs) : rnd.pick(Object.keys(OWNERS));
     const machineDiv = MACHINE_DIVS.includes(division);
-    const oppType = machineDiv ? pickWeighted<string>(rnd, [['new_machine', 50], ['upgrade', 20], ['consumables', 10], ['amc', 12], ['renewal', 8]]) : 'consumables';
-    const productType = oppType === 'new_machine' || oppType === 'upgrade' ? 'machine' : oppType === 'consumables' ? (division === 'PPR' ? 'paper' : division === 'FAB' ? 'fabric' : 'ink') : 'service';
+    const oppType = machineDiv ? pickWeighted<string>(rnd, [['new_machine', 50], ['additional_machine', 10], ['upgrade', 10], ['consumables', 10], ['amc', 12], ['renewal', 8]]) : 'consumables';
+    const productType = oppType === 'new_machine' || oppType === 'additional_machine' || oppType === 'upgrade' ? 'machine' : oppType === 'consumables' ? (division === 'PPR' ? 'paper' : division === 'FAB' ? 'fabric' : 'ink') : 'service';
     makeOpp({ customer, division, oppType, productType, createdDays: rnd.int(5, 180) });
   }
 
-  // ---- 3. Demos for machine deals that reached the demo stage
+  // ---- 3. Demos for machine opportunities that reached the demo stage
   const demoable = R.opportunities.filter((o) => MACHINE_DIVS.includes(String(o.divisionId)) && o.productType === 'machine' && ['demo', 'proposal', 'negotiation', 'won'].includes(String(o.stage)));
   for (const o of demoable.slice(0, 28)) {
     const upcoming = o.stage === 'demo';

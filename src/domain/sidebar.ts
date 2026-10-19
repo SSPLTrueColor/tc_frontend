@@ -75,7 +75,7 @@ const SIDEBAR: Group[] = [
   {
     id: 'orders',
     icon: 'shopping-cart',
-    resources: ['salesOrders', 'salesContracts', 'paymentMilestones'],
+    resources: ['salesOrders', 'salesContracts'],
     pages: [
       { id: 'paymentSchedule', icon: 'calendar-clock' },
       { id: 'orderProcessing', icon: 'sliders' },
@@ -96,7 +96,7 @@ const SIDEBAR: Group[] = [
   {
     id: 'service',
     icon: 'wrench',
-    resources: ['tickets', 'serviceVisits', 'pmVisits', 'knowledgeArticles'],
+    resources: ['tickets', 'serviceVisits'],
     pages: [
       { id: 'engineerCalendar', icon: 'map-pin', capability: 'ticket.assign' },
       { id: 'myJobs', icon: 'check-square', capability: 'service.field' },
@@ -186,6 +186,16 @@ const SIDEBAR: Group[] = [
     ],
   },
 ];
+
+/**
+ * Resources whose list is served by a page instead of a sidebar group (the list URL redirects there).
+ * Their record pages (/<slug>/:id) still belong to the page's module for highlighting and reachability.
+ */
+export const RESOURCE_PAGES: Record<string, { module: ModuleId; path: string }> = {
+  pmVisits: { module: 'service', path: ROUTES.pmSchedule },
+  knowledgeArticles: { module: 'service', path: ROUTES.knowledgeBase },
+  paymentMilestones: { module: 'orders', path: ROUTES.paymentSchedule },
+};
 
 /** Sidebar modules in the engine's ModuleDefinition shape. */
 export const sidebarModules: ModuleDefinition[] = SIDEBAR.map((g) => ({

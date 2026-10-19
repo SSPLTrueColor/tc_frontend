@@ -7,6 +7,7 @@ import { ServiceError } from '../../services/types';
 import { Button, IconButton } from '../primitives/Button';
 import { useToast } from '../primitives/feedback';
 import { Popover } from '../primitives/overlay';
+import { L } from '../../constants/labels';
 
 /**
  * The ONE persistent Quick Comment composer, rendered once at the bottom of the
@@ -50,9 +51,9 @@ export function QuickComment({ actor, resource, recordId }: { actor: Actor; reso
       latest.current.text = '';
       setText('');
       setExpanded(false);
-      toast('Internal comment added');
+      toast(L.common.toasts.commentAdded);
     } catch (e) {
-      toast(e instanceof ServiceError ? e.message : 'Could not add comment', 'danger');
+      toast(e instanceof ServiceError ? e.message : L.common.toasts.commentFailed, 'danger');
     } finally {
       setSending(false);
     }
@@ -75,7 +76,7 @@ export function QuickComment({ actor, resource, recordId }: { actor: Actor; reso
         id={`qc-${recordId}`}
         className={expanded ? 'qc-input is-expanded' : 'qc-input'}
         rows={expanded ? 3 : 1}
-        placeholder="Add an internal comment… (@ to mention, Ctrl+Enter to send)"
+        placeholder={L.common.comments.placeholder}
         value={text}
         maxLength={2000}
         onFocus={() => setExpanded(true)}
@@ -93,11 +94,11 @@ export function QuickComment({ actor, resource, recordId }: { actor: Actor; reso
       />
       {expanded && (
         <div className="qc-bar">
-          <span className="qc-visibility" data-tooltip="Internal comments are visible to colleagues who can open this record">
-            Internal note
+          <span className="qc-visibility" data-tooltip={L.common.comments.visibilityTip}>
+            {L.common.comments.internalNote}
           </span>
-          <IconButton ref={mentionRef} icon="users" label="Mention a teammate" onClick={() => setMentionOpen((o) => !o)} aria-haspopup="dialog" />
-          <IconButton icon="send" label="Send to customer (external)" disabledReason="External messaging is not connected in this prototype" />
+          <IconButton ref={mentionRef} icon="users" label={L.common.comments.mention} onClick={() => setMentionOpen((o) => !o)} aria-haspopup="dialog" />
+          <IconButton icon="send" label={L.common.comments.external} disabledReason={L.common.comments.externalOff} />
           <span className="qc-spacer" />
           {text && (
             <Button
@@ -107,16 +108,16 @@ export function QuickComment({ actor, resource, recordId }: { actor: Actor; reso
                 setExpanded(false);
               }}
             >
-              Clear
+              {L.common.actions.clear}
             </Button>
           )}
           <Button variant="primary" loading={sending} disabled={!text.trim()} onClick={send}>
-            Comment
+            {L.common.actions.comment}
           </Button>
         </div>
       )}
-      <Popover open={mentionOpen} onClose={() => setMentionOpen(false)} anchor={mentionRef.current ? mentionRef : areaRef} label="Mention a teammate" width={240}>
-        <ul className="menu" role="listbox" aria-label="Teammates">
+      <Popover open={mentionOpen} onClose={() => setMentionOpen(false)} anchor={mentionRef.current ? mentionRef : areaRef} label={L.common.comments.mention} width={240}>
+        <ul className="menu" role="listbox" aria-label={L.common.comments.teammates}>
           {demoUsers
             .filter((u) => u.id !== actor.user.id)
             .map((u) => (

@@ -1,14 +1,15 @@
 /**
  * Service demo data: ~220 tickets over the last 6 months on seeded machines/customers (every status,
- * SLA met and breached, repeat complaints, customer ratings), their engineer visits, PM visit
+ * SLA met and breached, repeat complaints, customer ratings), their site visits, PM visit
  * status normalisation and ~25 knowledge-base articles. Upstream data is optional.
- * Imports only lib/* (no services) to keep the store → seed import chain acyclic.
+ * Imports only lib/* and constants (no services) to keep the store → seed import chain acyclic.
  */
 import { addDays, addMinutes, parseLocal, toLocalDateTime } from '../lib/dates';
 import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
+import { L } from '../constants/labels';
 
-export const rev = 3;
+export const rev = 4;
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
@@ -177,7 +178,7 @@ export function seed(ctx: SeedContext): void {
         repeatOfId,
         rootCause: repeatOfId && status === 'closed' ? rnd.pick(['Unstable power supply at site — UPS recommended', 'Operator skipped daily cleaning', 'Worn wiper blade not replaced on first visit']) : '',
         rating,
-        feedbackComment: rating ? (rating <= 2 ? rnd.pick(['Engineer came late, machine down for two days', 'Same problem again within a month']) : rnd.pick(['Quick response, thanks', 'Good work', '', 'Engineer explained the cleaning routine'])) : '',
+        feedbackComment: rating ? (rating <= 2 ? rnd.pick(['Service engineer came late, machine down for two days', 'Same problem again within a month']) : rnd.pick(['Quick response, thanks', 'Good work', '', 'Service engineer explained the cleaning routine'])) : '',
         reopenCount: status === 'reopened' ? 1 : 0,
         remoteSteps: ticketType === 'remote_support' && progressed ? 'Guided operator through head cleaning and nozzle check over video call.' : '',
         remoteDurationMin: ticketType === 'remote_support' && progressed ? rnd.int(15, 60) : null,
@@ -239,7 +240,7 @@ export function seed(ctx: SeedContext): void {
     }
   }
 
-  // ---------------------------------------------------------------- PM visits (created by installed): status by date, some done
+  // ---------------------------------------------------------------- PM visits (created by installed): status by date, some completed ('done' key)
   (R.pmVisits ?? []).forEach((p) => {
     const m = machines.find((x) => x.id === p.machineId);
     p.divisionId = p.divisionId ?? m?.divisionId ?? null;
@@ -264,7 +265,7 @@ export function seed(ctx: SeedContext): void {
     const authorId = authors.length ? rnd.pick(authors.filter((a) => a.roleId === 'engineer').length ? authors.filter((a) => a.roleId === 'engineer') : authors).id : null;
     const id = ctx.nextId('knowledgeArticles', 'KB');
     if (status === 'pending') {
-      // Engineer contributions waiting for the service head (FR-090).
+      // Service engineer contributions waiting for Service Leadership (FR-090).
       ctx.counters.approvals = (ctx.counters.approvals ?? 1000) + 1;
       const requester = ctx.users.find((u) => u.staffIds.tc === authorId);
       ctx.approvals.push({
@@ -276,8 +277,8 @@ export function seed(ctx: SeedContext): void {
         requestedBy: requester?.id ?? 'u_ravi',
         requestedAt: new Date(now.getTime() - rnd.int(1, 5) * 86_400_000).toISOString(),
         reason: '',
-        summary: `KB article “${title}”`,
-        levels: [{ capability: 'approve.service', label: 'Service head' }],
+        summary: L.service.titles.kbApproval(title),
+        levels: [{ capability: 'approve.service', label: L.service.approvals.kbLevel }],
         currentLevel: 0,
         decisions: [],
         status: 'pending',

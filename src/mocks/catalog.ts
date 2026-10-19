@@ -8,7 +8,7 @@ import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 1;
+export const rev = 2;
 
 type P = [sku: string, name: string, division: string, type: string, subType: string | null, hsnSac: string, gst: number, price: number, extra?: Partial<Record<string, unknown>>];
 
@@ -74,9 +74,9 @@ const TEMPLATES: [name: string, event: string, channel: string, subject: string 
   ['Payment due reminder', 'payment_due', 'email', 'Payment reminder for order {{record}}', 'Dear {{contact}}, a payment of {{amount}} against order {{record}} is due on {{date}}. Kindly arrange the transfer.'],
   ['Dispatch intimation', 'dispatch_intimation', 'whatsapp', null, 'Dear {{contact}}, your order {{record}} has been dispatched on {{date}}. Track LR details here: {{link}}'],
   ['Installation scheduled', 'installation_scheduled', 'sms', null, 'True Colors: installation for order {{record}} is scheduled on {{date}}. Engineer: {{owner}}.'],
-  ['Ticket logged', 'ticket_logged', 'whatsapp', null, 'Dear {{contact}}, your service request {{record}} is logged. Our engineer will contact you shortly.'],
-  ['SLA breach escalation', 'sla_breach', 'email', 'SLA breached on ticket {{record}}', 'Ticket {{record}} for {{customer}} has breached its SLA. Escalated to {{owner}}. {{link}}'],
-  ['Feedback request', 'feedback_request', 'whatsapp', null, 'Dear {{contact}}, ticket {{record}} is resolved. Please rate our service (1–5): {{link}}'],
+  ['Service ticket logged', 'ticket_logged', 'whatsapp', null, 'Dear {{contact}}, your service ticket {{record}} is logged. Our engineer will contact you shortly.'],
+  ['SLA breach escalation', 'sla_breach', 'email', 'SLA breached on service ticket {{record}}', 'Service ticket {{record}} for {{customer}} has breached its SLA. Escalated to {{owner}}. {{link}}'],
+  ['Feedback request', 'feedback_request', 'whatsapp', null, 'Dear {{contact}}, service ticket {{record}} is resolved. Please rate our service (1–5): {{link}}'],
   ['AMC renewal reminder', 'renewal_reminder', 'email', 'Your AMC {{record}} expires on {{date}}', 'Dear {{contact}}, your maintenance contract {{record}} expires on {{date}}. Renew now to keep priority service.'],
 ];
 
@@ -110,7 +110,7 @@ export function seed(ctx: SeedContext): void {
   const items: RecordData[] = [];
   const priceOf = new Map(PRODUCTS.map((p) => [p[0], p[7]]));
   for (const div of Object.keys(DIV_NAMES)) {
-    const list: RecordData = { ...ctx.base(200), id: ctx.nextId('priceLists', 'PL'), name: `${DIV_NAMES[div]} price list ${y}-${String(y + 1).slice(2)}`, divisionId: div, validFrom: fyStart, validTo: fyEnd, status: 'active', notes: '' };
+    const list: RecordData = { ...ctx.base(200), id: ctx.nextId('priceLists', 'PL'), name: `${DIV_NAMES[div]} Price List ${y}-${String(y + 1).slice(2)}`, divisionId: div, validFrom: fyStart, validTo: fyEnd, status: 'active', notes: '' };
     lists.push(list);
     for (const prod of products.filter((p) => p.divisionId === div && p.status === 'active')) {
       const listPrice = priceOf.get(String(prod.sku)) ?? 0;
@@ -119,7 +119,7 @@ export function seed(ctx: SeedContext): void {
     }
   }
   // Previous year's Textile list (expired) with lower prices, for history.
-  const prev: RecordData = { ...ctx.base(560), id: ctx.nextId('priceLists', 'PL'), name: `Textile price list ${y - 1}-${String(y).slice(2)}`, divisionId: 'TX', validFrom: `${y - 1}-04-01`, validTo: `${y}-03-31`, status: 'expired', notes: 'Superseded by the current year list.' };
+  const prev: RecordData = { ...ctx.base(560), id: ctx.nextId('priceLists', 'PL'), name: `Textile Price List ${y - 1}-${String(y).slice(2)}`, divisionId: 'TX', validFrom: `${y - 1}-04-01`, validTo: `${y}-03-31`, status: 'expired', notes: 'Replaced by the current year price list.' };
   lists.push(prev);
   products
     .filter((p) => p.divisionId === 'TX' && p.productType === 'machine')
@@ -127,8 +127,8 @@ export function seed(ctx: SeedContext): void {
       const listPrice = Math.round((priceOf.get(String(prod.sku)) ?? 2_000_000) * 0.94);
       items.push({ ...ctx.base(560), id: ctx.nextId('priceListItems', 'PLI'), priceListId: prev.id, productId: prod.id, listPrice, landedCost: Math.round(listPrice * 0.74), divisionId: 'TX' });
     });
-  // A draft list for next quarter's Ink price revision (not yet active).
-  lists.push({ ...ctx.base(5), id: ctx.nextId('priceLists', 'PL'), name: 'Ink price revision (draft)', divisionId: 'INK', validFrom: addDays(today, 30), validTo: fyEnd, status: 'draft', notes: 'Proposed 4% increase — awaiting GM approval.' });
+  // A draft list for next quarter's Ink price update (not yet active).
+  lists.push({ ...ctx.base(5), id: ctx.nextId('priceLists', 'PL'), name: 'Ink Price Update (Draft)', divisionId: 'INK', validFrom: addDays(today, 30), validTo: fyEnd, status: 'draft', notes: 'Proposed 4% increase — awaiting GM approval.' });
   ctx.records.priceLists = lists;
   ctx.records.priceListItems = items;
 

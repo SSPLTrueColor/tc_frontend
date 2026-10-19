@@ -3,6 +3,7 @@ import { formatMoney } from '../../lib/format';
 import { masterLabel } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
 import { EmptyValue } from '../primitives/display';
+import { L } from '../../constants/labels';
 
 /**
  * Generic line item: commercial documents (quotations, orders) use productId / listPrice /
@@ -23,7 +24,7 @@ export interface AnyLine {
 export const unitOf = (li: AnyLine) => Number(li.unitPrice ?? li.listPrice ?? 0);
 export const discountOf = (li: AnyLine) => (li.discountAmt !== undefined && li.discountAmt !== null && Number(li.discountAmt) > 0 ? Number(li.discountAmt) : (unitOf(li) * Number(li.discountPct ?? 0)) / 100);
 export const amountOf = (li: AnyLine) => Math.round(Number(li.qty || 0) * (unitOf(li) - discountOf(li)) * 100) / 100;
-const nameOf = (li: AnyLine) => (li.productId ? recordTitle('products', li.productId) : li.serviceCode ? masterLabel('serviceCode', li.serviceCode) : li.description || 'Item');
+const nameOf = (li: AnyLine) => (li.productId ? recordTitle('products', li.productId) : li.serviceCode ? masterLabel('serviceCode', li.serviceCode) : li.description || L.common.lineItems.item);
 
 /** Plain numbered table (owner rule 20): # first, muted headers, total row when there are several items. */
 export function LineItemsTable({ items = [], caption }: { items?: AnyLine[]; caption: string }) {
@@ -38,11 +39,11 @@ export function LineItemsTable({ items = [], caption }: { items?: AnyLine[]; cap
           <th scope="col" className="col-n">
             #
           </th>
-          <th scope="col">Item</th>
-          <th scope="col">Qty</th>
-          <th scope="col">Unit price</th>
-          {hasDiscount && <th scope="col">Discount</th>}
-          <th scope="col">Amount</th>
+          <th scope="col">{L.common.lineItems.item}</th>
+          <th scope="col">{L.common.lineItems.qty}</th>
+          <th scope="col">{L.common.lineItems.unitPrice}</th>
+          {hasDiscount && <th scope="col">{L.common.lineItems.discount}</th>}
+          <th scope="col">{L.common.lineItems.amount}</th>
         </tr>
       </thead>
       <tbody>
@@ -63,7 +64,7 @@ export function LineItemsTable({ items = [], caption }: { items?: AnyLine[]; cap
       {items.length > 1 && (
         <tfoot>
           <tr>
-            <td colSpan={hasDiscount ? 5 : 4}>Total before tax</td>
+            <td colSpan={hasDiscount ? 5 : 4}>{L.common.lineItems.totalBeforeTax}</td>
             <td>{formatMoney(total)}</td>
           </tr>
         </tfoot>

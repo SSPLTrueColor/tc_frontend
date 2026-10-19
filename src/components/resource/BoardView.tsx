@@ -11,6 +11,7 @@ import { Menu } from '../primitives/overlay';
 import { FieldValue, photoOf } from './FieldValue';
 import { Icon } from '../primitives/Icon';
 import { ImageTile } from '../primitives/People';
+import { L } from '../../constants/labels';
 
 /** Board: columns are lifecycle states; moves go through the same guarded transition API. */
 export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, activeId }: { res: ResourceDefinition; actor: Actor; rows: RecordData[]; boardField: string; cardFields: string[]; onOpen: (id: string) => void; activeId?: string }) {
@@ -27,7 +28,7 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
     if (r[boardField] === to) return;
     const t = availableTransitions(actor, res, r).find((x) => x.to === to);
     if (!t) {
-      toast(`Cannot move ${r.id} directly to "${values.find((v) => v.key === to)?.label}" — not an allowed step.`, 'danger');
+      toast(L.common.list.notAllowedStep(r.id, values.find((v) => v.key === to)?.label ?? to), 'danger');
       return;
     }
     if (t.disabledReason) {
@@ -37,9 +38,9 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
     if (t.confirm && !window.confirm(t.confirm)) return;
     try {
       transitionRecord(actor, res.key, r.id, to, r.version);
-      toast(`${r.id}: ${t.action}`);
+      toast(L.common.toasts.actionDone(r.id, t.action));
     } catch (e) {
-      toast(e instanceof ServiceError ? e.message : 'Move failed', 'danger');
+      toast(e instanceof ServiceError ? e.message : L.common.toasts.moveFailed, 'danger');
     }
   };
 
@@ -109,7 +110,7 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                   </button>
                   <IconButton
                     icon="more"
-                    label={`Move ${r.id}`}
+                    label={L.common.list.moveCard(r.id)}
                     aria-haspopup="menu"
                     className="board-card-menu"
                     onClick={(e) => {
@@ -119,7 +120,7 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                   />
                 </li>
               ))}
-              {!items.length && <li className="board-empty muted">Nothing here</li>}
+              {!items.length && <li className="board-empty muted">{L.common.list.nothingHere}</li>}
             </ul>
             <footer className="board-col-foot muted">
               {items.length} {items.length === 1 ? res.label.toLowerCase() : res.labelPlural.toLowerCase()}
@@ -132,15 +133,15 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
           open
           onClose={() => setMenu(null)}
           anchor={anchor}
-          label={`Move ${menu.id}`}
+          label={L.common.list.moveCard(menu.id)}
           items={
             availableTransitions(actor, res, menu).length
               ? availableTransitions(actor, res, menu).map((t) => ({ id: t.to, label: t.action, icon: 'chevron-right', disabledReason: t.disabledReason, onSelect: () => move(menu, t.to) }))
-              : [{ id: 'none', label: 'No further steps', onSelect: () => {}, disabledReason: 'This item is in a final state' }]
+              : [{ id: 'none', label: L.common.list.noFurtherSteps, onSelect: () => {}, disabledReason: L.common.list.finalState }]
           }
         />
       )}
-      {!activeMasterValues(field.master!).length && <p className="muted">No active statuses configured.</p>}
+      {!activeMasterValues(field.master!).length && <p className="muted">{L.common.list.noActiveStatuses}</p>}
     </div>
   );
 }

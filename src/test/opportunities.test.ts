@@ -2,7 +2,11 @@ import { appPack } from '../domain/pack';
 import { actorFor } from '../services/authz';
 import { createDb, getDb, __setDb } from '../services/db';
 import { createRecord, queryRecords, transitionRecord } from '../services/runtime';
-import { computeForecast, markLost, periodOf } from '../services/opportunities';
+import { computeForecast, demoMachineCalendar, markLost, periodOf, pipelineFacets, pipelineRows, pipelineTotals } from '../services/opportunities';
+import { masterLabel } from '../services/registry';
+import { L } from '../constants/labels';
+import { ROUTES } from '../constants/routes';
+import { routes } from '../modules/opportunities/routes';
 import { ServiceError } from '../services/types';
 import '../domain/extensions/core';
 import '../domain/extensions/opportunities';
@@ -28,7 +32,7 @@ function newOpp(value = 2_500_000) {
 describe('opportunities', () => {
   beforeEach(freshDb);
 
-  it('defaults stage, probability and hub on create (BR-11)', () => {
+  it('defaults stage, probability and territory / hub on create (BR-11)', () => {
     const o = newOpp();
     expect(o.stage).toBe('needs_assessment');
     expect(o.probability).toBe(10);
@@ -68,14 +72,14 @@ describe('opportunities', () => {
     expect(createRecord(karan(), 'demos', { ...base, scheduledAt: '2026-10-25T12:00' }).record.id).toBeTruthy();
   });
 
-  it('scopes: the executive sees own deals, the manager sees the team', () => {
+  it('scopes: the executive sees own opportunities, the manager sees the team', () => {
     const o = newOpp();
     expect(queryRecords(karan(), 'opportunities').rows.every((r) => r.ownerId === karan().staffId)).toBe(true);
     expect(queryRecords(rohan(), 'opportunities').rows.some((r) => r.id === o.id)).toBe(true);
     expect(queryRecords(actorFor('u_kavita', WS), 'opportunities').rows.some((r) => r.id === o.id)).toBe(false);
   });
 
-  it('forecast totals equal the sum of weighted open deals in range (FR-033)', () => {
+  it('forecast totals equal the sum of weighted open opportunities in range (FR-033)', () => {
     const o = newOpp(1_000_000);
     const f = computeForecast(rohan(), { period: 'month', groupBy: 'owner', horizon: 6 });
     const inRange = queryRecords(rohan(), 'opportunities').rows.filter((r) => ['needs_assessment', 'demo', 'proposal', 'negotiation'].includes(String(r.stage)) && f.periods.some((p) => p.key === periodOf(String(r.expectedCloseDate), 'month')));
@@ -84,5 +88,51 @@ describe('opportunities', () => {
     expect(inRange.some((r) => r.id === o.id)).toBe(true);
     expect(periodOf('2026-05-10', 'quarter')).toBe('2026-Q1');
     expect(periodOf('2027-02-10', 'quarter')).toBe('2026-Q4');
+  });
+
+  it('uses the GLOSSARY stage and type values (§3)', () => {
+    expect(['needs_assessment', 'demo', 'proposal', 'negotiation', 'won', 'lost'].map((k) => masterLabel('oppStage', k))).toEqual(['Needs Assessment', 'Demo/Sample', 'Proposal/Quotation', 'Negotiation', 'Won', 'Lost']);
+    expect(['new_machine', 'additional_machine', 'upgrade', 'consumables', 'amc', 'renewal'].map((k) => masterLabel('oppType', k))).toEqual(['New Machine', 'Additional Machine', 'Upgrade', 'Consumables Contract', 'AMC / CMC', 'AMC Renewal']);
+    const res = appPack.resources.find((r) => r.key === 'sampleRequests')!;
+    expect(res.labelPlural).toBe('Sample Print Requests');
+    expect(res.form.primaryLabel).toBe(L.opportunities.actions.requestSamplePrint);
+  });
+
+  it('registers Pipeline, Sales Forecast and Demo Machine Calendar routes', () => {
+    expect(routes.map((r) => r.path).sort()).toEqual([ROUTES.demoMachineCalendar, ROUTES.pipeline, ROUTES.salesForecast].sort());
+  });
+
+  it('pipeline filters by stage, division, owner and close month (OPP-03)', () => {
+    const o = newOpp(1_500_000);
+    const open = pipelineRows(rohan());
+    expect(open.every((r) => ['needs_assessment', 'demo', 'proposal', 'negotiation'].includes(String(r.stage)))).toBe(true);
+    expect(open.some((r) => r.id === o.id)).toBe(true);
+    expect(pipelineRows(rohan(), { stage: 'all' }).length).toBeGreaterThanOrEqual(open.length);
+    expect(pipelineRows(rohan(), { stage: 'won' }).every((r) => r.stage === 'won')).toBe(true);
+    expect(pipelineRows(rohan(), { divisionId: 'TX', ownerId: karan().staffId, closeMonth: '2026-12' }).some((r) => r.id === o.id)).toBe(true);
+    expect(pipelineRows(rohan(), { closeMonth: '2026-11' }).some((r) => r.id === o.id)).toBe(false);
+    expect(pipelineRows(rohan(), { search: 'Test Prints' }).some((r) => r.id === o.id)).toBe(true);
+    const t = pipelineTotals(open);
+    expect(t.open).toBe(open.length);
+    expect(Math.round(t.weighted)).toBe(Math.round(open.reduce((s, r) => s + (Number(r.value) * Number(r.probability)) / 100, 0)));
+    const facets = pipelineFacets(rohan());
+    expect(facets.closeMonths).toContain('2026-12');
+    expect(facets.ownerIds).toContain(karan().staffId);
+  });
+
+  it('demo machine calendar lists bookings per machine and hides other teams\' details (OPP-04)', () => {
+    const o = newOpp();
+    const machine = getDb().records.demoMachines[0];
+    const d = createRecord(karan(), 'demos', { opportunityId: o.id, location: 'centre', demoMachineId: machine.id, scheduledAt: '2027-03-03T07:00', durationMin: 90, ownerId: karan().staffId }).record;
+    const mine = demoMachineCalendar(karan(), { machineId: machine.id });
+    expect(mine.machines.map((m) => m.id)).toEqual([machine.id]);
+    const b = mine.bookings.find((x) => x.id === d.id)!;
+    expect(b).toMatchObject({ machineId: machine.id, start: '2027-03-03T07:00', end: '2027-03-03T08:30', visible: true, opportunityId: o.id });
+    expect(demoMachineCalendar(karan(), { machineId: machine.id, from: '2027-04-01' }).bookings.some((x) => x.id === d.id)).toBe(false);
+    expect(demoMachineCalendar(karan(), { divisionId: 'NONE' }).machines).toEqual([]);
+    // Another sales executive (Ink): the slot shows as busy, the opportunity details stay hidden.
+    const theirs = demoMachineCalendar(actorFor('u_sneha', WS), { machineId: machine.id }).bookings.find((x) => x.id === d.id);
+    expect(theirs?.visible).toBe(false);
+    expect(theirs?.opportunityName).toBeUndefined();
   });
 });

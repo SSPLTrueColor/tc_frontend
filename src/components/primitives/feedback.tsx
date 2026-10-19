@@ -7,6 +7,7 @@ import { isMasked, maskSensitive, type SensitiveFieldType } from '../../lib/phiM
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { EmptyValue } from './display';
+import { L } from '../../constants/labels';
 
 // ---------------------------------------------------------------- status chip (text + dot; never color-only)
 
@@ -26,7 +27,6 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
 
 export function Avatar({ name, size = 24 }: { name: string; size?: number }) {
   const initials = name
-    .replace('Dr. ', '')
     .split(' ')
     .map((p) => p[0])
     .slice(0, 2)
@@ -54,7 +54,7 @@ export function EmptyState({ icon = 'inbox', title, children, action }: { icon?:
   );
 }
 
-export function ErrorState({ title = 'Something went wrong', children, onRetry }: { title?: string; children?: ReactNode; onRetry?: () => void }) {
+export function ErrorState({ title = L.common.states.somethingWrong, children, onRetry }: { title?: string; children?: ReactNode; onRetry?: () => void }) {
   return (
     <div className="state" role="alert">
       <span className="state-icon tone-danger">
@@ -64,7 +64,7 @@ export function ErrorState({ title = 'Something went wrong', children, onRetry }
       {children && <p className="state-text">{children}</p>}
       {onRetry && (
         <Button icon="reset" onClick={onRetry}>
-          Retry
+          {L.common.actions.retry}
         </Button>
       )}
     </div>
@@ -77,15 +77,15 @@ export function NoAccess({ what }: { what: string }) {
       <span className="state-icon">
         <Icon name="lock" size={20} />
       </span>
-      <p className="state-title">No access to {what}</p>
-      <p className="state-text">Your current role does not include this area. Switch role from the account menu to explore other permissions.</p>
+      <p className="state-title">{L.common.states.noAccess(what)}</p>
+      <p className="state-text">{L.common.states.noAccessBody}</p>
     </div>
   );
 }
 
 export function Skeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="skeleton" aria-busy="true" aria-label="Loading">
+    <div className="skeleton" aria-busy="true" aria-label={L.common.states.loading}>
       {Array.from({ length: rows }).map((_, i) => (
         <span key={i} className="skeleton-row" />
       ))}
@@ -128,13 +128,13 @@ export function MaskedField({ value, type, canReveal }: { value: unknown; type: 
             e.stopPropagation();
             setRevealed((v) => !v);
           }}
-          aria-label={revealed ? 'Hide sensitive value' : 'Reveal sensitive value'}
-          data-tooltip={revealed ? 'Hide' : 'Reveal'}
+          aria-label={revealed ? L.common.states.hideSensitive : L.common.states.revealSensitive}
+          data-tooltip={revealed ? L.common.states.hide : L.common.states.reveal}
         >
           <Icon name={revealed ? 'eye-off' : 'eye'} size={14} />
         </button>
       ) : (
-        <span className="masked-lock" data-tooltip="Masked for your role" aria-label="Masked for your role">
+        <span className="masked-lock" data-tooltip={L.common.states.maskedForRole} aria-label={L.common.states.maskedForRole}>
           <Icon name="lock" size={12} />
         </span>
       )}
@@ -168,7 +168,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div key={t.id} className={cx('toast', `tone-${t.tone}`)}>
               <Icon name={t.tone === 'danger' ? 'alert' : t.tone === 'info' ? 'info' : 'check'} />
               <span>{t.message}</span>
-              <button type="button" className="toast-close" aria-label="Dismiss notification" onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}>
+              <button type="button" className="toast-close" aria-label={L.common.states.dismiss} onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}>
                 <Icon name="x" size={14} />
               </button>
             </div>

@@ -17,6 +17,10 @@ import { LineItemsTable, lineItemsOf } from './LineItems';
 import { ImageTile } from '../primitives/People';
 import { isEmpty } from '../../services/validation';
 import { isDragClick } from '../../lib/dragGuard';
+import { L } from '../../constants/labels';
+
+const C = L.common;
+const LS = L.common.list;
 
 const INLINE_TYPES = new Set(['text', 'number', 'money', 'master', 'date', 'relation']);
 /** Row action icons (view, edit, more): column width fits exactly this many 30px icons. */
@@ -120,7 +124,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
     const f = res.fields.find((x) => x.key === groupBy);
     const map = new Map<string, RecordData[]>();
     rows.forEach((r) => {
-      const label = f ? displayText(f, r[groupBy], actor) || 'Not set' : 'Not set';
+      const label = f ? displayText(f, r[groupBy], actor) || C.states.notSet : C.states.notSet;
       map.set(label, [...(map.get(label) ?? []), r]);
     });
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, rs]) => ({ key: label, label, rows: rs }));
@@ -201,13 +205,13 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
       }}
       data-virtual={virtual || undefined}
       className={cx('grid-wrap', density === 'compact' ? 'density-compact' : 'density-comfortable', rowLines > 1 && `rows-${rowLines}`, moreRight && 'has-more-right')}>
-      <table className="grid" aria-label={`${res.labelPlural} table`} aria-rowcount={rows.length + 1}>
+      <table className="grid" aria-label={LS.tableAria(res.labelPlural)} aria-rowcount={rows.length + 1}>
         <thead>
           <tr>
             <th className="col-select sticky-left" style={{ left: 0 }} scope="col">
               <input
                 type="checkbox"
-                aria-label="Select all rows on this page"
+                aria-label={LS.selectAll}
                 checked={allSelected}
                 ref={(el) => el && (el.indeterminate = !allSelected && someSelected)}
                 onChange={() => onSelectedChange(allSelected ? new Set() : new Set(rows.map((r) => r.id)))}
@@ -215,7 +219,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
             </th>
             {masterDetail && (
               <th className="col-expand sticky-left" style={{ left: 40 }} scope="col">
-                <span className="sr-only">Expand</span>
+                <span className="sr-only">{LS.expand}</span>
               </th>
             )}
             {ordered.map((c) => {
@@ -249,7 +253,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                     className="col-resize"
                     role="separator"
                     aria-orientation="vertical"
-                    aria-label={`Resize ${colLabel(res, c.key)} column`}
+                    aria-label={LS.resizeColumn(colLabel(res, c.key))}
                     aria-valuenow={w}
                     tabIndex={0}
                     onPointerDown={(e) => {
@@ -321,13 +325,13 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         }}
                       >
                         <td className="col-select sticky-left" style={{ left: 0 }} onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" aria-label={`Select ${recordTitle(res.key, r.id, actor)}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                          <input type="checkbox" aria-label={LS.selectRow(recordTitle(res.key, r.id, actor))} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
                         </td>
                         {masterDetail && (
                           <td className="col-expand sticky-left" style={{ left: 40 }} onClick={(e) => e.stopPropagation()}>
                             <IconButton
                               icon={isOpen ? 'chevron-down' : 'chevron-right'}
-                              label={isOpen ? 'Collapse details' : 'Expand line items'}
+                              label={isOpen ? LS.collapseDetails : LS.expandLineItems}
                               aria-expanded={isOpen}
                               onClick={() => {
                                 const n = new Set(expanded);
@@ -370,7 +374,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                                     <button
                                       type="button"
                                       className="cell-edit"
-                                      aria-label={`Edit ${f.label}`}
+                                      aria-label={LS.editField(f.label)}
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setEditing({ id: r.id, key: c.key });
@@ -386,11 +390,11 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         })}
                         <td className="col-actions sticky-right" style={{ width: ACTIONS_W, minWidth: ACTIONS_W, maxWidth: ACTIONS_W }} onClick={(e) => e.stopPropagation()}>
                           <span className="row-actions">
-                            <IconButton icon="eye" label={`View ${r.id}`} onClick={() => onOpen(r.id)} />
-                            <IconButton icon="pencil" label={`Edit ${r.id}`} onClick={() => onEdit(r.id)} disabledReason={rowCanEdit ? undefined : 'Read-only for your role'} />
+                            <IconButton icon="eye" label={LS.viewRow(r.id)} onClick={() => onOpen(r.id)} />
+                            <IconButton icon="pencil" label={LS.editRow(r.id)} onClick={() => onEdit(r.id)} disabledReason={rowCanEdit ? undefined : C.states.readOnlyForRole} />
                             <IconButton
                               icon="more"
-                              label={`More actions for ${r.id}`}
+                              label={LS.rowActions(r.id)}
                               aria-haspopup="menu"
                               onClick={(e) => {
                                 menuAnchor.current = e.currentTarget;
@@ -404,7 +408,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         <tr className="detail-row-expanded">
                           <td colSpan={ordered.length + 3}>
                             <div className="detail-card" style={wrapW ? { width: Math.max(320, wrapW - 56 - ACTIONS_W - 12) } : undefined}>
-                              <LineItemsSummary res={res} record={r} title={`${res.label} line items`} />
+                              <LineItemsSummary res={res} record={r} title={LS.lineItems(res.label)} />
                             </div>
                           </td>
                         </tr>
@@ -421,7 +425,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
           ))}
         </tbody>
       </table>
-      {menu && <Menu open onClose={() => setMenu(null)} anchor={menuAnchor} label={`Actions for ${menu.row.id}`} items={rowMenu(menu.row)} />}
+      {menu && <Menu open onClose={() => setMenu(null)} anchor={menuAnchor} label={LS.actionsFor(menu.row.id)} items={rowMenu(menu.row)} />}
     </div>
   );
 }
@@ -445,12 +449,12 @@ function IdCell({ id, onOpen }: { id: string; onOpen: () => void }) {
       <button
         type="button"
         className="cell-trail"
-        aria-label={`Copy ${id}`}
-        data-tooltip="Copy ID"
+        aria-label={LS.copyIdAria(id)}
+        data-tooltip={LS.copyId}
         onClick={(e) => {
           e.stopPropagation();
           navigator.clipboard?.writeText(id).catch(() => {}); // clipboard may be blocked — never crash
-          toast(`${id} copied`, 'info');
+          toast(C.toasts.copiedId(id), 'info');
         }}
       >
         <Icon name="copy" size={14} />
@@ -513,10 +517,10 @@ function InlineEditor({ res, actor, field, record, onDone }: { res: ResourceDefi
     saving.current = true;
     try {
       updateRecord(actor, res.key, record.id, { [field.key]: v }, record.version);
-      toast(`${record.id}: ${field.label} updated`);
+      toast(C.toasts.fieldUpdated(record.id, field.label));
       onDone();
     } catch (e) {
-      const msg = e instanceof ServiceError ? e.fieldErrors?.[field.key] ?? e.message : 'Save failed';
+      const msg = e instanceof ServiceError ? e.fieldErrors?.[field.key] ?? e.message : C.toasts.saveFailed;
       setError(msg);
       toast(msg, 'danger');
       saving.current = false;
@@ -571,12 +575,12 @@ function CardList({ res, actor, rows, onOpen, activeId, columns, selected, onSel
   const access = fieldAccessMap(actor, res);
   const extra = columns.filter((c) => !c.hidden && c.key !== res.titleField && c.key !== 'id' && access[c.key] && access[c.key] !== 'hide').slice(0, 3);
   return (
-    <ul className="card-list" aria-label={`${res.labelPlural} list`}>
+    <ul className="card-list" aria-label={LS.listAria(res.labelPlural)}>
       {rows.map((r) => (
         <li key={r.id} className={cx('card-row', activeId === r.id && 'is-active')}>
           <input
             type="checkbox"
-            aria-label={`Select ${r.id}`}
+            aria-label={LS.selectRow(r.id)}
             checked={selected.has(r.id)}
             onChange={() => {
               const n = new Set(selected);

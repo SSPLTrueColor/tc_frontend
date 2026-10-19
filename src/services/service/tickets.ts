@@ -21,6 +21,7 @@ import { insertRecordIn, patchRecordIn } from '../runtime';
 import { ServiceError } from '../types';
 import { clockStates, computeDues, hoursSinceBreach, isBreached, resumePatch } from './sla';
 import { L } from '../../constants/labels';
+import { ROUTES, toPath } from '../../constants/routes';
 
 const E = L.service.errors;
 const A = L.service.audit;
@@ -201,7 +202,7 @@ export function afterTicketTransition(ctx: HookContext, before: RecordData, afte
 export function sendClosurePack(ctx: HookContext, t: RecordData) {
   const contact = byId('contacts', t.contactId, ctx.d.records) ?? (ctx.d.records.contacts ?? []).find((c) => c.customerId === t.customerId);
   const to = s(contact?.whatsapp || contact?.mobile) || customerName(t.customerId, ctx.d.records);
-  const link = `${location.origin}/feedback/${s(t.feedbackToken)}`;
+  const link = `${location.origin}${toPath(ROUTES.feedback, { token: s(t.feedbackToken) })}`;
   queueMessage(ctx, {
     channel: 'whatsapp',
     to,

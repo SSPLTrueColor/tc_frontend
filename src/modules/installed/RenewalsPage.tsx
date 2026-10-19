@@ -15,15 +15,13 @@ import { DateText } from '../../components/primitives/display';
 import { EmptyState, ErrorState, NoAccess, Skeleton, StatusChip, Tabs } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { L } from '../../constants/labels';
 import { LostDialog, RenewDialog } from './components';
 
-const BUCKETS: { id: RenewalBucket; label: string }[] = [
-  { id: 'due', label: 'Due for renewal' },
-  { id: 'upcoming', label: 'Coming up' },
-  { id: 'lapsed', label: 'Lapsed' },
-  { id: 'renewed', label: 'Renewed' },
-  { id: 'lost', label: 'Lost' },
-];
+const P = L.installed.pages.renewalPipeline;
+const C = L.installed.columns;
+const A = L.installed.actions;
+const BUCKETS: { id: RenewalBucket; label: string }[] = (['due', 'upcoming', 'lapsed', 'renewed', 'lost'] as const).map((id) => ({ id, label: P.buckets[id] }));
 const PAGE = 25;
 type SortKey = 'endDate' | 'value' | 'customer';
 
@@ -37,7 +35,7 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
   );
 }
 
-/** IB-05 renewal pipeline: due / coming up / lapsed / renewed / lost, with renew and lost actions. */
+/** Renewals (IB-05 renewal pipeline): due / coming up / lapsed / renewed / lost, with renew and lost actions. */
 export function RenewalsPage() {
   const actor = useActor();
   const q = useServiceQuery(() => loadRenewals(actor), [actor.user.id]);
@@ -58,7 +56,7 @@ export function RenewalsPage() {
     return [...list].sort((a, b) => (val(a) < val(b) ? -sort.dir : val(a) > val(b) ? sort.dir : 0));
   }, [q.data, tab, search, division, sort, actor]);
 
-  if (!canReadResource(actor, 'amcContracts')) return <NoAccess what="AMC / CMC renewals" />;
+  if (!canReadResource(actor, 'amcContracts')) return <NoAccess what={P.noAccess} />;
 
   const all = q.data ?? [];
   const count = (b: RenewalBucket) => all.filter((r) => r.bucket === b).length;
@@ -83,25 +81,25 @@ export function RenewalsPage() {
   return (
     <div className="page">
       <PageHeader
-        title="Renewals"
-        description={`AMC / CMC renewal pipeline. Reminders go to sales and service owners ${days.join(' / ')} days before expiry; contracts move to “Due for renewal” and a renewal opportunity is created automatically.`}
+        title={L.nav.pages.renewalPipeline.title}
+        description={P.description(days.join(' / '))}
       />
       {q.error ? (
-        <ErrorState title="Could not load renewals" onRetry={q.retry}>
+        <ErrorState title={P.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
       ) : !q.data ? (
         <Skeleton rows={8} />
       ) : (
         <>
-          <section className="stats" aria-label="Renewal figures">
+          <section className="stats" aria-label={P.statsLabel}>
             {days.map((d) => (
-              <Stat key={d} label={`Expiring ≤ ${d} days`} value={open.filter((r) => r.daysLeft <= d).length} sub={formatMoney(open.filter((r) => r.daysLeft <= d).reduce((s, r) => s + Number(r.contract.value), 0))} />
+              <Stat key={d} label={P.expiringWithin(d)} value={open.filter((r) => r.daysLeft <= d).length} sub={formatMoney(open.filter((r) => r.daysLeft <= d).reduce((s, r) => s + Number(r.contract.value), 0))} />
             ))}
-            <Stat label="Renewal rate (decided)" value={closedRate} sub={`${count('renewed')} renewed · ${count('lost')} lost · ${count('lapsed')} lapsed`} />
+            <Stat label={P.renewalRate} value={closedRate} sub={P.rateSub(count('renewed'), count('lost'), count('lapsed'))} />
           </section>
           <Tabs<RenewalBucket>
-            label="Renewal stages"
+            label={P.bucketsLabel}
             value={tab}
             onChange={(t) => {
               setTab(t);
@@ -110,17 +108,17 @@ export function RenewalsPage() {
             tabs={BUCKETS.map((b) => ({ ...b, count: count(b.id) }))}
           />
           <div className="toolbar">
-            <input type="search" className="input input-compact" placeholder="Search contract, customer or serial" aria-label="Search renewals" value={search} onChange={(e) => (setSearch(e.target.value), setPage(0))} />
-            <SelectMenu label="Filter by division" value={division} options={[{ value: '', label: 'All divisions' }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setDivision(v), setPage(0))} />
+            <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), setPage(0))} />
+            <SelectMenu label={P.divisionFilter} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setDivision(v), setPage(0))} />
             <span className="spacer" />
             <Link className="link small" to={resourcePath('tc', 'amcContracts', { view: 'v_amc_all' })}>
-              All contracts
+              {A.allContracts}
             </Link>
           </div>
           <div className="content-surface">
             {rows.length === 0 ? (
-              <EmptyState icon="reset" title={search || division ? 'No matching contracts' : 'Nothing in this stage'}>
-                {tab === 'due' ? 'Contracts enter this list automatically when they reach the reminder window.' : 'Try another stage or clear the filters.'}
+              <EmptyState icon="reset" title={search || division ? P.noMatch : P.emptyStage}>
+                {tab === 'due' ? P.emptyDue : P.emptyOther}
               </EmptyState>
             ) : (
               <>
@@ -128,17 +126,17 @@ export function RenewalsPage() {
                   <table className="mini-table">
                     <thead>
                       <tr>
-                        <th scope="col">Contract</th>
-                        <th scope="col">{sortBtn('customer', 'Customer')}</th>
-                        <th scope="col">Machine</th>
-                        <th scope="col">Type</th>
-                        <th scope="col">{sortBtn('endDate', 'Ends')}</th>
+                        <th scope="col">{C.contract}</th>
+                        <th scope="col">{sortBtn('customer', C.customer)}</th>
+                        <th scope="col">{C.machine}</th>
+                        <th scope="col">{C.contractType}</th>
+                        <th scope="col">{sortBtn('endDate', C.ends)}</th>
                         <th scope="col" className="th-num">
-                          {sortBtn('value', 'Value')}
+                          {sortBtn('value', C.value)}
                         </th>
-                        <th scope="col">Owner</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Actions</th>
+                        <th scope="col">{C.owner}</th>
+                        <th scope="col">{C.status}</th>
+                        <th scope="col">{C.actions}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -157,7 +155,7 @@ export function RenewalsPage() {
                             <td>{masterLabel('amcType', c.contractType)}</td>
                             <td className="nowrap">
                               <DateText value={String(c.endDate)} />
-                              <div className={`small ${daysLeft < 0 ? 'text-danger' : daysLeft <= 30 ? 'text-danger' : 'muted'}`}>{daysLeft < 0 ? `${-daysLeft} days ago` : `${daysLeft} days left`}</div>
+                              <div className={`small ${daysLeft < 0 ? 'text-danger' : daysLeft <= 30 ? 'text-danger' : 'muted'}`}>{daysLeft < 0 ? P.daysAgo(-daysLeft) : P.daysLeft(daysLeft)}</div>
                             </td>
                             <td className="td-num">{formatMoney(Number(c.value))}</td>
                             <td>{recordTitle('employees', c.ownerId, actor)}</td>
@@ -166,15 +164,15 @@ export function RenewalsPage() {
                               {actionable && canAct ? (
                                 <>
                                   <Button size="compact" onClick={() => setRenewing(c)}>
-                                    Renew
+                                    {A.renew}
                                   </Button>{' '}
                                   <Button size="compact" variant="ghost" onClick={() => setLosing(c)}>
-                                    Lost
+                                    {A.lost}
                                   </Button>
                                 </>
                               ) : (
                                 <Link className="link small" to={recordPeekPath('tc', 'amcContracts', c.id)}>
-                                  Open
+                                  {A.open}
                                 </Link>
                               )}
                             </td>
@@ -186,17 +184,15 @@ export function RenewalsPage() {
                 </div>
                 <div className="grid-footer">
                   <span className="grid-footer-range">
-                    <strong>
-                      {current * PAGE + 1}–{Math.min(rows.length, (current + 1) * PAGE)}
-                    </strong>{' '}
-                    of {rows.length} contracts
+                    <strong>{P.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE))}</strong>
+                    {P.ofTotal(rows.length)}
                   </span>
-                  <nav className="grid-pages" aria-label="Pagination">
-                    <IconButton icon="chevron-left" label="Previous page" disabledReason={current === 0 ? 'First page' : undefined} onClick={() => setPage(current - 1)} />
+                  <nav className="grid-pages" aria-label={P.pagination}>
+                    <IconButton icon="chevron-left" label={P.prev} disabledReason={current === 0 ? P.firstPage : undefined} onClick={() => setPage(current - 1)} />
                     <span className="muted small">
-                      Page {current + 1} of {pageCount}
+                      {P.pageOf(current + 1, pageCount)}
                     </span>
-                    <IconButton icon="chevron-right" label="Next page" disabledReason={current >= pageCount - 1 ? 'Last page' : undefined} onClick={() => setPage(current + 1)} />
+                    <IconButton icon="chevron-right" label={P.next} disabledReason={current >= pageCount - 1 ? P.lastPage : undefined} onClick={() => setPage(current + 1)} />
                   </nav>
                 </div>
               </>

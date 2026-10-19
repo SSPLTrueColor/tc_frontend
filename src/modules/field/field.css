@@ -1,4 +1,4 @@
-/* Field & performance: only what the template classes do not cover. Tokens only. */
+/* Field Force and Targets & Recognition: only what the template classes do not cover. Tokens only. */
 .field-page .field-checkin-body {
   display: grid;
   gap: 12px;
@@ -32,4 +32,35 @@
   .field-page .field-toolbar .btn {
     flex: 1 1 auto;
   }
+}
+/* Merged pages (Field Visits, Beat Plan): working view ↔ full record list switch. */
+.field-mode {
+  display: flex;
+  margin-bottom: 8px;
+}
+.field-mode .segmented {
+  flex-wrap: wrap;
+}
+.field-merged {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.field-merged > .field-mode {
+  padding: 8px 16px 0;
+  margin-bottom: 0;
+  background: var(--s-panel);
+}
+.field-merged > .page-resource {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+}
+.field-pager {
+  margin-top: 8px;
+}
+.field-days {
+  flex-wrap: wrap;
+  margin-top: 8px;
 }

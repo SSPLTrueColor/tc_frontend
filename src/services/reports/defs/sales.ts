@@ -1,11 +1,16 @@
 /** FR-012 customer reports, FR-026 lead reports, FR-048 quotation reports, FR-059 order reports. */
+import { L } from '../../../constants/labels';
+import { ROUTES } from '../../../constants/routes';
 import { addDays } from '../../../lib/dates';
 import { coverageFor } from '../../lookups';
 import { getPolicies } from '../../policies';
 import { BACKLOG, collections, dayOf, inRange, isBooked, isOpenOpp, leadResponseHours, ms, outstandingOf, quoteToOrder, sum, winRate } from '../kpis';
 import { applyFilters, empName, groupBy, label, list, monthKey, n, pctOf, peek, s, top } from '../helpers';
-import type { ReportDef, ReportRow } from '../types';
+import type { ReportColumn, ReportDef, ReportRow } from '../types';
 
+const D = L.reports.defs;
+const C = L.reports.cols;
+const G = L.reports.groupBy;
 const row = (key: string, o: Record<string, unknown>): ReportRow => ({ _key: key, ...o });
 const latest = <T extends Record<string, unknown>>(qs: T[]) => qs.filter((q) => q.isLatest !== false && q.status !== 'superseded');
 
@@ -13,13 +18,13 @@ export const salesReports: ReportDef[] = [
   // ---------------------------------------------------------------- FR-012 customers
   {
     id: 'customer-sales',
-    title: 'Customer-wise sales',
+    title: D.customerSales.title,
     group: 'customers',
     fr: ['FR-012'],
-    description: 'Booked order value per customer in the period, with open pipeline and installed machines.',
+    description: D.customerSales.description,
     needs: ['customers', 'salesOrders'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Order date',
+    dateLabel: D.customerSales.dateLabel,
     compute: (ds, f) => {
       const orders = applyFilters(ds.get('salesOrders').filter(isBooked), f, { date: 'orderDate', owner: 'ownerId' });
       const opps = ds.get('opportunities').filter(isOpenOpp);
@@ -38,31 +43,31 @@ export const salesReports: ReportDef[] = [
       );
       return {
         columns: [
-          { key: 'customer', label: 'Customer', link: peek('customers') },
-          { key: 'orders', label: 'Orders', type: 'number' },
-          { key: 'value', label: 'Booked value', type: 'money' },
-          { key: 'lastOrder', label: 'Last order', type: 'date' },
-          { key: 'pipeline', label: 'Open pipeline', type: 'money' },
-          { key: 'machines', label: 'Machines', type: 'number' },
+          { key: 'customer', label: C.customer, link: peek('customers') },
+          { key: 'orders', label: C.salesOrders, type: 'number' },
+          { key: 'value', label: C.bookedValue, type: 'money' },
+          { key: 'lastOrder', label: D.customerSales.cols.lastOrder, type: 'date' },
+          { key: 'pipeline', label: D.customerSales.cols.pipeline, type: 'money' },
+          { key: 'machines', label: C.machines, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.value) - n(a.value)),
-        chart: { polarity: 'higher', label: 'Top 10 customers by booked value', unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.customer), value: n(r.value) }))) },
+        chart: { polarity: 'higher', label: D.customerSales.chart, unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.customer), value: n(r.value) }))) },
         kpis: [
-          { label: 'Customers ordering', value: String(rows.length) },
-          { label: 'Booked value', value: `money:${sum(orders, 'grandTotal')}` },
+          { label: D.customerSales.tiles.customers, value: String(rows.length) },
+          { label: D.customerSales.tiles.booked, value: `money:${sum(orders, 'grandTotal')}` },
         ],
       };
     },
   },
   {
     id: 'machine-history',
-    title: 'Machine history',
+    title: D.machineHistory.title,
     group: 'customers',
     fr: ['FR-012', 'FR-074'],
-    description: 'Every installed machine with its service history in the period and today’s coverage.',
+    description: D.machineHistory.description,
     needs: ['machines'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Ticket date',
+    dateLabel: D.machineHistory.dateLabel,
     compute: (ds, f, ctx) => {
       const machines = applyFilters(ds.get('machines'), f);
       const tickets = ds.get('tickets').filter((t) => inRange(t.reportedAt, f.from, f.to));
@@ -84,30 +89,30 @@ export const salesReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'serial', label: 'Serial', link: peek('machines') },
-          { key: 'model', label: 'Model' },
-          { key: 'customer', label: 'Customer' },
-          { key: 'installDate', label: 'Installed', type: 'date' },
-          { key: 'coverage', label: 'Coverage today', type: 'status', master: 'coverage' },
-          { key: 'tickets', label: 'Tickets', type: 'number' },
-          { key: 'breakdowns', label: 'Breakdowns', type: 'number' },
-          { key: 'lastTicket', label: 'Last ticket', type: 'date' },
-          { key: 'pmDone', label: 'PM visits done', type: 'number' },
+          { key: 'serial', label: C.serialNumber, link: peek('machines') },
+          { key: 'model', label: C.model },
+          { key: 'customer', label: C.customer },
+          { key: 'installDate', label: C.installationDate, type: 'date' },
+          { key: 'coverage', label: D.machineHistory.cols.coverage, type: 'status', master: 'coverage' },
+          { key: 'tickets', label: C.serviceTickets, type: 'number' },
+          { key: 'breakdowns', label: C.breakdowns, type: 'number' },
+          { key: 'lastTicket', label: D.machineHistory.cols.lastTicket, type: 'date' },
+          { key: 'pmDone', label: D.machineHistory.cols.pmDone, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.tickets) - n(a.tickets)),
-        chart: { polarity: 'lower', label: 'Machines with most tickets', unit: 'tickets', data: top(rows.map((r) => ({ key: r._key, label: s(r.serial), value: n(r.tickets) }))) },
+        chart: { polarity: 'lower', label: D.machineHistory.chart, unit: D.machineHistory.unit, data: top(rows.map((r) => ({ key: r._key, label: s(r.serial), value: n(r.tickets) }))) },
       };
     },
   },
   {
     id: 'warranty-expiry',
-    title: 'Warranty expiry',
-    group: 'installed',
+    title: D.warrantyExpiry.title,
+    group: 'installed-base',
     fr: ['FR-012', 'FR-074'],
-    description: 'Warranties ending in the selected window — the AMC/CMC upsell list.',
+    description: D.warrantyExpiry.description,
     needs: ['warranties'],
     filters: { date: 'future', division: true },
-    dateLabel: 'Warranty end date',
+    dateLabel: D.warrantyExpiry.dateLabel,
     compute: (ds, f, ctx) => {
       const ws = applyFilters(ds.get('warranties'), f, { date: 'endDate' });
       const amc = ds.get('amcContracts');
@@ -119,33 +124,33 @@ export const salesReports: ReportDef[] = [
           customer: ds.name('customers', w.customerId ?? m?.customerId),
           endDate: w.endDate,
           daysLeft: Math.round((ms(dayOf(w.endDate)) - ms(ctx.today)) / 86_400_000),
-          hasContract: amc.some((c) => c.machineId === w.machineId && ['active', 'due_for_renewal', 'draft'].includes(s(c.status)) && dayOf(c.endDate) > dayOf(w.endDate)) ? 'Yes' : 'No',
+          hasContract: amc.some((c) => c.machineId === w.machineId && ['active', 'due_for_renewal', 'draft'].includes(s(c.status)) && dayOf(c.endDate) > dayOf(w.endDate)) ? L.reports.common.yes : L.reports.common.no,
         });
       });
       const byMonth = groupBy(rows, (r) => monthKey(r.endDate));
       return {
         columns: [
-          { key: 'serial', label: 'Machine', link: peek('warranties') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'endDate', label: 'Warranty ends', type: 'date' },
-          { key: 'daysLeft', label: 'Days left', type: 'number' },
-          { key: 'hasContract', label: 'AMC/CMC lined up' },
+          { key: 'serial', label: C.machine, link: peek('warranties') },
+          { key: 'customer', label: C.customer },
+          { key: 'endDate', label: D.warrantyExpiry.cols.endDate, type: 'date' },
+          { key: 'daysLeft', label: C.daysLeft, type: 'number' },
+          { key: 'hasContract', label: D.warrantyExpiry.cols.hasContract },
         ],
         rows: rows.sort((a, b) => n(a.daysLeft) - n(b.daysLeft)),
-        chart: { polarity: 'neutral', label: 'Warranties ending per month', unit: 'machines', data: [...byMonth.entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.length })) },
-        kpis: [{ label: 'Without an AMC/CMC lined up', value: String(rows.filter((r) => r.hasContract === 'No').length) }],
+        chart: { polarity: 'neutral', label: D.warrantyExpiry.chart, unit: L.reports.defs.installedBase.unit, data: [...byMonth.entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.length })) },
+        kpis: [{ label: D.warrantyExpiry.tile, value: String(rows.filter((r) => r.hasContract === L.reports.common.no).length) }],
       };
     },
   },
   {
     id: 'amc-renewals-due',
-    title: 'AMC renewals due',
-    group: 'installed',
+    title: D.amcRenewalsDue.title,
+    group: 'installed-base',
     fr: ['FR-012', 'FR-074'],
-    description: 'Active and due-for-renewal AMC/CMC contracts ending in the window.',
+    description: D.amcRenewalsDue.description,
     needs: ['amcContracts'],
     filters: { date: 'future', division: true, owner: true },
-    dateLabel: 'Contract end date',
+    dateLabel: D.amcRenewalsDue.dateLabel,
     compute: (ds, f, ctx) => {
       const cs = applyFilters(ds.get('amcContracts').filter((c) => ['active', 'due_for_renewal'].includes(s(c.status))), f, { date: 'endDate', owner: 'ownerId' });
       const rows = cs.map((c) =>
@@ -163,27 +168,27 @@ export const salesReports: ReportDef[] = [
       );
       return {
         columns: [
-          { key: 'contract', label: 'Contract', link: peek('amcContracts') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'type', label: 'Type', type: 'status', master: 'amcType' },
-          { key: 'endDate', label: 'Ends', type: 'date' },
-          { key: 'daysLeft', label: 'Days left', type: 'number' },
-          { key: 'value', label: 'Value', type: 'money' },
-          { key: 'status', label: 'Status', type: 'status', master: 'amcStatus' },
-          { key: 'owner', label: 'Sales owner' },
+          { key: 'contract', label: D.amcRenewalsDue.cols.contract, link: peek('amcContracts') },
+          { key: 'customer', label: C.customer },
+          { key: 'type', label: D.amcRenewalsDue.cols.type, type: 'status', master: 'amcType' },
+          { key: 'endDate', label: D.amcRenewalsDue.cols.endDate, type: 'date' },
+          { key: 'daysLeft', label: C.daysLeft, type: 'number' },
+          { key: 'value', label: C.value, type: 'money' },
+          { key: 'status', label: C.status, type: 'status', master: 'amcStatus' },
+          { key: 'owner', label: C.salesExecutive },
         ],
         rows: rows.sort((a, b) => n(a.daysLeft) - n(b.daysLeft)),
-        chart: { polarity: 'neutral', label: 'Renewal value by month', unit: '₹', money: true, data: [...groupBy(rows, (r) => monthKey(r.endDate)).entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
-        kpis: [{ label: 'Value up for renewal', value: `money:${rows.reduce((t, r) => t + n(r.value), 0)}` }],
+        chart: { polarity: 'neutral', label: D.amcRenewalsDue.chart, unit: '₹', money: true, data: [...groupBy(rows, (r) => monthKey(r.endDate)).entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
+        kpis: [{ label: D.amcRenewalsDue.tile, value: `money:${rows.reduce((t, r) => t + n(r.value), 0)}` }],
       };
     },
   },
   {
     id: 'dormant-customers',
-    title: 'Dormant customers',
+    title: D.dormantCustomers.title,
     group: 'customers',
     fr: ['FR-012'],
-    description: 'Customers with no order and no logged activity within the dormant period set in business policies.',
+    description: D.dormantCustomers.description,
     needs: ['customers'],
     filters: { division: true, owner: true },
     compute: (ds, f, ctx) => {
@@ -201,15 +206,15 @@ export const salesReports: ReportDef[] = [
         );
       return {
         columns: [
-          { key: 'customer', label: 'Customer', link: peek('customers') },
-          { key: 'category', label: 'Category', type: 'status', master: 'customerCategory' },
-          { key: 'owner', label: 'Owner' },
-          { key: 'lastOrder', label: 'Last order', type: 'date' },
-          { key: 'lastTouch', label: 'Last order or activity', type: 'date' },
-          { key: 'idleDays', label: 'Days idle', type: 'number' },
+          { key: 'customer', label: C.customer, link: peek('customers') },
+          { key: 'category', label: D.dormantCustomers.cols.category, type: 'status', master: 'customerCategory' },
+          { key: 'owner', label: D.dormantCustomers.cols.owner },
+          { key: 'lastOrder', label: D.dormantCustomers.cols.lastOrder, type: 'date' },
+          { key: 'lastTouch', label: D.dormantCustomers.cols.lastTouch, type: 'date' },
+          { key: 'idleDays', label: D.dormantCustomers.cols.idleDays, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.idleDays) - n(a.idleDays)),
-        kpis: [{ label: 'Dormant customers', value: String(rows.length), hint: `No order or activity for ${days}+ days (policy)` }],
+        kpis: [{ label: D.dormantCustomers.tile, value: String(rows.length), hint: D.dormantCustomers.hint(days) }],
       };
     },
   },
@@ -217,24 +222,24 @@ export const salesReports: ReportDef[] = [
   // ---------------------------------------------------------------- FR-026 leads
   {
     id: 'lead-conversion',
-    title: 'Lead conversion',
+    title: D.leadConversion.title,
     group: 'leads',
     fr: ['FR-026'],
-    description: 'Leads created and converted to opportunities, by month, salesperson, product, source or campaign.',
+    description: D.leadConversion.description,
     needs: ['leads'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Lead created',
+    dateLabel: D.leadConversion.dateLabel,
     groupOptions: [
-      { value: 'month', label: 'By month' },
-      { value: 'owner', label: 'By salesperson' },
-      { value: 'product', label: 'By product category' },
-      { value: 'source', label: 'By source' },
-      { value: 'campaign', label: 'By campaign' },
+      { value: 'month', label: G.month },
+      { value: 'owner', label: G.owner },
+      { value: 'product', label: G.productType },
+      { value: 'source', label: G.source },
+      { value: 'campaign', label: G.campaign },
     ],
     compute: (ds, f) => {
       const leads = applyFilters(ds.get('leads'), f, { date: 'createdAt', owner: 'ownerId' });
       const g = f.group ?? 'month';
-      const keyOf = (l: Record<string, unknown>) => (g === 'owner' ? empName(ds, l.ownerId) : g === 'product' ? label('productType', l.productType) : g === 'source' ? label('leadSource', l.sourceId) : g === 'campaign' ? s(l.campaign) || 'No campaign' : monthKey(l.createdAt));
+      const keyOf = (l: Record<string, unknown>) => (g === 'owner' ? empName(ds, l.ownerId) : g === 'product' ? label('productType', l.productType) : g === 'source' ? label('leadSource', l.sourceId) : g === 'campaign' ? s(l.campaign) || D.leadConversion.noCampaign : monthKey(l.createdAt));
       const rows = [...groupBy(leads, keyOf).entries()].map(([k, ls]) => {
         const q = ls.filter((l) => l.status === 'qualified' || l.opportunityId).length;
         return row(k, { group: k, leads: ls.length, qualified: q, disqualified: ls.filter((l) => l.status === 'disqualified').length, open: ls.filter((l) => ['new', 'contacted', 'nurture'].includes(s(l.status))).length, conversion: pctOf(q, ls.length) });
@@ -243,63 +248,63 @@ export const salesReports: ReportDef[] = [
       const q = leads.filter((l) => l.status === 'qualified' || l.opportunityId).length;
       return {
         columns: [
-          { key: 'group', label: g === 'month' ? 'Month' : g === 'owner' ? 'Salesperson' : g === 'product' ? 'Product category' : g === 'source' ? 'Source' : 'Campaign' },
-          { key: 'leads', label: 'Leads', type: 'number' },
-          { key: 'qualified', label: 'Converted', type: 'number' },
-          { key: 'open', label: 'Still open', type: 'number' },
-          { key: 'disqualified', label: 'Disqualified', type: 'number' },
-          { key: 'conversion', label: 'Conversion', type: 'pct' },
+          { key: 'group', label: g === 'month' ? C.month : g === 'owner' ? C.salesExecutive : g === 'product' ? D.leadConversion.cols.productType : g === 'source' ? D.leadConversion.cols.source : D.leadConversion.cols.campaign },
+          { key: 'leads', label: C.leads, type: 'number' },
+          { key: 'qualified', label: D.leadConversion.cols.qualified, type: 'number' },
+          { key: 'open', label: D.leadConversion.cols.open, type: 'number' },
+          { key: 'disqualified', label: D.leadConversion.cols.disqualified, type: 'number' },
+          { key: 'conversion', label: D.leadConversion.cols.conversion, type: 'pct' },
         ],
         rows: sorted,
-        chart: { polarity: 'higher', label: 'Conversion %', unit: '%', data: sorted.slice(0, 12).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.conversion) * 100) })) },
+        chart: { polarity: 'higher', label: D.leadConversion.chart, unit: '%', data: sorted.slice(0, 12).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.conversion) * 100) })) },
         kpis: [
-          { label: 'Leads', value: String(leads.length) },
-          { label: 'Conversion', value: `pct:${pctOf(q, leads.length) ?? ''}` },
+          { label: D.leadConversion.tiles.leads, value: String(leads.length) },
+          { label: D.leadConversion.tiles.conversion, value: `pct:${pctOf(q, leads.length) ?? ''}` },
         ],
       };
     },
   },
   {
     id: 'lead-ageing',
-    title: 'Lead ageing',
+    title: D.leadAgeing.title,
     group: 'leads',
     fr: ['FR-026'],
-    description: 'Open leads by age since creation, oldest first.',
+    description: D.leadAgeing.description,
     needs: ['leads'],
     filters: { division: true, owner: true },
     compute: (ds, f, ctx) => {
       const open = applyFilters(ds.get('leads').filter((l) => ['new', 'contacted', 'nurture'].includes(s(l.status))), f, { owner: 'ownerId' });
       const rows = open.map((l) => row(l.id, { id: l.id, lead: ds.name('leads', l.id), status: l.status, owner: empName(ds, l.ownerId), created: dayOf(l.createdAt), age: Math.floor((ctx.nowMs - ms(l.createdAt)) / 86_400_000), nextFollowUp: l.nextFollowUpAt }));
       const buckets = [
-        ['0–7 days', 0, 7],
-        ['8–15 days', 8, 15],
-        ['16–30 days', 16, 30],
-        ['31–60 days', 31, 60],
-        ['Over 60 days', 61, Infinity],
+        [L.reports.ageing.leads.d0_7, 0, 7],
+        [L.reports.ageing.leads.d8_15, 8, 15],
+        [L.reports.ageing.leads.d16_30, 16, 30],
+        [L.reports.ageing.leads.d31_60, 31, 60],
+        [L.reports.ageing.leads.d60, 61, Infinity],
       ] as const;
       return {
         columns: [
-          { key: 'lead', label: 'Lead', link: peek('leads') },
-          { key: 'status', label: 'Status', type: 'status', master: 'leadStatus' },
-          { key: 'owner', label: 'Owner' },
-          { key: 'created', label: 'Created', type: 'date' },
-          { key: 'age', label: 'Age (days)', type: 'number' },
-          { key: 'nextFollowUp', label: 'Next follow-up', type: 'date' },
+          { key: 'lead', label: D.leadAgeing.cols.lead, link: peek('leads') },
+          { key: 'status', label: C.status, type: 'status', master: 'leadStatus' },
+          { key: 'owner', label: D.leadAgeing.cols.owner },
+          { key: 'created', label: D.leadAgeing.cols.created, type: 'date' },
+          { key: 'age', label: C.ageDays, type: 'number' },
+          { key: 'nextFollowUp', label: D.leadAgeing.cols.nextFollowUp, type: 'date' },
         ],
         rows: rows.sort((a, b) => n(b.age) - n(a.age)),
-        chart: { polarity: 'ageing', label: 'Open leads by age', unit: 'leads', data: buckets.map(([lb, a, b]) => ({ key: lb, label: lb, value: rows.filter((r) => n(r.age) >= a && n(r.age) <= b).length })) },
+        chart: { polarity: 'ageing', label: D.leadAgeing.chart, unit: D.leadAgeing.unit, data: buckets.map(([lb, a, b]) => ({ key: lb, label: lb, value: rows.filter((r) => n(r.age) >= a && n(r.age) <= b).length })) },
       };
     },
   },
   {
     id: 'lead-first-response',
-    title: 'First response time',
+    title: D.leadFirstResponse.title,
     group: 'leads',
     fr: ['FR-026', 'FR-020'],
-    description: 'Average hours from lead creation to first logged contact, per salesperson, against the first-contact SLA.',
+    description: D.leadFirstResponse.description,
     needs: ['leads'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Lead created',
+    dateLabel: D.leadFirstResponse.dateLabel,
     compute: (ds, f) => {
       const leads = applyFilters(ds.get('leads'), f, { date: 'createdAt' });
       const sla = getPolicies().leadFirstContactHours;
@@ -310,78 +315,78 @@ export const salesReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'owner', label: 'Salesperson' },
-          { key: 'leads', label: 'Leads', type: 'number' },
-          { key: 'contacted', label: 'Contacted', type: 'number' },
-          { key: 'avgHours', label: 'Avg first response', type: 'hours' },
-          { key: 'outsideSla', label: `Outside ${sla} h SLA`, type: 'number' },
-          { key: 'notAttended', label: 'Not attended now', type: 'number', link: () => list('leads', { view: 'v_leads_not_attended' }) },
+          { key: 'owner', label: C.salesExecutive },
+          { key: 'leads', label: C.leads, type: 'number' },
+          { key: 'contacted', label: D.leadFirstResponse.cols.contacted, type: 'number' },
+          { key: 'avgHours', label: D.leadFirstResponse.cols.avgHours, type: 'hours' },
+          { key: 'outsideSla', label: D.leadFirstResponse.cols.outsideSla(sla), type: 'number' },
+          { key: 'notAttended', label: D.leadFirstResponse.cols.notAttended, type: 'number', link: () => ROUTES.notAttendedLeads },
         ],
         rows: rows.sort((a, b) => n(b.avgHours) - n(a.avgHours)),
-        chart: { polarity: 'lower', label: 'Average first response (hours)', unit: 'h', data: rows.filter((r) => r.avgHours !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.avgHours) * 10) / 10 })) },
-        kpis: [{ label: 'Average first response', value: `hours:${leadResponseHours(leads) ?? ''}`, hint: `SLA ${sla} h (policy)` }],
+        chart: { polarity: 'lower', label: D.leadFirstResponse.chart, unit: 'h', data: rows.filter((r) => r.avgHours !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.avgHours) * 10) / 10 })) },
+        kpis: [{ label: D.leadFirstResponse.tile, value: `hours:${leadResponseHours(leads) ?? ''}`, hint: D.leadFirstResponse.hint(sla) }],
       };
     },
   },
   {
     id: 'pending-followups',
-    title: 'Pending follow-ups',
+    title: D.pendingFollowups.title,
     group: 'leads',
     fr: ['FR-026', 'FR-021'],
-    description: 'Open leads and opportunities whose next follow-up is today or overdue.',
+    description: D.pendingFollowups.description,
     needs: ['leads'],
     filters: { division: true, owner: true },
     compute: (ds, f, ctx) => {
       const leads = ds.get('leads').filter((l) => ['new', 'contacted', 'nurture'].includes(s(l.status)));
       const opps = ds.get('opportunities').filter(isOpenOpp);
       const due = applyFilters([...leads.map((r) => ({ ...r, _res: 'leads' })), ...opps.map((r) => ({ ...r, _res: 'opportunities' }))], f, { owner: 'ownerId' }).filter((r) => s(r.nextFollowUpAt) && dayOf(r.nextFollowUpAt) <= ctx.today);
-      const rows = due.map((r) => row(`${r._res}:${r.id}`, { id: r.id, res: r._res === 'leads' ? 'Lead' : 'Opportunity', record: ds.name(String(r._res), r.id), owner: empName(ds, r.ownerId), due: r.nextFollowUpAt, overdueDays: Math.round((ms(ctx.today) - ms(dayOf(r.nextFollowUpAt))) / 86_400_000), _link: String(r._res) }));
+      const rows = due.map((r) => row(`${r._res}:${r.id}`, { id: r.id, res: r._res === 'leads' ? D.pendingFollowups.lead : D.pendingFollowups.opportunity, record: ds.name(String(r._res), r.id), owner: empName(ds, r.ownerId), due: r.nextFollowUpAt, overdueDays: Math.round((ms(ctx.today) - ms(dayOf(r.nextFollowUpAt))) / 86_400_000), _link: String(r._res) }));
       return {
         columns: [
-          { key: 'record', label: 'Record', link: (r) => peek(String(r._link))(r) },
-          { key: 'res', label: 'Type' },
-          { key: 'owner', label: 'Owner' },
-          { key: 'due', label: 'Follow-up due', type: 'date' },
-          { key: 'overdueDays', label: 'Days overdue', type: 'number' },
+          { key: 'record', label: D.pendingFollowups.cols.record, link: (r) => peek(String(r._link))(r) },
+          { key: 'res', label: D.pendingFollowups.cols.type },
+          { key: 'owner', label: C.owner },
+          { key: 'due', label: D.pendingFollowups.cols.due, type: 'date' },
+          { key: 'overdueDays', label: D.pendingFollowups.cols.overdueDays, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.overdueDays) - n(a.overdueDays)),
-        chart: { polarity: 'lower', label: 'Overdue follow-ups per owner', unit: 'follow-ups', data: top([...groupBy(rows, (r) => s(r.owner)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
+        chart: { polarity: 'lower', label: D.pendingFollowups.chart, unit: D.pendingFollowups.unit, data: top([...groupBy(rows, (r) => s(r.owner)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
       };
     },
   },
   {
     id: 'lost-leads',
-    title: 'Lost and disqualified leads',
+    title: D.lostLeads.title,
     group: 'leads',
     fr: ['FR-026', 'FR-023'],
-    description: 'Disqualified leads by reason (mandatory reason master).',
+    description: D.lostLeads.description,
     needs: ['leads'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Lead created',
+    dateLabel: D.lostLeads.dateLabel,
     compute: (ds, f) => {
       const lost = applyFilters(ds.get('leads').filter((l) => l.status === 'disqualified'), f, { date: 'createdAt', owner: 'ownerId' });
       const rows = [...groupBy(lost, (l) => label('lostReason', l.disqualifyReason)).entries()].map(([k, ls]) => row(k, { reason: k, leads: ls.length, share: pctOf(ls.length, lost.length), budget: sum(ls, 'budget') }));
       return {
         columns: [
-          { key: 'reason', label: 'Reason', link: () => list('leads', { view: 'v_leads_all' }) },
-          { key: 'leads', label: 'Leads', type: 'number' },
-          { key: 'share', label: 'Share', type: 'pct' },
-          { key: 'budget', label: 'Stated budget lost', type: 'money' },
+          { key: 'reason', label: D.lostLeads.cols.reason, link: () => list('leads', { view: 'v_leads_all' }) },
+          { key: 'leads', label: C.leads, type: 'number' },
+          { key: 'share', label: D.lostLeads.cols.share, type: 'pct' },
+          { key: 'budget', label: D.lostLeads.cols.budget, type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.leads) - n(a.leads)),
-        chart: { polarity: 'neutral', label: 'Disqualified leads by reason', unit: 'leads', data: rows.map((r) => ({ key: r._key, label: s(r.reason), value: n(r.leads) })) },
+        chart: { polarity: 'neutral', label: D.lostLeads.chart, unit: D.lostLeads.unit, data: rows.map((r) => ({ key: r._key, label: s(r.reason), value: n(r.leads) })) },
       };
     },
   },
   {
     id: 'exec-performance',
-    title: 'Sales executive performance',
+    title: D.execPerformance.title,
     group: 'leads',
     fr: ['FR-026', 'FR-059'],
-    description: 'Per salesperson: leads, conversion, opportunities won, booked value and activities in the period.',
+    description: D.execPerformance.description,
     needs: ['leads'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Period',
+    dateLabel: D.execPerformance.dateLabel,
     compute: (ds, f) => {
       const leads = applyFilters(ds.get('leads'), f, { date: 'createdAt' });
       const opps = applyFilters(ds.get('opportunities'), f);
@@ -396,16 +401,64 @@ export const salesReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'owner', label: 'Salesperson' },
-          { key: 'leads', label: 'Leads', type: 'number' },
-          { key: 'conversion', label: 'Lead conversion', type: 'pct' },
-          { key: 'winRate', label: 'Win rate', type: 'pct' },
-          { key: 'orders', label: 'Orders', type: 'number' },
-          { key: 'booked', label: 'Booked value', type: 'money' },
-          { key: 'activities', label: 'Activities', type: 'number' },
+          { key: 'owner', label: C.salesExecutive },
+          { key: 'leads', label: C.leads, type: 'number' },
+          { key: 'conversion', label: D.execPerformance.cols.conversion, type: 'pct' },
+          { key: 'winRate', label: D.execPerformance.cols.winRate, type: 'pct' },
+          { key: 'orders', label: C.salesOrders, type: 'number' },
+          { key: 'booked', label: C.bookedValue, type: 'money' },
+          { key: 'activities', label: D.execPerformance.cols.activities, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.booked) - n(a.booked)),
-        chart: { polarity: 'higher', label: 'Booked value per salesperson', unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.owner), value: n(r.booked) }))) },
+        chart: { polarity: 'higher', label: D.execPerformance.chart, unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.owner), value: n(r.booked) }))) },
+      };
+    },
+  },
+  {
+    // LEAD-12 / D-5: referrals stay a report (no own page).
+    id: 'referrals',
+    title: D.referrals.title,
+    group: 'leads',
+    fr: ['FR-024', 'FR-026'],
+    description: D.referrals.description,
+    needs: ['leads'],
+    filters: { date: 'past', division: true, owner: true },
+    dateLabel: D.referrals.dateLabel,
+    groupOptions: [
+      { value: 'referrer', label: G.referrer },
+      { value: 'type', label: G.referrerType },
+    ],
+    compute: (ds, f) => {
+      const refs = applyFilters(ds.get('leads').filter((l) => l.sourceId === 'referral'), f, { date: 'createdAt', owner: 'ownerId' });
+      const g = f.group ?? 'referrer';
+      const referrerOf = (l: Record<string, unknown>) => (s(l.referrerEmployeeId) ? empName(ds, l.referrerEmployeeId) : s(l.referrerCustomerId) ? ds.name('customers', l.referrerCustomerId) : D.referrals.notRecorded);
+      const converted = (ls: Record<string, unknown>[]) => ls.filter((l) => l.status === 'qualified' || l.opportunityId).length;
+      const rows = [...groupBy(refs, (l) => (g === 'type' ? s(l.referrerType) : `${s(l.referrerType)}|${referrerOf(l)}`)).entries()].map(([k, ls]) =>
+        row(k, {
+          referrer: g === 'type' ? label('referrerType', ls[0].referrerType) : referrerOf(ls[0]),
+          referrerType: ls[0].referrerType,
+          leads: ls.length,
+          converted: converted(ls),
+          open: ls.filter((l) => ['new', 'contacted', 'nurture'].includes(s(l.status))).length,
+          conversion: pctOf(converted(ls), ls.length),
+        }),
+      );
+      const columns: ReportColumn[] = [
+        ...(g === 'type' ? [] : [{ key: 'referrer', label: D.referrals.cols.referrer, link: () => list('leads') }]),
+        { key: 'referrerType', label: D.referrals.cols.referrerType, type: 'status', master: 'referrerType' },
+        { key: 'leads', label: C.leads, type: 'number' },
+        { key: 'converted', label: D.referrals.cols.converted, type: 'number' },
+        { key: 'open', label: D.referrals.cols.open, type: 'number' },
+        { key: 'conversion', label: D.referrals.cols.conversion, type: 'pct' },
+      ];
+      return {
+        columns,
+        rows: rows.sort((a, b) => n(b.leads) - n(a.leads)),
+        chart: { polarity: 'higher', label: D.referrals.chart, unit: D.referrals.unit, data: top(rows.map((r) => ({ key: r._key, label: g === 'type' ? label('referrerType', r.referrerType) : s(r.referrer), value: n(r.leads) }))) },
+        kpis: [
+          { label: D.referrals.tiles.leads, value: String(refs.length) },
+          { label: D.referrals.tiles.conversion, value: `pct:${pctOf(converted(refs), refs.length) ?? ''}` },
+        ],
       };
     },
   },
@@ -413,17 +466,17 @@ export const salesReports: ReportDef[] = [
   // ---------------------------------------------------------------- FR-048 quotations
   {
     id: 'quotation-value',
-    title: 'Quotation value',
+    title: D.quotationValue.title,
     group: 'quotations',
     fr: ['FR-048'],
-    description: 'Quotations raised (latest revisions) and their value, by month or division.',
+    description: D.quotationValue.description,
     needs: ['quotations'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Quotation date',
+    dateLabel: D.quotationValue.dateLabel,
     groupOptions: [
-      { value: 'month', label: 'By month' },
-      { value: 'division', label: 'By division' },
-      { value: 'status', label: 'By status' },
+      { value: 'month', label: G.month },
+      { value: 'division', label: G.division },
+      { value: 'status', label: G.status },
     ],
     compute: (ds, f) => {
       const qs = latest(applyFilters(ds.get('quotations'), f, { date: 'quoteDate', owner: 'ownerId' }));
@@ -433,27 +486,27 @@ export const salesReports: ReportDef[] = [
       const sorted = g === 'month' ? rows.sort((a, b) => s(a.group).localeCompare(s(b.group))) : rows.sort((a, b) => n(b.value) - n(a.value));
       return {
         columns: [
-          { key: 'group', label: g === 'month' ? 'Month' : g === 'division' ? 'Division' : 'Status' },
-          { key: 'quotes', label: 'Quotations', type: 'number' },
-          { key: 'value', label: 'Value (incl. GST)', type: 'money' },
-          { key: 'accepted', label: 'Accepted', type: 'number' },
-          { key: 'avgDiscount', label: 'Avg highest discount', type: 'pct' },
+          { key: 'group', label: g === 'month' ? C.month : g === 'division' ? C.division : C.status },
+          { key: 'quotes', label: C.quotations, type: 'number' },
+          { key: 'value', label: D.quotationValue.cols.value, type: 'money' },
+          { key: 'accepted', label: D.quotationValue.cols.accepted, type: 'number' },
+          { key: 'avgDiscount', label: D.quotationValue.cols.avgDiscount, type: 'pct' },
         ],
         rows: sorted,
-        chart: { polarity: 'higher', label: 'Quotation value', unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
+        chart: { polarity: 'higher', label: D.quotationValue.chart, unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
         kpis: [
-          { label: 'Quotations', value: String(qs.length) },
-          { label: 'Total value', value: `money:${sum(qs, 'grandTotal')}` },
+          { label: D.quotationValue.tiles.quotations, value: String(qs.length) },
+          { label: D.quotationValue.tiles.total, value: `money:${sum(qs, 'grandTotal')}` },
         ],
       };
     },
   },
   {
     id: 'pending-approvals',
-    title: 'Quotations pending approval',
+    title: D.pendingApprovals.title,
     group: 'quotations',
     fr: ['FR-048', 'FR-040'],
-    description: 'Quotations waiting for discount approval, oldest first.',
+    description: D.pendingApprovals.description,
     needs: ['quotations'],
     filters: { division: true, owner: true },
     compute: (ds, f, ctx) => {
@@ -461,27 +514,27 @@ export const salesReports: ReportDef[] = [
       const rows = qs.map((q) => row(q.id, { id: q.id, quote: s(q.quoteNo) || q.id, customer: ds.name('customers', q.customerId), owner: empName(ds, q.ownerId), discount: n(q.maxDiscountPct) / 100, value: n(q.grandTotal), waitingDays: Math.floor((ctx.nowMs - ms(q.updatedAt)) / 86_400_000) }));
       return {
         columns: [
-          { key: 'quote', label: 'Quotation', link: peek('quotations') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'owner', label: 'Owner' },
-          { key: 'discount', label: 'Highest discount', type: 'pct' },
-          { key: 'value', label: 'Value', type: 'money' },
-          { key: 'waitingDays', label: 'Waiting (days)', type: 'number' },
+          { key: 'quote', label: C.quotationNumber, link: peek('quotations') },
+          { key: 'customer', label: C.customer },
+          { key: 'owner', label: D.pendingApprovals.cols.owner },
+          { key: 'discount', label: D.pendingApprovals.cols.discount, type: 'pct' },
+          { key: 'value', label: C.value, type: 'money' },
+          { key: 'waitingDays', label: C.waitingDays, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.waitingDays) - n(a.waitingDays)),
-        kpis: [{ label: 'Value awaiting approval', value: `money:${sum(qs, 'grandTotal')}` }],
+        kpis: [{ label: D.pendingApprovals.tile, value: `money:${sum(qs, 'grandTotal')}` }],
       };
     },
   },
   {
     id: 'quote-to-order',
-    title: 'Quote-to-order conversion',
+    title: D.quoteToOrder.title,
     group: 'quotations',
     fr: ['FR-048'],
-    description: 'Sent quotations that became sales orders, per salesperson.',
+    description: D.quoteToOrder.description,
     needs: ['quotations', 'salesOrders'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Quotation date',
+    dateLabel: D.quoteToOrder.dateLabel,
     compute: (ds, f) => {
       const qs = latest(applyFilters(ds.get('quotations'), f, { date: 'quoteDate' }));
       const orders = ds.get('salesOrders');
@@ -492,57 +545,57 @@ export const salesReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'owner', label: 'Salesperson' },
-          { key: 'sent', label: 'Quotations sent', type: 'number' },
-          { key: 'ordered', label: 'Became orders', type: 'number' },
-          { key: 'rate', label: 'Quote-to-order', type: 'pct' },
-          { key: 'orderedValue', label: 'Ordered value', type: 'money' },
+          { key: 'owner', label: C.salesExecutive },
+          { key: 'sent', label: D.quoteToOrder.cols.sent, type: 'number' },
+          { key: 'ordered', label: D.quoteToOrder.cols.ordered, type: 'number' },
+          { key: 'rate', label: D.quoteToOrder.cols.rate, type: 'pct' },
+          { key: 'orderedValue', label: D.quoteToOrder.cols.orderedValue, type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.rate) - n(a.rate)),
-        chart: { polarity: 'higher', label: 'Quote-to-order %', unit: '%', data: rows.filter((r) => r.rate !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.rate) * 100) })) },
-        kpis: [{ label: 'Quote-to-order', value: `pct:${quoteToOrder(qs, orders) ?? ''}` }],
+        chart: { polarity: 'higher', label: D.quoteToOrder.chart, unit: '%', data: rows.filter((r) => r.rate !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.rate) * 100) })) },
+        kpis: [{ label: D.quoteToOrder.tile, value: `pct:${quoteToOrder(qs, orders) ?? ''}` }],
       };
     },
   },
   {
     id: 'lost-quotations',
-    title: 'Lost quotations',
+    title: D.lostQuotations.title,
     group: 'quotations',
     fr: ['FR-048'],
-    description: 'Rejected and expired quotations with reasons.',
+    description: D.lostQuotations.description,
     needs: ['quotations'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Quotation date',
+    dateLabel: D.lostQuotations.dateLabel,
     compute: (ds, f) => {
       const qs = latest(applyFilters(ds.get('quotations').filter((q) => q.status === 'rejected' || q.status === 'expired'), f, { date: 'quoteDate', owner: 'ownerId' }));
-      const reasonOf = (q: Record<string, unknown>) => (q.status === 'expired' ? 'Expired (no response)' : label('lostReason', q.rejectReason));
+      const reasonOf = (q: Record<string, unknown>) => (q.status === 'expired' ? D.lostQuotations.expired : label('lostReason', q.rejectReason));
       const rows = qs.map((q) => row(q.id, { id: q.id, quote: s(q.quoteNo) || q.id, customer: ds.name('customers', q.customerId), status: q.status, reason: reasonOf(q), value: n(q.grandTotal), owner: empName(ds, q.ownerId) }));
       return {
         columns: [
-          { key: 'quote', label: 'Quotation', link: peek('quotations') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'status', label: 'Status', type: 'status', master: 'quoteStatus' },
-          { key: 'reason', label: 'Reason' },
-          { key: 'value', label: 'Value', type: 'money' },
-          { key: 'owner', label: 'Owner' },
+          { key: 'quote', label: C.quotationNumber, link: peek('quotations') },
+          { key: 'customer', label: C.customer },
+          { key: 'status', label: C.status, type: 'status', master: 'quoteStatus' },
+          { key: 'reason', label: D.lostQuotations.cols.reason },
+          { key: 'value', label: C.value, type: 'money' },
+          { key: 'owner', label: C.salesExecutive },
         ],
         rows: rows.sort((a, b) => n(b.value) - n(a.value)),
-        chart: { polarity: 'neutral', label: 'Lost value by reason', unit: '₹', money: true, data: [...groupBy(rows, (r) => s(r.reason)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
+        chart: { polarity: 'neutral', label: D.lostQuotations.chart, unit: '₹', money: true, data: [...groupBy(rows, (r) => s(r.reason)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
       };
     },
   },
   {
     id: 'discount-analysis',
-    title: 'Discount analysis',
+    title: D.discountAnalysis.title,
     group: 'quotations',
     fr: ['FR-048'],
-    description: 'Highest line discount per quotation, by salesperson and division, against the approval bands.',
+    description: D.discountAnalysis.description,
     needs: ['quotations'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Quotation date',
+    dateLabel: D.discountAnalysis.dateLabel,
     groupOptions: [
-      { value: 'owner', label: 'By salesperson' },
-      { value: 'division', label: 'By division' },
+      { value: 'owner', label: G.owner },
+      { value: 'division', label: G.division },
     ],
     compute: (ds, f) => {
       const qs = latest(applyFilters(ds.get('quotations'), f, { date: 'quoteDate' }));
@@ -554,15 +607,15 @@ export const salesReports: ReportDef[] = [
       });
       return {
         columns: [
-          { key: 'group', label: g === 'division' ? 'Division' : 'Salesperson' },
-          { key: 'quotes', label: 'Quotations', type: 'number' },
-          { key: 'avg', label: 'Average discount', type: 'pct' },
-          { key: 'max', label: 'Highest discount', type: 'pct' },
-          { key: 'aboveFirstBand', label: `Above ${bands[0] ?? 5}% (needed approval)`, type: 'number' },
-          { key: 'discountValue', label: 'Discount given', type: 'money' },
+          { key: 'group', label: g === 'division' ? C.division : C.salesExecutive },
+          { key: 'quotes', label: C.quotations, type: 'number' },
+          { key: 'avg', label: D.discountAnalysis.cols.avg, type: 'pct' },
+          { key: 'max', label: D.discountAnalysis.cols.max, type: 'pct' },
+          { key: 'aboveFirstBand', label: D.discountAnalysis.cols.aboveFirstBand(bands[0] ?? 5), type: 'number' },
+          { key: 'discountValue', label: D.discountAnalysis.cols.discountValue, type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.avg) - n(a.avg)),
-        chart: { polarity: 'lower', label: 'Average discount %', unit: '%', data: rows.map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.avg) * 1000) / 10 })) },
+        chart: { polarity: 'lower', label: D.discountAnalysis.chart, unit: '%', data: rows.map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.avg) * 1000) / 10 })) },
       };
     },
   },
@@ -570,17 +623,17 @@ export const salesReports: ReportDef[] = [
   // ---------------------------------------------------------------- FR-059 orders
   {
     id: 'order-value',
-    title: 'Order value',
-    group: 'orders',
+    title: D.orderValue.title,
+    group: 'sales-orders',
     fr: ['FR-059'],
-    description: 'Booked sales orders (confirmed or later) by month, division or order kind.',
+    description: D.orderValue.description,
     needs: ['salesOrders'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Order date',
+    dateLabel: D.orderValue.dateLabel,
     groupOptions: [
-      { value: 'month', label: 'By month' },
-      { value: 'division', label: 'By division' },
-      { value: 'kind', label: 'Machine vs consumables' },
+      { value: 'month', label: G.month },
+      { value: 'division', label: G.division },
+      { value: 'kind', label: D.orderValue.machineVsConsumables },
     ],
     compute: (ds, f) => {
       const os = applyFilters(ds.get('salesOrders').filter(isBooked), f, { date: 'orderDate', owner: 'ownerId' });
@@ -589,26 +642,26 @@ export const salesReports: ReportDef[] = [
       const sorted = g === 'month' ? rows.sort((a, b) => s(a.group).localeCompare(s(b.group))) : rows.sort((a, b) => n(b.value) - n(a.value));
       return {
         columns: [
-          { key: 'group', label: g === 'month' ? 'Month' : g === 'division' ? 'Division' : 'Order kind', link: () => list('salesOrders') },
-          { key: 'orders', label: 'Orders', type: 'number' },
-          { key: 'value', label: 'Order value', type: 'money' },
-          { key: 'avg', label: 'Average order', type: 'money' },
+          { key: 'group', label: g === 'month' ? C.month : g === 'division' ? C.division : D.orderValue.cols.orderType, link: () => list('salesOrders') },
+          { key: 'orders', label: C.salesOrders, type: 'number' },
+          { key: 'value', label: D.orderValue.cols.value, type: 'money' },
+          { key: 'avg', label: D.orderValue.cols.avg, type: 'money' },
         ],
         rows: sorted,
-        chart: { polarity: 'higher', label: 'Order value', unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
+        chart: { polarity: 'higher', label: D.orderValue.chart, unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
         kpis: [
-          { label: 'Orders booked', value: String(os.length) },
-          { label: 'Value booked', value: `money:${sum(os, 'grandTotal')}` },
+          { label: D.orderValue.tiles.booked, value: String(os.length) },
+          { label: D.orderValue.tiles.value, value: `money:${sum(os, 'grandTotal')}` },
         ],
       };
     },
   },
   {
     id: 'order-backlog',
-    title: 'Order backlog',
-    group: 'orders',
+    title: D.orderBacklog.title,
+    group: 'sales-orders',
     fr: ['FR-059'],
-    description: 'Confirmed orders not yet delivered and installed, with age and current step.',
+    description: D.orderBacklog.description,
     needs: ['salesOrders'],
     filters: { division: true, owner: true },
     compute: (ds, f, ctx) => {
@@ -616,26 +669,26 @@ export const salesReports: ReportDef[] = [
       const rows = os.map((o) => row(o.id, { id: o.id, order: s(o.orderNo) || o.id, customer: ds.name('customers', o.customerId), status: o.status, kind: o.orderKind, value: n(o.grandTotal), age: Math.round((ms(ctx.today) - ms(dayOf(o.orderDate))) / 86_400_000), owner: empName(ds, o.ownerId) }));
       return {
         columns: [
-          { key: 'order', label: 'Order', link: peek('salesOrders') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'status', label: 'Step', type: 'status', master: 'soStatus' },
-          { key: 'kind', label: 'Kind', type: 'status', master: 'orderKind' },
-          { key: 'value', label: 'Value', type: 'money' },
-          { key: 'age', label: 'Age (days)', type: 'number' },
-          { key: 'owner', label: 'Owner' },
+          { key: 'order', label: C.orderNumber, link: peek('salesOrders') },
+          { key: 'customer', label: C.customer },
+          { key: 'status', label: C.status, type: 'status', master: 'soStatus' },
+          { key: 'kind', label: D.orderBacklog.cols.orderType, type: 'status', master: 'orderKind' },
+          { key: 'value', label: C.value, type: 'money' },
+          { key: 'age', label: C.ageDays, type: 'number' },
+          { key: 'owner', label: C.salesExecutive },
         ],
         rows: rows.sort((a, b) => n(b.age) - n(a.age)),
-        chart: { polarity: 'neutral', label: 'Backlog value by step', unit: '₹', money: true, data: BACKLOG.map((st) => ({ key: st, label: label('soStatus', st), value: rows.filter((r) => r.status === st).reduce((t, r) => t + n(r.value), 0) })).filter((d) => d.value > 0) },
-        kpis: [{ label: 'Backlog value', value: `money:${rows.reduce((t, r) => t + n(r.value), 0)}` }],
+        chart: { polarity: 'neutral', label: D.orderBacklog.chart, unit: '₹', money: true, data: BACKLOG.map((st) => ({ key: st, label: label('soStatus', st), value: rows.filter((r) => r.status === st).reduce((t, r) => t + n(r.value), 0) })).filter((d) => d.value > 0) },
+        kpis: [{ label: D.orderBacklog.tile, value: `money:${rows.reduce((t, r) => t + n(r.value), 0)}` }],
       };
     },
   },
   {
     id: 'pending-orders',
-    title: 'Pending orders',
-    group: 'orders',
+    title: D.pendingOrders.title,
+    group: 'sales-orders',
     fr: ['FR-059'],
-    description: 'Orders waiting for approval or on hold.',
+    description: D.pendingOrders.description,
     needs: ['salesOrders'],
     filters: { division: true, owner: true },
     compute: (ds, f, ctx) => {
@@ -643,12 +696,12 @@ export const salesReports: ReportDef[] = [
       const rows = os.map((o) => row(o.id, { id: o.id, order: s(o.orderNo) || o.id, customer: ds.name('customers', o.customerId), status: o.status, reason: s(o.holdReason), value: n(o.grandTotal), waiting: Math.floor((ctx.nowMs - ms(o.updatedAt)) / 86_400_000) }));
       return {
         columns: [
-          { key: 'order', label: 'Order', link: peek('salesOrders') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'status', label: 'Status', type: 'status', master: 'soStatus' },
-          { key: 'reason', label: 'Hold reason' },
-          { key: 'value', label: 'Value', type: 'money' },
-          { key: 'waiting', label: 'Waiting (days)', type: 'number' },
+          { key: 'order', label: C.orderNumber, link: peek('salesOrders') },
+          { key: 'customer', label: C.customer },
+          { key: 'status', label: C.status, type: 'status', master: 'soStatus' },
+          { key: 'reason', label: D.pendingOrders.cols.reason },
+          { key: 'value', label: C.value, type: 'money' },
+          { key: 'waiting', label: C.waitingDays, type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.waiting) - n(a.waiting)),
       };
@@ -656,13 +709,13 @@ export const salesReports: ReportDef[] = [
   },
   {
     id: 'delayed-dispatches',
-    title: 'Delayed dispatches',
-    group: 'orders',
+    title: D.delayedDispatches.title,
+    group: 'sales-orders',
     fr: ['FR-059', 'FR-061'],
-    description: 'Dispatches delivered after, or still in transit past, the expected delivery date.',
+    description: D.delayedDispatches.description,
     needs: ['dispatches'],
     filters: { date: 'past', division: true },
-    dateLabel: 'Dispatch date',
+    dateLabel: D.delayedDispatches.dateLabel,
     compute: (ds, f, ctx) => {
       const dsp = applyFilters(ds.get('dispatches'), f, { date: 'dispatchDate' });
       const late = dsp
@@ -674,31 +727,31 @@ export const salesReports: ReportDef[] = [
       const rows = late.map(({ d, delay }) => row(d.id, { id: d.id, order: ds.name('salesOrders', d.salesOrderId), customer: ds.name('customers', d.customerId), transporter: s(d.transporter), expected: d.expectedDelivery, actual: d.actualDelivery ?? '', delay, status: d.status }));
       return {
         columns: [
-          { key: 'order', label: 'Order', link: peek('dispatches') },
-          { key: 'customer', label: 'Customer' },
-          { key: 'transporter', label: 'Transporter' },
-          { key: 'expected', label: 'Expected', type: 'date' },
-          { key: 'actual', label: 'Delivered', type: 'date' },
-          { key: 'delay', label: 'Delay (days)', type: 'number' },
-          { key: 'status', label: 'Status', type: 'status', master: 'dispatchStatus' },
+          { key: 'order', label: C.orderNumber, link: peek('dispatches') },
+          { key: 'customer', label: C.customer },
+          { key: 'transporter', label: D.delayedDispatches.cols.transporter },
+          { key: 'expected', label: D.delayedDispatches.cols.expected, type: 'date' },
+          { key: 'actual', label: D.delayedDispatches.cols.actual, type: 'date' },
+          { key: 'delay', label: D.delayedDispatches.cols.delay, type: 'number' },
+          { key: 'status', label: C.status, type: 'status', master: 'dispatchStatus' },
         ],
         rows: rows.sort((a, b) => n(b.delay) - n(a.delay)),
         kpis: [
-          { label: 'Delayed', value: `${rows.length} of ${dsp.length}` },
-          { label: 'On-time dispatch', value: `pct:${dsp.length ? 1 - rows.length / dsp.length : ''}` },
+          { label: D.delayedDispatches.tiles.delayed, value: L.reports.common.ofTotal(rows.length, dsp.length) },
+          { label: D.delayedDispatches.tiles.onTime, value: `pct:${dsp.length ? 1 - rows.length / dsp.length : ''}` },
         ],
       };
     },
   },
   {
     id: 'payment-status',
-    title: 'Payment status and overdues',
-    group: 'orders',
+    title: D.paymentStatus.title,
+    group: 'sales-orders',
     fr: ['FR-059', 'FR-055'],
-    description: 'Payment milestones received vs due, overdue amount and ageing (receipts from ERP, simulated).',
+    description: D.paymentStatus.description,
     needs: ['paymentMilestones'],
     filters: { date: 'past', division: true, owner: true },
-    dateLabel: 'Due date',
+    dateLabel: D.paymentStatus.dateLabel,
     compute: (ds, f, ctx) => {
       const ms_ = applyFilters(ds.get('paymentMilestones'), f, { date: 'dueDate', owner: 'ownerId' });
       const c = collections(ms_, ctx.today);
@@ -706,20 +759,20 @@ export const salesReports: ReportDef[] = [
       const rows = overdue.map((m) => row(m.id, { id: m.id, milestone: s(m.label), order: ds.name('salesOrders', m.salesOrderId), customer: ds.name('customers', m.customerId), due: m.dueDate, outstanding: outstandingOf(m), age: Math.round((ms(ctx.today) - ms(dayOf(m.dueDate))) / 86_400_000), owner: empName(ds, m.ownerId) }));
       return {
         columns: [
-          { key: 'milestone', label: 'Milestone', link: peek('paymentMilestones') },
-          { key: 'order', label: 'Order' },
-          { key: 'customer', label: 'Customer' },
-          { key: 'due', label: 'Due', type: 'date' },
-          { key: 'outstanding', label: 'Outstanding', type: 'money' },
-          { key: 'age', label: 'Days overdue', type: 'number' },
-          { key: 'owner', label: 'Owner' },
+          { key: 'milestone', label: D.paymentStatus.cols.milestone, link: peek('paymentMilestones') },
+          { key: 'order', label: C.orderNumber },
+          { key: 'customer', label: C.customer },
+          { key: 'due', label: D.paymentStatus.cols.due, type: 'date' },
+          { key: 'outstanding', label: D.paymentStatus.cols.outstanding, type: 'money' },
+          { key: 'age', label: D.paymentStatus.cols.age, type: 'number' },
+          { key: 'owner', label: C.salesExecutive },
         ],
         rows: rows.sort((a, b) => n(b.age) - n(a.age)),
-        chart: { polarity: 'ageing', label: 'Overdue amount by age', unit: '₹', money: true, data: c.ageing.map((b) => ({ key: b.key, label: b.label, value: b.amount })) },
+        chart: { polarity: 'ageing', label: D.paymentStatus.chart, unit: '₹', money: true, data: c.ageing.map((b) => ({ key: b.key, label: b.label, value: b.amount })) },
         kpis: [
-          { label: 'Due in period', value: `money:${c.dueAmount}` },
-          { label: 'Received', value: `money:${c.received}` },
-          { label: 'Overdue', value: `money:${c.overdueAmount}`, hint: `${c.overdueCount} milestone(s)` },
+          { label: D.paymentStatus.tiles.due, value: `money:${c.dueAmount}` },
+          { label: D.paymentStatus.tiles.received, value: `money:${c.received}` },
+          { label: D.paymentStatus.tiles.overdue, value: `money:${c.overdueAmount}`, hint: D.paymentStatus.overdueHint(c.overdueCount) },
         ],
       };
     },

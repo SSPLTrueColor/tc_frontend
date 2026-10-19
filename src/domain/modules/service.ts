@@ -1,6 +1,6 @@
 /**
- * Service module (BRD 4.8, FR-075 – FR-090): service tickets with SLA clocks, engineer visits
- * (job cards), preventive-maintenance visits and the knowledge base.
+ * Service Ticket Management (BRD 4.8, FR-075 – FR-090): service tickets with SLA clocks, site visits
+ * (job cards), Preventive Maintenance (PM) visits and knowledge articles. Labels: L.service.
  */
 import type { MasterDefinition, MasterValue, ResourceDefinition, ResourcePermission, Tone } from '../../metadata/types';
 import { ALL, cols, cond, field, FORM_ONLY, group, NO_SEARCH, views } from '../helpers';
@@ -277,7 +277,7 @@ export const tickets: ResourceDefinition = {
   ]),
 };
 
-// ---------------------------------------------------------------- service visits (job cards)
+// ---------------------------------------------------------------- site visits (job cards; resource key serviceVisits)
 
 export const serviceVisits: ResourceDefinition = {
   id: 'res_serviceVisits',

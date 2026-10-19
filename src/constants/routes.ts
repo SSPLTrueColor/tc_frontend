@@ -50,6 +50,7 @@ export const RESOURCE_SLUGS: Record<string, string> = {
   // Consumables (4.10)
   rateContracts: 'rate-contracts',
   sampleDispatches: 'sample-trial-dispatch',
+  dealerOrders: 'dealer-orders', // list served by the Dealer / Distributor Orders page
   // Field Force (4.11)
   attendance: 'attendance', // list served by the Attendance page; records at /attendance/:id
   regularisations: 'attendance-regularisation',

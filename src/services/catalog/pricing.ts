@@ -1,4 +1,5 @@
 /** Price list rules (FR-039, BR-15): one active price per product per date across a division's lists. */
+import { L } from '../../constants/labels';
 import type { RecordData } from '../../metadata/types';
 import type { Actor } from '../authz';
 import { perm } from '../authz';
@@ -28,7 +29,7 @@ export function activationConflicts(store: Store, list: RecordData): string[] {
     .filter((i) => i.priceListId === list.id)
     .map((i) => {
       const c = conflictingPrice(store, list, String(i.productId), String(i.id));
-      return c ? `${String(i.productId)} is already priced on ${c.list.name} (${c.list.id})` : '';
+      return c ? L.catalog.messages.alreadyPriced(String(i.productId), String(c.list.name), c.list.id) : '';
     })
     .filter(Boolean);
 }
@@ -38,5 +39,5 @@ export function assertCanPriceDivision(actor: Actor, divisionId: unknown) {
   const scope = perm(actor, 'priceListItems').update;
   if (scope === 'all') return;
   if (scope === 'division' && actor.divisionIds.includes(String(divisionId))) return;
-  throw new ServiceError('forbidden', 'You can only change list prices of your own division.');
+  throw new ServiceError('forbidden', L.catalog.messages.ownDivisionOnly);
 }

@@ -8,6 +8,7 @@ import { type Actor, perm } from '../authz';
 import { getDb } from '../db';
 import { deleteRecord, queryRecords } from '../runtime';
 import { ServiceError } from '../types';
+import { L } from '../../constants/labels';
 import { isRegistered } from './operations';
 
 export interface PoolContact {
@@ -21,7 +22,7 @@ export const isPoolContact = (c: RecordData) => !c.customerId || c.poolStatus ==
 
 /** Pool contacts the actor may see, newest first. */
 export function listPoolContacts(actor: Actor): PoolContact[] {
-  if (perm(actor, 'contacts').read === 'none') throw new ServiceError('forbidden', 'forbidden');
+  if (perm(actor, 'contacts').read === 'none') throw new ServiceError('forbidden', L.customers.messages.noPoolAccess);
   const rows = queryRecords(actor, 'contacts', { sort: [{ field: 'createdAt', dir: 'desc' }] }).rows.filter(isPoolContact);
   const leads = isRegistered('leads') ? getDb().records.leads ?? [] : [];
   return rows.map((contact) => ({ contact, leadId: contact.poolStatus === 'converted' ? leads.find((l) => l.contactId === contact.id)?.id : undefined }));

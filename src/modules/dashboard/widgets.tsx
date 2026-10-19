@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Pie, PieChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { L } from '../../constants/labels';
+import { ROUTES } from '../../constants/routes';
 import { formatDate, relativeTime } from '../../lib/dates';
 import { resourcePath } from '../../lib/routes';
 import { cx, formatMoney, formatNumber } from '../../lib/format';
@@ -21,6 +23,8 @@ const COLOR: Record<string, string> = {
   neutral: 'var(--s-text-muted)',
 };
 const colorOf = (t: string) => COLOR[t] ?? COLOR.neutral;
+const CD = L.dashboard.card;
+const EM = L.dashboard.empty;
 
 export function formatValue(v: number | null, fmt: Fmt): string {
   if (v === null || Number.isNaN(v)) return '—';
@@ -30,9 +34,9 @@ export function formatValue(v: number | null, fmt: Fmt): string {
     case 'pct':
       return `${Math.round(v * 1000) / 10}%`;
     case 'hours':
-      return `${Math.round(v * 10) / 10} h`;
+      return CD.hours(Math.round(v * 10) / 10);
     case 'rating':
-      return `${v.toFixed(1)} / 5`;
+      return CD.rating(v.toFixed(1));
     default:
       return formatNumber(Math.round(v * 10) / 10);
   }
@@ -40,13 +44,13 @@ export function formatValue(v: number | null, fmt: Fmt): string {
 
 // ---------------------------------------------------------------- card frame
 
-export function Card({ title, info, to, linkLabel = 'View all', className, children, extra }: { title: string; info?: string; to?: string; linkLabel?: string; className?: string; children: ReactNode; extra?: ReactNode }) {
+export function Card({ title, info, to, linkLabel = CD.viewAll, className, children, extra }: { title: string; info?: string; to?: string; linkLabel?: string; className?: string; children: ReactNode; extra?: ReactNode }) {
   return (
     <section className={cx('panel dash-card', className)} aria-label={title}>
       <div className="panel-head">
         <h2 className="panel-title dialog-title-row">
           {title}
-          {info && <InfoTip text={info} label={`About ${title}`} />}
+          {info && <InfoTip text={info} label={CD.about(title)} />}
         </h2>
         {extra}
         {to && (
@@ -63,7 +67,7 @@ export function Card({ title, info, to, linkLabel = 'View all', className, child
 /** Same frame as a real card, so loading causes no layout shift. */
 export function CardSkeleton({ className, rows = 6 }: { className?: string; rows?: number }) {
   return (
-    <section className={cx('panel dash-card', className)} aria-busy="true" aria-label="Loading">
+    <section className={cx('panel dash-card', className)} aria-busy="true" aria-label={CD.loading}>
       <div className="panel-head">
         <span className="skeleton-row dash-skel-title" />
       </div>
@@ -74,7 +78,7 @@ export function CardSkeleton({ className, rows = 6 }: { className?: string; rows
 
 export function KpiSkeleton() {
   return (
-    <div className="kpi-card" aria-busy="true" aria-label="Loading">
+    <div className="kpi-card" aria-busy="true" aria-label={CD.loading}>
       <span className="skeleton-row dash-skel-title" />
       <span className="skeleton-row dash-skel-value" />
       <span className="skeleton-row" />
@@ -85,14 +89,14 @@ export function KpiSkeleton() {
 // ---------------------------------------------------------------- KPI card
 
 function Spark({ data, tone }: { data: number[]; tone: string }) {
-  if (data.length < 2) return <span className="kpi-snap">Current snapshot</span>;
+  if (data.length < 2) return <span className="kpi-snap">{CD.currentSnapshot}</span>;
   const max = Math.max(...data);
   const min = Math.min(...data);
   const span = max - min || 1;
   const pts = data.map((v, i) => [(i / (data.length - 1)) * 100, 26 - ((v - min) / span) * 22] as const);
   const line = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   return (
-    <svg className="kpi-spark" viewBox="0 0 100 28" preserveAspectRatio="none" role="img" aria-label={`Trend over ${data.length} points, from ${formatNumber(Math.round(data[0]))} to ${formatNumber(Math.round(data[data.length - 1]))}`}>
+    <svg className="kpi-spark" viewBox="0 0 100 28" preserveAspectRatio="none" role="img" aria-label={CD.sparkAria(data.length, formatNumber(Math.round(data[0])), formatNumber(Math.round(data[data.length - 1])))}>
       <polygon points={`0,28 ${line} 100,28`} fill={tone} opacity="0.12" />
       <polyline points={line} fill="none" stroke={tone} strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
@@ -113,13 +117,13 @@ export function KpiCard({ kpi }: { kpi: Kpi }) {
       <div className="kpi-mid">
         <span className="kpi-value">{formatValue(kpi.value, kpi.fmt)}</span>
         {d !== null ? (
-          <span className={cx('kpi-delta', good === null ? 'is-flat' : good ? 'is-good' : 'is-bad')} title="Change vs the previous period of the same length">
+          <span className={cx('kpi-delta', good === null ? 'is-flat' : good ? 'is-good' : 'is-bad')} title={CD.changeTitle}>
             <Icon name={d >= 0 ? 'arrow-up' : 'arrow-down'} size={12} />
             {Math.abs(d)}%
-            <span className="sr-only"> {good === null ? 'no change' : good ? 'better' : 'worse'} than the previous period</span>
+            <span className="sr-only">{CD.vsPrevious(good === null ? CD.noChange : good ? CD.better : CD.worse)}</span>
           </span>
         ) : (
-          <span className="kpi-delta is-flat" title="No comparison available for this figure">
+          <span className="kpi-delta is-flat" title={CD.noComparison}>
             —
           </span>
         )}
@@ -142,7 +146,7 @@ export function KpiCard({ kpi }: { kpi: Kpi }) {
     </>
   );
   return kpi.to ? (
-    <Link to={kpi.to} className="kpi-card" aria-label={`${kpi.label}: ${formatValue(kpi.value, kpi.fmt)}. Open the list`}>
+    <Link to={kpi.to} className="kpi-card" aria-label={CD.openTheList(kpi.label, formatValue(kpi.value, kpi.fmt))}>
       {body}
     </Link>
   ) : (
@@ -185,14 +189,14 @@ export function TrendCard({ trend }: { trend: Trend }) {
   const nav = useNavigate();
   const empty = trend.points.every((p) => trend.series.every((s) => !p[s.key]));
   return (
-    <Card title={trend.title} info={trend.info} to={trend.to} linkLabel="Open list" className="dash-trend span-8">
+    <Card title={trend.title} info={trend.info} to={trend.to} linkLabel={CD.openList} className="dash-trend span-8">
       {empty ? (
-        <EmptyState icon="bar-chart" title="Nothing in this range">
-          No activity was recorded for these dates. Try a longer range.
+        <EmptyState icon="bar-chart" title={EM.trendTitle}>
+          {EM.trendBody}
         </EmptyState>
       ) : (
         <>
-          <ul className="dc-legend" aria-label="Series">
+          <ul className="dc-legend" aria-label={CD.series}>
             {trend.series.map((s) => (
               <li key={s.key}>
                 <span className="dc-dot" style={{ background: colorOf(s.tone) }} />
@@ -200,7 +204,7 @@ export function TrendCard({ trend }: { trend: Trend }) {
               </li>
             ))}
           </ul>
-          <div className="dash-chart" role="img" aria-label={`${trend.title}. ${trend.series.map((s) => s.label).join(' and ')} over ${trend.points.length} periods.`}>
+          <div className="dash-chart" role="img" aria-label={CD.trendAria(trend.title, trend.series.map((s) => s.label).join(CD.and), trend.points.length)}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trend.points} margin={{ top: 6, right: 8, left: 0, bottom: 0 }} onClick={() => trend.to && nav(trend.to)} style={{ cursor: trend.to ? 'pointer' : undefined }}>
                 <defs>
@@ -236,8 +240,8 @@ export function ShareCard({ share }: { share: Share }) {
   return (
     <Card title={share.title} info={share.info} className="dash-share span-4">
       {!total ? (
-        <EmptyState icon="empty" title="No records in this range">
-          Nothing to break down for these dates.
+        <EmptyState icon="empty" title={EM.shareTitle}>
+          {EM.shareBody}
         </EmptyState>
       ) : (
         <div className="dash-share-body">
@@ -279,10 +283,10 @@ export function PipeCard({ pipe }: { pipe: Pipe }) {
   const data = pipe.steps.map((x) => ({ ...x, fill: colorOf(x.tone) }));
   const fmtVal = (v: number) => (pipe.money ? compactInr(v) : formatNumber(v));
   return (
-    <Card title={pipe.title} info={pipe.info} to={pipe.to} linkLabel="Open list" className="dash-pipe span-6">
+    <Card title={pipe.title} info={pipe.info} to={pipe.to} linkLabel={CD.openList} className="dash-pipe span-6">
       {!total ? (
-        <EmptyState icon="bar-chart" title="Nothing to show for these dates">
-          No records reached this pipeline in the selected range.
+        <EmptyState icon="bar-chart" title={EM.pipeTitle}>
+          {EM.pipeBody}
         </EmptyState>
       ) : (
         <div className="dash-chart" role="img" aria-label={`${pipe.title}: ${pipe.steps.map((x) => `${x.label} ${fmtVal(x.value)}`).join(', ')}`}>
@@ -305,13 +309,13 @@ export function PipeCard({ pipe }: { pipe: Pipe }) {
                       </div>
                       {step.amount !== undefined && (
                         <div className="dc-tip-row">
-                          <span>Value</span>
+                          <span>{CD.value}</span>
                           <strong>{formatMoney(step.amount)}</strong>
                         </div>
                       )}
                       {step.conv != null && (
                         <div className="dc-tip-row">
-                          <span>From previous step</span>
+                          <span>{CD.fromPrevious}</span>
                           <strong>{Math.round(step.conv * 100)}%</strong>
                         </div>
                       )}
@@ -356,7 +360,7 @@ export function BoardCard({ board }: { board: Board }) {
   return (
     <Card title={board.title} info={board.info} to={board.to} className="dash-board span-6">
       {!board.rows.length ? (
-        <EmptyState icon="users" title="No data for these dates">
+        <EmptyState icon="users" title={EM.boardTitle}>
           {board.empty}
         </EmptyState>
       ) : (
@@ -402,10 +406,10 @@ export function BoardCard({ board }: { board: Board }) {
 
 export function AgendaCard({ items, onComplete }: { items: PlanItem[]; onComplete: (i: PlanItem) => void }) {
   return (
-    <Card title="Today’s tasks & events" info="Your overdue and due items first: tasks, lead and opportunity follow-ups, assigned jobs, PM visits and planned field visits." to="/calendar" linkLabel="Calendar" className="dash-list span-4">
+    <Card title={L.dashboard.agenda.title} info={L.dashboard.agenda.info} to={ROUTES.calendar} linkLabel={L.nav.pages.calendar.title} className="dash-list span-4">
       {!items.length ? (
-        <EmptyState icon="check-square" title="All clear">
-          Nothing due. New tasks, follow-ups and jobs assigned to you appear here.
+        <EmptyState icon="check-square" title={L.dashboard.agenda.emptyTitle}>
+          {L.dashboard.agenda.emptyBody}
         </EmptyState>
       ) : (
         <ul className="flow-list">
@@ -416,7 +420,7 @@ export function AgendaCard({ items, onComplete }: { items: PlanItem[]; onComplet
                 <span className="flow-title">{it.title}</span>
                 <span className="muted small">{it.sub}</span>
               </Link>
-              {it.taskId && <Button onClick={() => onComplete(it)}>Complete</Button>}
+              {it.taskId && <Button onClick={() => onComplete(it)}>{L.dashboard.agenda.complete}</Button>}
             </li>
           ))}
         </ul>
@@ -427,10 +431,10 @@ export function AgendaCard({ items, onComplete }: { items: PlanItem[]; onComplet
 
 export function FeedCard({ items }: { items: FeedItem[] }) {
   return (
-    <Card title="Recent activity" info="Calls, meetings, visits and notes logged by people in your scope, newest first, within the selected range." to={resourcePath('tc', 'activities')} className="dash-list span-4">
+    <Card title={L.dashboard.feed.title} info={L.dashboard.feed.info} to={resourcePath('tc', 'activities')} className="dash-list span-4">
       {!items.length ? (
-        <EmptyState icon="message" title="No activity in this range">
-          Logged calls, emails and visits appear here.
+        <EmptyState icon="message" title={L.dashboard.feed.emptyTitle}>
+          {L.dashboard.feed.emptyBody}
         </EmptyState>
       ) : (
         <ul className="flow-list">
@@ -454,10 +458,10 @@ export function FeedCard({ items }: { items: FeedItem[] }) {
 
 export function AlertsCard({ items }: { items: AlertItem[] }) {
   return (
-    <Card title="Alerts" info="Things that need action now: overdue work, pending approvals and breaches. Not limited by the date range." className="dash-list span-4">
+    <Card title={L.dashboard.alerts.title} info={L.dashboard.alerts.info} className="dash-list span-4">
       {!items.length ? (
-        <EmptyState icon="check-square" title="No alerts">
-          Nothing is overdue or waiting for you.
+        <EmptyState icon="check-square" title={L.dashboard.alerts.emptyTitle}>
+          {L.dashboard.alerts.emptyBody}
         </EmptyState>
       ) : (
         <ul className="flow-list">

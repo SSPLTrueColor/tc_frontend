@@ -5,9 +5,10 @@ import { PHONE, useMedia } from '../../lib/useMedia';
 import { IconButton } from './Button';
 import { Icon } from './Icon';
 import { Popover } from './overlay';
+import { L } from '../../constants/labels';
 
-const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const WEEKDAYS_SUN = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const MONTHS_SHORT = L.common.pickers.monthsShort;
+export const WEEKDAYS_SUN = L.common.pickers.weekdays;
 
 export interface DateRange {
   from?: string;
@@ -63,7 +64,7 @@ export function DateRangePicker({ value, onChange, label, id }: { value: DateRan
   };
 
   const months = phone ? [left] : [left, shiftMonthKey(left, 1)];
-  const text = value.from ? `${formatDate(value.from)} – ${value.to ? formatDate(value.to) : '…'}` : 'Select date range';
+  const text = value.from ? `${formatDate(value.from)} – ${value.to ? formatDate(value.to) : '…'}` : L.common.pickers.selectRange;
 
   // plain render function (not a component) so hover re-renders don't remount the day buttons
   const renderMonth = (ym: string, first: boolean, last: boolean) => (
@@ -72,8 +73,8 @@ export function DateRangePicker({ value, onChange, label, id }: { value: DateRan
         <span className="dr-nav">
           {first && (
             <>
-              <IconButton icon="chevrons-left" label="Previous year" onClick={() => setLeft(shiftMonthKey(left, -12))} />
-              <IconButton icon="chevron-left" label="Previous month" onClick={() => setLeft(shiftMonthKey(left, -1))} />
+              <IconButton icon="chevrons-left" label={L.common.pickers.previousYear} onClick={() => setLeft(shiftMonthKey(left, -12))} />
+              <IconButton icon="chevron-left" label={L.common.pickers.previousMonth} onClick={() => setLeft(shiftMonthKey(left, -1))} />
             </>
           )}
         </span>
@@ -81,8 +82,8 @@ export function DateRangePicker({ value, onChange, label, id }: { value: DateRan
         <span className="dr-nav dr-nav-end">
           {last && (
             <>
-              <IconButton icon="chevron-right" label="Next month" onClick={() => setLeft(shiftMonthKey(left, 1))} />
-              <IconButton icon="chevrons-right" label="Next year" onClick={() => setLeft(shiftMonthKey(left, 12))} />
+              <IconButton icon="chevron-right" label={L.common.pickers.nextMonth} onClick={() => setLeft(shiftMonthKey(left, 1))} />
+              <IconButton icon="chevrons-right" label={L.common.pickers.nextYear} onClick={() => setLeft(shiftMonthKey(left, 12))} />
             </>
           )}
         </span>
@@ -139,7 +140,7 @@ export function DateRangePicker({ value, onChange, label, id }: { value: DateRan
         </div>
         {value.from && (
           <div className="dr-foot">
-            <span className="muted">{picking ? 'Pick the end date' : text}</span>
+            <span className="muted">{picking ? L.common.pickers.pickEnd : text}</span>
             <button
               type="button"
               className="multi-clear"
@@ -148,7 +149,7 @@ export function DateRangePicker({ value, onChange, label, id }: { value: DateRan
                 setOpen(false);
               }}
             >
-              Clear
+              {L.common.actions.clear}
             </button>
           </div>
         )}

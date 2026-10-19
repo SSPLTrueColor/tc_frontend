@@ -7,6 +7,7 @@
  *   lead / opportunity follow-ups — rescheduled from their own record.
  */
 import { RRule, type Frequency } from 'rrule';
+import { L } from '../../constants/labels';
 import type { RecordData } from '../../metadata/types';
 import { istNow } from '../../lib/clock';
 import { addDays } from '../../lib/dates';
@@ -16,7 +17,7 @@ import { getResource } from '../registry';
 import { createRecord, deleteRecord, getRecord, queryRecords, recordTitle, updateRecord } from '../runtime';
 import { ServiceError } from '../types';
 
-export type EventType = 'meeting' | 'demo' | 'customer_visit' | 'follow_up' | 'service' | 'internal';
+export type EventType = 'meeting' | 'demo' | 'follow_up' | 'field_visit' | 'service_visit' | 'internal';
 export type EventSource = 'event' | 'tasks' | 'demos' | 'pmVisits' | 'installations' | 'leads' | 'opportunities';
 
 export interface CalItem {
@@ -70,22 +71,23 @@ export interface EventDraft {
  * the past (assumption generalising BR-07 "follow-up dates cannot be in the past"; see REQUIREMENTS Q-33).
  */
 export function validateEvent(v: EventDraft, opts: { checkPast: boolean }): Record<string, string> {
+  const V = L.calendar.validation;
   const e: Record<string, string> = {};
   const start = s(v.start);
   const end = s(v.end);
   const allDay = !!v.allDay;
-  if (!s(v.title).trim()) e.title = 'Title is required';
-  if (!start) e.start = 'Start is required';
-  if (!end) e.end = 'End is required';
+  if (!s(v.title).trim()) e.title = V.titleRequired;
+  if (!start) e.start = V.startRequired;
+  if (!end) e.end = V.endRequired;
   if (start && end) {
-    if (allDay ? end.slice(0, 10) < start.slice(0, 10) : end <= start) e.end = allDay ? 'End date must be on or after the start date' : 'End time must be after the start time';
-    if (!allDay && (isDate(start) || isDate(end))) e.start = 'Pick a start and end time, or mark the event as all day';
+    if (allDay ? end.slice(0, 10) < start.slice(0, 10) : end <= start) e.end = allDay ? V.endDateAfter : V.endTimeAfter;
+    if (!allDay && (isDate(start) || isDate(end))) e.start = V.pickTimes;
   }
   if (opts.checkPast && start && s(v.status || 'scheduled') === 'scheduled') {
     const nowWall = istNow().slice(0, 16);
-    if (allDay ? start.slice(0, 10) < nowWall.slice(0, 10) : start < nowWall) e.start = 'Events cannot be scheduled in the past';
+    if (allDay ? start.slice(0, 10) < nowWall.slice(0, 10) : start < nowWall) e.start = V.noPast;
   }
-  if (s(v.recurrence) && s(v.recurrence) !== 'none' && s(v.recurrenceUntil) && start && s(v.recurrenceUntil) < start.slice(0, 10)) e.recurrenceUntil = '“Repeat until” must be on or after the first date';
+  if (s(v.recurrence) && s(v.recurrence) !== 'none' && s(v.recurrenceUntil) && start && s(v.recurrenceUntil) < start.slice(0, 10)) e.recurrenceUntil = V.untilAfterStart;
   return e;
 }
 
@@ -110,6 +112,9 @@ export function occurrences(ev: Pick<CalItem, 'start' | 'end' | 'recurrence' | '
 
 // ---------------------------------------------------------------- reads
 
+/** Event type keys renamed for GLOSSARY C-15 (seed rev 3); records saved before that still read correctly. */
+const LEGACY_TYPE: Record<string, EventType> = { customer_visit: 'field_visit', service: 'service_visit' };
+
 function ownItem(actor: Actor, r: RecordData): CalItem {
   const raw = getDb().records.calendarEvents.find((x) => x.id === r.id);
   return {
@@ -117,7 +122,7 @@ function ownItem(actor: Actor, r: RecordData): CalItem {
     recordId: r.id,
     source: 'event',
     title: s(r.title),
-    type: (s(r.eventType) || 'meeting') as EventType,
+    type: (LEGACY_TYPE[s(r.eventType)] ?? (s(r.eventType) || 'meeting')) as EventType,
     allDay: !!r.allDay,
     start: s(r.start),
     end: s(r.end),
@@ -148,7 +153,9 @@ const safeRows = (actor: Actor, resKey: string, where?: Record<string, unknown>)
   }
 };
 
-const TASK_TYPE: Record<string, EventType> = { call: 'follow_up', follow_up: 'follow_up', meeting: 'meeting', visit: 'customer_visit', demo: 'demo', other: 'internal' };
+/** Task type → calendar event type (GLOSSARY C-15). */
+const TASK_TYPE: Record<string, EventType> = { call: 'follow_up', follow_up: 'follow_up', meeting: 'meeting', visit: 'field_visit', demo: 'demo', other: 'internal' };
+const DV = L.calendar.derived;
 const item = (x: Omit<CalItem, 'attendeeIds' | 'recurrence' | 'exdates' | 'editable' | 'version'>): CalItem => ({ ...x, attendeeIds: [], recurrence: 'none', exdates: [], editable: false, version: 0 });
 
 /** Everything the actor may see on the calendar (scope-filtered by each module's own permissions). */
@@ -161,24 +168,24 @@ export function listCalendarItems(actor: Actor): CalItem[] {
   safeRows(actor, 'demos').forEach((d) => {
     if (!s(d.scheduledAt)) return;
     const start = s(d.scheduledAt).slice(0, 16);
-    out.push(item({ id: `demos:${d.id}`, recordId: d.id, source: 'demos', title: `Demo · ${recordTitle('opportunities', d.opportunityId, actor)}`, type: 'demo', allDay: false, start, end: fromMinutes(toMinutes(start) + (Number(d.durationMin) || 120)), status: d.status === 'done' ? 'completed' : d.status === 'cancelled' ? 'cancelled' : 'scheduled', assigneeId: s(d.ownerId), linkResource: 'opportunities', linkId: s(d.opportunityId), linkLabel: recordTitle('opportunities', d.opportunityId, actor), customerId: s(d.customerId) || undefined }));
+    out.push(item({ id: `demos:${d.id}`, recordId: d.id, source: 'demos', title: DV.demo(recordTitle('opportunities', d.opportunityId, actor)), type: 'demo', allDay: false, start, end: fromMinutes(toMinutes(start) + (Number(d.durationMin) || 120)), status: d.status === 'done' ? 'completed' : d.status === 'cancelled' ? 'cancelled' : 'scheduled', assigneeId: s(d.ownerId), linkResource: 'opportunities', linkId: s(d.opportunityId), linkLabel: recordTitle('opportunities', d.opportunityId, actor), customerId: s(d.customerId) || undefined }));
   });
   safeRows(actor, 'installations').forEach((j) => {
     if (!s(j.scheduledAt)) return;
     const start = s(j.scheduledAt).slice(0, 16);
     const timed = start.length > 10;
-    out.push(item({ id: `installations:${j.id}`, recordId: j.id, source: 'installations', title: `Installation · ${recordTitle('customers', j.customerId, actor)}`, type: 'service', allDay: !timed, start: timed ? start : start.slice(0, 10), end: timed ? fromMinutes(toMinutes(start) + 240) : start.slice(0, 10), status: j.status === 'signed_off' ? 'completed' : 'scheduled', assigneeId: s(j.engineerId), linkResource: 'installations', linkId: j.id, linkLabel: j.id, customerId: s(j.customerId) || undefined }));
+    out.push(item({ id: `installations:${j.id}`, recordId: j.id, source: 'installations', title: DV.installation(recordTitle('customers', j.customerId, actor)), type: 'service_visit', allDay: !timed, start: timed ? start : start.slice(0, 10), end: timed ? fromMinutes(toMinutes(start) + 240) : start.slice(0, 10), status: j.status === 'signed_off' ? 'completed' : 'scheduled', assigneeId: s(j.engineerId), linkResource: 'installations', linkId: j.id, linkLabel: j.id, customerId: s(j.customerId) || undefined }));
   });
   safeRows(actor, 'pmVisits').forEach((v) => {
     if (!s(v.dueDate)) return;
-    out.push(item({ id: `pmVisits:${v.id}`, recordId: v.id, source: 'pmVisits', title: `PM visit · ${recordTitle('customers', v.customerId, actor)}`, type: 'service', allDay: true, start: s(v.dueDate).slice(0, 10), end: s(v.dueDate).slice(0, 10), status: v.status === 'done' ? 'completed' : v.status === 'missed' ? 'cancelled' : 'scheduled', assigneeId: s(v.engineerId), customerId: s(v.customerId) || undefined }));
+    out.push(item({ id: `pmVisits:${v.id}`, recordId: v.id, source: 'pmVisits', title: DV.pmVisit(recordTitle('customers', v.customerId, actor)), type: 'service_visit', allDay: true, start: s(v.dueDate).slice(0, 10), end: s(v.dueDate).slice(0, 10), status: v.status === 'done' ? 'completed' : v.status === 'missed' ? 'cancelled' : 'scheduled', assigneeId: s(v.engineerId), customerId: s(v.customerId) || undefined }));
   });
   (['leads', 'opportunities'] as const).forEach((resKey) =>
     safeRows(actor, resKey).forEach((r) => {
       const open = resKey === 'leads' ? ['new', 'contacted', 'nurture'].includes(s(r.status)) : !['won', 'lost'].includes(s(r.stage));
       if (!open || !s(r.nextFollowUpAt)) return;
       const day = s(r.nextFollowUpAt).slice(0, 10);
-      out.push(item({ id: `${resKey}:${r.id}`, recordId: r.id, source: resKey, title: `Follow up · ${recordTitle(resKey, r.id, actor)}`, type: 'follow_up', allDay: true, start: day, end: day, status: 'scheduled', assigneeId: s(r.ownerId), linkResource: resKey, linkId: r.id, linkLabel: recordTitle(resKey, r.id, actor), customerId: s(r.customerId) || undefined }));
+      out.push(item({ id: `${resKey}:${r.id}`, recordId: r.id, source: resKey, title: DV.followUp(recordTitle(resKey, r.id, actor)), type: 'follow_up', allDay: true, start: day, end: day, status: 'scheduled', assigneeId: s(r.ownerId), linkResource: resKey, linkId: r.id, linkLabel: recordTitle(resKey, r.id, actor), customerId: s(r.customerId) || undefined }));
     }),
   );
   return out;
@@ -222,7 +229,7 @@ export function moveEvent(actor: Actor, id: string, next: { start: string; end: 
 /** "All events": shift a series by the change made to one occurrence (start delta and duration change). */
 export function shiftSeries(actor: Actor, id: string, occurrence: { start: string; end: string }, next: { start: string; end: string; allDay: boolean }, version: number) {
   const r = getRecord(actor, 'calendarEvents', id).record;
-  if (!!r.allDay !== next.allDay) throw new ServiceError('validation', 'A whole series cannot switch between all-day and timed. Edit the series instead.');
+  if (!!r.allDay !== next.allDay) throw new ServiceError('validation', L.calendar.validation.seriesAllDay);
   const errors = validateEvent({ title: r.title, start: next.start, end: next.end, allDay: next.allDay }, { checkPast: true });
   if (Object.keys(errors).length) throw new ServiceError('validation', Object.values(errors)[0], { fieldErrors: errors });
   const delta = toMinutes(next.start) - toMinutes(occurrence.start);
@@ -260,7 +267,7 @@ export function deleteOccurrence(actor: Actor, id: string, occurrenceStart: stri
 /** Delete an event (or a whole series). Only people who may edit it may delete it; goes to the recycle bin. */
 export function deleteEvent(actor: Actor, id: string) {
   const raw = getDb().records.calendarEvents.find((x) => x.id === id);
-  if (!raw || !canUpdateRecord(actor, getResource('calendarEvents'), raw)) throw new ServiceError('forbidden', 'You can only delete events you are allowed to edit.');
+  if (!raw || !canUpdateRecord(actor, getResource('calendarEvents'), raw)) throw new ServiceError('forbidden', L.calendar.validation.deleteForbidden);
   deleteRecord(actor, 'calendarEvents', id);
 }
 
