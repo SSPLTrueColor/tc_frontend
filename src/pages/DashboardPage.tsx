@@ -1,62 +1,75 @@
-import { Link, useSearchParams } from 'react-router-dom';
-import { todayKey } from '../lib/dates';
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { addDays, todayKey } from '../lib/dates';
+import { cx } from '../lib/format';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { call, errorMessage } from '../services/api/client';
 import { useActor } from '../services/hooks';
-import { overviewFor, type PlanItem, type Section, type Tile } from '../services/reports/dashboard';
+import type { PlanItem } from '../services/reports/dashboard';
+import { dashboardFor, MAX_RANGE_DAYS, resolveRange, type RangeKey } from '../services/reports/overview';
 import { transitionRecord } from '../services/runtime';
-import { Button } from '../components/primitives/Button';
-import { EmptyState, ErrorState, Skeleton, Tabs, useToast } from '../components/primitives/feedback';
-import { InfoTip } from '../components/primitives/InfoTip';
+import { DateRangePicker } from '../components/primitives/DateRangePicker';
+import { ErrorState, useToast } from '../components/primitives/feedback';
 import { PageHeader } from '../components/shell/PageHeader';
-import { KpiTiles, RankBars } from '../modules/reports/components';
+import { AgendaCard, AlertsCard, BoardCard, CardSkeleton, FeedCard, KpiCard, KpiSkeleton, PipeCard, ShareCard, TrendCard } from '../modules/dashboard/widgets';
 import '../modules/reports/reports.css';
+import '../modules/dashboard/dashboard.css';
 
-const PLAN_LIMIT = 6;
-const STRIP_LIMIT = 6;
-const urgency = (t: Tile) => (t.tone === 'danger' ? 0 : t.tone === 'warning' ? 1 : 2);
-
-/** The one figure per area that most needs the user's eye: the worst-coloured tile, else the first. */
-function attentionStrip(today: Tile[], sections: Section[]): Tile[] {
-  const picks = sections.map((s) => [...s.tiles].sort((a, b) => urgency(a) - urgency(b))[0]).filter(Boolean);
-  return [...today.slice(0, 1), ...picks, ...today.slice(1)].slice(0, STRIP_LIMIT);
-}
+const PRESETS: { id: RangeKey; label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: '7d', label: '7D' },
+  { id: '30d', label: '30D' },
+  { id: 'month', label: 'This month' },
+  { id: 'custom', label: 'Custom' },
+];
+const isRangeKey = (v: string | null): v is RangeKey => PRESETS.some((p) => p.id === v);
 
 /**
- * Role overview (FR-149, NFR-22) — designed to fit one screen:
- * 1. Attention strip: one key figure per area, coloured by meaning (green good, amber needs attention, red act now).
- * 2. Today's plan (left) beside one tabbed panel per area (right) instead of long stacked sections.
- * Every number is computed from records the role can see and links to the list it summarises.
+ * Role dashboard (FR-149, NFR-22): one global date range drives every widget.
+ * Row 1 KPI cards · Row 2 trend + status share · Row 3 pipeline + top performers · Row 4 agenda, activity, alerts.
+ * The range lives in the URL (?range=30d or ?range=custom&from=…&to=…) so it survives refresh and can be shared.
  */
 export function DashboardPage() {
   const actor = useActor();
   const toast = useToast();
-  const today = todayKey();
   const [params, setParams] = useSearchParams();
-  const q = useServiceQuery(() => overviewFor(actor), [actor.user.id, today]);
+  const today = todayKey();
+
+  const key: RangeKey = isRangeKey(params.get('range')) ? (params.get('range') as RangeKey) : '30d';
+  const custom = useMemo(() => {
+    const from = params.get('from') ?? addDays(today, -29);
+    const to = params.get('to') ?? today;
+    return { from, to };
+  }, [params, today]);
+  const range = useMemo(() => {
+    const r = resolveRange(key, custom, today);
+    // Keep custom ranges to a year so charts stay readable.
+    return r.days > MAX_RANGE_DAYS ? resolveRange('custom', { from: addDays(r.to, -(MAX_RANGE_DAYS - 1)), to: r.to }, today) : r;
+  }, [key, custom, today]);
+
+  const q = useServiceQuery(() => dashboardFor(actor, range), [actor.user.id, range.key, range.from, range.to, today]);
   const first = actor.user.name.split(' ')[0];
-  const header = <PageHeader title={`Good day, ${first}`} description={`${actor.role.label} overview${q.data ? ` · ${q.data.headline}` : ''}. Colours: green good, amber needs attention, red act now. Every figure opens the list behind it.`} />;
 
-  if (q.error)
-    return (
-      <div className="page">
-        {header}
-        <ErrorState title="Could not load your overview" onRetry={q.retry}>
-          {q.error}
-        </ErrorState>
-      </div>
-    );
-  if (!q.data)
-    return (
-      <div className="page">
-        {header}
-        <Skeleton rows={10} />
-      </div>
-    );
-
-  const { plan, today: todayTiles, sections } = q.data;
-  const tabId = sections.some((s) => s.id === params.get('area')) ? params.get('area')! : sections[0]?.id;
-  const active = sections.find((s) => s.id === tabId);
+  const setRange = (id: RangeKey) => {
+    const next = new URLSearchParams(params);
+    next.set('range', id);
+    if (id === 'custom') {
+      next.set('from', custom.from);
+      next.set('to', custom.to);
+    } else {
+      next.delete('from');
+      next.delete('to');
+    }
+    setParams(next, { replace: true });
+  };
+  const setCustom = (v: { from?: string; to?: string }) => {
+    if (!v.from || !v.to) return;
+    const next = new URLSearchParams(params);
+    next.set('range', 'custom');
+    next.set('from', v.from);
+    next.set('to', v.to);
+    setParams(next, { replace: true });
+  };
 
   const complete = async (item: PlanItem) => {
     if (!item.taskId) return;
@@ -68,84 +81,80 @@ export function DashboardPage() {
     }
   };
 
-  return (
-    <div className="page dash-page">
-      {header}
-      <KpiTiles tiles={attentionStrip(todayTiles, sections)} label="Needs your attention" />
+  const header = <PageHeader title={`Good day, ${first}`} description={`${actor.role.label} dashboard${q.data ? ` · ${q.data.headline}` : ''}. Every figure is computed from the records you can see and opens the list behind it.`} />;
 
-      <div className="dash-main">
-        <section className="panel dash-plan">
-          <div className="panel-head">
-            <h2 className="panel-title dialog-title-row">
-              Today’s plan
-              <InfoTip text="Your overdue and due items first: tasks, lead and opportunity follow-ups, assigned jobs, PM visits and planned field visits." label="About today’s plan" />
-            </h2>
-            <Link to="/calendar" className="link small">
-              {plan.length > PLAN_LIMIT ? `View all ${plan.length}` : 'Calendar'}
-            </Link>
-          </div>
-          <PlanList items={plan.slice(0, PLAN_LIMIT)} empty="Nothing due. New tasks, follow-ups and jobs assigned to you appear here." onComplete={complete} />
-        </section>
-
-        {active && (
-          <section className="panel dash-area" aria-label={active.title}>
-            {sections.length > 1 ? (
-              <Tabs label="Overview areas" value={active.id} onChange={(id) => setParams({ area: id }, { replace: true })} tabs={sections.map((s) => ({ id: s.id, label: s.title }))} />
-            ) : (
-              <div className="panel-head">
-                <h2 className="panel-title dialog-title-row">
-                  {active.title}
-                  <InfoTip text={active.info} label={`About ${active.title}`} />
-                </h2>
-              </div>
-            )}
-            <div className="dash-area-body" role={sections.length > 1 ? 'tabpanel' : undefined}>
-              <KpiTiles tiles={active.tiles} label={active.title} />
-              {(active.chart || active.list) && (
-                <div className={active.chart && active.list ? 'dash-area-split' : undefined}>
-                  {active.chart && <RankBars {...active.chart} compact />}
-                  {active.list && (
-                    <div>
-                      <div className="panel-head">
-                        <h3 className="chart-title">{active.list.title}</h3>
-                        {active.list.to && (
-                          <Link to={active.list.to} className="link small">
-                            View all
-                          </Link>
-                        )}
-                      </div>
-                      <PlanList items={active.list.items.slice(0, 4)} empty={active.list.empty} />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
+  const bar = (
+    <div className="dash2-bar" role="group" aria-label="Date range">
+      <div className="segmented" role="radiogroup" aria-label="Date range presets">
+        {PRESETS.map((p) => (
+          <button key={p.id} type="button" role="radio" aria-checked={key === p.id} className={cx('seg-btn', key === p.id && 'is-on')} onClick={() => setRange(p.id)}>
+            {p.label}
+          </button>
+        ))}
       </div>
+      {key === 'custom' && (
+        <span className="rep-date">
+          <DateRangePicker label="Custom date range" value={{ from: range.from, to: range.to }} onChange={setCustom} />
+        </span>
+      )}
+      <span className="dash2-bar-note">
+        {range.label} · compared with the {range.days === 1 ? 'day' : `${range.days} days`} before
+      </span>
     </div>
   );
-}
 
-function PlanList({ items, empty, onComplete }: { items: PlanItem[]; empty: string; onComplete?: (i: PlanItem) => void }) {
-  if (!items.length)
+  if (q.error)
     return (
-      <EmptyState icon="check-square" title="All clear">
-        {empty}
-      </EmptyState>
+      <div className="page dash2">
+        {header}
+        {bar}
+        <ErrorState title="Could not load your dashboard" onRetry={q.retry}>
+          {q.error}
+        </ErrorState>
+      </div>
     );
+
+  const d = q.data;
+  if (!d)
+    return (
+      <div className="page dash2">
+        {header}
+        {bar}
+        <div className="dash2-kpis" style={{ ['--n' as string]: 5 }}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <KpiSkeleton key={i} />
+          ))}
+        </div>
+        <div className="dash2-grid">
+          <CardSkeleton className="span-8" rows={8} />
+          <CardSkeleton className="span-4" rows={8} />
+          <CardSkeleton className="span-6" rows={7} />
+          <CardSkeleton className="span-6" rows={7} />
+          <CardSkeleton className="span-4" rows={5} />
+          <CardSkeleton className="span-4" rows={5} />
+          <CardSkeleton className="span-4" rows={5} />
+        </div>
+      </div>
+    );
+
   return (
-    <ul className="flow-list">
-      {items.map((it) => (
-        <li key={it.id} className="flow-item">
-          <span className={`tag tone-${it.tone}`}>{it.tag}</span>
-          <Link to={it.to} className="flow-main">
-            <span className="flow-title">{it.title}</span>
-            <span className="muted small">{it.sub}</span>
-          </Link>
-          {onComplete && it.taskId && <Button onClick={() => onComplete(it)}>Complete</Button>}
-        </li>
-      ))}
-    </ul>
+    <div className="page dash2">
+      {header}
+      {bar}
+      <section className="dash2-kpis" style={{ ['--n' as string]: d.kpis.length }} aria-label="Key figures">
+        {d.kpis.map((k) => (
+          <KpiCard key={k.id} kpi={k} />
+        ))}
+      </section>
+      <div className="dash2-grid">
+        <TrendCard trend={d.trend} />
+        <ShareCard share={d.share} />
+        <PipeCard pipe={d.pipe} />
+        <BoardCard board={d.board} />
+        <AgendaCard items={d.agenda} onComplete={complete} />
+        <FeedCard items={d.feed} />
+        <AlertsCard items={d.alerts} />
+      </div>
+    </div>
   );
 }

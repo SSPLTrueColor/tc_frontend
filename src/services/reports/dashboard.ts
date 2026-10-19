@@ -64,7 +64,7 @@ export interface Overview {
 }
 
 type Cond = [field: string, op: Parameters<typeof newCondition>[1], value?: unknown];
-const listWith = (res: string, conds: Cond[] = [], view?: string) => {
+export const listWith = (res: string, conds: Cond[] = [], view?: string) => {
   const g = newGroup('and');
   g.children = conds.map(([f, o, v]) => newCondition(f, o, v));
   return resourcePath('tc', res, { view, f: conds.length ? encodeFilter(g) : undefined });
@@ -78,7 +78,7 @@ const higherBetter = (v: number | null, good: number, ok: number): Signal | unde
 /** Same for KPI ratios (0–1), with thresholds given in percent. */
 const ratioTone = (v: number | null, goodPct: number, okPct: number) => higherBetter(v === null ? null : v * 100, goodPct, okPct);
 
-const FAMILY: Record<string, string> = {
+export const FAMILY:Record<string, string> = {
   admin: 'company',
   management: 'company',
   division_head: 'division',
@@ -145,7 +145,7 @@ export function overviewFor(actor: Actor): Overview {
 
 // ---------------------------------------------------------------- today's plan (NFR-22)
 
-function planFor(ds: Dataset, actor: Actor, today: string): PlanItem[] {
+export function planFor(ds: Dataset, actor: Actor, today: string): PlanItem[] {
   const me = actor.staffId;
   const items: (PlanItem & { sort: string })[] = [];
   const tag = (due: string) => (due < today ? { tag: 'Overdue', tone: 'danger' as const } : due === today ? { tag: 'Today', tone: 'warning' as const } : { tag: formatDate(due), tone: 'neutral' as const });

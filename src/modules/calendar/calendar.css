@@ -1,0 +1,388 @@
+/*
+ * Calendar — FullCalendar fully re-themed with template tokens (no default FullCalendar look).
+ * Event type colours come from the template palette; dark mode follows the tokens.
+ */
+
+/* ---------------------------------------------------------------- event type colours */
+.ev-meeting {
+  --ev-solid: var(--s-accent);
+  --ev-fg: var(--s-accent-text);
+  --ev-bg: var(--s-accent-subtle);
+}
+.ev-demo {
+  --ev-solid: var(--s-info);
+  --ev-fg: var(--s-info);
+  --ev-bg: var(--s-info-bg);
+}
+.ev-customer_visit {
+  --ev-solid: var(--s-success);
+  --ev-fg: var(--s-success);
+  --ev-bg: var(--s-success-bg);
+}
+.ev-follow_up {
+  --ev-solid: var(--s-warning);
+  --ev-fg: var(--s-warning);
+  --ev-bg: var(--s-warning-bg);
+}
+.ev-service {
+  --ev-solid: var(--s-danger);
+  --ev-fg: var(--s-danger);
+  --ev-bg: var(--s-danger-bg);
+}
+.ev-internal {
+  --ev-solid: var(--s-text-muted);
+  --ev-fg: var(--s-text-secondary);
+  --ev-bg: var(--s-sunken);
+}
+.cal-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--ev-solid, var(--s-accent));
+  flex: none;
+}
+
+/* ---------------------------------------------------------------- page layout */
+.cal-page {
+  padding-bottom: 8px;
+}
+.cal-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.cal-layout.is-side-closed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.cal-side {
+  display: grid;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+}
+.cal-create {
+  justify-self: start;
+}
+.cal-filter {
+  display: grid;
+  gap: 6px;
+}
+.cal-filter-title {
+  font-size: var(--fs-supportive);
+  font-weight: var(--fw-semibold);
+  color: var(--s-text-secondary);
+}
+.cal-legend {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cal-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: var(--fs-supportive);
+  color: var(--s-text);
+  cursor: pointer;
+}
+.cal-check input {
+  accent-color: var(--ev-solid, var(--s-accent));
+  margin: 0;
+}
+.cal-main {
+  min-width: 0;
+}
+.cal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cal-title {
+  font-size: var(--fs-secondary);
+  font-weight: var(--fw-semibold);
+  margin-left: 4px;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .cal-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cal-side {
+    position: static;
+  }
+  .cal-title {
+    flex-basis: 100%;
+    order: 9;
+    margin: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- mini month */
+.mini-month-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 4px;
+  font-size: var(--fs-supportive);
+}
+.mini-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.mini-month-dow {
+  font-size: 11px;
+  color: var(--s-text-muted);
+  padding: 2px 0;
+}
+.mini-month-day {
+  position: relative;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--s-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.mini-month-day:hover {
+  background: var(--s-hover);
+}
+.mini-month-day.is-outside {
+  color: var(--s-text-muted);
+}
+.mini-month-day.is-today {
+  box-shadow: inset 0 0 0 1.5px var(--s-accent);
+  color: var(--s-accent-text);
+  font-weight: var(--fw-semibold);
+}
+.mini-month-day.is-selected {
+  background: var(--s-accent);
+  color: var(--s-on-accent, #fff);
+}
+.mini-month-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--s-accent);
+}
+.mini-month-day.is-selected .mini-month-dot {
+  background: currentColor;
+}
+
+/* ---------------------------------------------------------------- FullCalendar theme */
+.tc-cal {
+  --fc-small-font-size: 11px;
+  --fc-page-bg-color: var(--s-panel);
+  --fc-neutral-bg-color: var(--s-sunken);
+  --fc-neutral-text-color: var(--s-text-secondary);
+  --fc-border-color: var(--s-border);
+  --fc-today-bg-color: color-mix(in srgb, var(--s-accent) 6%, transparent);
+  --fc-now-indicator-color: var(--s-danger);
+  --fc-highlight-color: color-mix(in srgb, var(--s-accent) 14%, transparent);
+  --fc-non-business-color: color-mix(in srgb, var(--s-text) 4%, transparent);
+  --fc-event-selected-overlay-color: color-mix(in srgb, var(--s-text) 10%, transparent);
+  --fc-more-link-bg-color: transparent;
+  --fc-more-link-text-color: var(--s-accent-text);
+  --fc-list-event-hover-bg-color: var(--s-hover);
+  --fc-event-resizer-thickness: 8px;
+  font-family: inherit;
+  font-size: var(--fs-supportive);
+  color: var(--s-text);
+}
+.tc-cal .fc {
+  font-size: var(--fs-supportive);
+}
+.tc-cal .fc-theme-standard .fc-scrollgrid,
+.tc-cal .fc-theme-standard td,
+.tc-cal .fc-theme-standard th {
+  border-color: var(--s-border);
+}
+.tc-cal .fc .fc-scrollgrid {
+  border-radius: var(--c-radius-panel);
+  overflow: hidden;
+}
+/* Column headers: small, muted, regular weight (template table headers). */
+.tc-cal .fc .fc-col-header-cell-cushion {
+  padding: 8px 4px;
+  font-weight: 400;
+  color: var(--s-text-secondary);
+  text-decoration: none;
+}
+.tc-cal .fc .fc-daygrid-day-number,
+.tc-cal .fc .fc-col-header-cell-cushion,
+.tc-cal .fc .fc-list-day-text,
+.tc-cal .fc .fc-list-day-side-text {
+  color: inherit;
+  text-decoration: none;
+}
+.tc-cal .fc .fc-daygrid-day-number {
+  margin: 4px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tc-cal .fc .fc-day-today .fc-daygrid-day-number {
+  background: var(--s-accent);
+  color: var(--s-on-accent, #fff);
+  font-weight: var(--fw-semibold);
+}
+.tc-cal .fc .fc-day-other .fc-daygrid-day-top {
+  opacity: 0.45;
+}
+.tc-cal .fc .fc-timegrid-slot-label-cushion,
+.tc-cal .fc .fc-timegrid-axis-cushion {
+  font-size: 11px;
+  color: var(--s-text-muted);
+}
+.tc-cal .fc .fc-timegrid-slot {
+  height: 2.2em;
+}
+.tc-cal .fc .fc-timegrid-slot-minor {
+  border-top-style: dotted;
+}
+.tc-cal .fc .fc-timegrid-now-indicator-line {
+  border-width: 2px 0 0;
+}
+.tc-cal .fc .fc-timegrid-now-indicator-arrow {
+  border-color: var(--s-danger);
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+}
+
+/* Events: tinted block in the type colour, never a coloured bar in front (owner rule 32). */
+.tc-cal .fc-event {
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tc-cal .fc-h-event,
+.tc-cal .fc-v-event {
+  background: var(--ev-bg);
+  border: 1px solid color-mix(in srgb, var(--ev-solid) 40%, transparent);
+  color: var(--ev-fg);
+}
+.tc-cal .fc-h-event .fc-event-main,
+.tc-cal .fc-v-event .fc-event-main {
+  color: var(--ev-fg);
+  padding: 1px 4px;
+}
+.tc-cal .fc-v-event .fc-event-title {
+  font-weight: var(--fw-semibold);
+}
+.tc-cal .fc-daygrid-dot-event {
+  color: var(--s-text);
+  border-radius: 6px;
+}
+.tc-cal .fc-daygrid-dot-event:hover,
+.tc-cal .fc-daygrid-dot-event.fc-event-mirror {
+  background: var(--s-hover);
+}
+.tc-cal .fc-daygrid-event-dot,
+.tc-cal .fc-list-event-dot {
+  border-color: var(--ev-solid);
+}
+.tc-cal .fc-h-event.is-readonly,
+.tc-cal .fc-v-event.is-readonly {
+  border-style: dashed;
+}
+.tc-cal .fc-event.is-readonly {
+  cursor: default;
+}
+.tc-cal .fc-list-event.fc-event {
+  border: 0;
+  border-radius: 0;
+}
+.tc-cal .fc-event.is-completed {
+  opacity: 0.7;
+}
+.tc-cal .fc-event.is-cancelled .fc-event-title,
+.tc-cal .fc-event.is-cancelled .fc-list-event-title {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.tc-cal .fc .fc-daygrid-more-link {
+  font-weight: var(--fw-semibold);
+  padding: 0 4px;
+}
+.tc-cal .fc .fc-daygrid-more-link:hover {
+  background: var(--s-hover);
+  border-radius: 6px;
+}
+/* "+N more" popover */
+.tc-cal .fc .fc-popover {
+  background: var(--s-panel);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-panel);
+  box-shadow: var(--e-2, 0 8px 24px rgb(0 0 0 / 0.18));
+  overflow: hidden;
+}
+.tc-cal .fc .fc-popover-header {
+  background: var(--s-sunken);
+  color: var(--s-text);
+  padding: 6px 10px;
+  font-weight: var(--fw-semibold);
+}
+.tc-cal .fc .fc-popover-close {
+  opacity: 0.7;
+}
+
+/* Agenda (list) */
+.tc-cal .fc-theme-standard .fc-list {
+  border-color: var(--s-border);
+  border-radius: var(--c-radius-panel);
+  overflow: hidden;
+}
+.tc-cal .fc .fc-list-day-cushion {
+  background: var(--s-sunken);
+  font-weight: var(--fw-semibold);
+  padding: 6px 12px;
+}
+.tc-cal .fc .fc-list-event td {
+  padding: 8px 12px;
+}
+.tc-cal .fc .fc-list-event-time {
+  color: var(--s-text-secondary);
+  white-space: nowrap;
+}
+.tc-cal .fc .fc-list-empty {
+  background: var(--s-panel);
+  color: var(--s-text-muted);
+}
+
+/* ---------------------------------------------------------------- detail popover */
+.cal-detail {
+  display: grid;
+  gap: 10px;
+  padding: 4px;
+}
+.cal-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cal-detail-title {
+  font-size: var(--fs-secondary);
+  line-height: 1.3;
+}
+.cal-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

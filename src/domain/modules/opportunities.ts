@@ -388,6 +388,5 @@ export const opportunitiesPack: ModulePack = {
       resources: ['opportunities', 'demos', 'sampleRequests', 'demoMachines'],
       pages: [{ id: 'forecast', label: 'Forecast', icon: 'activity', path: 'opportunities/forecast' }],
     },
-    home: { pages: [{ id: 'calendar', label: 'Calendar', icon: 'calendar', path: 'calendar' }] },
   },
 };

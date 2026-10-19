@@ -26,3 +26,11 @@ export function setClockOffset(ms: number) {
     /* storage unavailable: offset lasts for this tab only */
   }
 }
+
+const IST_PARTS = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+
+/** Simulated "now" as an Asia/Kolkata wall-clock string "YYYY-MM-DDTHH:mm:ss", whatever the browser's zone. */
+export function istNow(): string {
+  const p = Object.fromEntries(IST_PARTS.formatToParts(now()).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}`;
+}

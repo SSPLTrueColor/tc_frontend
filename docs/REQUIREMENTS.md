@@ -249,7 +249,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-149 | 4.13 | M | Role-, module- and decision-based dashboards; customisable later | `/dashboard` (per role), `/reports` | Built (fixed role dashboards; widget customisation Deferred, see Q-26) | Done (`/dashboard` role overview computed from scoped records; `/reports/kpi-summary`; user customisation Deferred, Q-26) |
+| FR-149 | 4.13 | M | Role-, module- and decision-based dashboards; customisable later | `/dashboard` (per role), `/reports` | Built (fixed role dashboards; widget customisation Deferred, see Q-26) | Done (`/dashboard` role dashboard: global date range Today/7D/30D/This month/Custom, KPI cards with % change vs previous period, Recharts trend/donut/funnel, top performers, agenda, activity feed and alerts, all computed from scoped records and linking to filtered lists; `/reports/kpi-summary`; user customisation Deferred, Q-26) |
 
 ### 1.2 Non-functional requirements
 
