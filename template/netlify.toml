@@ -1,0 +1,14 @@
+# Netlify build settings (these override the dashboard form)
+[build]
+  base = "clinic-ops-admin"   # folder with package.json
+  command = "npm run build"
+  publish = "dist"            # relative to base → clinic-ops-admin/dist
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Single-page app: every URL is handled by index.html (client-side routing)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

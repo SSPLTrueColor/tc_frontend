@@ -3554,15 +3554,7 @@ a.stat:hover {
   }
 }
 
-/* Grid cell presentation (project rule): statuses as coloured dot + text, relations as plain text */
-.grid .chip,
-.card-list .chip {
-  height: auto;
-  padding: 0;
-  background: transparent;
-  font-weight: 400;
-  font-size: inherit;
-}
+/* Grid cell presentation: statuses are the same soft pills as everywhere (Attio-style); relations plain text */
 .grid .chip-dot {
   width: 7px;
   height: 7px;
@@ -5075,4 +5067,2410 @@ html:root[data-palette][data-theme='dark'] {
   --c-rail-selected-icon: var(--pal-rail-selected-icon);
   --c-rail-hover-bg: var(--pal-rail-hover);
   --c-rail-badge-ring: var(--pal-rail);
+}
+
+/* Theme picker: palette cards with a mini app mock (rail · sidebar · content + accent button) */
+.theme-pop {
+  padding: 0 12px 12px;
+}
+.theme-pop .pop-head {
+  padding: 10px 0 6px;
+}
+.theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pal-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.pal-item {
+  position: relative;
+}
+.pal-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--s-border);
+  border-radius: 10px;
+  background: var(--s-panel);
+  color: var(--s-text);
+  font-size: var(--fs-supportive);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms var(--ease), box-shadow 140ms var(--ease);
+}
+.pal-card:hover {
+  border-color: var(--s-border-strong);
+}
+.pal-card.is-on {
+  border-color: var(--s-accent);
+  box-shadow: 0 0 0 1px var(--s-accent);
+}
+.pal-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pal-card.is-on .pal-name svg {
+  color: var(--s-accent-text);
+  flex: none;
+}
+.pal-new {
+  border-style: dashed;
+  color: var(--s-text-secondary);
+}
+.pal-new-icon {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border-radius: 6px;
+  background: var(--s-sunken);
+}
+.pal-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+.pal-tools .icon-btn {
+  width: 22px;
+  height: 22px;
+  background: var(--s-panel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.pal-item:hover .pal-tools,
+.pal-item:focus-within .pal-tools {
+  opacity: 1;
+}
+@media (hover: none) {
+  .pal-tools {
+    opacity: 1;
+  }
+}
+/* mini mock */
+.pal-mock {
+  display: flex;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--s-border);
+  background: #ffffff;
+}
+.pal-mock.is-large {
+  height: 120px;
+}
+.pal-mock-rail {
+  width: 12%;
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+}
+.pal-mock-rail > span {
+  width: 60%;
+  height: 8px;
+  border-radius: 2px;
+}
+.pal-mock-side {
+  width: 26%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 4px;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+.pal-mock-side > span {
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+}
+.pal-mock-main {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+.pal-mock-tab {
+  width: 36%;
+  height: 4px;
+  border-bottom: 2px solid;
+}
+.pal-mock-line {
+  height: 4px;
+  width: 80%;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+}
+.pal-mock-line.short {
+  width: 55%;
+}
+.pal-mock-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 30%;
+  height: 9px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-supportive);
+}
+.pal-mock.is-large .pal-mock-btn {
+  width: auto;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--c-radius-control);
+  font-weight: var(--fw-medium);
+}
+.pal-mock.is-large .pal-mock-side > span,
+.pal-mock.is-large .pal-mock-line {
+  height: 8px;
+}
+.pal-mock.is-large .pal-mock-tab {
+  height: 10px;
+}
+/* editor */
+.pal-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pal-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pal-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--s-text-secondary);
+  font-size: var(--fs-supportive);
+}
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.color-field .input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-transform: lowercase;
+}
+.color-swatch {
+  flex: none;
+  width: 40px;
+  height: var(--c-control-h);
+  padding: 3px;
+  border: 1px solid var(--s-border-strong);
+  border-radius: var(--c-radius-control);
+  background: var(--s-panel);
+  cursor: pointer;
+}
+.color-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.color-swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.color-field.is-invalid .input {
+  border-color: var(--s-danger);
+}
+
+/* Theme picker: palette cards with a mini app mock (rail · sidebar · content + accent button) */
+.theme-pop {
+  padding: 0 12px 12px;
+}
+.theme-pop .pop-head {
+  padding: 10px 0 6px;
+}
+.theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pal-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.pal-item {
+  position: relative;
+}
+.pal-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--s-border);
+  border-radius: 10px;
+  background: var(--s-panel);
+  color: var(--s-text);
+  font-size: var(--fs-supportive);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms var(--ease), box-shadow 140ms var(--ease);
+}
+.pal-card:hover {
+  border-color: var(--s-border-strong);
+}
+.pal-card.is-on {
+  border-color: var(--s-accent);
+  box-shadow: 0 0 0 1px var(--s-accent);
+}
+.pal-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pal-card.is-on .pal-name svg {
+  color: var(--s-accent-text);
+  flex: none;
+}
+.pal-new {
+  border-style: dashed;
+  color: var(--s-text-secondary);
+}
+.pal-new-icon {
+  display: grid;
+  place-items: center;
+  height: 44px;
+  border-radius: 6px;
+  background: var(--s-sunken);
+}
+.pal-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+.pal-tools .icon-btn {
+  width: 22px;
+  height: 22px;
+  background: var(--s-panel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.pal-item:hover .pal-tools,
+.pal-item:focus-within .pal-tools {
+  opacity: 1;
+}
+@media (hover: none) {
+  .pal-tools {
+    opacity: 1;
+  }
+}
+.pal-mock {
+  display: flex;
+  height: 44px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--s-border);
+  background: #ffffff;
+}
+.pal-mock.is-large {
+  height: 120px;
+}
+.pal-mock-rail {
+  width: 12%;
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+}
+.pal-mock-rail > span {
+  width: 60%;
+  height: 8px;
+  border-radius: 2px;
+}
+.pal-mock-side {
+  width: 26%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 4px;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+.pal-mock-side > span {
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+}
+.pal-mock-main {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+.pal-mock-tab {
+  width: 36%;
+  height: 4px;
+  border-bottom: 2px solid;
+}
+.pal-mock-line {
+  height: 4px;
+  width: 80%;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+}
+.pal-mock-line.short {
+  width: 55%;
+}
+.pal-mock-btn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 30%;
+  height: 9px;
+  border-radius: 3px;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-supportive);
+}
+.pal-mock.is-large .pal-mock-btn {
+  width: auto;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--c-radius-control);
+  font-weight: var(--fw-medium);
+}
+.pal-mock.is-large .pal-mock-side > span,
+.pal-mock.is-large .pal-mock-line {
+  height: 8px;
+}
+.pal-mock.is-large .pal-mock-tab {
+  height: 10px;
+}
+.pal-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pal-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pal-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--s-text-secondary);
+  font-size: var(--fs-supportive);
+}
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.color-field .input {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  text-transform: lowercase;
+}
+.color-swatch {
+  flex: none;
+  width: 40px;
+  height: var(--c-control-h);
+  padding: 3px;
+  border: 1px solid var(--s-border-strong);
+  border-radius: var(--c-radius-control);
+  background: var(--s-panel);
+  cursor: pointer;
+}
+.color-swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.color-swatch::-webkit-color-swatch {
+  border: 0;
+  border-radius: 4px;
+}
+.color-field.is-invalid .input {
+  border-color: var(--s-danger);
+}
+
+/* Smooth sidebar collapse / expand: the panel slides its width to 0; its content keeps its own width */
+.sidebar {
+  transition: width 260ms cubic-bezier(0.4, 0, 0.2, 1), min-width 260ms cubic-bezier(0.4, 0, 0.2, 1), border-color 260ms ease;
+  overflow: hidden;
+}
+.sidebar.is-dragging {
+  transition: none;
+}
+.sidebar.is-collapsed {
+  min-width: 0;
+  border-right-width: 0;
+}
+.sidebar-inner {
+  flex: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sidebar.is-collapsed .sidebar-resize {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
+
+/* Tabs row: equal space above and below the buttons (no extra page padding on top) */
+.page-resource .page-main {
+  padding-top: 0;
+}
+.view-tabs-row {
+  min-height: 48px;
+}
+
+/* iOS-style round checkboxes in tables (header, rows, cards) */
+.grid input[type='checkbox'],
+.card-list input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid var(--s-border-strong);
+  border-radius: 50%;
+  background: var(--s-panel) center / 11px 11px no-repeat;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background-color 140ms var(--ease), border-color 140ms var(--ease), transform 140ms var(--ease);
+}
+.grid input[type='checkbox']:hover,
+.card-list input[type='checkbox']:hover {
+  border-color: var(--s-accent);
+}
+.grid input[type='checkbox']:checked,
+.card-list input[type='checkbox']:checked {
+  border-color: var(--s-accent);
+  background-color: var(--s-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.grid input[type='checkbox']:indeterminate {
+  border-color: var(--s-accent);
+  background-color: var(--s-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.grid input[type='checkbox']:active {
+  transform: scale(0.92);
+}
+.grid input[type='checkbox']:focus-visible,
+.card-list input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--s-focus);
+  outline-offset: 2px;
+}
+
+/* Column-type icon before each header label (Attio-style): muted, same 14px size everywhere */
+.th-type {
+  flex: none;
+  color: var(--s-text-muted);
+  opacity: 0.85;
+}
+.th-btn,
+.th-static {
+  gap: 6px;
+}
+.grid th.is-sorted .th-type {
+  color: var(--s-text-secondary);
+}
+
+/* Board (owner reference): roomier cards — ID + avatar on top, title, then meta lines with icons; column footer count */
+.board {
+  gap: 14px;
+}
+.board-col {
+  padding: 10px;
+  background: var(--s-canvas);
+  border: 1px solid var(--s-border);
+  border-radius: 14px;
+}
+.board-col-head {
+  padding: 2px 4px 10px;
+}
+.board-cards {
+  gap: 10px;
+  flex: 1;
+}
+.board-card {
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(20, 20, 30, 0.04);
+  transition: box-shadow 140ms var(--ease), border-color 140ms var(--ease);
+}
+.board-card:hover {
+  box-shadow: 0 4px 14px rgba(20, 20, 30, 0.08);
+}
+.board-card-main {
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border-radius: 12px;
+}
+.card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 26px; /* room for the ⋮ menu */
+  min-height: 24px;
+}
+.card-id {
+  color: var(--s-text-muted);
+}
+.card-title {
+  font-weight: var(--fw-medium);
+  color: var(--s-text);
+  line-height: 1.4;
+}
+.card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--s-text-secondary);
+}
+.card-field-icon {
+  flex: none;
+  color: var(--s-text-muted);
+}
+.board-card-menu {
+  top: 10px;
+  right: 8px;
+}
+.board-col-foot {
+  margin-top: 10px;
+  padding: 8px 4px 0;
+  border-top: 1px solid var(--s-border);
+  font-size: var(--fs-supportive);
+}
+/* virtual scroll spacer rows: no borders / padding */
+.grid tr.virtual-spacer td {
+  padding: 0 !important;
+  border: 0 !important;
+  height: auto !important;
+  background: transparent !important;
+}
+
+/* ---------- Attio-style status pills (no dots) — tables, board, drawers, filters ---------- */
+.chip {
+  height: 22px;
+  padding: 0 8px;
+  gap: 4px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--tone-fg) 22%, transparent);
+  background: color-mix(in srgb, var(--tone-fg) 9%, var(--s-panel));
+  color: var(--tone-fg);
+  font-weight: var(--fw-medium);
+  line-height: 20px;
+}
+.chip-dot {
+  display: none;
+}
+.tone-neutral {
+  --tone-fg: var(--s-text-secondary);
+}
+
+/* Table checkboxes: rounded-square (owner reference) — light grey outline, accent fill + white ✓ when checked */
+.grid input[type='checkbox'],
+.card-list input[type='checkbox'] {
+  border-radius: 5px;
+  border: 1.5px solid color-mix(in srgb, var(--s-text) 22%, var(--s-panel));
+}
+
+/* phone / email icon before contact values */
+.masked {
+  gap: 6px;
+}
+.masked-kind {
+  flex: none;
+  color: var(--s-text-muted);
+}
+
+/* Board: fills the page height; each column scrolls its own cards, the "N items" footer stays fixed at the bottom */
+.content-surface:has(> .board) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden !important;
+}
+.board {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+  padding-bottom: 12px;
+}
+.board-col {
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+.board-col-head,
+.board-col-foot {
+  flex: none;
+}
+.board-cards {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -6px;
+  padding: 2px 6px 4px;
+  overscroll-behavior: contain;
+}
+.input-affix.has-icon .affix-start {
+  display: inline-grid;
+  place-items: center;
+}
+.input-affix.has-start.has-icon > .input {
+  padding-left: 32px;
+}
+
+/* ---------- Status chips (owner reference): filled soft pill, no border, no dot — one shared StatusChip ---------- */
+.chip {
+  border: 0;
+  background: color-mix(in srgb, var(--tone-fg) 13%, var(--s-panel));
+  height: 22px;
+  line-height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-weight: var(--fw-medium);
+}
+:root[data-theme='dark'] .chip {
+  background: color-mix(in srgb, var(--tone-fg) 22%, var(--s-panel));
+}
+
+/* ---------- Hyperlinks: related records & record IDs are visibly links (accent colour, underline on hover) ---------- */
+.grid .rel-link,
+.rel-link {
+  color: var(--s-accent-text);
+  text-decoration: none;
+}
+.grid .rel-link:hover,
+.rel-link:hover {
+  color: var(--s-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.value-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.value-icon {
+  flex: none;
+  color: var(--s-text-muted);
+}
+.value-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.id-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.id-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--s-accent-text);
+  cursor: pointer;
+  font-size: inherit;
+}
+.id-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---------- Trailing icons line up: the 👁 / 🔒 / copy icon is pinned to the cell's right edge ---------- */
+.grid .cell:has(> .masked),
+.grid .cell:has(> .id-cell) {
+  display: flex;
+  width: 100%;
+}
+.grid .masked {
+  display: flex;
+  width: 100%;
+}
+.grid .masked-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid .masked-toggle,
+.grid .masked-lock,
+.cell-trail {
+  flex: none;
+  margin-left: auto;
+}
+.cell-trail {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--s-text-muted);
+  cursor: pointer;
+}
+.cell-trail:hover {
+  background: var(--c-sidebar-hover-bg);
+  color: var(--s-text);
+}
+
+/* Profile avatar in the icon rail */
+.rail-profile {
+  padding: 0;
+}
+.rail-profile .avatar {
+  box-shadow: 0 0 0 2px var(--c-rail-bg);
+}
+
+/* ---------- Status chips (owner reference, final): bright pastel pill, no border, no dot ---------- */
+:root {
+  --chip-success-bg: #dcfce7;
+  --chip-success-fg: #15803d;
+  --chip-info-bg: #e0e7ff;
+  --chip-info-fg: #4338ca;
+  --chip-accent-bg: #ede9fe;
+  --chip-accent-fg: #6d28d9;
+  --chip-warning-bg: #fef3c7;
+  --chip-warning-fg: #b45309;
+  --chip-danger-bg: #fee2e2;
+  --chip-danger-fg: #b91c1c;
+  --chip-neutral-bg: #f1f2f4;
+  --chip-neutral-fg: #6b7280;
+}
+:root[data-theme='dark'] {
+  --chip-success-bg: #12301f;
+  --chip-success-fg: #6ee7a0;
+  --chip-info-bg: #1e2147;
+  --chip-info-fg: #a5b4fc;
+  --chip-accent-bg: #2a1f4a;
+  --chip-accent-fg: #c4b5fd;
+  --chip-warning-bg: #3a2a0f;
+  --chip-warning-fg: #fcd34d;
+  --chip-danger-bg: #3d1717;
+  --chip-danger-fg: #fca5a5;
+  --chip-neutral-bg: #2a2a31;
+  --chip-neutral-fg: #b4b4bf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --chip-success-bg: #12301f;
+    --chip-success-fg: #6ee7a0;
+    --chip-info-bg: #1e2147;
+    --chip-info-fg: #a5b4fc;
+    --chip-accent-bg: #2a1f4a;
+    --chip-accent-fg: #c4b5fd;
+    --chip-warning-bg: #3a2a0f;
+    --chip-warning-fg: #fcd34d;
+    --chip-danger-bg: #3d1717;
+    --chip-danger-fg: #fca5a5;
+    --chip-neutral-bg: #2a2a31;
+    --chip-neutral-fg: #b4b4bf;
+  }
+}
+.chip {
+  border: 0;
+  height: 22px;
+  line-height: 22px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-weight: var(--fw-medium);
+  background: var(--chip-neutral-bg);
+  color: var(--chip-neutral-fg);
+}
+.chip.tone-success { background: var(--chip-success-bg); color: var(--chip-success-fg); }
+.chip.tone-info { background: var(--chip-info-bg); color: var(--chip-info-fg); }
+.chip.tone-accent { background: var(--chip-accent-bg); color: var(--chip-accent-fg); } /* fixed meaning colour (new / highlighted) — never follows the theme */
+.chip.tone-warning { background: var(--chip-warning-bg); color: var(--chip-warning-fg); }
+.chip.tone-danger { background: var(--chip-danger-bg); color: var(--chip-danger-fg); }
+.chip.tone-neutral { background: var(--chip-neutral-bg); color: var(--chip-neutral-fg); }
+:root[data-theme='dark'] .chip { background: var(--chip-neutral-bg); }
+:root[data-theme='dark'] .chip.tone-success { background: var(--chip-success-bg); }
+:root[data-theme='dark'] .chip.tone-info { background: var(--chip-info-bg); }
+:root[data-theme='dark'] .chip.tone-accent { background: var(--chip-accent-bg); }
+:root[data-theme='dark'] .chip.tone-warning { background: var(--chip-warning-bg); }
+:root[data-theme='dark'] .chip.tone-danger { background: var(--chip-danger-bg); }
+
+/* ---------- Links look like hyperlinks: always underlined (soft underline, solid on hover) ---------- */
+.rel-link,
+.grid .rel-link,
+.id-link {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--s-accent-text) 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.rel-link:hover,
+.grid .rel-link:hover,
+.id-link:hover {
+  text-decoration-color: currentColor;
+}
+.rel-link .value-icon {
+  text-decoration: none;
+}
+
+/* ---------- Value icons (📞 ✉ 👤 🚪 📅 ⏱) are lighter; the Actions column icons are unchanged ---------- */
+.value-icon,
+.masked-kind {
+  color: color-mix(in srgb, var(--s-text) 32%, var(--s-panel));
+}
+
+/* ---------- Filters / Columns buttons use the same grey text as the view tabs ---------- */
+.view-tools-row .btn {
+  color: var(--s-text-secondary);
+}
+.view-tools-row .btn:hover,
+.view-tools-row .btn.is-open {
+  color: var(--s-text);
+}
+
+/* underline must sit on the link TEXT: text-decoration does not carry into an inline-flex icon+text group */
+.rel-link .value-text,
+.rel-link .person-name {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--s-accent-text) 40%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.rel-link:hover .value-text,
+.rel-link:hover .person-name {
+  text-decoration-color: currentColor;
+}
+
+/* Links (owner rule, final): accent colour always; the underline appears ONLY on hover / keyboard focus */
+.rel-link,
+.grid .rel-link,
+.id-link,
+.rel-link .value-text,
+.rel-link .person-name {
+  text-decoration: none;
+}
+.rel-link:hover .value-text,
+.rel-link:hover .person-name,
+.rel-link:focus-visible .value-text,
+.rel-link:hover:not(:has(.value-text, .person-name)),
+.id-link:hover,
+.id-link:focus-visible {
+  text-decoration: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Attio-style value chips ---------- */
+/* "domain" style — non-status choice values (Type, Booked via, Payer, Visit mode…): outlined accent pill */
+.ref-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--s-accent) 28%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--s-accent) 4%, var(--s-panel));
+  color: var(--s-accent-text);
+  font-size: var(--fs-supportive);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* "associated" style — multi-value tags (working days, access needs…): outlined grey chip with a small dot-icon */
+.tag.assoc-chip {
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  border: 1px solid var(--s-border);
+  border-radius: 6px;
+  background: var(--s-panel);
+  color: var(--s-text);
+  font-weight: 400;
+}
+.tag.assoc-chip::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--s-text) 18%, var(--s-panel));
+  box-shadow: inset 0 0 0 2px var(--s-panel), 0 0 0 1px color-mix(in srgb, var(--s-text) 18%, var(--s-panel));
+  flex: none;
+}
+.overflow-chips--accent .tag.assoc-chip {
+  border-color: color-mix(in srgb, var(--s-accent) 28%, transparent);
+  color: var(--s-accent-text);
+}
+
+/* ---------- Light trailing icons (👁 reveal, 🔒, copy) — Actions column unchanged ---------- */
+.masked-toggle,
+.masked-lock,
+.cell-trail {
+  color: color-mix(in srgb, var(--s-text) 32%, var(--s-panel));
+}
+.masked-toggle:hover,
+.cell-trail:hover {
+  color: var(--s-text);
+}
+
+/* Trailing icon stays close to the value even in wide columns, and still lines up:
+   the value gets a fixed width per kind (mono font), so every 👁 sits at the same x */
+.grid .cell:has(> .masked) {
+  width: auto;
+  max-width: 100%;
+}
+.grid .masked {
+  width: auto;
+  max-width: 100%;
+}
+.grid .masked[data-kind='phone'] .masked-value {
+  flex: 0 1 17ch;
+  width: 17ch;
+}
+.grid .masked[data-kind='email'] .masked-value {
+  flex: 0 1 26ch;
+  width: 26ch;
+}
+.grid .masked-toggle,
+.grid .masked-lock {
+  margin-left: 6px;
+}
+.grid .cell:has(> .id-cell) {
+  width: auto;
+}
+.id-cell {
+  width: auto;
+}
+.id-link {
+  min-width: 9ch;
+}
+.id-cell .cell-trail {
+  margin-left: 4px;
+}
+
+/* ---------- Toasts sit above the frozen pagination footer, fully readable ---------- */
+.toasts {
+  bottom: 72px;
+}
+.toast {
+  background: var(--s-panel);
+  color: var(--s-text);
+  box-shadow: 0 10px 30px rgba(20, 20, 30, 0.18), 0 1px 3px rgba(20, 20, 30, 0.1);
+}
+
+/* ---------- One checkbox everywhere: tables, Columns panel, Filters, dropdowns, forms ---------- */
+input[type='checkbox']:not([role='switch']) {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid color-mix(in srgb, var(--s-text) 22%, var(--s-panel));
+  border-radius: 5px;
+  background: var(--s-panel) center / 11px 11px no-repeat;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background-color 140ms var(--ease), border-color 140ms var(--ease), transform 140ms var(--ease);
+}
+input[type='checkbox']:not([role='switch']):hover {
+  border-color: var(--s-accent);
+}
+input[type='checkbox']:not([role='switch']):checked {
+  border-color: var(--s-accent);
+  background-color: var(--s-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+input[type='checkbox']:not([role='switch']):indeterminate {
+  border-color: var(--s-accent);
+  background-color: var(--s-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 6h6' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+input[type='checkbox']:not([role='switch']):active {
+  transform: scale(0.92);
+}
+input[type='checkbox']:not([role='switch']):focus-visible {
+  outline: 2px solid var(--s-focus);
+  outline-offset: 2px;
+}
+/* dropdown (MultiSelectMenu) boxes look identical */
+.multi-box {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid color-mix(in srgb, var(--s-text) 22%, var(--s-panel));
+  border-radius: 5px;
+}
+.multi-box svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2.4;
+}
+
+/* In-cell icons (✎ edit, copy, 👁 reveal): NO box on hover — only the icon darkens (owner rule) */
+.cell-edit,
+.cell-edit:hover,
+.cell-trail,
+.cell-trail:hover,
+.masked-toggle,
+.masked-toggle:hover {
+  background: transparent !important;
+}
+.cell-edit:hover,
+.cell-trail:hover,
+.masked-toggle:hover {
+  color: var(--s-text);
+}
+.cell-edit:focus-visible,
+.cell-trail:focus-visible,
+.masked-toggle:focus-visible {
+  outline: 2px solid var(--s-focus);
+  outline-offset: 1px;
+}
+
+/* ---------- Meaningful value chips: outlined, coloured by the value's own meaning (tone) ---------- */
+.ref-chip {
+  border-color: color-mix(in srgb, var(--ref-fg) 30%, transparent);
+  background: color-mix(in srgb, var(--ref-fg) 6%, var(--s-panel));
+  color: var(--ref-fg);
+}
+.ref-chip.tone-neutral { --ref-fg: var(--chip-neutral-fg); }
+.ref-chip.tone-info { --ref-fg: var(--chip-info-fg); }
+.ref-chip.tone-success { --ref-fg: var(--chip-success-fg); }
+.ref-chip.tone-warning { --ref-fg: var(--chip-warning-fg); }
+.ref-chip.tone-danger { --ref-fg: var(--chip-danger-fg); }
+.ref-chip.tone-accent { --ref-fg: var(--chip-accent-fg); }
+
+/* ---------- Hyperlinks are always BLUE (independent of the colour theme) ---------- */
+:root {
+  --c-link: #2557d6;
+}
+:root[data-theme='dark'] {
+  --c-link: #8ab4ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --c-link: #8ab4ff;
+  }
+}
+.rel-link,
+.grid .rel-link,
+.grid .rel-link:hover,
+.rel-link:hover,
+.id-link {
+  color: var(--c-link);
+}
+
+/* ---------- Contact values: show the whole value when the column is wide; icons still line up ---------- */
+.grid .masked[data-kind='phone'] .masked-value {
+  flex: 0 1 auto;
+  width: 17ch;
+  min-width: 0;
+}
+.grid .masked[data-kind='email'] .masked-value {
+  flex: 0 1 auto;
+  width: 31ch;
+  min-width: 0;
+}
+.grid .masked-toggle,
+.grid .masked-lock {
+  flex: none;
+}
+
+/* ---------- ✎ inline edit: only for the hovered CELL, and the text makes room for it (no overlap) ---------- */
+tr:hover .cell-edit {
+  opacity: 0;
+}
+td.is-editable:hover .cell-edit,
+.cell-edit:focus-visible {
+  opacity: 1;
+}
+td.is-editable:hover > .cell {
+  padding-right: 24px;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* Icon rail: slightly larger icons */
+.rail-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Field icons only show in the canvas layout */
+.field-icon {
+  display: none;
+}
+.form-layout-switch {
+  margin-left: auto;
+  flex: none;
+}
+.form-layout-switch .seg-btn {
+  padding: 3px 12px;
+}
+
+/* ---------- Canvas form layout (add / edit drawers): big title + icon · label | value rows ---------- */
+.form-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.canvas-title {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  padding: 4px 0 14px;
+  font-size: 24px;
+  font-weight: var(--fw-semibold);
+  color: var(--s-text);
+}
+.canvas-title::placeholder {
+  color: color-mix(in srgb, var(--s-text) 28%, var(--s-panel));
+}
+.canvas-title.is-invalid {
+  box-shadow: inset 0 -2px 0 var(--s-danger);
+}
+.canvas-rows {
+  display: flex;
+  flex-direction: column;
+}
+.form-canvas .form-field {
+  display: grid;
+  grid-template-columns: minmax(130px, 36%) 1fr;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  min-height: 48px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--s-border);
+}
+.form-canvas .form-field.span-2 {
+  grid-template-columns: 1fr;
+  padding: 10px 0;
+}
+.form-canvas .field-label-row,
+.form-canvas .form-field > .field-label {
+  min-height: 0;
+}
+.form-canvas .field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--s-text-secondary);
+  font-weight: 400;
+}
+.form-canvas .field-icon {
+  display: inline-block;
+  flex: none;
+  color: color-mix(in srgb, var(--s-text) 45%, var(--s-panel));
+}
+.form-canvas .optional {
+  display: none;
+}
+.form-canvas .field-error {
+  grid-column: 2;
+}
+.form-canvas .form-field.span-2 .field-error {
+  grid-column: 1;
+}
+/* controls look like plain values until hovered / focused */
+.form-canvas .input,
+.form-canvas .select-menu-trigger,
+.form-canvas .textarea {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.form-canvas .input:hover,
+.form-canvas .select-menu-trigger:hover {
+  background: var(--c-grid-row-hover-bg);
+}
+.form-canvas .input:focus,
+.form-canvas .select-menu-trigger.is-open,
+.form-canvas .select-menu-trigger:focus-visible {
+  border-color: var(--s-focus);
+  background: var(--s-panel);
+}
+.form-canvas .has-error .input,
+.form-canvas .has-error .select-menu-trigger {
+  border-color: var(--s-danger);
+}
+.form-canvas .textarea {
+  border-color: var(--s-border);
+}
+
+/* Simple | Canvas switch: vertically centred with the drawer title, same 32px height as other compact controls */
+.dialog-header .form-layout-switch {
+  align-self: center;
+  height: var(--c-control-h-compact);
+  box-sizing: border-box;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.dialog-header .form-layout-switch .seg-btn {
+  display: inline-flex;
+  align-items: center;
+  height: auto;
+  padding: 0 12px;
+}
+.drawer > .dialog-header {
+  gap: 12px;
+}
+
+/* Wizard step rail centred in the dialog */
+.wizard-steps {
+  justify-content: center;
+}
+/* Popups (dialogs, drawers): at most 2 fields per line */
+.dialog .form-grid,
+.drawer .form-grid {
+  grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - var(--sp-4)) / 2)), 1fr));
+}
+
+/* Rail icons: 18px (a little smaller than before) */
+.rail-item svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Canvas: only long text / line items stack; multi-selects & people stay label | value */
+.form-canvas .form-field.span-2:not([data-type='longtext']):not([data-type='lineitems']) {
+  grid-template-columns: minmax(130px, 36%) 1fr;
+  padding: 4px 0;
+}
+
+/* Header: column-type icon at the right end of the title cell */
+.grid th .th-btn,
+.grid th .th-static {
+  display: flex;
+  width: 100%;
+}
+.th-type-right {
+  margin-left: auto;
+  margin-right: 8px;
+  color: color-mix(in srgb, var(--s-text) 30%, var(--s-panel));
+}
+
+/* ClickUp-style inline editing: hover outlines the cell, one click edits; caret for choices, pencil for text */
+.grid td.is-editable {
+  cursor: pointer;
+}
+.grid td.is-editable:hover:not(.is-editing) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--s-text) 18%, var(--s-panel));
+  border-radius: 4px;
+}
+
+
+/* Record drawer: ‹ › before the title; action icons on the "ID · Updated · version" line */
+.inspector-nav {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 6px;
+  flex: none;
+}
+.inspector-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.inspector-subrow .inspector-sub {
+  margin: 0;
+}
+.inspector-icon-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.inspector-icon-actions .is-primary-action {
+  color: var(--s-accent-text);
+  background: var(--s-accent-subtle);
+}
+.inspector-icon-actions .is-primary-action:hover {
+  background: var(--s-selected);
+}
+
+/* Toolbar buttons (Export, Quick add, New …, Filters, Columns icon): same neutral look, slightly stronger border */
+.view-tabs-row .btn,
+.view-tools-row .btn,
+.view-tools-row .tools-icon-btn {
+  border: 1.5px solid color-mix(in srgb, var(--s-text) 16%, var(--s-panel));
+  background: var(--s-panel);
+}
+.view-tools-row .tools-icon-btn {
+  width: var(--c-control-h-compact);
+  height: var(--c-control-h-compact);
+  border-radius: var(--c-radius-control);
+  color: var(--s-text-secondary);
+}
+.view-tools-row .tools-icon-btn:hover,
+.view-tools-row .tools-icon-btn.is-open {
+  color: var(--s-text);
+  background: var(--s-hover);
+}
+
+/* Tabs: a little closer together, no ⋮ */
+.viewbar-tabs {
+  gap: 4px;
+}
+.view-tab-btn {
+  padding: 0 8px;
+}
+
+/* Drawer / popup header switches */
+.form-header-switches {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: none;
+}
+.form-header-switches .form-layout-switch {
+  margin-left: 0;
+}
+.form-header-switches .seg-btn {
+  gap: 6px;
+}
+.dialog .dialog-header {
+  align-items: center;
+}
+
+/* Canvas: label (icon + text) never stacks */
+.form-canvas .field-label {
+  flex-wrap: nowrap;
+}
+/* the spacer must grow (".view-tools > *" sets flex: none) so the Columns icon sits at the far right */
+.view-tools-row > .spacer {
+  flex: 1 1 auto;
+}
+
+/* ---------- Full-page forms (invoice add & edit): form card + live summary card ---------- */
+.page-back {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--s-text-secondary);
+  cursor: pointer;
+}
+.page-back:hover {
+  background: var(--s-hover);
+  color: var(--s-text);
+}
+.fp-page {
+  background: var(--s-canvas);
+  min-height: 100%;
+}
+.fp-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+  max-width: 1320px;
+}
+@media (max-width: 1100px) {
+  .fp-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.fp-main.panel,
+.fp-summary.panel {
+  border: 1px solid var(--s-border);
+  border-radius: 14px;
+  background: var(--s-panel);
+  box-shadow: 0 1px 2px rgba(20, 20, 30, 0.04);
+}
+.fp-main.panel {
+  padding: 22px 24px;
+}
+.fp-main .form-grid {
+  grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - 2 * var(--sp-4)) / 3)), 1fr));
+}
+.fp-main .form-field[data-type='lineitems'] > .field-label-row .field-label {
+  font-size: var(--fs-secondary);
+  font-weight: var(--fw-semibold);
+}
+.fp-main .form-field[data-type='lineitems'] {
+  padding-top: 14px;
+  margin-top: 4px;
+  border-top: 1px solid var(--s-border);
+}
+.fp-main .full-form-bar {
+  border-top: 0;
+  padding-top: 16px;
+}
+/* leading icons inside selects show in full-page forms */
+.trigger-icon {
+  display: none;
+  flex: none;
+  color: color-mix(in srgb, var(--s-text) 40%, var(--s-panel));
+}
+.fp-main .trigger-icon {
+  display: inline-block;
+}
+.fp-main .select-menu-trigger {
+  gap: 8px;
+  justify-content: flex-start;
+}
+.fp-main .select-menu-trigger > .select-menu-value {
+  flex: 1;
+  text-align: left;
+}
+/* line items: bordered card with a tinted header row and a ⋯ per row */
+.fp-main .line-items .table-scroll,
+.line-items .table-scroll {
+  border: 1px solid var(--s-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.li-table thead th {
+  background: var(--s-canvas);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: var(--fw-medium);
+  color: var(--s-text);
+  border-bottom: 1px solid var(--s-border);
+}
+.li-table td {
+  padding: 8px 12px;
+}
+.li-table td.li-actions {
+  width: 44px;
+  text-align: center;
+}
+.li-table tfoot td {
+  border-top: 0;
+  padding: 10px 12px 14px;
+}
+/* summary card */
+.fp-summary {
+  position: sticky;
+  top: 12px;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.fp-summary > .chip {
+  align-self: flex-start;
+}
+.fp-summary-title {
+  margin: 0;
+  font-size: var(--fs-secondary);
+  font-weight: var(--fw-semibold);
+}
+.fp-sum-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fp-sum-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-supportive);
+}
+.fp-sum-row dt {
+  color: var(--s-text-secondary);
+}
+.fp-sum-row dd {
+  margin: 0;
+  text-align: right;
+}
+.fp-sum-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--s-border);
+  font-size: var(--fs-supportive);
+}
+.fp-sum-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.fp-sum-item > span:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fp-sum-totals {
+  padding-top: 14px;
+  border-top: 1px solid var(--s-border);
+}
+.fp-sum-total {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 14px;
+  border-top: 1px solid var(--s-border);
+  font-size: var(--fs-secondary);
+  font-weight: var(--fw-semibold);
+}
+.fp-sum-note {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--s-accent-subtle);
+  color: var(--s-accent-text);
+  font-size: var(--fs-supportive);
+}
+.fp-sum-note > span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fp-sum-note > span > span {
+  color: var(--s-text-secondary);
+}
+
+/* ---------- Inline cell editor look (owner reference): soft rounded box with a blue focus border ---------- */
+.inline-editor .input,
+.inline-editor .select-menu-trigger,
+.inline-editor .date-trigger {
+  height: 32px;
+  border: 1.5px solid color-mix(in srgb, var(--c-link) 55%, var(--s-panel));
+  border-radius: 8px;
+  background: var(--s-panel);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-link) 12%, transparent);
+}
+.inline-editor .input:focus {
+  outline: none;
+  border-color: var(--c-link);
+}
+.grid td.is-editing {
+  padding: 2px 6px !important;
+}
+
+/* ---------- Full-page spacing = list pages (same 12px/16px page padding, tighter cards) ---------- */
+.fp-page {
+  padding: 12px 16px 16px;
+}
+.fp-layout {
+  gap: 16px;
+  max-width: none;
+}
+.fp-main.panel {
+  padding: 18px 20px;
+}
+.fp-summary {
+  padding: 18px 20px;
+}
+.page-back {
+  width: 28px;
+  height: 28px;
+  margin-right: 2px;
+}
+
+/* ---------- Inline editing of a choice: a soft pill in the value's colour (owner "Warm" reference) ---------- */
+.inline-editor.is-pill .select-menu-trigger {
+  height: 28px;
+  width: auto;
+  max-width: 100%;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tone-fg) 12%, var(--s-panel));
+  box-shadow: none;
+  color: var(--tone-fg);
+  font-weight: var(--fw-medium);
+}
+.inline-editor.is-pill .select-menu-trigger::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.inline-editor.is-pill .select-menu-trigger svg {
+  opacity: 0.6;
+}
+.inline-editor.is-pill .trigger-icon {
+  display: none;
+}
+
+/* ---------- Full record page (owner reference): main card + right overview cards ---------- */
+.record-page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .record-page-layout {
+    grid-template-columns: 1fr;
+  }
+}
+.inspector-page {
+  max-width: none;
+  margin: 0;
+  border-radius: 14px;
+}
+.inspector-page .inspector-top {
+  display: none;
+}
+.inspector-page .inspector-header {
+  padding: 18px 20px 6px;
+}
+.inspector-page > .tabs {
+  padding: 0 20px;
+}
+.inspector-page .inspector-body {
+  padding: 8px 20px 16px;
+}
+.inspector-page .inspector-actions {
+  align-items: center;
+}
+.inspector-edit-btn {
+  margin-left: auto;
+}
+.detail-icon {
+  display: none;
+  flex: none;
+  color: color-mix(in srgb, var(--s-text) 38%, var(--s-panel));
+}
+.inspector-page .detail-icon {
+  display: inline-block;
+}
+.inspector-page .detail-row dt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inspector-page .detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+  row-gap: 12px;
+}
+.inspector-page .detail-row {
+  grid-template-columns: minmax(120px, 42%) 1fr;
+}
+.record-page-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid var(--s-border);
+}
+.record-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.rs-card.panel {
+  padding: 16px 18px;
+  border: 1px solid var(--s-border);
+  border-radius: 14px;
+  background: var(--s-panel);
+}
+.rs-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: var(--fs-secondary);
+  font-weight: var(--fw-semibold);
+}
+.rs-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rs-head h2 {
+  margin: 0;
+}
+.rs-when {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+.rs-when > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: var(--fw-medium);
+}
+.rs-icon {
+  flex: none;
+  color: color-mix(in srgb, var(--s-text) 40%, var(--s-panel));
+  margin-top: 2px;
+}
+.rs-sub {
+  font-size: var(--fs-supportive);
+  font-weight: 400;
+}
+.rs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rs-list > li + li {
+  border-top: 1px solid var(--s-border);
+}
+.rs-person,
+.rs-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  text-decoration: none;
+  color: var(--s-text);
+}
+.rs-person > span,
+.rs-item > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.rs-link {
+  color: var(--c-link);
+}
+.rs-person:hover .rs-link {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.rs-chev {
+  align-self: center;
+  color: var(--s-text-muted);
+}
+.rs-card .quick-comment {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+.rs-item .ref-chip,
+.rs-item .chip {
+  align-self: flex-start;
+}
+.rs-when .rs-time {
+  font-weight: var(--fw-medium);
+}
+
+/* ---------- Choice cells behave like a dropdown chip ("Warm ⌄"): no cell box, the chip itself grows a caret ---------- */
+.grid td.is-choice:hover:not(.is-editing) {
+  box-shadow: none;
+}
+.grid td.is-choice .cell-edit {
+  display: none;
+}
+.grid td.is-choice .chip,
+.grid td.is-choice .ref-chip,
+.inline-editor.is-pill .select-menu-trigger {
+  border-radius: 999px;
+}
+.grid td.is-choice:hover .chip,
+.grid td.is-choice:hover .ref-chip {
+  padding-right: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+  background-size: 12px 12px;
+  cursor: pointer;
+}
+/* plain-text choice values (no chip) show the caret after the text on hover */
+.grid td.is-choice:hover .cell > span:not(.chip):not(.ref-chip):only-child::after {
+  content: ' ⌄';
+  color: var(--s-text-muted);
+}
+/* the open editor keeps exactly the chip's colours (outlined chips stay outlined) */
+.inline-editor.is-pill .select-menu-trigger {
+  border: 1px solid color-mix(in srgb, var(--tone-fg) 28%, transparent);
+}
+
+/* ---------- Full pages use the whole width; each column scrolls on its own ---------- */
+.fp-page,
+.page:has(> .record-page) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 12px 16px 12px;
+}
+.fp-layout,
+.record-page,
+.record-page-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+.record-page {
+  display: flex;
+  flex-direction: column;
+}
+.fp-layout,
+.record-page-layout {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  align-items: stretch;
+  max-width: none;
+}
+.fp-main,
+.record-page-layout > .inspector-page {
+  min-height: 0;
+  overflow-y: auto;
+}
+.fp-summary,
+.record-side {
+  position: static;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.record-side {
+  padding-right: 2px;
+}
+.fp-summary {
+  align-self: start;
+  max-height: 100%;
+}
+/* actions card */
+.rs-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rs-actions .inspector-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0;
+}
+.rs-actions .inspector-actions > .btn {
+  justify-content: flex-start;
+  width: 100%;
+}
+.rs-actions .inspector-edit-btn {
+  margin-left: 0;
+}
+.rs-actions .inspector-actions > .icon-btn {
+  align-self: flex-start;
+}
+@media (max-width: 1100px) {
+  .fp-page,
+  .page:has(> .record-page) {
+    height: auto;
+    overflow: visible;
+  }
+}
+
+/* ---------- Inline choice editor keeps EXACTLY the chip's colours (no re-tint) ---------- */
+.inline-editor.is-pill.tone-neutral { --ref-fg: var(--chip-neutral-fg); --pill-bg: var(--chip-neutral-bg); }
+.inline-editor.is-pill.tone-info { --ref-fg: var(--chip-info-fg); --pill-bg: var(--chip-info-bg); }
+.inline-editor.is-pill.tone-success { --ref-fg: var(--chip-success-fg); --pill-bg: var(--chip-success-bg); }
+.inline-editor.is-pill.tone-warning { --ref-fg: var(--chip-warning-fg); --pill-bg: var(--chip-warning-bg); }
+.inline-editor.is-pill.tone-danger { --ref-fg: var(--chip-danger-fg); --pill-bg: var(--chip-danger-bg); }
+.inline-editor.is-pill.tone-accent { --ref-fg: var(--chip-accent-fg); --pill-bg: var(--chip-accent-bg); }
+/* outlined value chips (type, payer…) */
+.inline-editor.is-pill .select-menu-trigger {
+  color: var(--ref-fg);
+  background: color-mix(in srgb, var(--ref-fg) 6%, var(--s-panel));
+  border: 1px solid color-mix(in srgb, var(--ref-fg) 30%, transparent);
+}
+/* filled status chips */
+.inline-editor.is-pill.is-status .select-menu-trigger {
+  background: var(--pill-bg);
+  border-color: transparent;
+}
+/* relations / dates: same rounded pill shape, neutral */
+.inline-editor.is-pill-plain .select-menu-trigger,
+.inline-editor.is-pill-plain .date-trigger {
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--s-text) 18%, var(--s-panel));
+  background: var(--s-panel);
+  box-shadow: none;
+  padding: 0 10px;
+}
+
+/* ---------- Actions card: two buttons per line ---------- */
+.rs-actions .inspector-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.rs-actions .inspector-actions > .btn {
+  justify-content: center;
+  min-width: 0;
+}
+.rs-actions .inspector-actions > .btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rs-actions .inspector-actions > .icon-btn {
+  justify-self: start;
+}
+.rs-actions .inspector-edit-btn {
+  border: 1px solid var(--s-border-strong);
+  background: var(--s-panel);
+}
+
+/* ---------- Rounded pill everywhere in inline editing (owner reference) ---------- */
+/* hover on any editable cell: a pill outline hugs the value (no square cell box) */
+.grid td.is-editable:hover:not(.is-editing) {
+  box-shadow: none;
+  border-radius: 0;
+}
+.grid td.is-editable:not(.is-choice):hover:not(.is-editing) > .cell {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--s-text) 20%, var(--s-panel));
+  border-radius: 999px;
+  padding: 3px 26px 3px 10px;
+  margin: -3px -10px;
+  max-width: calc(100% + 20px);
+  box-sizing: border-box;
+}
+.grid td.is-editable:not(.is-choice):hover > .cell .cell-edit {
+  right: 6px;
+}
+/* open text/number editor = rounded pill too */
+.inline-editor .input {
+  border-radius: 999px;
+  padding: 0 12px;
+  height: 30px;
+}
+/* choice chip caret on hover: a real flex item so it never overlaps the text */
+.grid td.is-choice:hover .chip,
+.grid td.is-choice:hover .ref-chip {
+  background-image: none;
+  padding-right: 8px;
+  gap: 4px;
+}
+.grid td.is-choice:hover .ref-chip.tone-neutral,
+.grid td.is-choice:hover .ref-chip {
+  background-color: color-mix(in srgb, var(--ref-fg) 6%, var(--s-panel));
+}
+.grid td.is-choice .chip::after,
+.grid td.is-choice .ref-chip::after {
+  content: '';
+  display: none;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  opacity: 0.75;
+}
+.grid td.is-choice:hover .chip::after,
+.grid td.is-choice:hover .ref-chip::after {
+  display: inline-block;
+}
+.grid td.is-choice .chip,
+.grid td.is-choice .ref-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+.grid td.is-editable:not(.is-choice):hover:not(.is-editing) > .cell {
+  position: relative;
+  padding-right: 28px;
+}
+.grid td.is-editable:not(.is-choice):hover > .cell .cell-edit {
+  right: 6px;
+  top: 50%;
+}
+
+/* scroll containers are the containing block for their screen-reader-only children (prevents a phantom page scroll) */
+.canvas,
+.fp-main,
+.fp-summary,
+.record-side,
+.record-page-layout > .inspector-page,
+.inspector-body {
+  position: relative;
+}
+/* invoice form card hugs its content (no stretched empty card); scrolls only when taller than the screen */
+.fp-main {
+  align-self: start;
+  max-height: 100%;
+}
+
+/* dropdown search box: fully rounded, same radius as the inline pills */
+.select-menu-search,
+.multi-search {
+  border-radius: 999px !important;
+}
+.multi-search {
+  margin: 4px 4px 6px;
+  border: 1px solid var(--s-border-strong);
+  padding: 0 12px;
+}
+
+/* inline editor pill = the exact size of the chip / hover pill, and it morphs smoothly (no jump) */
+.inline-editor.is-pill .select-menu-trigger {
+  height: 22px;
+  padding: 0 9px;
+  font-size: var(--fs-supportive);
+  line-height: 22px;
+}
+.inline-editor.is-pill .select-menu-trigger::before {
+  width: 7px;
+  height: 7px;
+}
+.inline-editor.is-pill-plain .select-menu-trigger,
+.inline-editor.is-pill-plain .date-trigger,
+.inline-editor .input {
+  height: 26px;
+}
+.inline-editor .select-menu-trigger,
+.inline-editor .date-trigger,
+.inline-editor .input,
+.grid td .chip,
+.grid td .ref-chip,
+.grid td.is-editable > .cell {
+  transition: padding 160ms var(--ease), box-shadow 160ms var(--ease), background-color 160ms var(--ease), height 160ms var(--ease);
+}
+.inline-editor {
+  animation: pill-in 160ms var(--ease);
+}
+@keyframes pill-in {
+  from {
+    opacity: 0.6;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inline-editor {
+    animation: none;
+  }
+}
+/* dropdown lists: one line per option, wide enough for names */
+.select-menu-pop {
+  min-width: 240px;
+}
+.select-menu-option {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Owner correction: inline-editing shapes use the SEARCH box shape (rounded rectangle), no dot ---------- */
+.select-menu-search,
+.multi-search {
+  border-radius: var(--c-radius-control) !important; /* reverted from the full pill */
+}
+.grid td.is-editable:not(.is-choice):hover:not(.is-editing) > .cell,
+.inline-editor .input,
+.inline-editor .select-menu-trigger,
+.inline-editor .date-trigger,
+.inline-editor.is-pill .select-menu-trigger,
+.inline-editor.is-pill-plain .select-menu-trigger,
+.inline-editor.is-pill-plain .date-trigger,
+.grid td.is-choice .chip,
+.grid td.is-choice .ref-chip {
+  border-radius: var(--c-radius-control);
+}
+.inline-editor.is-pill .select-menu-trigger::before {
+  display: none;
+}
+
+/* ---------- Filter panel (owner reference "Create view" style): icon + label | control rows ---------- */
+.qf-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 12px;
+}
+.qf-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--s-border);
+  font-size: var(--fs-secondary);
+}
+.qf-rows .qf-field {
+  display: grid;
+  grid-template-columns: minmax(120px, 42%) 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.qf-rows .qf-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--s-text-secondary);
+  font-size: var(--fs-supportive);
+}
+.qf-icon {
+  flex: none;
+  color: color-mix(in srgb, var(--s-text) 40%, var(--s-panel));
+}
+.qf-sub {
+  margin-top: 6px;
+  color: var(--s-text-secondary);
+  font-size: var(--fs-supportive);
+}
+.qf-conds {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--s-border);
+  border-radius: 12px;
+}
+.qf-match {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--s-border);
+  border-radius: 10px;
+  font-size: var(--fs-supportive);
+}
+.qf-and {
+  padding: 2px 14px;
+  border: 1px solid var(--s-border-strong);
+  border-radius: 8px;
+  font-weight: var(--fw-medium);
+}
+.qf-match .qf-advanced {
+  margin-left: auto;
+}
+.qf-empty {
+  margin: 4px 2px;
+  font-size: var(--fs-supportive);
+}
+.qf-addfilter {
+  align-self: flex-start;
+}
+.qf-conds .filter-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 28px;
+  gap: 6px;
+  align-items: center;
+}
+.qf-foot .qf-clear {
+  margin-right: auto;
+  color: var(--s-text-secondary);
+}
+.qf-foot {
+  display: flex !important;
+  gap: 8px;
+}
+.qf-foot .btn {
+  width: auto !important;
+}
+
+/* hover outline must stay INSIDE the cell (it was clipped at the left edge) */
+.grid td.is-editable:not(.is-choice):hover:not(.is-editing) > .cell {
+  margin: -3px -6px;
+  padding: 3px 28px 3px 6px;
+  max-width: calc(100% + 12px);
+}
+
+/* Record page: compact spacing like the tables; ⋯ in the Actions card header (top-right) */
+.rs-card:has(#record-actions-slot) {
+  position: relative;
+}
+.rs-actions .inspector-actions > .icon-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+.inspector-page .detail-section + .detail-section {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.inspector-page .detail-section-title {
+  margin-bottom: 6px;
+}
+.inspector-page .detail-list {
+  row-gap: 6px;
+}
+.inspector-page .detail-row {
+  min-height: 30px;
+  align-items: center;
+}
+.inspector-page .inspector-header {
+  padding: 14px 20px 4px;
+}
+.inspector-page .inspector-body {
+  padding-top: 6px;
+}
+.rs-card.panel {
+  padding: 14px 16px;
+}
+.rs-card h2 {
+  margin-bottom: 8px;
+}
+.rs-person,
+.rs-item {
+  padding: 7px 0;
+}
+.record-side {
+  gap: 12px;
+}
+.record-page-layout {
+  gap: 12px;
+}
+
+/* Full record page details (owner reference): 4-column grid, small uppercase label ABOVE the value, no icons */
+.inspector-page .detail-list {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  column-gap: 24px;
+  row-gap: 14px;
+}
+.inspector-page .detail-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 0;
+}
+.inspector-page .detail-row dt {
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--s-text-muted);
+}
+.inspector-page .detail-icon {
+  display: none;
+}
+.inspector-page .detail-row dd {
+  font-size: var(--fs-secondary);
+  color: var(--s-text);
+}
+@media (min-width: 1300px) {
+  .inspector-page .detail-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+/* record page details: keep the normal 13px value size, and long values never spill into the next column */
+.inspector-page .detail-row {
+  min-width: 0;
+}
+.inspector-page .detail-row dd {
+  font-size: var(--fs-supportive);
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.inspector-page .detail-row dd .masked {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+}
+.inspector-page .detail-row dd .masked-value,
+.inspector-page .detail-row dd .value-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-page .detail-row dd .masked-toggle,
+.inspector-page .detail-row dd .masked-lock {
+  flex: none;
+}
+.inspector-page .detail-row dt {
+  letter-spacing: 0.04em;
+}
+/* contact values and long text get two columns so they show in full */
+.inspector-page .detail-row[data-type='email'],
+.inspector-page .detail-row[data-type='phone'],
+.inspector-page .detail-row[data-type='longtext'] {
+  grid-column: span 2;
+}
+/* record page: clear gap between a section title (PROFILE) and its first field labels */
+.inspector-page .detail-section-title {
+  margin-bottom: 14px;
+}
+.inspector-page .detail-section + .detail-section {
+  margin-top: 14px;
+  padding-top: 14px;
+}
+/* long chips: the label truncates, the caret stays visible */
+.chip,
+.ref-chip {
+  min-width: 0;
+  overflow: hidden;
+}
+.chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.grid td.is-choice .chip::after,
+.grid td.is-choice .ref-chip::after {
+  flex: none;
+}
+/* links in tables can be text-selected (dragging selects text instead of dragging the link) */
+.grid a,
+.grid .rel-link {
+  -webkit-user-drag: none;
+  user-select: text;
 }

@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import type { FieldDefinition, RecordData, ResourceDefinition } from '../../metadata/types';
-import { relativeTime } from '../../lib/dates';
+import { formatTime, relativeTime } from '../../lib/dates';
 import { cx, formatMoney } from '../../lib/format';
 import { recordPagePath, recordPeekPath } from '../../lib/routes';
 import { type Actor, canReadResource, perm } from '../../services/authz';
@@ -22,6 +22,8 @@ import { ConflictPanel, FormBody, QuickCreateDialog, useRecordForm, useUnsavedGu
 import { QuickComment } from './QuickComment';
 import { InfoTip } from '../primitives/InfoTip';
 import { DateText, EmptyValue } from '../primitives/display';
+import { Icon } from '../primitives/Icon';
+import { fieldIcon } from './fieldIcon';
 
 type Tab = 'details' | 'related' | 'activity' | 'comments';
 
@@ -44,7 +46,7 @@ export function RecordInspector({
   const actor = useActor();
   const res = getResource(resKey);
   const [tab, setTab] = useState<Tab>('details');
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(variant === 'panel'); // record drawer opens wide by default (owner rule)
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
   const drawer = variant === 'panel';
@@ -81,6 +83,12 @@ export function RecordInspector({
       <div className="inspector-top">
         {/* Owner rule: record drawers open like the edit drawer — title in a top-bar-height header, no × (Cancel in the footer).
         {variant === 'panel' && <IconButton icon="x" label="Close inspector (Esc)" onClick={onClose} />} */}
+        {drawer && onNavigate && (
+          <span className="inspector-nav">
+            <IconButton icon="chevron-left" label="Previous record" disabledReason={prev ? undefined : 'First record in this view'} onClick={() => prev && onNavigate(prev)} />
+            <IconButton icon="chevron-right" label="Next record" disabledReason={next ? undefined : 'Last record in this view'} onClick={() => next && onNavigate(next)} />
+          </span>
+        )}
         {drawer && projected && (
           <div className="inspector-top-title">
             <h2 className="inspector-title">{recordTitle(res.key, recordId, actor)}</h2>
@@ -89,7 +97,7 @@ export function RecordInspector({
         )}
         {!drawer && <span className="inspector-crumb muted">{res.labelPlural}</span>}
         {!drawer && <span className="spacer" />}
-        {onNavigate && (
+        {!drawer && onNavigate && (
           <>
             <IconButton icon="chevron-left" label="Previous record" disabledReason={prev ? undefined : 'First record in this view'} onClick={() => prev && onNavigate(prev)} />
             <IconButton icon="chevron-right" label="Next record" disabledReason={next ? undefined : 'Last record in this view'} onClick={() => next && onNavigate(next)} />
@@ -105,7 +113,7 @@ export function RecordInspector({
         </div>
       ) : (
         <>
-          <InspectorHeader res={res} actor={actor} p={projected} onEdit={() => (setTab('details'), setEditing(true))} editing={editing} onDeleted={onClose} hideTitle={drawer} editInFooter={drawer} />
+          <InspectorHeader res={res} actor={actor} p={projected} onEdit={() => (res.key === 'invoices' ? navigate(`${recordPagePath(actor.workspaceId, resKey, recordId)}/edit`) : (setTab('details'), setEditing(true)))} editing={editing} onDeleted={onClose} hideTitle={drawer} editInFooter={drawer} pageActions={variant === 'page'} />
           <Tabs<Tab>
             label="Record sections"
             value={tab}
@@ -124,7 +132,16 @@ export function RecordInspector({
             {tab === 'comments' && <CommentThread actor={actor} resKey={resKey} recordId={recordId} />}
           </div>
           {/* Exactly one composer, outside the tab panels — persists across all four tabs. */}
-          {!(drawer && editing) && <QuickComment key={`${resKey}:${recordId}`} actor={actor} resource={resKey} recordId={recordId} />}
+          {/* the full page shows the composer in its right-hand "Internal comments" card instead */}
+          {!(drawer && editing) && variant !== 'page' && <QuickComment key={`${resKey}:${recordId}`} actor={actor} resource={resKey} recordId={recordId} />}
+          {variant === 'page' && !editing && (
+            <footer className="record-page-foot">
+              <Button onClick={onClose}>Cancel</Button>
+              <Button icon="pencil" onClick={() => (res.key === 'invoices' ? navigate(`${recordPagePath(actor.workspaceId, resKey, recordId)}/edit`) : (setTab('details'), setEditing(true)))} disabledReason={projected.canUpdate ? undefined : `Read-only for ${actor.role.label}`}>
+                Edit
+              </Button>
+            </footer>
+          )}
         </>
       )}
       {drawer && !editing && (
@@ -140,7 +157,16 @@ export function RecordInspector({
     </aside>
   );
 
-  if (!drawer) return panel;
+  if (!drawer) {
+    if (variant !== 'page' || !projected) return panel;
+    // Full record page: main card + right-hand overview cards (owner reference)
+    return (
+      <div className="record-page-layout">
+        {panel}
+        <RecordSide res={res} actor={actor} p={projected} />
+      </div>
+    );
+  }
   return createPortal(
     <div className="overlay-scrim overlay-scrim-drawer" onMouseDown={(e) => e.target === e.currentTarget && !editing && onClose()}>
       {panel}
@@ -155,7 +181,12 @@ function PinButton({ actor, res, id }: { actor: Actor; res: ResourceDefinition; 
   return <IconButton icon={pinned ? 'pin-off' : 'pin'} label={pinned ? 'Unpin from sidebar' : 'Pin to sidebar'} pressed={pinned} onClick={() => togglePin(actor, `${id} · ${recordTitle(res.key, id, actor)}`.slice(0, 48), path)} />;
 }
 
-function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle, editInFooter }: { res: ResourceDefinition; actor: Actor; p: Projected; onEdit: () => void; editing: boolean; onDeleted: () => void; hideTitle?: boolean; editInFooter?: boolean }) {
+function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle, editInFooter, pageActions }: { res: ResourceDefinition; actor: Actor; p: Projected; onEdit: () => void; editing: boolean; onDeleted: () => void; hideTitle?: boolean; editInFooter?: boolean; pageActions?: boolean }) {
+  // Full page: the action buttons render inside the right-hand "Actions" card
+  const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (pageActions) setActionsSlot(document.getElementById('record-actions-slot'));
+  }, [pageActions]);
   const r = p.record;
   const toast = useToast();
   const [confirm, setConfirm] = useState<{ to: string; text: string; action: string } | null>(null);
@@ -188,6 +219,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
           {status && <StatusChip label={status.label} tone={status.tone} />}
         </div>
       )}
+      <div className={cx(editInFooter && 'inspector-subrow')}>
       <p className="inspector-sub">
         <span className="mono">{r.id}</span>
         <span aria-hidden="true"> · </span>
@@ -195,12 +227,30 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
         <span aria-hidden="true"> · </span>
         <span>v{r.version}</span>
       </p>
+      {editInFooter && !editing && (
+        // Drawer: workflow actions are icon buttons on the same line as "ID · Updated · version"
+        <div className="inspector-icon-actions">
+          {transitions.map((t, i) => (
+            <IconButton
+              key={t.to}
+              icon={actionIcon(t.action)}
+              label={t.action}
+              className={cx(i === 0 && !t.disabledReason && 'is-primary-action')}
+              disabledReason={t.disabledReason}
+              onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
+            />
+          ))}
+          {Actions && <Actions res={res} actor={actor} record={r} />}
+          <IconButton ref={moreRef} icon="more" label="More actions" aria-haspopup="menu" onClick={() => setMenuOpen((o) => !o)} />
+        </div>
+      )}
+      </div>
       {Banner && <Banner res={res} actor={actor} record={r} />}
-      {!editing && (
-        <div className="inspector-actions">
+      {!editing && !editInFooter && (actionsSlot ? actionsSlot && createPortal(<div className="inspector-actions">
           {transitions.map((t, i) => (
             <Button
               key={t.to}
+              icon={actionIcon(t.action)}
               variant={i === 0 && !t.disabledReason ? 'primary' : 'secondary'}
               disabledReason={t.disabledReason}
               onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
@@ -210,32 +260,54 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
           ))}
           {/* In drawers, Edit lives in the footer next to Cancel (owner rule) */}
           {!editInFooter && (
-            <Button icon="pencil" onClick={onEdit} disabledReason={p.canUpdate ? undefined : `Read-only for ${actor.role.label}`}>
+            <Button icon="pencil" variant="ghost" className="inspector-edit-btn" onClick={onEdit} disabledReason={p.canUpdate ? undefined : `Read-only for ${actor.role.label}`}>
               Edit
             </Button>
           )}
           {Actions && <Actions res={res} actor={actor} record={r} />}
-          <IconButton ref={moreRef} icon="more" label="More actions" aria-haspopup="menu" onClick={() => setMenuOpen(true)} />
-          <Menu
-            open={menuOpen}
-            onClose={() => setMenuOpen(false)}
-            anchor={moreRef}
-            label="More record actions"
-            items={[
-              {
-                id: 'copy',
-                label: 'Copy link',
-                icon: 'copy',
-                onSelect: () => {
-                  void navigator.clipboard?.writeText(window.location.origin + recordPeekPath(actor.workspaceId, res.key, r.id));
-                  toast('Link copied — opening it still requires access');
-                },
-              },
-              { id: 'delete', label: 'Delete', icon: 'trash', danger: true, separatorBefore: true, disabledReason: perm(actor, res.key).delete ? undefined : 'Your role cannot delete', onSelect: () => setDeleting(true) },
-            ]}
-          />
+          <IconButton ref={moreRef} icon="more" label="More actions" aria-haspopup="menu" onClick={() => setMenuOpen((o) => !o)} />
+        </div>, actionsSlot) : (
+        <div className="inspector-actions">
+          {transitions.map((t, i) => (
+            <Button
+              key={t.to}
+              icon={actionIcon(t.action)}
+              variant={i === 0 && !t.disabledReason ? 'primary' : 'secondary'}
+              disabledReason={t.disabledReason}
+              onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
+            >
+              {t.action}
+            </Button>
+          ))}
+          {/* In drawers, Edit lives in the footer next to Cancel (owner rule) */}
+          {!editInFooter && (
+            <Button icon="pencil" variant="ghost" className="inspector-edit-btn" onClick={onEdit} disabledReason={p.canUpdate ? undefined : `Read-only for ${actor.role.label}`}>
+              Edit
+            </Button>
+          )}
+          {Actions && <Actions res={res} actor={actor} record={r} />}
+          <IconButton ref={moreRef} icon="more" label="More actions" aria-haspopup="menu" onClick={() => setMenuOpen((o) => !o)} />
         </div>
-      )}
+      ))}
+      {/* the More-actions menu lives outside the action rows so it works for both the drawer (icon line) and the page layout */}
+      <Menu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchor={moreRef}
+        label="More record actions"
+        items={[
+          {
+            id: 'copy',
+            label: 'Copy link',
+            icon: 'copy',
+            onSelect: () => {
+              navigator.clipboard?.writeText(window.location.origin + recordPeekPath(actor.workspaceId, res.key, r.id)).catch(() => {}); // clipboard may be blocked — never crash
+              toast('Link copied — opening it still requires access');
+            },
+          },
+          { id: 'delete', label: 'Delete', icon: 'trash', danger: true, separatorBefore: true, disabledReason: perm(actor, res.key).delete ? undefined : 'Your role cannot delete', onSelect: () => setDeleting(true) },
+        ]}
+      />
       <Dialog
         open={!!confirm}
         onClose={() => setConfirm(null)}
@@ -311,8 +383,11 @@ function Details({ res, actor, p }: { res: ResourceDefinition; actor: Actor; p: 
             <h3 className="detail-section-title">{s.title}</h3>
             <dl className="detail-list">
               {fields.map((f) => (
-                <div key={f.key} className="detail-row">
-                  <dt>{f.label}</dt>
+                <div key={f.key} className="detail-row" data-type={f.type}>
+                  <dt>
+                    <Icon name={fieldIcon(f)} size={16} className="detail-icon" />
+                    {f.label}
+                  </dt>
                   <dd>
                     {f.type === 'lineitems' && p.access[f.key] !== 'mask' ? (
                       <LineItemsRead items={p.record[f.key] as { serviceCode: string; description?: string; qty: number; unitPrice: number }[]} />
@@ -331,8 +406,11 @@ function Details({ res, actor, p }: { res: ResourceDefinition; actor: Actor; p: 
           <h3 className="detail-section-title">Calculated & system</h3>
           <dl className="detail-list">
             {extra.map((f) => (
-              <div key={f.key} className="detail-row">
-                <dt>{f.label}</dt>
+              <div key={f.key} className="detail-row" data-type={f.type}>
+                <dt>
+                  <Icon name={fieldIcon(f)} size={16} className="detail-icon" />
+                  {f.label}
+                </dt>
                 <dd>
                   <FieldValue field={f} value={p.record[f.key]} access={p.access[f.key]} actor={actor} />
                 </dd>
@@ -557,6 +635,105 @@ function CommentThread({ actor, resKey, recordId }: { actor: Actor; resKey: stri
           Use the composer below to add an internal note.
         </EmptyState>
       )}
+    </div>
+  );
+}
+
+/** Icon for a workflow action, from its wording (Check in, No-show, Cancel, Start, Complete, Reopen, Issue…). */
+function actionIcon(action: string): string {
+  const a = action.toLowerCase();
+  if (a.includes('block')) return 'ban';
+  if (a.includes('hold') || a.includes('pause')) return 'pause';
+  if (a.includes('archive')) return 'archive';
+  if (a.includes('paid') || a.includes('payment')) return 'f-money';
+  if (a.includes('write off') || a.includes('write-off') || a.includes('void')) return 'x-circle';
+  if (a.includes('check in') || a.includes('check-in')) return 'log-in';
+  if (a.includes('no-show') || a.includes('no show')) return 'user-x';
+  if (a.includes('cancel') || a.includes('reject') || a.includes('decline')) return 'x-circle';
+  if (a.includes('start') || a.includes('begin')) return 'play';
+  if (a.includes('complete') || a.includes('done') || a.includes('finish') || a.includes('confirm') || a.includes('approve')) return 'check-circle';
+  if (a.includes('reopen') || a.includes('restore') || a.includes('reset')) return 'reset';
+  if (a.includes('issue') || a.includes('send') || a.includes('submit')) return 'send';
+  return 'arrow-right';
+}
+
+/** Right-hand cards on the full record page: overview (status + when), people, details, internal comments. */
+function RecordSide({ res, actor, p }: { res: ResourceDefinition; actor: Actor; p: Projected }) {
+  const r = p.record;
+  const vis = (f: FieldDefinition) => p.access[f.key] && p.access[f.key] !== 'hide';
+  const statusField = res.fields.find((f) => f.key === (res.lifecycle?.field ?? 'status'));
+  const status = statusField?.master ? masterValue(statusField.master, r[statusField.key]) : undefined;
+  const when = res.fields.find((f) => (f.type === 'datetime' || f.type === 'date') && vis(f) && r[f.key]);
+  const duration = res.fields.find((f) => f.type === 'number' && /^(min|mins|minutes|h|hours)$/i.test(f.unit ?? '') && vis(f));
+  const people = res.fields.filter((f) => f.type === 'relation' && ['patients', 'staff'].includes(f.relation!.resource) && vis(f) && r[f.key]);
+  const details = res.fields.filter((f) => vis(f) && !f.system && f !== statusField && f !== when && f !== duration && !people.includes(f) && ['master', 'relation', 'money', 'text', 'boolean'].includes(f.type) && f.key !== res.titleField).slice(0, 6);
+  return (
+    <div className="record-side">
+      <section className="panel rs-card">
+        <h2>Actions</h2>
+        <div id="record-actions-slot" className="rs-actions" />
+      </section>
+      <section className="panel rs-card">
+        <div className="rs-head">
+          <h2>{res.label} overview</h2>
+          {status && <StatusChip label={status.label} tone={status.tone} />}
+        </div>
+        {when && (
+          <div className="rs-when">
+            <Icon name="f-datetime" size={18} className="rs-icon" />
+            <span>
+              <DateText value={String(r[when.key])} showTime={when.type === 'datetime'} />
+              {when.type === 'datetime' && <span className="rs-time">{formatTime(String(r[when.key]))}</span>}
+              {duration && r[duration.key] != null && (
+                <span className="muted rs-sub">
+                  {duration.label} · {String(r[duration.key])} {duration.unit}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+      </section>
+      {people.length > 0 && (
+        <section className="panel rs-card">
+          <h2>People</h2>
+          <ul className="rs-list">
+            {people.map((f) => (
+              <li key={f.key}>
+                <Link className="rs-person" to={recordPagePath(actor.workspaceId, f.relation!.resource, String(r[f.key]))}>
+                  <Icon name={f.relation!.resource === 'staff' ? 'f-person' : 'users'} size={18} className="rs-icon" />
+                  <span>
+                    <span className="muted rs-sub">{f.label}</span>
+                    <span className="rs-link">{recordTitle(f.relation!.resource, r[f.key], actor)}</span>
+                  </span>
+                  <Icon name="chevron-right" size={16} className="rs-chev" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {details.length > 0 && (
+        <section className="panel rs-card">
+          <h2>Details</h2>
+          <ul className="rs-list">
+            {details.map((f) => (
+              <li key={f.key} className="rs-item">
+                <Icon name={fieldIcon(f)} size={18} className="rs-icon" />
+                <span>
+                  <span className="muted rs-sub">{f.label}</span>
+                  <FieldValue field={f} value={r[f.key]} access={p.access[f.key]} actor={actor} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <section className="panel rs-card">
+        <h2>
+          <Icon name="message" size={16} /> Internal comments
+        </h2>
+        <QuickComment key={`${res.key}:${r.id}`} actor={actor} resource={res.key} recordId={r.id} />
+      </section>
     </div>
   );
 }

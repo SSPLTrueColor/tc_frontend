@@ -16,11 +16,13 @@ import { MultiSelectMenu } from '../primitives/MultiSelectMenu';
 import { DatePicker } from '../primitives/DatePicker';
 import { DateRangePicker } from '../primitives/DateRangePicker';
 import { InfoTip } from '../primitives/InfoTip';
+import { fieldIcon } from './fieldIcon';
 import { ServiceError } from '../../services/types';
 
 const canCreateScopeLabel = (s: ViewScope) => (s === 'team' ? 'requires team sharing permission' : 'requires organization sharing permission');
 
-const TYPE_ICON: Record<ViewType, string> = { table: 'list', board: 'board', calendar: 'calendar' };
+/** One framed icon family for view types (table · board · calendar) — consistent size and weight everywhere. */
+export const TYPE_ICON: Record<ViewType, string> = { table: 'table', board: 'board', calendar: 'calendar-days' };
 
 // ---------------------------------------------------------------- View Bar
 
@@ -120,23 +122,25 @@ export function ViewBar({
           {ink && <span className="view-tab-ink" aria-hidden="true" style={{ transform: `translateX(${ink.left + 4}px)`, width: Math.max(0, ink.width - 8) }} />}
           {views.map((v) => (
             <div key={v.id} className={cx('view-tab', v.id === activeId && 'is-active')} data-view-id={v.id}>
-              <button type="button" role="tab" aria-selected={v.id === activeId} className="view-tab-btn" onClick={() => onSelect(v.id)} data-tooltip={`${v.name} · ${v.scope === 'personal' ? 'only you' : v.scope === 'team' ? 'shared with team' : 'organization'}`}>
+              {/* Click a tab to open it; click the ACTIVE tab again to open its options (no ⋮, no unsaved dot — owner rule) */}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={v.id === activeId}
+                aria-haspopup={v.id === activeId ? 'menu' : undefined}
+                aria-expanded={v.id === activeId ? menuFor === v.id : undefined}
+                className="view-tab-btn"
+                onClick={(e) => {
+                  if (v.id !== activeId) return onSelect(v.id);
+                  menuAnchor.current = e.currentTarget;
+                  setMenuFor((cur) => (cur === v.id ? null : v.id));
+                }}
+                data-tooltip={v.id === activeId ? `${v.name} — click for view options` : `${v.name} · ${v.scope === 'personal' ? 'only you' : v.scope === 'team' ? 'shared with team' : 'organization'}`}
+              >
                 <Icon name={TYPE_ICON[v.type]} size={14} />
                 <span>{v.name}</span>
                 {settings.defaultViews[res.key] === v.id && <Icon name="star" size={12} className="muted" />}
-                {v.id === activeId && dirty && <span className="dirty-dot" aria-label="unsaved changes" />}
-              </button>
-              <button
-                type="button"
-                className="view-tab-menu"
-                aria-label={`Options for view ${v.name}`}
-                aria-haspopup="menu"
-                onClick={(e) => {
-                  menuAnchor.current = e.currentTarget;
-                  setMenuFor(v.id);
-                }}
-              >
-                <Icon name="more-vertical" size={14} />
+                {v.id === activeId && dirty && <span className="sr-only"> (unsaved changes)</span>}
               </button>
             </div>
           ))}
@@ -148,7 +152,7 @@ export function ViewBar({
       </button>
       {dirty && (
         <>
-          <Button ref={dirtyRef} variant="ghost" iconRight="chevron-down" onClick={() => setDirtyOpen(true)} aria-haspopup="menu" className="viewbar-unsaved">
+          <Button ref={dirtyRef} variant="ghost" iconRight="chevron-down" onClick={() => setDirtyOpen((o) => !o)} aria-haspopup="menu" className="viewbar-unsaved">
             Unsaved
           </Button>
           <Menu
@@ -197,7 +201,7 @@ export function ViewBar({
               label: 'Copy link to view',
               icon: 'copy',
               onSelect: () => {
-                void navigator.clipboard?.writeText(window.location.href);
+                navigator.clipboard?.writeText(window.location.href).catch(() => {}); // clipboard may be blocked — never crash
                 toast('Link copied — recipients still need access');
               },
             },
@@ -403,7 +407,7 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
   const setRange = (key: string, r: { from?: string; to?: string }) =>
     replace(key, ['gte', 'lte'], [...(r.from ? [newCondition(key, 'gte', r.from)] : []), ...(r.to ? [newCondition(key, 'lte', r.to)] : [])]);
   const managed = new Set([status?.key, ...choices.map((f) => f.key), ...dates.map((f) => f.key)]);
-  const others = conds.filter((c) => !(managed.has(c.field) && QUICK_OPS.includes(c.operator))).length;
+  const extraConds = conds.filter((c) => !(managed.has(c.field) && QUICK_OPS.includes(c.operator)));
 
   const statusValues = status ? activeMasterValues(status.master!) : [];
   const optionsFor = (f: FieldDefinition) =>
@@ -431,34 +435,29 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
         Filters
         {n > 0 && <span className="btn-dot" aria-hidden="true" />}
       </Button>
-      <Popover open={open} onClose={close} anchor={ref} label="Filters" width={mode === 'quick' ? 320 : 480} className="filter-pop" align="end">
+      <Popover open={open} onClose={close} anchor={ref} label="Filters" width={mode === 'quick' ? 440 : 480} className="filter-pop" align="end">
         {mode === 'quick' ? (
-          <div className="qf">
+          <div className="qf qf-rows">
+            {/* Owner reference: "Create view"-style property list — icon + label on the left, control on the right */}
+            <div className="qf-title">
+              <Icon name="filter" size={16} />
+              <strong>Filter</strong>
+            </div>
             {status && (
               <div className="qf-field">
                 <span className="qf-label" id="qf-status">
+                  <Icon name={fieldIcon(status)} size={16} className="qf-icon" />
                   {status.label}
                 </span>
-                {statusValues.length <= 3 ? (
-                  <div className="segmented qf-seg" role="radiogroup" aria-labelledby="qf-status">
-                    {[{ key: '', label: 'All' }, ...statusValues].map((o) => {
-                      const sel = valuesOf(status.key);
-                      const on = o.key === '' ? sel.length === 0 : sel.length === 1 && sel[0] === o.key;
-                      return (
-                        <button key={o.key || 'all'} type="button" role="radio" aria-checked={on} className={cx('seg-btn', on && 'is-on')} onClick={() => setEq(status.key, o.key)}>
-                          {o.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <MultiSelectMenu block label={status.label} emptyLabel="All" values={valuesOf(status.key)} options={statusValues.map((o) => ({ value: o.key, label: o.label }))} onChange={(vs) => setIn(status.key, vs)} />
-                )}
+                <MultiSelectMenu block label={status.label} emptyLabel={`All ${status.label.toLowerCase()}`} values={valuesOf(status.key)} options={statusValues.map((o) => ({ value: o.key, label: o.label }))} onChange={(vs) => setIn(status.key, vs)} />
               </div>
             )}
             {choices.map((f) => (
               <div key={f.key} className="qf-field">
-                <span className="qf-label">{f.label}</span>
+                <span className="qf-label">
+                  <Icon name={fieldIcon(f)} size={16} className="qf-icon" />
+                  {f.label}
+                </span>
                 {f.type === 'boolean' ? (
                   <SelectMenu
                     block
@@ -472,16 +471,49 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
                 )}
               </div>
             ))}
-            {dates.length > 0 && <div className="qf-sep" />}
             {dates.map((f) => (
               <div key={f.key} className="qf-field">
-                <span className="qf-label">{f.label}</span>
+                <span className="qf-label">
+                  <Icon name={fieldIcon(f)} size={16} className="qf-icon" />
+                  {f.label}
+                </span>
                 <DateRangePicker label={f.label} value={rangeOf(f.key)} onChange={(r) => setRange(f.key, r)} />
               </div>
             ))}
-            <button type="button" className="link qf-advanced" onClick={() => setMode('advanced')}>
-              Advanced conditions{others > 0 ? ` (${others} more)` : ''}
-            </button>
+            {/* Conditions box: extra conditions on any field, combined with AND */}
+            <span className="qf-sub">Conditions</span>
+            <div className="qf-conds">
+              <div className="qf-match">
+                <span className="muted">Match rows by</span>
+                <span className="qf-and">AND</span>
+                <button type="button" className="link qf-advanced" onClick={() => setMode('advanced')}>
+                  Use OR / groups
+                </button>
+              </div>
+              {extraConds.length === 0 && <p className="muted qf-empty">No filters yet. Add one to narrow this view.</p>}
+              {extraConds.map((c) => (
+                <ConditionRow
+                  key={c.id}
+                  res={res}
+                  actor={actor}
+                  cond={c}
+                  fields={filterableFields(res, actor)}
+                  onChange={(x) => setDraft((d) => ({ ...d, children: d.children.map((y) => (y.id === c.id ? x : y)) }))}
+                  onRemove={() => setDraft((d) => ({ ...d, children: d.children.filter((y) => y.id !== c.id) }))}
+                />
+              ))}
+              <Button
+                variant="ghost"
+                icon="plus"
+                className="qf-addfilter"
+                onClick={() => {
+                  const f = filterableFields(res, actor).find((x) => !managed.has(x.key)) ?? filterableFields(res, actor)[0];
+                  if (f) setDraft((d) => ({ ...d, join: 'and', children: [...d.children, newCondition(f.key, operatorsFor(f)[0])] }));
+                }}
+              >
+                Add filter
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="qf-adv">
@@ -499,12 +531,16 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
         <div className="qf-foot">
           <Button
             variant="ghost"
+            className="qf-clear"
             onClick={() => {
               onChange(newGroup('and'));
               close();
             }}
           >
-            Clear
+            Clear all
+          </Button>
+          <Button variant="ghost" onClick={close}>
+            Cancel
           </Button>
           <Button
             variant="primary"
@@ -681,9 +717,8 @@ export function ColumnManager({
   const groupable = available.filter((f) => ['master', 'relation', 'boolean'].includes(f.type) && queryableField(actor, res, f));
   return (
     <>
-      <Button ref={ref} icon="columns" iconRight={open ? 'chevron-up' : 'chevron-down'} onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog" className={cx(open && 'is-open')}>
-        Columns
-      </Button>
+      {/* icon-only, at the right end of the tools line (owner rule) */}
+      <IconButton ref={ref} icon="columns" label="Columns, grouping and density" aria-expanded={open} aria-haspopup="dialog" pressed={open} className={cx('tools-icon-btn', open && 'is-open')} onClick={() => setOpen((o) => !o)} />
       <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Column manager" width={320} align="end">
         <div className="pop-head">
           <strong>Columns</strong>

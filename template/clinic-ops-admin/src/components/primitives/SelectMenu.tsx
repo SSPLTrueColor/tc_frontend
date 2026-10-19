@@ -28,7 +28,10 @@ export function SelectMenu<T extends string | number>({
   block,
   className,
   searchable,
+  icon,
 }: {
+  /** Optional leading icon inside the trigger (shown in full-page forms). */
+  icon?: string;
   value: T | '' | null | undefined;
   options: SelectMenuOption<T>[];
   onChange: (v: T) => void;
@@ -111,6 +114,7 @@ export function SelectMenu<T extends string | number>({
           }
         }}
       >
+        {icon && <Icon name={icon} size={14} className="trigger-icon" />}
         <span className="select-menu-value">{current?.label ?? placeholder}</span>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} />
       </button>

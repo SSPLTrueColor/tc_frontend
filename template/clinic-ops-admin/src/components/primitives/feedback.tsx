@@ -13,9 +13,9 @@ import { EmptyValue } from './display';
 export function StatusChip({ label, tone = 'neutral', className }: { label: string; tone?: Tone; className?: string }) {
   if (!label) return null;
   return (
+    // Attio-style soft pill: tinted background + coloured text, no dot (owner rule)
     <span className={cx('chip', `tone-${tone}`, className)}>
-      <span className="chip-dot" aria-hidden="true" />
-      {label}
+      <span className="chip-label">{label}</span>
     </span>
   );
 }
@@ -116,7 +116,9 @@ export function MaskedField({ value, type, canReveal }: { value: unknown; type: 
   const showReveal = canReveal && !already;
   const display = revealed && showReveal ? raw : already ? raw : maskSensitive(raw, type);
   return (
-    <span className="masked">
+    <span className="masked" data-kind={type}>
+      {/* phone / email icon wherever a contact value is shown */}
+      <Icon name={type === 'phone' ? 'f-phone' : 'f-email'} size={14} className="masked-kind" />
       <span className="masked-value">{display}</span>
       {showReveal ? (
         <button

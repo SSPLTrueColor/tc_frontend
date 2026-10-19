@@ -6,7 +6,7 @@ import { type Actor, canUpdateRecord, fieldAccessMap } from '../../services/auth
 import { getDb } from '../../services/db';
 import { displayText, recordTitle, updateRecord } from '../../services/runtime';
 import { ServiceError } from '../../services/types';
-import { masterLabel } from '../../services/registry';
+import { masterLabel, masterValue } from '../../services/registry';
 import { IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
 import { useToast } from '../primitives/feedback';
@@ -16,12 +16,19 @@ import { FieldValue } from './FieldValue';
 import { EmptyValue } from '../primitives/display';
 import { ImageTile } from '../primitives/People';
 import { isEmpty } from '../../services/validation';
+import { isDragClick } from '../../lib/dragGuard';
 
 const INLINE_TYPES = new Set(['text', 'number', 'money', 'master', 'date', 'relation']);
 /** Row action icons (view, edit, more): column width fits exactly this many 30px icons. */
 const ROW_ACTION_ICONS = 3;
 const ACTIONS_W = ROW_ACTION_ICONS * 30 + (ROW_ACTION_ICONS - 1) * 2 + 16;
 const DEFAULT_W = 150;
+/**
+ * Virtualization rule: when a flat, one-line table renders more than this many rows, only the rows in
+ * (and just around) the viewport are in the DOM; spacer rows keep the scroll height exact.
+ */
+export const VIRTUAL_THRESHOLD = 100;
+const VIRTUAL_OVERSCAN = 12;
 
 export interface GridProps {
   res: ResourceDefinition;
@@ -119,6 +126,20 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, rs]) => ({ key: label, label, rows: rs }));
   }, [rows, groupBy, res, actor]);
 
+  // ---- virtualization (flat one-line tables with many rows)
+  const virtual = !groupBy && rowLines === 1 && expanded.size === 0 && rows.length > VIRTUAL_THRESHOLD;
+  const [scroll, setScroll] = useState({ top: 0, height: 800 });
+  const [rowPx, setRowPx] = useState(density === 'compact' ? 35 : 41);
+  useLayoutEffect(() => {
+    if (!virtual) return;
+    const el = wrapRef.current;
+    if (el && Math.abs(el.clientHeight - scroll.height) > 1) setScroll({ top: el.scrollTop, height: el.clientHeight });
+    const tr = tbodyRef.current?.querySelector<HTMLTableRowElement>('tr[data-row]');
+    if (tr && tr.offsetHeight > 0 && Math.abs(tr.offsetHeight - rowPx) > 0.5) setRowPx(tr.offsetHeight);
+  });
+  const vStart = virtual ? Math.max(0, Math.floor(scroll.top / rowPx) - VIRTUAL_OVERSCAN) : 0;
+  const vEnd = virtual ? Math.min(rows.length, Math.ceil((scroll.top + scroll.height) / rowPx) + VIRTUAL_OVERSCAN) : rows.length;
+
   const sortedKey = sort[0]?.field;
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const someSelected = rows.some((r) => selected.has(r.id));
@@ -170,8 +191,15 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
   };
 
   return (
-    <div ref={wrapRef} onScroll={measureRight} className={cx('grid-wrap', density === 'compact' ? 'density-compact' : 'density-comfortable', rowLines > 1 && `rows-${rowLines}`, moreRight && 'has-more-right')}>
-      <table className="grid" aria-label={`${res.labelPlural} table`} aria-rowcount={rows.length}>
+    <div
+      ref={wrapRef}
+      onScroll={(e) => {
+        measureRight();
+        if (virtual) setScroll({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
+      }}
+      data-virtual={virtual || undefined}
+      className={cx('grid-wrap', density === 'compact' ? 'density-compact' : 'density-comfortable', rowLines > 1 && `rows-${rowLines}`, moreRight && 'has-more-right')}>
+      <table className="grid" aria-label={`${res.labelPlural} table`} aria-rowcount={rows.length + 1}>
         <thead>
           <tr>
             <th className="col-select sticky-left" style={{ left: 0 }} scope="col">
@@ -205,11 +233,14 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                     <button type="button" className="th-btn" onClick={() => toggleSort(c.key)}>
                       <span className="th-label">{colLabel(res, c.key)}</span>
                       <Icon name={s ? (s.dir === 'asc' ? 'arrow-up' : 'arrow-down') : 'chevrons-up-down'} size={12} className={cx(!s && 'th-sort-idle')} />
+                      {/* column-type icon on the RIGHT end of the title cell (owner rule) */}
+                      <Icon name={fieldIcon(f)} size={14} className="th-type th-type-right" />
                     </button>
                   ) : (
                     <span className="th-label th-static">
                       {colLabel(res, c.key)}
                       {access[c.key] === 'mask' && <Icon name="lock" size={12} className="muted" />}
+                      <Icon name={fieldIcon(f)} size={14} className="th-type th-type-right" />
                     </span>
                   )}
                   <span
@@ -263,8 +294,13 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                   </td>
                 </tr>
               )}
+              {virtual && vStart > 0 && (
+                <tr className="virtual-spacer" aria-hidden="true" style={{ height: vStart * rowPx }}>
+                  <td colSpan={ordered.length + 2 + (masterDetail ? 1 : 0)} />
+                </tr>
+              )}
               {!collapsed.has(g.key) &&
-                g.rows.map((r) => {
+                (virtual ? g.rows.slice(vStart, vEnd) : g.rows).map((r) => {
                   const isOpen = expanded.has(r.id);
                   const raw = getDb().records[res.key].find((x) => x.id === r.id);
                   const rowCanEdit = !!raw && canUpdateRecord(actor, res, raw);
@@ -276,7 +312,11 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         className={cx(selected.has(r.id) && 'is-selected', activeId === r.id && 'is-active')}
                         aria-selected={selected.has(r.id)}
                         onKeyDown={(e) => onRowKey(e, r)}
-                        onClick={() => onOpen(r.id)}
+                        // selecting / copying text in a row must not open the record
+                        onClick={(e) => {
+                          if (isDragClick(e)) return;
+                          onOpen(r.id);
+                        }}
                       >
                         <td className="col-select sticky-left" style={{ left: 0 }} onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" aria-label={`Select ${recordTitle(res.key, r.id, actor)}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
@@ -305,9 +345,14 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                             <td
                               key={c.key}
                               style={{ width: w, minWidth: w, maxWidth: w, left: c.pinned ? offsets[c.key] : undefined }}
-                              className={cx(c.pinned && 'sticky-left', f && ['money', 'number'].includes(f.type) && 'td-num', sortedKey === c.key && 'is-sorted', inline && 'is-editable', isEditing && 'is-editing')}
-                              onDoubleClick={(e) => {
-                                if (!inline) return;
+                              className={cx(c.pinned && 'sticky-left', f && ['money', 'number'].includes(f.type) && 'td-num', sortedKey === c.key && 'is-sorted', inline && 'is-editable', inline && f?.type === 'master' && 'is-choice', isEditing && 'is-editing')}
+                              // ClickUp-style: hovering an editable cell outlines it; a single click edits it in place
+                              onClick={(e) => {
+                                if (isDragClick(e)) {
+                                  e.stopPropagation();
+                                  return;
+                                }
+                                if (!inline || isEditing) return;
                                 e.stopPropagation();
                                 setEditing({ id: r.id, key: c.key });
                               }}
@@ -315,7 +360,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                               {isEditing && f ? (
                                 <InlineEditor res={res} actor={actor} field={f} record={r} onDone={() => setEditing(null)} />
                               ) : c.key === 'id' ? (
-                                <span className="mono">{r.id}</span>
+                                <IdCell id={r.id} onOpen={() => onOpen(r.id)} />
                               ) : f ? (
                                 <span className="cell">
                                   <RichCell res={res} actor={actor} field={f} record={r} access={access} lines={rowLines} />
@@ -329,7 +374,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                                         setEditing({ id: r.id, key: c.key });
                                       }}
                                     >
-                                      <Icon name="pencil" size={12} />
+                                      <Icon name={f && ['master', 'relation', 'date'].includes(f.type) ? 'chevron-down' : 'pencil'} size={14} />
                                     </button>
                                   )}
                                 </span>
@@ -347,7 +392,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                               aria-haspopup="menu"
                               onClick={(e) => {
                                 menuAnchor.current = e.currentTarget;
-                                setMenu({ row: r });
+                                setMenu((m) => (m?.row.id === r.id ? null : { row: r })); // click again closes
                               }}
                             />
                           </span>
@@ -365,6 +410,11 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                     </Fragment>
                   );
                 })}
+              {virtual && vEnd < rows.length && (
+                <tr className="virtual-spacer" aria-hidden="true" style={{ height: (rows.length - vEnd) * rowPx }}>
+                  <td colSpan={ordered.length + 2 + (masterDetail ? 1 : 0)} />
+                </tr>
+              )}
             </Fragment>
           ))}
         </tbody>
@@ -373,6 +423,42 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
     </div>
   );
 }
+
+/** Record ID as a visible hyperlink (opens the record) + a copy button pinned to the cell's right edge. */
+function IdCell({ id, onOpen }: { id: string; onOpen: () => void }) {
+  const toast = useToast();
+  return (
+    <span className="id-cell">
+      <button
+        type="button"
+        className="id-link mono"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isDragClick(e)) return; // selecting the ID to copy it never opens the record
+          onOpen();
+        }}
+      >
+        {id}
+      </button>
+      <button
+        type="button"
+        className="cell-trail"
+        aria-label={`Copy ${id}`}
+        data-tooltip="Copy ID"
+        onClick={(e) => {
+          e.stopPropagation();
+          navigator.clipboard?.writeText(id).catch(() => {}); // clipboard may be blocked — never crash
+          toast(`${id} copied`, 'info');
+        }}
+      >
+        <Icon name="copy" size={14} />
+      </button>
+    </span>
+  );
+}
+
+export { fieldIcon } from './fieldIcon';
+import { fieldIcon } from './fieldIcon';
 
 /**
  * Cell content for every row style: optional leading picture (image field or initials tile), the value,
@@ -480,9 +566,18 @@ function InlineEditor({ res, actor, field, record, onDone }: { res: ResourceDefi
       saving.current = false;
     }
   };
+  // One click: the cell click opened the editor — open its dropdown / calendar (or focus the input) right away
+  const boxRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    const trigger = el?.querySelector<HTMLElement>('.select-menu-trigger, .date-trigger');
+    if (trigger) trigger.click();
+    else el?.querySelector<HTMLInputElement>('input')?.focus();
+  }, []);
   return (
     <div
-      className="inline-editor"
+      ref={boxRef}
+      className={cx('inline-editor', field.type === 'master' && `is-pill tone-${masterValue(field.master!, value)?.tone ?? 'neutral'}`, field.type === 'master' && ['status', 'priority', 'urgency'].includes(field.key) && 'is-status', (field.type === 'relation' || field.type === 'date') && 'is-pill-plain')}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -556,11 +651,14 @@ function CardList({ res, actor, rows, onOpen, activeId, columns, selected, onSel
 }
 
 export function fieldWidth(res: ResourceDefinition, key: string) {
-  if (key === 'id') return 96;
+  if (key === 'id') return 132; // ID link + copy button fit without truncating (e.g. INV-1098)
   const f = res.fields.find((x) => x.key === key);
   if (!f) return DEFAULT_W;
   if (f.width) return f.width;
-  if (f.type === 'date' || f.type === 'money' || f.type === 'number') return 120;
+  if (f.type === 'date') return 140;
+  if (f.type === 'email') return 330; // whole masked email + icons fit
+  if (f.type === 'phone') return 220; // calendar icon + "19 Oct, 2026"
+  if (f.type === 'money' || f.type === 'number') return 120;
   if (f.type === 'datetime') return 170;
   return DEFAULT_W;
 }
