@@ -5,7 +5,7 @@ import { type Actor, fieldAccess, queryableField } from '../../services/authz';
 import { activeMasterValues } from '../../services/registry';
 import { canCreateScope, canManageView, deleteView, isSystemView, moveView, saveView } from '../../services/views';
 import { getSettings, updateSettings } from '../../services/settings';
-import { cloneGroup, newCondition, newGroup, OPERATOR_LABELS, operatorsFor, VALUELESS, countConditions } from '../../services/filter';
+import { cloneGroup, newCondition, newGroup, OPERATOR_LABELS, operatorsFor, VALUELESS, countConditions, systemDateFields } from '../../services/filter';
 import { Button, IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
 import { useToast } from '../primitives/feedback';
@@ -563,7 +563,7 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
 }
 
 function filterableFields(res: ResourceDefinition, actor: Actor) {
-  return res.fields.filter((f) => f.capabilities.filter && queryableField(actor, res, f));
+  return [...res.fields.filter((f) => f.capabilities.filter && queryableField(actor, res, f)), ...systemDateFields().filter((f) => !res.fields.some((x) => x.key === f.key))];
 }
 
 function GroupEditor({ res, actor, group, onChange, depth, onRemove }: { res: ResourceDefinition; actor: Actor; group: FilterGroup; onChange: (g: FilterGroup) => void; depth: number; onRemove?: () => void }) {
@@ -617,7 +617,7 @@ function GroupEditor({ res, actor, group, onChange, depth, onRemove }: { res: Re
 }
 
 function ConditionRow({ res, actor, cond, fields, onChange, onRemove }: { res: ResourceDefinition; actor: Actor; cond: FilterCondition; fields: FieldDefinition[]; onChange: (c: FilterCondition) => void; onRemove: () => void }) {
-  const field = res.fields.find((f) => f.key === cond.field);
+  const field = res.fields.find((f) => f.key === cond.field) ?? fields.find((f) => f.key === cond.field);
   const unavailable = !field || !fields.includes(field);
   const ops = field ? operatorsFor(field) : [];
   return (
@@ -628,7 +628,7 @@ function ConditionRow({ res, actor, cond, fields, onChange, onRemove }: { res: R
         value={cond.field}
         options={[...(unavailable ? [{ value: cond.field, label: LS.unavailableField }] : []), ...fields.map((f) => ({ value: f.key, label: f.label }))]}
         onChange={(k) => {
-          const f = res.fields.find((x) => x.key === k)!;
+          const f = fields.find((x) => x.key === k)!;
           onChange({ ...cond, field: f.key, operator: operatorsFor(f)[0], value: undefined });
         }}
       />

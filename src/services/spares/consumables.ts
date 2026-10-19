@@ -5,7 +5,7 @@
  */
 import type { RecordData } from '../../metadata/types';
 import { L } from '../../constants/labels';
-import { DEALER_CATEGORIES } from '../../domain/modules/spares';
+import { DEALER_CATEGORIES, DEALER_PRODUCT_TYPES } from '../../domain/modules/spares';
 import { addDays, todayKey } from '../../lib/dates';
 import { uid } from '../../lib/ids';
 import { type Actor, can, canReadRecord, canUpdateRecord } from '../authz';
@@ -153,6 +153,7 @@ export function sendReorderReminders(actor: Actor): number {
 
 /** CON-01 / FR-098: consumables picture of one customer for the Customer 360 tab. */
 export function customerConsumables(actor: Actor, customerId: string) {
+  requireConsumables(actor);
   const machines = activeMachines(customerId);
   const orders = consumablesOrders(customerId).slice().reverse();
   const visible = (key: string) => {
@@ -294,7 +295,7 @@ export function dealerOrderList(actor: Actor): { rows: DealerOrderRow[]; dealers
       }),
     )
     .sort((a, b) => b.orderDate.localeCompare(a.orderDate) || b.id.localeCompare(a.id));
-  const dealers = rows('customers')
+  const dealers = visibleCustomers(actor)
     .filter((c) => DEALER_CATEGORIES.includes(String(c.category)))
     .map((c) => ({ value: c.id, label: String(c.name) }))
     .sort((a, b) => a.label.localeCompare(b.label));
@@ -302,10 +303,12 @@ export function dealerOrderList(actor: Actor): { rows: DealerOrderRow[]; dealers
 }
 
 /** CON-06 rules on create / update: dealer category, end customer, date, product, duplicate invoice. Fills division and owner. */
-export function prepareDealerOrder(d: Db, c: Record<string, unknown>, selfId?: string) {
+export function prepareDealerOrder(d: Db, c: Record<string, unknown>, selfId?: string, actor?: Actor) {
   const fe = (field: string, message: string) => new ServiceError('validation', message, { fieldErrors: { [field]: message } });
   const dealer = d.records.customers?.find((x) => x.id === c.dealerId);
   if (!dealer || !DEALER_CATEGORIES.includes(String(dealer.category))) throw fe('dealerId', E.notDealer);
+  // The order belongs to the dealer's account owner, so the dealer must be inside the actor's customer scope.
+  if (actor && has('customers') && !canReadRecord(actor, getResource('customers'), dealer)) throw fe('dealerId', E.customerOutOfScope);
   const end = String(c.endCustomer ?? '').trim();
   if (end.length < 2) throw fe('endCustomer', E.endCustomerShort);
   if (end.toLowerCase() === String(dealer.name ?? '').trim().toLowerCase()) throw fe('endCustomer', E.sameCustomer);
@@ -313,6 +316,7 @@ export function prepareDealerOrder(d: Db, c: Record<string, unknown>, selfId?: s
   if (c.orderDate && String(c.orderDate).slice(0, 10) > todayKey()) throw fe('orderDate', E.futureDate);
   const product = d.records.products?.find((x) => x.id === c.productId);
   if (product && product.status === 'inactive') throw fe('productId', E.productInactive);
+  if (product && !DEALER_PRODUCT_TYPES.includes(String(product.productType))) throw fe('productId', E.dealerProductType);
   const inv = String(c.invoiceNo ?? '').trim().toUpperCase();
   c.invoiceNo = inv;
   if (inv) {

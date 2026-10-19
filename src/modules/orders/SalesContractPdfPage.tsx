@@ -71,7 +71,7 @@ export function SalesContractPdfPage() {
           <dl className="detail-list">
             <div className="detail-row">
               <dt>{P.contract}</dt>
-              <dd>{P.versionOf(String(contract.contractNo), String(contract.version))}</dd>
+              <dd>{P.versionOf(String(contract.contractNo), String(contract.contractVersion))}</dd>
             </div>
             <div className="detail-row">
               <dt>{P.salesOrder}</dt>

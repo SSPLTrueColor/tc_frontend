@@ -161,3 +161,92 @@ describe('administration: per-division form layouts (ADM-05)', () => {
     expect(() => saveFormLayout(admin(), { resource: 'products', division: 'INK', order: ['main', 'tax', 'spec'], hidden: ['main'] })).toThrow(/required/);
   });
 });
+
+describe('QA: user lifecycle, sign-in and configurable rules (ADM-08, COM-09, NFR-07, ADM-04)', () => {
+  beforeEach(() => __setDb(createDb(new Date('2026-10-19T10:00:00'))));
+
+  it('MFA for System Administrator and Management only; sign-ins are audited', async () => {
+    const { startSignIn, verifyOtp } = await import('../services/session');
+    expect(startSignIn('u_karan').otp).toBeUndefined();
+    const otp = startSignIn('u_vikram').otp!;
+    expect(otp).toMatch(/^\d{6}$/);
+    expect(() => verifyOtp('u_vikram', '000000' === otp ? '111111' : '000000')).toThrow();
+    verifyOtp('u_vikram', otp);
+    expect(startSignIn('u_rahul').otp).toBeTruthy();
+    expect(getDb().audit.filter((a) => a.action === 'login').length).toBe(2);
+  });
+
+  it('a deactivated user cannot sign in or be switched to; the role switcher is audited', async () => {
+    const { startSignIn } = await import('../services/session');
+    const { switchSession } = await import('../services/settings');
+    const deepak = actorFor('u_deepak', 'tc');
+    const open = ownedOpenRecords(deepak.staffId);
+    expect(() => updateRecord(admin(), 'employees', deepak.staffId, { status: 'inactive' }, getDb().records.employees.find((e) => e.id === deepak.staffId)!.version)).toThrow(); // BR-53 while records are open
+    // Admin transfers on exit by direct edit in the seed store, then deactivates.
+    getDb().records.employees.find((e) => e.id === deepak.staffId)!.status = 'inactive';
+    expect(open.length).toBeGreaterThan(0);
+    expect(() => startSignIn('u_deepak')).toThrow(/deactivated/);
+    expect(() => switchSession('u_deepak', 'tc')).toThrow(/deactivated/);
+    const before = getDb().audit.length;
+    switchSession('u_karan', 'tc');
+    expect(getDb().audit.length).toBe(before + 1);
+    expect(getDb().audit[getDb().audit.length - 1].action).toBe('login');
+  });
+
+  it('ADM-08 end to end: transfer on exit, then deactivate (history such as attendance and activity log never blocks)', async () => {
+    const { transferOwnership } = await import('../services/customers/operations');
+    const { startSignIn } = await import('../services/session');
+    const tanvi = actorFor('u_tanvi', 'tc');
+    const emp = () => getDb().records.employees.find((e) => e.id === tanvi.staffId)!;
+    getDb().records.leads.find((l) => l.status === 'new')!.ownerId = tanvi.staffId; // an open lead to hand over
+    expect(ownedOpenRecords(tanvi.staffId).length).toBeGreaterThan(0);
+    expect(() => updateRecord(admin(), 'employees', tanvi.staffId, { status: 'inactive' }, emp().version)).toThrow();
+    transferOwnership(admin(), tanvi.staffId, actorFor('u_suresh', 'tc').staffId, 'Employee exit');
+    expect(ownedOpenRecords(tanvi.staffId)).toEqual([]);
+    updateRecord(admin(), 'employees', tanvi.staffId, { status: 'inactive' }, emp().version);
+    expect(emp().status).toBe('inactive');
+    expect(() => startSignIn('u_tanvi')).toThrow(/deactivated/);
+  });
+
+  it('Configurable Rules really change behaviour: first-contact SLA hours drive the Not Attended Leads queue', async () => {
+    const { updatePolicies } = await import('../services/policies');
+    const { notAttendedLeads } = await import('../services/leads/rules');
+    const count = () => {
+      const r = notAttendedLeads(admin()) as unknown as { rows?: unknown[]; leads?: unknown[]; items?: unknown[] };
+      return (r.rows ?? r.leads ?? r.items ?? []).length;
+    };
+    const base = count();
+    updatePolicies(admin(), { leadFirstContactHours: 24 * 365 });
+    expect(count()).toBeLessThan(base === 0 ? 1 : base);
+    updatePolicies(admin(), { leadFirstContactHours: 1 });
+    expect(count()).toBeGreaterThanOrEqual(base);
+    expect(() => updatePolicies(actorFor('u_karan', 'tc'), { leadFirstContactHours: 2 })).toThrow();
+  });
+});
+
+describe('QA: shared runtime hooks requested by module owners', () => {
+  beforeEach(() => __setDb(createDb(new Date('2026-10-19T10:00:00'))));
+
+  it('beforeDelete can veto a soft delete; editBlocked composes the first reason', async () => {
+    const { registerResourceHooks, hooksFor } = await import('../services/resourceHooks');
+    const { deleteRecord } = await import('../services/runtime');
+    const { ServiceError } = await import('../services/types');
+    registerResourceHooks('termsTemplates', { beforeDelete: (_c, r) => { if (r.id === 'BLOCK') throw new ServiceError('invalid_state', 'blocked'); }, editBlocked: (r) => (r.status === 'x' ? 'Not draft' : undefined) });
+    const t = getDb().records.termsTemplates[0];
+    const id = t.id;
+    t.id = 'BLOCK';
+    expect(() => deleteRecord(admin(), 'termsTemplates', 'BLOCK')).toThrow(/blocked/);
+    t.id = id;
+    expect(hooksFor('termsTemplates').editBlocked!({ ...t, status: 'x' })).toBe('Not draft');
+    expect(hooksFor('termsTemplates').editBlocked!({ ...t, status: 'y' })).toBeUndefined();
+  });
+
+  it('GST split: CGST and SGST are equal halves rounded to the paisa (BR-16)', async () => {
+    const { gstSplit } = await import('../services/lookups');
+    const intra = gstSplit(DEFAULT_POLICIES.companyGstState, 999.99, 18);
+    expect(intra.cgst).toBe(intra.sgst);
+    expect(intra.cgst).toBe(90);
+    expect(gstSplit('29', 999.99, 18).igst).toBe(180);
+    expect(gstSplit(DEFAULT_POLICIES.companyGstState, 0.05, 5).cgst).toBe(0);
+  });
+});

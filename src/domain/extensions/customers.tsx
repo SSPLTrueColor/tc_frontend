@@ -8,6 +8,9 @@ import './spares';
 import './installed';
 import type { RecordData } from '../../metadata/types';
 import { normaliseMobile, validateGstin } from '../../lib/validators';
+import { todayKey } from '../../lib/dates';
+import { canReadRecord } from '../../services/authz';
+import { getResource } from '../../services/registry';
 import type { HookContext } from '../../services/resourceHooks';
 import { registerResourceHooks } from '../../services/resourceHooks';
 import { ServiceError } from '../../services/types';
@@ -40,10 +43,27 @@ const fail = (fieldErrors: Record<string, string>) => {
   throw new ServiceError('validation', Object.values(fieldErrors)[0], { fieldErrors });
 };
 
-function checkCustomer(ctx: HookContext, c: Record<string, unknown>, selfId?: string) {
+/** Trims text fields; whitespace-only values become empty so the required check catches them. */
+function trimFields(r: Record<string, unknown>, keys: string[]) {
+  keys.forEach((k) => {
+    if (typeof r[k] === 'string') r[k] = (r[k] as string).trim();
+  });
+}
+
+/** The company a contact or site is attached to must be one the actor can see (REQUIREMENTS §2.2 scope). */
+function checkCompanyInScope(ctx: HookContext, customerId: unknown, field = 'customerId') {
+  if (empty(customerId)) return;
+  const company = (ctx.d.records.customers ?? []).find((x) => x.id === customerId);
+  if (company && !canReadRecord(ctx.actor, getResource('customers'), company)) fail({ [field]: L.customers.messages.companyOutOfScope });
+}
+
+function checkCustomer(ctx: HookContext, c: Record<string, unknown>, before?: RecordData) {
+  const selfId = before?.id;
+  trimFields(c, ['name', 'legalName', 'website']);
   if (!empty(c.gstin)) c.gstin = String(c.gstin).trim().toUpperCase();
   if (!empty(c.pan)) c.pan = String(c.pan).trim().toUpperCase();
   const errors: Record<string, string> = {};
+  if (empty(c.name)) errors.name = L.customers.messages.nameRequired;
   if (!empty(c.gstin)) {
     const msg = validateGstin(String(c.gstin), { stateCode: empty(c.billingState) ? undefined : String(c.billingState), pan: empty(c.pan) ? undefined : String(c.pan) });
     if (msg) errors.gstin = msg;
@@ -65,10 +85,21 @@ function checkCustomer(ctx: HookContext, c: Record<string, unknown>, selfId?: st
     }
   }
   if (c.dealerId && c.dealerId === selfId) errors.dealerId = L.customers.messages.ownDealer;
+  else if (c.dealerId && c.dealerId !== before?.dealerId) {
+    // CUS-08: the dealer link points at a Dealer or Distributor (the form filters the list; the service enforces it).
+    const dealer = (ctx.d.records.customers ?? []).find((x) => x.id === c.dealerId);
+    if (dealer && !['dealer', 'distributor'].includes(String(dealer.category))) errors.dealerId = L.customers.messages.notADealer;
+  }
+  // CUS-11: a new review date must not be in the past, but an overdue date already on record must not block other edits.
+  if (c.keyAccount && !empty(c.planNextReview) && c.planNextReview !== before?.planNextReview && String(c.planNextReview).slice(0, 10) < todayKey()) errors.planNextReview = L.customers.messages.reviewPast;
   if (Object.keys(errors).length) fail(errors);
 }
 
-function checkContact(ctx: HookContext, c: Record<string, unknown>, selfId?: string) {
+function checkContact(ctx: HookContext, c: Record<string, unknown>, before?: RecordData) {
+  const selfId = before?.id;
+  trimFields(c, ['name', 'designation', 'department', 'city']);
+  if (empty(c.name)) fail({ name: L.customers.messages.nameRequired });
+  if (c.customerId !== before?.customerId) checkCompanyInScope(ctx, c.customerId);
   if (!empty(c.mobile)) c.mobile = normaliseMobile(String(c.mobile));
   if (!empty(c.whatsapp)) c.whatsapp = normaliseMobile(String(c.whatsapp));
   if (!empty(c.email)) c.email = String(c.email).trim().toLowerCase();
@@ -84,7 +115,7 @@ registerResourceHooks('customers', {
     if (empty(c.divisionIds)) c.divisionIds = ctx.actor.divisionIds.slice(0, 1);
     checkCustomer(ctx, c);
   },
-  beforeUpdate: (ctx, before, c) => checkCustomer(ctx, c, before.id),
+  beforeUpdate: (ctx, before, c) => checkCustomer(ctx, c, before),
 });
 
 registerResourceHooks('contacts', {
@@ -97,17 +128,32 @@ registerResourceHooks('contacts', {
     if (empty(c.poolStatus)) c.poolStatus = 'new';
     checkContact(ctx, c);
   },
-  beforeUpdate: (ctx, before: RecordData, c) => checkContact(ctx, c, before.id),
+  beforeUpdate: (ctx, before: RecordData, c) => checkContact(ctx, c, before),
 });
 
+/**
+ * Sites (resource key `addresses`). BR-02: coordinates come as a pair; an installation site without them is allowed
+ * but flagged in the 360° view. Sites carry no owner, so scope follows the company: a user may only add or change
+ * sites of companies they can see (REQUIREMENTS §2.2 — Sales executive "CEV Own").
+ */
+function checkSite(ctx: HookContext, a: Record<string, unknown>, before?: RecordData) {
+  trimFields(a, ['label', 'line1', 'city', 'pincode']);
+  const errors: Record<string, string> = {};
+  (['label', 'line1', 'city'] as const).forEach((k) => {
+    if (empty(a[k])) errors[k] = L.customers.messages.required;
+  });
+  if (empty(a.lat) !== empty(a.lng)) Object.assign(errors, { lat: L.customers.messages.geoPair, lng: L.customers.messages.geoPair });
+  if (Object.keys(errors).length) fail(errors);
+  if (before) {
+    const company = (ctx.d.records.customers ?? []).find((x) => x.id === before.customerId);
+    if (company && !canReadRecord(ctx.actor, getResource('customers'), company)) throw new ServiceError('forbidden', L.customers.messages.noSiteEdit);
+  }
+  if (a.customerId !== before?.customerId) checkCompanyInScope(ctx, a.customerId);
+}
+
 registerResourceHooks('addresses', {
-  // Sites (resource key `addresses`). BR-02: coordinates come as a pair; an installation site without them is allowed but flagged in the 360° view.
-  beforeCreate: (_ctx, a) => {
-    if (empty(a.lat) !== empty(a.lng)) fail({ lat: L.customers.messages.geoPair, lng: L.customers.messages.geoPair });
-  },
-  beforeUpdate: (_ctx, _b, a) => {
-    if (empty(a.lat) !== empty(a.lng)) fail({ lat: L.customers.messages.geoPair, lng: L.customers.messages.geoPair });
-  },
+  beforeCreate: (ctx, a) => checkSite(ctx, a),
+  beforeUpdate: (ctx, before, a) => checkSite(ctx, a, before),
 });
 
 registerRecordActions('customers', CustomerActions);

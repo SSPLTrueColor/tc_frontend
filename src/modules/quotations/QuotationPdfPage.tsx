@@ -132,8 +132,8 @@ export function QuotationPdfPage() {
         </section>
         <LinesTable lines={q.data.lines} />
         <section className="qt-doc-bottom">
-          <TaxSummary totals={totals} className="qt-doc-tax" />
-          <TotalsBlock t={totals} />
+          <TaxSummary totals={totals} className="qt-doc-tax" interState={String(r.placeOfSupply) !== getPolicies().companyGstState} />
+          <TotalsBlock t={totals} interState={String(r.placeOfSupply) !== getPolicies().companyGstState} />
         </section>
         <section className="qt-doc-terms">
           <div className="qt-doc-label">{P.termsTitle}</div>

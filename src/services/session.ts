@@ -23,6 +23,10 @@ export const needsOtp = (userId: string) => MFA_ROLES.includes(getUser(userId)?.
 /** Step 1. Returns the code to display when the role needs MFA. */
 export function startSignIn(userId: string): { otp?: string } {
   if (!getUser(userId)) throw new ServiceError('not_found', G.unknownUser);
+  // ADM-08: a deactivated user (Administration › Users) cannot sign in.
+  const user = getUser(userId)!;
+  const staff = (getDb().records.employees ?? []).find((e) => e.id === user.staffIds.tc);
+  if (staff?.status === 'inactive') throw new ServiceError('forbidden', G.deactivated(user.name));
   if (needsOtp(userId)) {
     pendingOtp = { userId, code: String(100000 + Math.floor(Math.random() * 900000)) };
     return { otp: pendingOtp.code };

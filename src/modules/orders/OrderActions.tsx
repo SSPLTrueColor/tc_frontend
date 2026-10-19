@@ -8,10 +8,11 @@ import { addDays, todayKey } from '../../lib/dates';
 import { recordEditPath } from '../../lib/routes';
 import { errorMessage } from '../../services/api/client';
 import { confirmOrderDelivery, pushOrderToErp, recordOrderDispatch, requestOrderStatusChange, submitOrderForApproval } from '../../services/api/orders';
-import { can, canUpdateRecord } from '../../services/authz';
+import { can } from '../../services/authz';
+import { canEditCommercial } from '../../services/orders/orders';
 import { getDb } from '../../services/db';
 import { useActor } from '../../services/hooks';
-import { getResource, getUser } from '../../services/registry';
+import { getUser } from '../../services/registry';
 import { approvalTypeLabel, levelHolders } from '../../services/workflow';
 import { SO_BEFORE_DISPATCH } from '../../domain/modules/orders';
 import { ServiceError } from '../../services/types';
@@ -37,7 +38,8 @@ export function OrderActions({ actor, record }: RecordExtensionProps) {
   const [pushing, setPushing] = useState(false);
   const status = String(record.status);
   const raw = getDb().records.salesOrders?.find((r) => r.id === record.id);
-  const editable = !!raw && canUpdateRecord(actor, getResource('salesOrders'), raw);
+  // Import / SCM edits Order Processing only (SO-08); commercial actions belong to the sales roles.
+  const editable = !!raw && canEditCommercial(actor, raw);
   const pending = pendingFor(record.id);
   const openApproval = pending.find((a) => a.type === 'salesOrder.approval');
   const statusRequest = pending.find((a) => a.type !== 'salesOrder.approval');
@@ -225,7 +227,7 @@ function DispatchDialog({ order, onClose }: { order: RecordExtensionProps['recor
         <Field id="dp-inv" label={FD.invoiceRef}>
           <input id="dp-inv" className="input" maxLength={40} value={f.invoiceRef} onChange={(e) => set({ invoiceRef: e.target.value })} />
         </Field>
-        <Field id="dp-ewb" label={FD.ewayBill} error={errors.ewayBill} help={FD.ewayBillHelp}>
+        <Field id="dp-ewb" label={FD.ewayBill} required error={errors.ewayBill} help={FD.ewayBillHelp}>
           <input id="dp-ewb" className="input" inputMode="numeric" maxLength={12} value={f.ewayBill} onChange={(e) => set({ ewayBill: e.target.value.replace(/\D/g, '') })} />
         </Field>
         <label className="orders-check">
@@ -242,7 +244,7 @@ export function ConfirmDeliveryDialog({ dispatch, onClose }: { dispatch: Record<
   const toast = useToast();
   const [date, setDate] = useState(todayKey());
   const [pod, setPod] = useState({ name: '', size: 0 });
-  const [photo, setPhoto] = useState('');
+  const [photo, setPhoto] = useState({ name: '', size: 0 });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   return (
@@ -261,7 +263,7 @@ export function ConfirmDeliveryDialog({ dispatch, onClose }: { dispatch: Record<
             onClick={async () => {
               setBusy(true);
               try {
-                const r = await confirmOrderDelivery(actor, dispatch.id, { actualDelivery: date, podFileName: pod.name, podFileSize: pod.size, podPhotoName: photo });
+                const r = await confirmOrderDelivery(actor, dispatch.id, { actualDelivery: date, podFileName: pod.name, podFileSize: pod.size, podPhotoName: photo.name, podPhotoSize: photo.size });
                 toast(r.installationId ? D.messages.deliveredWithJob(r.installationId) : D.messages.delivered);
                 onClose();
               } catch (e) {
@@ -284,8 +286,8 @@ export function ConfirmDeliveryDialog({ dispatch, onClose }: { dispatch: Record<
         <Field id="dl-pod" label={FD.podFileName} required error={errors.podFileName} wide>
           <FilePick id="dl-pod" value={pod.name} onPick={(name, size) => setPod({ name, size })} invalid={!!errors.podFileName} />
         </Field>
-        <Field id="dl-photo" label={FD.podPhotoName} wide>
-          <FilePick id="dl-photo" value={photo} accept=".jpg,.jpeg,.png" onPick={(name) => setPhoto(name)} />
+        <Field id="dl-photo" label={FD.podPhotoName} required error={errors.podPhotoName} wide>
+          <FilePick id="dl-photo" value={photo.name} accept=".jpg,.jpeg,.png" onPick={(name, size) => setPhoto({ name, size })} invalid={!!errors.podPhotoName} />
         </Field>
       </div>
       {errors.form && <InlineAlert tone="danger">{errors.form}</InlineAlert>}

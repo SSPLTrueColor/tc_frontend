@@ -13,7 +13,7 @@ import type { RecordData } from '../../metadata/types';
 import { type Actor, can, canReadRecord, canUpdateRecord, perm } from '../authz';
 import { commit, getDb } from '../db';
 import { appendAudit, notify } from '../ledger';
-import { byId, contractRateFor, employeesWithRole, listPriceFor, managerOf, recordsOfCustomer, userOfStaff } from '../lookups';
+import { byId, contractRateFor, listPriceFor, managerOf, recordsOfCustomer, userOfStaff } from '../lookups';
 import { queueMessage } from '../outbox';
 import { getPolicies } from '../policies';
 import type { HookContext } from '../resourceHooks';
@@ -50,13 +50,22 @@ export function getOrder(actor: Actor, id: string): RecordData {
   return r;
 }
 
+/**
+ * Commercial changes (lines, payment schedule, hold / resume / cancel, re-submission) belong to the roles
+ * that raise sales orders. Import / SCM may update the order only for Order Processing (SO-08, REQUIREMENTS
+ * §2.2 "E processing tab only"), so update scope alone is not enough.
+ */
+export function canEditCommercial(actor: Actor, r: RecordData): boolean {
+  return perm(actor, SO).create && canUpdateRecord(actor, getResource(SO), r);
+}
+
 function requireUpdatable(actor: Actor, r: RecordData) {
-  if (!canUpdateRecord(actor, getResource(SO), r)) throw new ServiceError('forbidden', E.cannotChange(actor.role.label, String(r.orderNo ?? r.id)));
+  if (!canEditCommercial(actor, r)) throw new ServiceError('forbidden', E.cannotChange(actor.role.label, String(r.orderNo ?? r.id)));
 }
 
 export const milestonesOf = (d: Db, orderId: string) => rows(d, 'paymentMilestones').filter((m) => m.salesOrderId === orderId).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
 export const dispatchesOf = (d: Db, orderId: string) => rows(d, 'dispatches').filter((x) => x.salesOrderId === orderId).sort((a, b) => String(b.dispatchDate).localeCompare(String(a.dispatchDate)));
-export const contractsOf = (d: Db, orderId: string) => rows(d, 'salesContracts').filter((x) => x.salesOrderId === orderId).sort((a, b) => Number(b.version) - Number(a.version));
+export const contractsOf = (d: Db, orderId: string) => rows(d, 'salesContracts').filter((x) => x.salesOrderId === orderId).sort((a, b) => Number(b.contractVersion) - Number(a.contractVersion));
 
 export interface OrderView {
   order: RecordData;
@@ -78,7 +87,7 @@ export function orderView(actor: Actor, id: string): OrderView {
   const quotation = order.quotationId ? byId('quotations', order.quotationId) : undefined;
   const lines = linesOf(order);
   const quotationLines = linesOf(quotation);
-  const canEdit = canUpdateRecord(actor, getResource(SO), order);
+  const canEdit = canEditCommercial(actor, order);
   return {
     order,
     lines,
@@ -152,8 +161,15 @@ export interface OrderDraft {
   opportunityId?: string;
   productId?: string;
   siteAddresses: RecordData[];
+  /** Customer name resolved here: a sales user may own the quotation without owning the customer record. */
+  customerName: string;
+  /** Customer PO captured when the quotation was accepted (QUO-11 / SO-02), so it is not entered twice. */
+  po?: { customerPoNo: string; customerPoDate: string; poFileName: string };
   blocker: string | null;
 }
+
+/** Display name of a customer for order screens (falls back to the id). */
+export const customerNameOf = (id: unknown) => String(byId('customers', id)?.name ?? id ?? '');
 
 const MACHINE_TYPES = ['machine'];
 
@@ -195,6 +211,8 @@ export function draftFromQuotation(actor: Actor, quotationId: string): OrderDraf
     opportunityId: q.opportunityId as string,
     productId: mainProduct(lines),
     siteAddresses: recordsOfCustomer('addresses', String(q.customerId)),
+    customerName: customerNameOf(q.customerId),
+    po: q.customerPoNo ? { customerPoNo: String(q.customerPoNo), customerPoDate: String(q.customerPoDate ?? ''), poFileName: String(q.poFileName ?? '') } : undefined,
     blocker: quotationBlocker(d, q),
   };
 }
@@ -236,6 +254,7 @@ export function draftFromRepeat(actor: Actor, orderId: string): OrderDraft {
     terms: { paymentTerms: prev.paymentTerms as string, deliveryTerms: prev.deliveryTerms as string },
     productId: mainProduct(lines),
     siteAddresses: recordsOfCustomer('addresses', String(prev.customerId)),
+    customerName: customerNameOf(prev.customerId),
     blocker: null,
   };
 }
@@ -419,6 +438,10 @@ export interface CreateOrderInput extends PoInput {
 
 export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
   if (!perm(actor, SO).create) throw new ServiceError('forbidden', E.cannotCreate(actor.role.label));
+  // A repeated submit (double click, retry after a timeout) returns the order it already created.
+  const done = getDb().idempotency[input.idempotencyKey];
+  const already = done ? rows(getDb(), SO).find((x) => x.id === done) : undefined;
+  if (already && canReadRecord(actor, getResource(SO), already)) return already;
   const draft = input.source === 'quotation' ? draftFromQuotation(actor, input.sourceId) : draftFromRepeat(actor, input.sourceId);
   if (draft.blocker) throw new ServiceError('invalid_state', draft.blocker);
   const errors = validatePo(input);
@@ -427,6 +450,8 @@ export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
   const lineErr = validateLines(lines);
   if (lineErr) throw new ServiceError('validation', lineErr);
   if (input.siteAddressId && !draft.siteAddresses.some((a) => a.id === input.siteAddressId)) throw new ServiceError('validation', E.siteInvalid, { fieldErrors: { siteAddressId: E.siteNotCustomer } });
+  // The installation job (INS-05) needs a site: machine orders must name one of the customer's addresses.
+  if (draft.orderKind === 'machine' && !input.siteAddressId) throw new ServiceError('validation', E.fixFields, { fieldErrors: { siteAddressId: draft.siteAddresses.length ? E.siteRequired : E.siteNoAddresses } });
 
   return commit((d) => {
     const existing = d.idempotency[input.idempotencyKey];
@@ -543,8 +568,22 @@ function paymentStatusAfterApproval(d: Db, orderId: string): 'confirmed' | 'paym
   return 'payment_pending';
 }
 
+/** BRD gap G2 (assumption): a prospect becomes an Active Customer on its first approved (confirmed) sales order. */
+function activateCustomer(ctx: HookContext, order: RecordData) {
+  const c = rows(ctx.d, 'customers').find((x) => x.id === order.customerId);
+  if (c?.category === 'prospect') patchRecordIn(ctx, 'customers', c.id, { category: 'active' }, N.becameActive(String(order.orderNo ?? order.id)));
+}
+
 export function onOrderApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
+  if (order && ['on_hold', 'pending_approval'].includes(String(order.status))) activateCustomer(ctx, order);
+  // Approved while on hold: the order resumes into the approved status instead of Pending Approval.
+  if (order?.status === 'on_hold' && order.statusBeforeHold === 'pending_approval') {
+    const status = paymentStatusAfterApproval(ctx.d, order.id);
+    patchRecordIn(ctx, SO, order.id, { statusBeforeHold: status, erpPushedAt: nowIso() }, N.approvedLog(a.id, statusLabel(status)));
+    notifyOwner(ctx, order, N.approved(String(order.orderNo)));
+    return;
+  }
   if (!order || order.status !== 'pending_approval') return;
   const status = paymentStatusAfterApproval(ctx.d, order.id);
   const next = patchRecordIn(ctx, SO, order.id, { status, erpPushedAt: nowIso() }, N.approvedLog(a.id, statusLabel(status)));
@@ -563,7 +602,9 @@ export function onHoldApproved(ctx: HookContext, a: Approval) {
 export function onResumeApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
   if (!order || order.status !== 'on_hold') return;
-  const back = String(order.statusBeforeHold || 'confirmed');
+  let back = String(order.statusBeforeHold || 'confirmed');
+  // The advance may have been received from the ERP while the order was on hold.
+  if (back === 'payment_pending' && paymentStatusAfterApproval(ctx.d, order.id) === 'payment_received') back = 'payment_received';
   patchRecordIn(ctx, SO, order.id, { status: back, statusBeforeHold: null, holdReason: null }, N.resumedLog(a.id, statusLabel(back)));
   notifyOwner(ctx, order, N.resumed(String(order.orderNo)));
 }
@@ -572,7 +613,7 @@ export function onCancelApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
   if (!order || !(SO_BEFORE_DISPATCH.includes(String(order.status)) || order.status === 'on_hold')) return;
   patchRecordIn(ctx, SO, order.id, { status: 'cancelled', cancelReason: a.reason }, N.cancelledLog(a.id, a.reason));
-  withdrawPending(ctx, order.id, APPROVAL, L.orders.approvals.withdrawnCancelled);
+  [APPROVAL, HOLD, RESUME].forEach((type) => withdrawPending(ctx, order.id, type, L.orders.approvals.withdrawnCancelled));
   notifyOwner(ctx, order, N.cancelled(String(order.orderNo)), 'exception');
 }
 
@@ -758,13 +799,21 @@ export function recordDispatch(actor: Actor, id: string, input: DispatchInput): 
   else if (input.dispatchDate > todayKey()) e.dispatchDate = E.dispatchDateFuture;
   if (!input.transporter?.trim()) e.transporter = E.transporterRequired;
   if (!input.lrNumber?.trim()) e.lrNumber = E.lrRequired;
-  if (input.ewayBill && !/^[0-9]{12}$/.test(input.ewayBill)) e.ewayBill = E.ewayDigits;
+  const ewayBill = input.ewayBill?.trim() ?? '';
+  if (ewayBill && !/^[0-9]{12}$/.test(ewayBill)) e.ewayBill = E.ewayDigits;
+  if ((input.transporter?.trim().length ?? 0) > 80) e.transporter = E.maxChars(80);
+  if ((input.lrNumber?.trim().length ?? 0) > 40) e.lrNumber = E.maxChars(40);
+  if ((input.challanNo?.trim().length ?? 0) > 40) e.challanNo = E.maxChars(40);
+  if ((input.invoiceRef?.trim().length ?? 0) > 40) e.invoiceRef = E.maxChars(40);
   if (!input.expectedDelivery) e.expectedDelivery = E.expectedRequired;
   else if (input.dispatchDate && input.expectedDelivery < input.dispatchDate) e.expectedDelivery = E.expectedBeforeDispatch;
-  if (Object.keys(e).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: e });
   return commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
     if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
+    // INS-01 / REQUIREMENTS §4.2: the dispatch record carries the e-way bill (typed, or the one the ERP returned).
+    if (!ewayBill && !order.ewayBill && !e.ewayBill) e.ewayBill = E.ewayRequired;
+    if (input.dispatchDate && input.dispatchDate < String(order.orderDate) && !e.dispatchDate) e.dispatchDate = E.dispatchBeforeOrder;
+    if (Object.keys(e).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: e });
     if (order.status !== 'ready_for_dispatch') throw new ServiceError('invalid_state', E.dispatchOnlyReady);
     const ctx = ctxOf(d, actor);
     const dsp = insertRecordIn(ctx, 'dispatches', {
@@ -777,7 +826,7 @@ export function recordDispatch(actor: Actor, id: string, input: DispatchInput): 
       lrNumber: input.lrNumber.trim(),
       challanNo: input.challanNo?.trim() || null,
       invoiceRef: input.invoiceRef?.trim() || (order.invoiceNo as string) || null,
-      ewayBill: input.ewayBill || (order.ewayBill as string) || null,
+      ewayBill: ewayBill || (order.ewayBill as string) || null,
       expectedDelivery: input.expectedDelivery,
       status: 'in_transit',
     });
@@ -795,20 +844,26 @@ export function recordDispatch(actor: Actor, id: string, input: DispatchInput): 
 }
 
 const ALLOWED_POD = /\.(pdf|jpe?g|png)$/i;
+const ALLOWED_PHOTO = /\.(jpe?g|png)$/i;
 
-export function confirmDelivery(actor: Actor, dispatchId: string, input: { actualDelivery: string; podFileName: string; podFileSize?: number; podPhotoName?: string }): { installationId?: string } {
+export function confirmDelivery(actor: Actor, dispatchId: string, input: { actualDelivery: string; podFileName: string; podFileSize?: number; podPhotoName?: string; podPhotoSize?: number }): { installationId?: string } {
   if (!can(actor, 'orders.dispatch')) throw new ServiceError('forbidden', E.deliveryForbidden);
   return commit((d) => {
     const dsp = rows(d, 'dispatches').find((x) => x.id === dispatchId);
-    if (!dsp) throw new ServiceError('not_found', E.dispatchNotFound);
+    const scoped = dsp && rows(d, SO).find((x) => x.id === dsp.salesOrderId);
+    if (!dsp || !scoped || !canReadRecord(actor, getResource(SO), scoped)) throw new ServiceError('not_found', E.dispatchNotFound);
     if (dsp.status === 'delivered') throw new ServiceError('invalid_state', E.alreadyDelivered);
     const e: Record<string, string> = {};
     if (!input.actualDelivery) e.actualDelivery = E.deliveryDateRequired;
     else if (input.actualDelivery > todayKey()) e.actualDelivery = E.deliveryDateFuture;
-    else if (input.actualDelivery < String(dsp.dispatchDate)) e.actualDelivery = E.expectedBeforeDispatch;
+    else if (input.actualDelivery < String(dsp.dispatchDate)) e.actualDelivery = E.deliveryBeforeDispatch;
     if (!input.podFileName?.trim()) e.podFileName = E.podRequired;
     else if (!ALLOWED_POD.test(input.podFileName)) e.podFileName = E.fileType;
     else if ((input.podFileSize ?? 0) > getPolicies().maxFileMb * 1024 * 1024) e.podFileName = E.fileSize(getPolicies().maxFileMb);
+    // INS-02: delivery confirmation needs a photo as well as the signed proof of delivery.
+    if (!input.podPhotoName?.trim()) e.podPhotoName = E.photoRequired;
+    else if (!ALLOWED_PHOTO.test(input.podPhotoName)) e.podPhotoName = E.photoType;
+    else if ((input.podPhotoSize ?? 0) > getPolicies().maxFileMb * 1024 * 1024) e.podPhotoName = E.fileSize(getPolicies().maxFileMb);
     if (Object.keys(e).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: e });
     const order = rows(d, SO).find((x) => x.id === dsp.salesOrderId);
     if (!order || order.status !== 'dispatched') throw new ServiceError('invalid_state', E.notDispatched);
@@ -836,12 +891,7 @@ export function createInstallationJob(ctx: HookContext, order: RecordData): stri
     { salesOrderId: order.id, customerId: order.customerId, siteAddressId: order.siteAddressId ?? null, productId: order.productId ?? null, status: 'scheduled' },
     { validate: false },
   );
-  // Tell the people who plan installations in this division.
-  const planners = [...employeesWithRole('coordinator', String(order.divisionId), ctx.d.records), ...employeesWithRole('service_head', String(order.divisionId), ctx.d.records)];
-  planners.forEach((e) => {
-    const u = userOfStaff(e.id);
-    if (u) notify(ctx.d, { userId: u.id, workspaceId: order.workspaceId, kind: 'assignment', title: N.installationCreated(job.id, String(order.orderNo)), link: { resource: 'installations', recordId: job.id } });
-  });
+  // Planners are notified once, by the installation module's afterCreate hook.
   return job.id;
 }
 

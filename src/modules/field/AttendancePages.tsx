@@ -231,7 +231,7 @@ export function AttendancePage() {
                     <td>{r.checkInAt ? time12(r.checkInAt) : <EmptyValue />}</td>
                     <td>{r.checkOutAt ? time12(r.checkOutAt) : <EmptyValue />}</td>
                     <td>{r.workMinutes !== null && r.workMinutes !== undefined ? fmtMinutes(r.workMinutes) : <EmptyValue />}</td>
-                    <td>{Number(r.lateByMin) > 0 ? FC.minutes(r.lateByMin) : <EmptyValue label={FC.onTime} />}</td>
+                    <td>{Number(r.lateByMin) > 0 ? FC.minutes(r.lateByMin) : r.checkInAt ? <span className="muted">{FC.onTime}</span> : <EmptyValue />}</td>
                   </tr>
                 ))}
               </tbody>
@@ -379,7 +379,7 @@ export function TeamAttendancePage() {
                         </td>
                         <td>{record?.checkOutAt ? time12(record.checkOutAt) : <EmptyValue />}</td>
                         <td>{record?.workMinutes ? fmtMinutes(record.workMinutes) : <EmptyValue />}</td>
-                        <td className={cx(Number(record?.lateByMin) > 0 && 'text-danger')}>{Number(record?.lateByMin) > 0 ? FC.minutes(record!.lateByMin) : <EmptyValue label={FC.onTime} />}</td>
+                        <td className={cx(Number(record?.lateByMin) > 0 && 'text-danger')}>{Number(record?.lateByMin) > 0 ? FC.minutes(record!.lateByMin) : record?.checkInAt ? <span className="muted">{FC.onTime}</span> : <EmptyValue />}</td>
                         <td>{Number(record?.earlyByMin) > 0 ? FC.minutes(record!.earlyByMin) : <EmptyValue />}</td>
                         <td>{record?.checkInPlace ? String(record.checkInPlace) : <EmptyValue />}</td>
                         <td>{visits}</td>
@@ -610,7 +610,7 @@ function RoutePeople() {
                         </span>
                       </span>
                     </td>
-                    <td>{r.checkedIn ? <StatusChip label={L.field.fields.attendance.checkInAt} tone="success" /> : notCheckedIn}</td>
+                    <td>{r.checkedIn ? <StatusChip label={FC.checkedIn} tone="success" /> : notCheckedIn}</td>
                     <td className="num">{r.distanceKm !== null ? FC.kmValue(r.distanceKm) : <EmptyValue label={P.noRoute} />}</td>
                     <td className="num">{r.positions || <EmptyValue />}</td>
                     <td>

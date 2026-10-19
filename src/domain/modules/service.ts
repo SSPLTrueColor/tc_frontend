@@ -233,7 +233,7 @@ export const tickets: ResourceDefinition = {
       resource: 'tickets',
       name: V.tickets.unassigned,
       type: 'table',
-      filter: group('and', [cond('status', 'in', ['open', 'reopened'])]),
+      filter: group('and', [cond('status', 'in', ['open', 'reopened']), cond('assigneeId', 'empty')]),
       sort: [{ field: 'reportedAt', dir: 'asc' }],
       columns: cols('id', 'customerId', 'description', 'priority', 'divisionId', 'reportedAt', 'responseDueAt', 'channel'),
     },

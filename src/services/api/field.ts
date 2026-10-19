@@ -10,7 +10,7 @@ import { L } from '../../constants/labels';
 
 const Q = L.field.offline.queue;
 
-export type { BadgeKey, LocationSource } from '../field/field';
+export type { BadgeKey, LocationSource, VisitLink } from '../field/field';
 
 /** Runs a field write now (with network delay) or queues it while offline. Resolves `queued` accordingly. */
 async function fieldWrite(label: string, op: () => void): Promise<{ queued: boolean }> {
@@ -42,5 +42,5 @@ export const fieldApi = {
   startVisit: (actor: Actor, id: string, at: string, point: { lat: number; lng: number }, source: field.LocationSource) => fieldWrite(Q.visitIn(id), () => void field.startVisit(actor, id, at, point, source)),
   completeVisit: (actor: Actor, id: string, input: Parameters<typeof field.completeVisit>[2]) => fieldWrite(Q.visitOut(id), () => void field.completeVisit(actor, id, input)),
   exportClaims: (actor: Actor, ids: string[]) => call(() => field.exportApprovedClaims(actor, ids)),
-  achievementCsv: field.achievementCsv,
+  exportAchievement: (actor: Actor, rows: field.AchievementRow[], period: string) => call(() => field.exportAchievement(actor, rows, period)),
 };

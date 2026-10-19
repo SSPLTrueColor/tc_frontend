@@ -15,7 +15,7 @@ import { maskEmail, maskIdentifier, maskPhone, RESTRICTED } from '../lib/phiMask
 import { type Actor, canReadRecord, canUpdateRecord, can, fieldAccess, fieldAccessMap, perm, queryableField } from './authz';
 import { type HookContext, hooksFor } from './resourceHooks';
 import { commit, getDb } from './db';
-import { evalGroup } from './filter';
+import { evalGroup, systemDateField } from './filter';
 import { appendAudit, emitEvent } from './ledger';
 import { getResource, masterLabel } from './registry';
 import { type Db, ServiceError } from './types';
@@ -60,7 +60,8 @@ export function recordTitle(resKey: string, id: unknown, actor?: Actor): string 
   const res = getResource(resKey);
   const r = getDb().records[resKey]?.find((x) => x.id === id);
   if (!r) return String(id);
-  if (actor && !canReadRecord(actor, res, r)) return `${id}`;
+  // A related record outside the viewer's scope shows a neutral label, never its id or name.
+  if (actor && !canReadRecord(actor, res, r)) return L.common.states.restricted;
   const custom = hooksFor(resKey).title;
   if (custom) return custom(r);
   const title = res.fields.find((f) => f.key === res.titleField);
@@ -156,7 +157,7 @@ export function queryRecords(actor: Actor, resKey: string, q: Query = {}): Query
   const ignored = new Set<string>();
   const resolveFactory = (r: RecordData) => (key: string) => {
     if (key === 'id') return { value: r.id };
-    const f = fields.get(key);
+    const f = fields.get(key) ?? systemDateField(key);
     if (!f || !queryableField(actor, res, f)) {
       ignored.add(key);
       return undefined;
@@ -342,6 +343,7 @@ export function availableTransitions(actor: Actor, res: ResourceDefinition, reco
       let reason: string | undefined;
       if (!raw || !canUpdateRecord(actor, res, raw)) reason = E.roleCannotUpdate(actor.role.label);
       else if (t.capability && !can(actor, t.capability)) reason = E.requiresPermission(t.capability);
+      else reason = hooksFor(res.key).transitionBlocked?.(actor, raw, t.to);
       return { ...t, disabledReason: reason };
     });
 }
@@ -401,9 +403,11 @@ export function deleteRecord(actor: Actor, resKey: string, id: string) {
         });
     }
     if (refs.length) throw new ServiceError('invalid_state', E.referenced(id, refs.join(', ')));
+    const correlationId = uid('cor');
+    // Domain veto / repair (e.g. quotations keep exactly one latest version); runs before the record leaves.
+    hooksFor(resKey).beforeDelete?.({ d, actor, correlationId }, current);
     d.records[resKey] = d.records[resKey].filter((r) => r.id !== id);
     d.recycle.unshift({ id: uid('bin'), workspaceId: actor.workspaceId, resource: resKey, record: current, deletedAt: nowIso(), deletedBy: actor.user.id });
-    const correlationId = uid('cor');
     appendAudit(d, actor, { action: 'delete', resource: resKey, recordId: id, summary: AU.recycled(res.label.toLowerCase(), id), correlationId });
     emitEvent(d, actor, { eventType: `${resKey}.deleted`, resourceId: res.id, recordId: id, correlationId, payload: { id } });
   });

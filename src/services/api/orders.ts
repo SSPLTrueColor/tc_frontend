@@ -11,7 +11,7 @@ import * as sc from '../orders/contracts';
 import type { QuoteLine } from '../orders/lines';
 
 /** Reads (run through useServiceQuery for the simulated latency). processingBoard = GET /order-processing. */
-export { orderView, eligibleQuotations, repeatableOrders, draftFromQuotation, draftFromRepeat, getOrder, processingBoard, validateProcessing } from '../orders/orders';
+export { orderView, customerNameOf, eligibleQuotations, repeatableOrders, draftFromQuotation, draftFromRepeat, getOrder, processingBoard, validateProcessing } from '../orders/orders';
 export type { ProcessingInput, ProcessingRow } from '../orders/orders';
 export { printableContract } from '../orders/contracts';
 
@@ -25,7 +25,7 @@ export const savePaymentSchedule = (actor: Actor, id: string, rows: so.ScheduleR
 export const recordPaymentReceipt = (actor: Actor, milestoneId: string, amount: number, date: string) => call(() => so.recordReceipt(actor, milestoneId, amount, date));
 export const sendPaymentReminders = (actor: Actor) => call(() => so.runPaymentReminders(actor));
 export const recordOrderDispatch = (actor: Actor, id: string, input: so.DispatchInput) => call(() => so.recordDispatch(actor, id, input));
-export const confirmOrderDelivery = (actor: Actor, dispatchId: string, input: { actualDelivery: string; podFileName: string; podFileSize?: number; podPhotoName?: string }) => call(() => so.confirmDelivery(actor, dispatchId, input));
+export const confirmOrderDelivery = (actor: Actor, dispatchId: string, input: { actualDelivery: string; podFileName: string; podFileSize?: number; podPhotoName?: string; podPhotoSize?: number }) => call(() => so.confirmDelivery(actor, dispatchId, input));
 export const generateSalesContract = (actor: Actor, orderId: string) => call(() => sc.generateContract(actor, orderId));
 export const sendContractForSignature = (actor: Actor, contractId: string) => call(() => sc.sendForSignature(actor, contractId));
 export const signSalesContract = (actor: Actor, contractId: string, otp: string, signer: string) => call(() => sc.signContract(actor, contractId, otp, signer));

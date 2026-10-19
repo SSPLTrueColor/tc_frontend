@@ -1,6 +1,10 @@
 /** Settings Resolver: personal preferences (local-only) layered on platform constraints. */
 import { nowIso } from '../lib/clock';
-import type { Actor } from './authz';
+import { uid } from '../lib/ids';
+import { type Actor, actorFor } from './authz';
+import { appendAudit } from './ledger';
+import { getUser } from './registry';
+import { ServiceError } from './types';
 import { L } from '../constants/labels';
 import { commit, defaultSettings, getDb } from './db';
 import type { PersonalSettings } from './types';
@@ -65,7 +69,14 @@ export function markTourSeen(userId: string) {
 
 /** Role switcher: becomes another demo user without the sign-in screen (still audited). */
 export function switchSession(userId: string, workspaceId: string) {
+  const user = getUser(userId);
+  if (!user) throw new ServiceError('not_found', L.common.login.unknownUser);
+  // ADM-08: deactivated users cannot be switched to either.
+  if ((getDb().records.employees ?? []).some((e) => e.id === user.staffIds[workspaceId] && e.status === 'inactive')) throw new ServiceError('forbidden', L.common.login.deactivated(user.name));
   commit((d) => {
+    const from = getUser(d.session.userId)?.name ?? d.session.userId;
     d.session = { ...d.session, userId, workspaceId, signedIn: true, lastActiveAt: nowIso() };
+    // COM-09: every sign-in is in the audit trail, including the demo role switcher.
+    appendAudit(d, actorFor(userId, workspaceId), { action: 'login', summary: L.common.login.auditSwitched(from), correlationId: uid('cor') });
   });
 }

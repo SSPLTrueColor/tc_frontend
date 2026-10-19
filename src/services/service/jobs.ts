@@ -11,6 +11,7 @@ import { type Actor, can } from '../authz';
 import { commit, getDb } from '../db';
 import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn, queryRecords, transitionRecord } from '../runtime';
+import { masterLabel } from '../registry';
 import { ServiceError } from '../types';
 import { chargeableBlocker, OPEN_STATUSES } from './tickets';
 import { L } from '../../constants/labels';
@@ -22,6 +23,10 @@ const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
 export const visitsOf = (ticketId: string): RecordData[] => (getDb().records.serviceVisits ?? []).filter((v) => v.ticketId === ticketId).sort((a, b) => s(b.createdAt).localeCompare(s(a.createdAt)));
 export const openVisitOf = (ticketId: string) => visitsOf(ticketId).find((v) => v.status !== 'completed' && v.visitType !== 'remote');
+
+/** Statuses in which the engineer can check in at the site (Accept first; not after resolution). */
+const CHECK_IN_STATUSES = ['assigned', 'accepted', 'reopened', 'in_progress', 'waiting_parts', 'waiting_customer'];
+const statusLabel = (v: unknown) => masterLabel('ticketStatus', v);
 
 const PRIORITY_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -60,11 +65,13 @@ export function startTravel(actor: Actor, id: string, version?: number) {
 
 export function checkIn(actor: Actor, id: string, at: { lat: number; lng: number; mock: boolean }, version?: number) {
   return jobCommit(actor, id, version, (ctx, t) => {
+    if (!CHECK_IN_STATUSES.includes(s(t.status))) throw new ServiceError('invalid_state', E.checkInClosed(statusLabel(t.status)));
     const now = nowLocal();
     const visit = openVisitOf(t.id) ?? insertRecordIn(ctx, 'serviceVisits', { ticketId: t.id, engineerId: actor.staffId, visitType: 'site', status: 'travelling', travelStartAt: now });
     patchRecordIn(ctx, 'serviceVisits', visit.id, { status: 'on_site', checkInAt: now, checkInLat: Math.round(at.lat * 1e5) / 1e5, checkInLng: Math.round(at.lng * 1e5) / 1e5, checkInMock: at.mock }, A.checkedIn(at.mock));
     const patch: Record<string, unknown> = { arrivedAt: t.arrivedAt || now, respondedAt: t.respondedAt || now };
-    if (['accepted', 'reopened', 'assigned'].includes(s(t.status))) patch.status = 'in_progress';
+    // Arriving on site starts (or, with the parts, resumes) the work; Waiting for Customer is left to Resume Work so the SLA pause is closed properly.
+    if (['accepted', 'reopened', 'assigned', 'waiting_parts'].includes(s(t.status))) patch.status = 'in_progress';
     return patchRecordIn(ctx, 'tickets', t.id, patch, A.arrived);
   });
 }
@@ -105,6 +112,7 @@ export function checkOut(actor: Actor, id: string, input: { method: 'otp' | 'sig
     const visit = openVisitOf(t.id);
     if (!visit || visit.status !== 'on_site') throw new ServiceError('invalid_state', E.checkInFirst);
     if (input.resolve) {
+      if (t.status !== 'in_progress') throw new ServiceError('invalid_state', E.resolveNeedsInProgress(statusLabel(t.status)));
       if (!s(t.resolution).trim() && !s(visit.workDone).trim()) throw new ServiceError('validation', E.workPerformedRequired, { fieldErrors: { workDone: E.requiredToResolve } });
       const block = chargeableBlocker(t);
       if (block) throw new ServiceError('invalid_state', block);

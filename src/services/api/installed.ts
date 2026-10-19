@@ -17,6 +17,8 @@ import {
   type RenewInput,
   replaceComponent,
   runRenewalSweep,
+  saveHandover,
+  type HandoverInput,
   shareReadinessChecklist,
   signOffInstallation,
   type SignOffInput,
@@ -27,6 +29,7 @@ import { getPolicies } from '../policies';
 
 export const installedApi = {
   shareReadinessChecklist: (actor: Actor, id: string) => call(() => shareReadinessChecklist(actor, id)),
+  saveHandover: (actor: Actor, id: string, input: HandoverInput, version: number) => call(() => saveHandover(actor, id, input, version)),
   attachMedia: (actor: Actor, id: string, files: { name: string; size: number }[]) => call(() => attachInstallationMedia(actor, id, files)),
   startSignOffOtp: (actor: Actor, id: string) => call(() => startSignOffOtp(actor, id)),
   signOff: (actor: Actor, id: string, input: SignOffInput, version: number) => call(() => signOffInstallation(actor, id, input, version)),

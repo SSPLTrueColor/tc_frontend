@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { addDays, todayKey } from '../../lib/dates';
@@ -8,10 +8,10 @@ import { errorMessage } from '../../services/api/client';
 import { quotationsApi } from '../../services/api/quotations';
 import { useActor } from '../../services/hooks';
 import { listPriceFor } from '../../services/lookups';
-import { discountApprovalLevels, getPolicies } from '../../services/policies';
+import { getPolicies } from '../../services/policies';
 import { activeMasterValues, masterLabel } from '../../services/registry';
 import { computeTotals, GST_RATES, lineAmounts, type QuoteLine, validateLines } from '../../services/quotations/pricing';
-import { applyPriceList, type EditorData, levelName } from '../../services/quotations/workflow';
+import { applyPriceList, canSetListPrice, type EditorData, levelName, quoteApprovalChain } from '../../services/quotations/workflow';
 import { ServiceError } from '../../services/types';
 import type { RecordData } from '../../metadata/types';
 import { Button, IconButton } from '../../components/primitives/Button';
@@ -79,7 +79,13 @@ function EditorLoader({ recordId, oppId }: { recordId?: string; oppId?: string }
       <div className="page">
         <PageHeader title={title} />
         <ErrorState title={E.cannotEdit}>
-          {d.quote.record.isLatest ? E.cannotEditStatus(String(d.quote.record.quoteNo), masterLabel('quoteStatus', d.quote.record.status)) : E.cannotEditOld(String(d.quote.record.quoteNo))}{' '}
+          {!d.quote.record.isLatest
+            ? E.cannotEditOld(String(d.quote.record.quoteNo))
+            : !d.quote.canUpdate
+              ? T.common.readOnlyFor(actor.role.label)
+              : ['accepted', 'rejected'].includes(String(d.quote.record.status))
+              ? E.cannotEditFinal(String(d.quote.record.quoteNo), masterLabel('quoteStatus', d.quote.record.status))
+              : E.cannotEditStatus(String(d.quote.record.quoteNo), masterLabel('quoteStatus', d.quote.record.status))}{' '}
           <Link to={recordPeekPath('tc', 'quotations', d.quote.record.id)}>{T.actions.openQuotation}</Link>
         </ErrorState>
       </div>
@@ -112,6 +118,11 @@ function QuoteEditor({ data }: { data: EditorData }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<'' | 'draft' | 'submit'>('');
+  // A new quotation saved before a failed submit: later saves update it instead of creating a duplicate.
+  const [saved, setSaved] = useState<{ id: string; version: number } | null>(null);
+  const mayPrice = canSetListPrice(actor);
+  // Synchronous guard: a double click fires twice before the disabled state renders (would create two quotations).
+  const inFlight = useRef(false);
   const back = existing ? recordPeekPath('tc', 'quotations', existing.id) : initialOpp ? recordPeekPath('tc', 'opportunities', initialOpp.id) : resourcePath('tc', 'quotations');
   const guard = useUnsavedGuard(dirty, () => navigate(back));
 
@@ -145,7 +156,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
   const priced = useMemo(() => applyPriceList(lines, quoteDate), [lines, quoteDate]);
   const totals = useMemo(() => computeTotals(priced, placeOfSupply, Number(header.freight) || 0, Number(header.insurance) || 0, getPolicies().companyGstState), [priced, placeOfSupply, header.freight, header.insurance]);
   const lineErrors = validateLines(priced);
-  const levels = discountApprovalLevels(totals.maxDiscountPct);
+  const levels = quoteApprovalChain(actor, { ownerId: header.ownerId || opp?.ownerId || existing?.ownerId, divisionId }, totals.maxDiscountPct);
   const sameState = placeOfSupply === getPolicies().companyGstState;
 
   const products = data.products;
@@ -177,6 +188,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
   };
 
   const save = async (submit: boolean) => {
+    if (inFlight.current) return;
     setErrors({});
     const e: Record<string, string> = {};
     if (!header.opportunityId) e.opportunityId = E.chooseOpportunity;
@@ -190,19 +202,23 @@ function QuoteEditor({ data }: { data: EditorData }) {
       return;
     }
     setBusy(submit ? 'submit' : 'draft');
+    inFlight.current = true;
     try {
-      const saved = await quotationsApi.save(actor, { id: existing?.id, version: Number(existing?.version ?? 0), header: { ...header, placeOfSupply }, lines });
+      const target = saved ?? (existing ? { id: existing.id, version: Number(existing.version ?? 0) } : null);
+      const result = await quotationsApi.save(actor, { id: target?.id, version: target?.version, header: { ...header, placeOfSupply }, lines });
+      setSaved({ id: result.record.id, version: result.record.version });
       setDirty(false);
       if (submit) {
-        const r = await quotationsApi.submit(actor, saved.record.id, saved.record.version, reason);
-        const no = String(saved.record.quoteNo ?? saved.record.id);
+        const r = await quotationsApi.submit(actor, result.record.id, result.record.version, reason);
+        const no = String(result.record.quoteNo ?? result.record.id);
         toast(r.status === 'approved' ? E.submittedApproved(no) : E.submittedPending(no, String(r.approvalId)));
-      } else toast(E.savedDraft(String(saved.record.quoteNo ?? saved.record.id)));
-      navigate(recordPeekPath('tc', 'quotations', saved.record.id));
+      } else toast(E.savedDraft(String(result.record.quoteNo ?? result.record.id)));
+      navigate(recordPeekPath('tc', 'quotations', result.record.id));
     } catch (err) {
       if (err instanceof ServiceError && err.fieldErrors) setErrors(err.fieldErrors);
       toast(errorMessage(err), 'danger');
     } finally {
+      inFlight.current = false;
       setBusy('');
     }
   };
@@ -226,7 +242,11 @@ function QuoteEditor({ data }: { data: EditorData }) {
               value={String(header.opportunityId ?? '')}
               invalid={!!errors.opportunityId}
               disabled={!!existing}
-              options={data.opportunities.map((o) => ({ value: o.id, label: `${o.name ?? o.id} · ${data.customers[String(o.customerId)]?.name ?? ''}` }))}
+              options={data.opportunities.map((o) => {
+                const name = String(o.name ?? o.id);
+                const cust = data.customers[String(o.customerId)]?.name ?? '';
+                return { value: o.id, label: cust && !name.includes(cust) ? `${name} · ${cust}` : name };
+              })}
               onChange={(v) => {
                 const o = data.opportunities.find((x) => x.id === v);
                 setHeader((h) => ({ ...h, opportunityId: v, contactId: o?.contactId ?? '', placeOfSupply: '', termsTemplateId: '' }));
@@ -281,7 +301,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
           <ol className="qt-line-list">
             {priced.map((l, i) => {
               const a = lineAmounts(l);
-              const byAmount = Number(lines[i].discountAmt) > 0;
+              const byAmount = lines[i].discountType === 'amt' || (lines[i].discountType !== 'pct' && Number(lines[i].discountAmt) > 0);
               const id = `qt-l${i}`;
               return (
                 <li key={i} className="qt-line">
@@ -318,9 +338,9 @@ function QuoteEditor({ data }: { data: EditorData }) {
                         <label className="field-label" htmlFor={`${id}-lp`}>
                           {T.lineTable.listPrice}
                         </label>
-                        {l.priceLocked && <InfoTip text={E.priceLocked} label={E.aboutListPrice} />}
+                        {(l.priceLocked || !mayPrice) && <InfoTip text={l.priceLocked ? E.priceLocked : E.priceNotListed} label={E.aboutListPrice} />}
                       </span>
-                      {l.priceLocked ? (
+                      {l.priceLocked || !mayPrice ? (
                         <span id={`${id}-lp`} className="field-readonly num">
                           {formatMoney(l.listPrice)}
                         </span>
@@ -353,7 +373,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                             { value: 'pct', label: '%' },
                             { value: 'amt', label: '₹' },
                           ]}
-                          onChange={(v) => setLine(i, v === 'amt' ? { discountAmt: a.discount || 0, discountPct: 0 } : { discountPct: a.effectivePct, discountAmt: 0 })}
+                          onChange={(v) => setLine(i, v === 'amt' ? { discountType: 'amt', discountAmt: a.discount || 0, discountPct: 0 } : { discountType: 'pct', discountPct: a.effectivePct, discountAmt: 0 })}
                         />
                       </div>
                     </div>
@@ -453,7 +473,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
               <p className="muted small span-all">{E.withinLimit(totals.maxDiscountPct)}</p>
             )}
           </div>
-          <TotalsBlock t={totals} showMargin={data.showMargin} />
+          <TotalsBlock t={totals} showMargin={data.showMargin} interState={!sameState} />
         </div>
 
         <h2 className="panel-title qt-section dialog-title-row">

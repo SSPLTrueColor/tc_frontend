@@ -17,6 +17,8 @@ const common = {
   appName: 'True Color CRM',
   docTitle: (title: string) => `${title} · True Color CRM`,
   notFound: { title: 'Page Not Found', body: 'This link is invalid, was renamed, or points to something you cannot access.', back: 'Go to Dashboard' },
+  /** Record timestamps every resource has; filterable on every list (dashboard drill-downs use them). */
+  systemFields: { createdAt: 'Created on', updatedAt: 'Last updated on' },
 
   // ------------------------------------------------------------ Generic buttons (GLOSSARY §5: keep New, Edit, Delete, Save, Cancel, Export, Import)
   actions: {
@@ -109,6 +111,7 @@ const common = {
     withdrawn: (id: string) => `${id} withdrawn`,
     decided: (id: string, decision: string) => `${id} ${decision}`,
     actionDone: (id: string, action: string) => `${id}: ${action}`,
+    moved: (title: string, stage: string) => `Moved ${title} to ${stage}`,
     fieldUpdated: (id: string, field: string) => `${id}: ${field} updated`,
     linked: (child: string, parent: string) => `Linked ${child} to ${parent}`,
     copiedId: (id: string) => `${id} copied`,
@@ -246,6 +249,7 @@ const common = {
     nowViewingAs: (name: string, rolePosition: string) => `Now viewing as ${name} (${rolePosition})`,
     myWork: 'Notifications & Approvals',
     personalSettings: 'Demo Settings',
+    help: 'Help & Guided Tour',
     resetDemo: 'Reset Demo Data…',
     tour: 'Take the Guided Tour',
     signOut: 'Sign Out',
@@ -569,6 +573,7 @@ const common = {
     notEditable: 'Not editable',
     lockedForAudit: (label: string) => `This ${label} is closed and locked for audit.`,
     creating: (plural: string) => `creating ${plural}`,
+    editing: (plural: string) => `editing ${plural}`,
     // line items editor
     amount: 'Amount',
     rowActions: 'Row actions',
@@ -815,12 +820,14 @@ const common = {
     foot: 'Demo data only · stored in this browser · nothing is sent.',
     // session service
     unknownUser: 'Unknown demo user.',
+    deactivated: (name: string) => `${name} is deactivated. Ask the System Administrator to reactivate the user (Administration › Users).`,
     startAgain: 'Start sign-in again.',
     wrongCode: 'That code is not correct.',
     incorrectCode: 'Incorrect code',
     auditSignedIn: (otp: boolean) => `Signed in${otp ? ' (one-time code verified)' : ''}`,
     auditIdle: 'Session locked after inactivity',
     auditSignedOut: 'Signed out',
+    auditSwitched: (from: string) => `Signed in with the role switcher (was ${from})`,
   },
 
   // ------------------------------------------------------------ Service-layer messages shown to users
@@ -1173,8 +1180,8 @@ const customers = {
     addresses: { one: 'Site', many: 'Sites' },
   },
   descriptions: {
-    customers: 'One record per customer — prospect, active or existing customer, dealer or distributor — shared by every module (COM-02).',
-    contacts: 'People at customers, plus the Contact Pool — prospects not linked to a customer or lead yet.',
+    customers: 'One record per company — prospect, active or existing customer, dealer or distributor — shared by every module (COM-02).',
+    contacts: 'People at companies, plus the Contact Pool — prospects not linked to a company or lead yet.',
     addresses: 'Billing, shipping and installation sites. Installation sites need coordinates for engineer routing.',
   },
 
@@ -1349,11 +1356,11 @@ const customers = {
       endCustomers: 'End customers via this dealer',
       noGroup: 'None',
     },
-    contacts: { empty: 'No contacts yet', emptyText: 'Add the people you deal with at this customer.', decisionMaker: 'Decision maker' },
+    contacts: { empty: 'No contacts yet', emptyText: 'Add the people you deal with at this company.', decisionMaker: 'Decision maker' },
     sites: { empty: 'No sites yet', emptyText: 'Add billing, shipping and installation sites.', noGeo: 'No geo-tag' },
     linked: {
       emptyTitle: (what: string) => `No ${what.toLowerCase()} yet`,
-      emptyText: (what: string) => `${what} for this customer appear here.`,
+      emptyText: (what: string) => `${what} for this company appear here.`,
     },
     payment: {
       erp: 'Credit & outstanding (ERP)',
@@ -1362,7 +1369,7 @@ const customers = {
       lastSynced: 'Last synced',
       schedule: 'Order payment schedule',
       scheduleEmpty: 'No payment milestones',
-      scheduleEmptyText: 'Payment milestones of this customer’s sales orders appear here.',
+      scheduleEmptyText: 'Payment milestones of this company’s sales orders appear here.',
       cols: { milestone: 'Milestone', order: 'Sales order', due: 'Due', amount: 'Amount', received: 'Received', status: 'Status' },
       totals: (due: string, overdue: string) => `Open: ${due} · Past due date: ${overdue}`,
     },
@@ -1389,11 +1396,11 @@ const customers = {
     },
     activity: {
       empty: 'No activity yet',
-      emptyText: 'Calls, visits and notes on this customer, its leads, opportunities and service tickets appear here.',
+      emptyText: 'Calls, visits and notes on this company, its leads, opportunities and service tickets appear here.',
     },
     documents: {
       empty: 'No documents yet',
-      emptyText: 'Files attached to this customer’s quotations, sales orders and deliveries appear here.',
+      emptyText: 'Files attached to this company’s quotations, sales orders and deliveries appear here.',
       cols: { file: 'File', type: 'Document', record: 'Record', updated: 'Updated' },
       simulated: 'Simulated: only file names are kept in this prototype.',
     },
@@ -1405,12 +1412,12 @@ const customers = {
     convertedTitle: 'Converted to Lead',
     convertedText: 'The lead was created from this contact.',
     poolTitle: 'In the Contact Pool',
-    poolText: 'Not linked to a customer yet. Use “Convert to Lead” when there is a real requirement.',
+    poolText: 'Not linked to a company yet. Use “Convert to Lead” when there is a real requirement.',
   },
 
   convert: {
     title: (name: string) => `Convert ${name} to Lead`,
-    poolDescription: 'This contact is in the Contact Pool, so the customer is created as a prospect at the same time.',
+    poolDescription: 'This contact is in the Contact Pool, so the company is created as a Prospect at the same time.',
     linkedDescription: (customer: string) => `The lead is created for ${customer} with this contact.`,
     companyName: 'Company name',
     territory: 'Territory / hub',
@@ -1422,14 +1429,15 @@ const customers = {
     eventName: 'Exhibition / event',
     eventPlaceholder: 'e.g. Gartex Texprocess, Mumbai 2026',
     requirement: 'Customer requirement',
-    done: (leadId: string, customerId?: string) => `Lead ${leadId} created${customerId ? ` with new customer ${customerId}` : ''}`,
+    done: (leadId: string, customerId?: string) => `Lead ${leadId} created${customerId ? ` with new company ${customerId}` : ''}`,
     disabledConverted: 'Already converted to a lead',
     disabledNoLeads: 'Lead management is not available in this build yet',
     disabledNoPerm: 'Your role cannot create leads',
+    similarHint: 'If it is the same company, cancel and link the contact to it from the contact record instead.',
   },
 
   pool: {
-    description: 'Prospects collected from the phone book, Excel / CSV files, visiting cards and manual entry. They are not linked to a customer yet; use “Convert to Lead” when there is a real requirement (CUS-05).',
+    description: 'Prospects collected from the phone book, Excel / CSV files, visiting cards and manual entry. They are not linked to a company yet; use “Convert to Lead” when there is a real requirement (CUS-05).',
     searchPlaceholder: 'Search name, mobile, email or city',
     searchLabel: 'Search the Contact Pool',
     filterStatus: 'Filter by pool status',
@@ -1471,7 +1479,7 @@ const customers = {
     summary: (rows: number, ready: number, errors: number, existing: number) => `${rows} rows · ${ready} ready · ${errors} with errors · ${existing} already exist`,
     noValid: 'No valid new rows to import',
     imported: (n: number, skipped: number) => `Imported ${n} ${n === 1 ? 'contact' : 'contacts'}${skipped ? `, skipped ${skipped}` : ''}`,
-    cols: { line: 'Line', name: 'Name', company: 'Company', mobile: 'Mobile', email: 'Email', city: 'City', check: 'Check' },
+    cols: { line: 'Line', name: 'Name', company: 'Company', designation: 'Designation', mobile: 'Mobile', email: 'Email', city: 'City', check: 'Check' },
     pool: 'Contact Pool',
     exists: (id: string) => `Exists as ${id}`,
     ready: 'Ready',
@@ -1480,6 +1488,8 @@ const customers = {
       reachRequired: 'Mobile or email is required',
       unknownSource: (s: string) => `Unknown source “${s}”`,
       sameMobile: (line: number) => `Same mobile as line ${line}`,
+      sameEmail: (line: number) => `Same email as line ${line}`,
+      tooLong: (col: string, n: number) => `${col} must be ${n} characters or fewer`,
       empty: 'The file is empty.',
       missingColumns: (cols: string) => `Missing column(s): ${cols}. Download the template to see the expected columns.`,
       tooMany: 'Import at most 500 contacts at a time.',
@@ -1493,7 +1503,7 @@ const customers = {
     noAccess: 'duplicate review',
     loadError: 'Could not check for duplicates',
     empty: 'No likely duplicates',
-    emptyText: 'New customers are checked on entry; anything that slips through appears here.',
+    emptyText: 'New companies are checked on entry; anything that slips through appears here.',
     cols: { why: 'Why', records: 'Records (choose the one to keep)', action: 'Action' },
     kinds: { gstin: 'Same GSTIN', name: 'Similar Name', contact: 'Same Mobile' },
     reasons: {
@@ -1510,7 +1520,7 @@ const customers = {
   },
 
   transfer: {
-    description: 'Move a person’s customers and open work to someone else — when they leave or territories change. Closed records keep their original owner.',
+    description: 'Move a person’s companies and open work to someone else — when they leave or territories change. Closed records keep their original owner.',
     noAccess: 'ownership transfer',
     from: 'Current owner',
     to: 'New owner',
@@ -1533,10 +1543,10 @@ const customers = {
   },
 
   messages: {
-    gstinTaken: (id: string, name: string) => `This GSTIN already belongs to ${id} “${name}”. Open that customer instead of creating a duplicate.`,
-    ownParent: 'A customer cannot be its own group company',
+    gstinTaken: (id: string, name: string) => `This GSTIN already belongs to ${id} “${name}”. Open that company instead of creating a duplicate.`,
+    ownParent: 'A company cannot be its own group company',
     parentLoop: 'This would create a loop in the group hierarchy',
-    ownDealer: 'A customer cannot be its own dealer',
+    ownDealer: 'A company cannot be its own dealer',
     reachRequired: 'Enter a mobile number or an email address',
     contactTaken: (field: string, id: string, name: string) => `This ${field} already belongs to contact ${id} “${name}”.`,
     geoPair: 'Enter both latitude and longitude, or neither',
@@ -1550,10 +1560,10 @@ const customers = {
     erpRefreshed: (amount: string) => `ERP figures refreshed (simulated): outstanding ${amount}`,
     // service errors
     onlyAdminDuplicates: 'Only administrators can review duplicates.',
-    onlyAdminMerge: 'Only administrators can merge customers.',
-    mergeSame: 'Choose two different customers.',
-    mergeMissing: 'One of the customers no longer exists.',
-    mergeHistory: (id: string, name: string) => `Merged ${id} (${name}) into this customer`,
+    onlyAdminMerge: 'Only administrators can merge companies.',
+    mergeSame: 'Choose two different companies.',
+    mergeMissing: 'One of the companies no longer exists.',
+    mergeHistory: (id: string, name: string) => `Merged ${id} (${name}) into this company`,
     mergeAudit: (drop: string, name: string, keep: string, moved: number) => `Merged ${drop} “${name}” into ${keep}: ${moved} linked record(s) re-pointed; duplicate moved to the recycle bin`,
     noTransfer: 'Your role cannot transfer ownership.',
     chooseBoth: 'Choose both users.',
@@ -1581,13 +1591,17 @@ const customers = {
     territoryRequired: 'Territory is required',
     stateRequired: 'Billing state is required',
     fixFields: 'Please fix the highlighted fields.',
-    linkedOnConversion: 'Linked to customer on conversion',
+    linkedOnConversion: 'Linked to company on conversion',
     convertedHistory: (leadId: string) => `Converted to Lead ${leadId}`,
     convertNotify: (leadId: string, name: string) => `New lead ${leadId} from contact ${name}`,
     customerNotFound: 'Company not found.',
-    noErpRefresh: 'Your role cannot refresh ERP figures for this customer.',
+    noErpRefresh: 'Your role cannot refresh ERP figures for this company.',
     erpHistory: 'Credit and outstanding refreshed from ERP (simulated)',
     noPoolAccess: 'You do not have access to the Contact Pool.',
+    nameRequired: 'Name is required',
+    companyOutOfScope: 'You can only link companies you have access to',
+    notADealer: 'Choose a company whose customer category is Dealer or Distributor',
+    reviewPast: 'Next plan review cannot be in the past',
   },
 } as const;
 
@@ -1866,6 +1880,7 @@ const leads = {
       periodLabel: 'Follow-up period',
       searchPlaceholder: 'Search record or customer',
       searchLabel: 'Search follow-ups',
+      range: (from: number, to: number, total: number) => `${from}–${to} of ${total} follow-ups`,
       recordType: 'Record type',
       allRecordTypes: 'All record types',
       count: (n: number) => `${n} follow-ups`,
@@ -1962,7 +1977,7 @@ const leads = {
     reasonOtherField: 'Required for “Other”',
     alreadyClosed: 'This lead is already closed.',
     qualifiedReadOnly: (opp: string) => (opp ? `Qualified leads are read-only — continue on opportunity ${opp}.` : 'Qualified leads are read-only.'),
-    followUpRequired: 'Set a next follow-up date (today or later) before changing the status — edit the lead or log a follow-up.',
+    followUpRequired: 'Set the next follow-up date (today or later) — every follow-up logged on an open lead plans the next one.',
     importNoAccess: 'Your role cannot import leads.',
     importEvent: 'Enter the exhibition / event name.',
     importNeedsCustomers: 'Import needs the Customers module (customers and contacts).',
@@ -2197,8 +2212,9 @@ const opportunities = {
   timeline: {
     errorTitle: 'Could not load the timeline',
     emptyTitle: 'No follow-ups yet',
-    emptyBody: 'Calls, meetings and notes logged on this opportunity appear here.',
+    emptyBody: 'Calls, meetings and notes logged on this opportunity and on the lead it came from appear here.',
     nextFollowUp: (date: string) => ` · next follow-up ${date}`,
+    fromLead: (leadId: string) => `Lead ${leadId}`,
   },
 
   messages: {
@@ -2208,6 +2224,8 @@ const opportunities = {
     demoBooked: (id: string, at: string) => `Demo ${id} booked for ${at}`,
     demoClash: (id: string) => `The demo machine is already booked by ${id} at that time.`,
     demoClashField: (id: string) => `Overlaps ${id} — choose another time or machine`,
+    demoMachineUnavailable: (name: string, status: string) => `${name} is ${status.toLowerCase()} and cannot be booked. Choose an active demo machine.`,
+    demoMachineUnavailableField: 'Choose an active demo machine',
     demoResultsNeeded: 'Record the demo results before marking it done (Edit → Results).',
     demoResultsField: 'Required to mark done',
     sampleRequested: (title: string, id: string, due: string) => `Sample print requested: ${title} (${id}), needed by ${due}`,
@@ -2708,6 +2726,7 @@ const quotations = {
     cannotEdit: 'This quotation cannot be edited',
     cannotEditStatus: (no: string, status: string) => `${no} is “${status}”. Only drafts can be edited — create a version to change it.`,
     cannotEditOld: (no: string) => `${no} is an older version.`,
+    cannotEditFinal: (no: string, status: string) => `${no} is “${status}” — the outcome is final and the quotation can no longer be changed.`,
     noOpportunity: 'No open opportunity to quote on',
     noOpportunityBody: 'Quotations are prepared for an opportunity. Qualify a lead or open an opportunity first.',
     customLine: 'Custom line (no product)',
@@ -2725,6 +2744,7 @@ const quotations = {
     untitledLine: 'Untitled line',
     needOneLine: 'A quotation needs at least one line',
     priceLocked: 'From the active price list — sales users cannot change list prices.',
+    priceNotListed: 'Not on a valid price list — only a System Administrator or Division Head can enter a list price.',
     aboutListPrice: 'About the list price',
     aboutValidity: 'About validity',
     aboutPlace: 'About place of supply',
@@ -2850,6 +2870,7 @@ const quotations = {
     discountExceeds: 'discount cannot exceed the line value',
     gstRate: (rates: string) => `GST rate must be one of ${rates}%`,
     hsnSac: 'enter a valid HSN or SAC code',
+    notOnPriceList: 'this item is not on a valid price list — only a System Administrator or Division Head can enter its list price',
   },
   errors: {
     opportunityMissing: 'The selected opportunity no longer exists.',
@@ -2896,6 +2917,7 @@ const quotations = {
     oppNotOpen: (id: string) => `Opportunity ${id} is not open or not visible to you.`,
     approvalNotFound: 'This approval request was not found.',
     notQuotationApproval: 'This is not a quotation discount approval.',
+    notYourLevel: (level: string) => `Only the ${level} for this quotation can decide this level.`,
   },
   audit: {
     autoApproved: (pct: number) => `Approved automatically: highest discount ${pct}% is within the no-approval limit`,
@@ -3015,7 +3037,7 @@ const orders = {
       contractNo: 'Contract number',
       salesOrderId: 'Sales order',
       customerId: 'Customer',
-      version: 'Version',
+      contractVersion: 'Version',
       status: 'Contract status',
       contractValue: 'Contract value',
       paymentTerms: 'Payment',
@@ -3222,6 +3244,7 @@ const orders = {
   file: {
     attached: (name: string) => `Attached: ${name}`,
     hint: (mb: number) => `PDF, JPG or PNG up to ${mb} MB · simulated upload (file not stored)`,
+    photoHint: (mb: number) => `JPG or PNG up to ${mb} MB · simulated upload (file not stored)`,
   },
 
   pager: { nav: 'Pagination', prev: 'Previous page', next: 'Next page', first: 'First page', last: 'Last page', page: (n: number, of: number) => `Page ${n} of ${of}` },
@@ -3478,6 +3501,7 @@ const orders = {
 
   /** Toasts, notifications, audit and outbox text produced by src/services/orders. */
   notices: {
+    becameActive: (orderNo: string) => `Became Active Customer on first confirmed order ${orderNo}`,
     approved: (orderNo: string) => `${orderNo} approved: generate the sales contract`,
     approvedLog: (id: string, status: string) => `Approved (${id}) → ${status}; pushed to ERP for invoicing (simulated)`,
     confirmationSubject: (orderNo: string) => `Order confirmation ${orderNo}`,
@@ -3560,6 +3584,8 @@ const orders = {
     fixFields: 'Please fix the highlighted fields.',
     siteInvalid: 'The installation site must be one of the customer’s addresses.',
     siteNotCustomer: 'Not an address of this customer',
+    siteRequired: 'Choose the installation site',
+    siteNoAddresses: 'Add an installation address to the customer first',
     submitOnlyPending: 'Only sales orders pending approval can be submitted.',
     negativeExtras: 'Freight and insurance cannot be negative.',
     linesBeforeDispatch: 'Lines can only change before dispatch.',
@@ -3604,6 +3630,11 @@ const orders = {
     deliveryDateRequired: 'Delivery date is required',
     deliveryDateFuture: 'Delivery date cannot be in the future',
     podRequired: 'Upload the signed proof of delivery',
+    photoRequired: 'Upload a delivery photo',
+    photoType: 'Upload a JPG or PNG photo',
+    deliveryBeforeDispatch: 'Delivery date cannot be before the dispatch date',
+    ewayRequired: 'E-way bill reference is required',
+    dispatchBeforeOrder: 'Dispatch date cannot be before the order date',
     notDispatched: 'The sales order is not in “Dispatched”.',
     closedOrder: 'Closed sales orders cannot be edited.',
     commercialFrozen: (fields: string) => `The sales order is approved: ${fields} can no longer change. Use “Edit Lines” (re-approval) or cancel and re-order.`,
@@ -3821,6 +3852,8 @@ const installed = {
       warrantyStatus: 'Status',
       exclusions: 'Exclusions',
       divisionId: 'Division',
+      renewalOpportunityId: 'AMC / CMC opportunity',
+      remindersSent: 'Reminders sent (days before)',
     },
     amcContracts: {
       contractNo: 'Contract number',
@@ -3904,8 +3937,9 @@ const installed = {
   },
 
   validation: {
-    serial: 'Use 4–30 capital letters, digits, "-" or "/"',
+    serial: 'Use 4–30 letters, digits, "-" or "/" (saved in capitals)',
     endAfterStart: 'End date must be after the start date',
+    maxLength: (n: number) => `Use at most ${n} characters`,
   },
 
   sections: {
@@ -4007,6 +4041,8 @@ const installed = {
     lost: 'Lost',
     open: 'Open',
     createRenewalQuotation: 'Create Renewal Quotation',
+    fillHandover: 'Fill Handover',
+    saveHandover: 'Save Handover',
     recordTraining: 'Record Training / Re-training Request',
     cancel: 'Cancel',
     allContracts: 'All AMC / CMC Contracts',
@@ -4116,7 +4152,10 @@ const installed = {
     verifiedAt: 'Verified',
     notYet: 'Not yet',
     readinessEditHint: 'Tick the items with Edit; then use “Verify Site Readiness”.',
-    handoverEditHint: 'Fill these in with Edit. All three are needed before installation starts.',
+    handoverEditHint: 'Filled by the sales owner (or the service desk) with “Fill Handover”. All three are needed before installation starts.',
+    handoverTitle: (id: string) => `Sales-to-Service Handover · ${id}`,
+    handoverDescription: 'What the customer expects, what was promised during the sale and who to contact at site. The service engineer reads this before starting.',
+    handoverSaved: 'Handover saved',
     handoverDone: 'Handover completed',
     handoverPending: 'Handover not complete',
     signOffPending: 'Not signed off yet',
@@ -4306,6 +4345,25 @@ const installed = {
     oppLost: (no: string) => `Lost: contract ${no} not renewed`,
     noOpportunities: 'Opportunities are not available, so a renewal quotation cannot be prepared.',
     quotationOnlyOpen: 'A renewal quotation is prepared for an active, due or expired contract.',
+    warrantyReminderTitle: (serial: string, days: number, threshold: number) => `Warranty on ${serial} ends in ${days} day(s) with no AMC / CMC — offer a contract (${threshold}-day reminder)`,
+    warrantyReminderSubject: (serial: string, date: string) => `Warranty on your machine ${serial} ends on ${date}`,
+    warrantyReminderBody: (date: string) => `Your warranty ends on ${date}. Take an AMC or CMC contract to keep priority service and preventive maintenance visits. Reply to this message or call your service coordinator.`,
+    warrantyReminderSent: (threshold: number) => `${threshold}-day warranty expiry reminder sent`,
+    warrantyOppName: (serial: string, customer: string) => `AMC / CMC after warranty – ${serial} – ${customer}`,
+    warrantyOppCreated: (id: string) => `AMC / CMC opportunity ${id} created before the warranty ends`,
+    activatedAuto: 'Activated automatically on the start date',
+    siteNeededToSchedule: 'Choose the installation site before scheduling.',
+    siteNeedsLatLng: 'The installation site has no map location (latitude / longitude). Add it on the customer address before scheduling (BR-02).',
+    expireAfterEnd: (date: string) => `The contract runs until ${date}. It expires automatically after that date — renew it or mark it lost instead.`,
+    renewStartAfterOld: (date: string) => `The renewal must start after the current contract started (${date})`,
+    renewEndPassed: 'The renewal end date has already passed',
+    // Sales-to-Service handover (INS-04, BR-26)
+    handoverRequired: 'Required for the handover',
+    handoverFix: 'Fill in all three parts of the handover.',
+    handoverDenied: 'Only the sales owner of this order, coordinators and Service Leadership can fill the handover.',
+    handoverLocked: 'The handover cannot change after sign-off.',
+    handoverAudit: 'Sales-to-Service handover filled',
+    handoverRequest: (id: string, order: string) => `Fill the Sales-to-Service handover for installation job ${id} (order ${order})`,
   },
 } as const;
 
@@ -4859,6 +4917,7 @@ const service = {
       signature: 'Customer signature',
       signaturePad: 'Customer signature pad',
       resolveCheck: 'Problem fixed — resolve the service ticket and send the job card and feedback link',
+      resolveNeedsWork: (status: string) => `The service ticket is ${status} — resume work before resolving. You can still check out.`,
       enterCode: 'Enter the 6-digit code',
       mustSign: 'Customer must sign',
       times: (inAt: string, now: string) => `Check-in ${inAt} · now ${now}`,
@@ -5063,6 +5122,10 @@ const service = {
     pmCompleteDenied: 'Only the assigned service engineer or the service desk can complete this PM visit.',
     pmTicketDenied: 'Only the service desk raises PM service tickets.',
     pmTicketExists: (id: string) => `Service ticket ${id} already exists for this PM visit.`,
+    pmChecklistIncomplete: (n: number) => `Answer every checklist item (${n} left).`,
+    leadAlreadySpotted: (id: string) => `Lead ${id} was already created from this service ticket.`,
+    resolveNeedsInProgress: (status: string) => `The service ticket is ${status}. Resume work before resolving, or check out without resolving.`,
+    checkInClosed: (status: string) => `This service ticket is ${status} — check-in is not possible.`,
   },
 
   /** Notification titles (in-app). */
@@ -5113,6 +5176,8 @@ const service = {
     pmAssigned: 'PM visit assigned',
     pmCompleted: (findings: boolean) => `PM visit completed${findings ? ' with findings' : ''}`,
     pmTicket: (id: string) => `PM service ticket ${id} raised`,
+    pmDoneViaTicket: (id: string) => `PM visit completed through service ticket ${id}`,
+    pmChecklistViaTicket: (id: string, work: string) => `Completed through service ticket ${id}${work ? `: ${work}` : ''}`,
     pmTicketDescription: (due: string, serial: string) => `Preventive Maintenance (PM) visit due ${due}${serial ? ` for ${serial}` : ''}`,
     spottedRequirement: (who: string, id: string, note: string) => `Spotted by ${who} on ${id}: ${note}`,
   },
@@ -5293,7 +5358,7 @@ const spares = {
   pages: {
     mainStoreStock: {
       description: 'Main store stock of every active spare part with its minimum level, quantity in transit to service engineers and stock value. Stock is synced from the ERP (simulated).',
-      noAccess: 'main store stock',
+      noAccess: 'Main Store Stock',
       loadError: 'Could not load main store stock',
       empty: 'No spare parts yet',
       emptyBody: 'Parts appear here once the spare parts master is synced from the ERP.',
@@ -5315,7 +5380,7 @@ const spares = {
     },
     engineerStock: {
       description: 'Spare parts with each service engineer: issued, received, consumed, in hand and defective parts to return. Built from Spares Requisitions.',
-      noAccess: 'engineer stock',
+      noAccess: 'Engineer Stock',
       loadError: 'Could not load engineer stock',
       engineer: 'Service engineer',
       allEngineers: 'All service engineers',
@@ -5343,7 +5408,7 @@ const spares = {
     },
     minimumLevelAlerts: {
       description: 'Main store parts below their minimum level, with the suggested import quantity (twice the minimum minus stock) and open requisition demand. Stock is synced from the ERP (simulated).',
-      noAccess: 'minimum-level alerts',
+      noAccess: 'Minimum-Level Alerts',
       loadError: 'Could not load minimum-level alerts',
       allOk: 'All parts are at or above minimum',
       checked: (n: number) => `${n} active parts checked`,
@@ -5417,8 +5482,8 @@ const spares = {
     onlyRequestedReject: 'Only requested parts can be rejected.',
     ownReject: 'Separation of duties: you cannot reject your own requisition.',
     issueForbidden: 'Only the store can issue parts.',
-    courierRequired: 'Courier / hand delivery is required',
-    docketRequired: 'Docket or challan number is required',
+    courierRequired: 'Courier / mode is required',
+    docketRequired: 'Docket / challan no. is required',
     updateForbidden: 'Your role cannot update this requisition.',
     onlyApprovedIssue: 'Only approved requisitions can be issued.',
     partGone: 'The part no longer exists.',
@@ -5453,6 +5518,17 @@ const spares = {
     claimPartMismatch: 'The part does not match the requisition',
     claimNoFirst: 'Enter the OEM claim number first (Edit → OEM claim no.)',
     creditNoteFirst: 'Enter the credit note number first (Edit → Credit note no.)',
+    wholeQty: 'Enter a whole number',
+    ticketNotVisible: 'You can only request parts on a service ticket assigned to you or in your scope',
+    engineerSelfOnly: 'Service engineers raise requisitions for themselves only',
+    ownApprove: 'Separation of duties: you cannot approve your own requisition.',
+    receiptForbidden: 'Only the service engineer the part was sent to (or service leadership) can acknowledge receipt.',
+    lockedEditForbidden: 'Only the requester or service leadership can change the part or quantity.',
+    closedLocked: (status: string) => `This requisition is ${status} and can no longer be changed.`,
+    engineerLocked: 'The service engineer can only change while the requisition is still Requested.',
+    claimQtyMax: (qty: unknown) => `Cannot claim more than the ${qty} consumed`,
+    claimPartNotWarranty: (partNo: unknown) => `${partNo} is not covered by warranty — no OEM claim applies`,
+    descriptionRequired: 'Description is required',
   },
   /** Audit, history and notification texts. */
   log: {
@@ -5534,7 +5610,7 @@ const consumables = {
     },
     dealerOrders: {
       dealerId: 'Dealer / distributor',
-      dealerIdHelp: 'Customers with category Dealer or Distributor.',
+      dealerIdHelp: 'Companies with customer category Dealer or Distributor.',
       endCustomer: 'End customer',
       endCustomerCity: 'End customer city',
       productId: 'Product',
@@ -5597,7 +5673,7 @@ const consumables = {
   pages: {
     repeatOrders: {
       description: 'Previous consumables orders per customer. Repeat Order copies the lines into a new sales order at today’s price: the customer’s valid rate contract first, else the current price list.',
-      noAccess: 'repeat orders',
+      noAccess: 'Repeat Orders',
       loadError: 'Could not load previous orders',
       empty: 'No consumables orders yet',
       emptyBody: 'Customers’ consumables orders appear here once they are confirmed.',
@@ -5713,13 +5789,20 @@ const consumables = {
     forbidden: 'Your role cannot view consumables follow-up lists.',
     overlap: (id: string, from: unknown, to: unknown) => `Overlaps ${id} (${from} → ${to}) for the same customer and product`,
     trialResultFirst: 'Record the trial result first (Edit → Trial result)',
-    notDealer: 'Choose a customer with category Dealer or Distributor',
+    notDealer: 'Choose a company with customer category Dealer or Distributor',
     futureDate: 'Order date cannot be in the future',
     sameCustomer: 'The end customer cannot be the dealer itself',
     endCustomerShort: 'Enter at least 2 characters',
     duplicateInvoice: (id: string) => `This dealer invoice number is already recorded on ${id}`,
     productInactive: 'This product is no longer active',
     ordersForbidden: 'Your role cannot view sales orders.',
+    customerOutOfScope: 'Choose a company in your scope',
+    rcProductType: 'Rate contracts apply to ink, paper, fabric or spares products only',
+    sampleProductType: 'Samples can only be ink, paper or fabric products',
+    dealerProductType: 'Dealer orders apply to ink, paper, fabric or spares products only',
+    rateAboveZero: 'Enter a rate above zero',
+    trialBeforeDispatch: 'Trial date cannot be before the dispatch date',
+    noAccessTab: 'Consumables are not part of your role.',
   },
   log: {
     missed: (name: string, due: string, late: number) => `Missed reorder: ${name} was due ${due} (${late} days late)`,
@@ -5903,6 +5986,8 @@ const field = {
     cancelLeave: 'Cancel this leave application? A pending approval is withdrawn.',
     removePlanTitle: 'Remove from beat plan?',
     removePlan: (site: string, date: string) => `${site} on ${date} is removed from your beat plan. Visits already logged are kept.`,
+    exportTitle: 'Export to Payroll?',
+    exportBody: (n: number, total: string) => `${n} approved claim(s) totalling ${total} are marked Exported to Payroll and can no longer be changed.`,
   },
 
   approvals: {
@@ -5970,6 +6055,17 @@ const field = {
     selectApproved: 'Select at least one approved claim.',
     noBrowserGeo: 'This browser cannot share its location. Use the simulated location.',
     geoDenied: 'Location permission was denied or timed out. Allow location, or use the simulated location.',
+    alreadyAtSite: (site: string) => `You are still checked in at ${site}. Check-out there first.`,
+    linkUnavailable: 'Choose a lead, opportunity or ticket of this customer that you can see',
+    planPastVisit: 'Plan the visit for today or a future day',
+    duplicatePlan: (id: string) => `This site is already in your plan for that day (${id})`,
+    notYourRecord: 'You can only create this for yourself',
+    amountPositive: 'Amount must be more than zero',
+    duplicateConveyance: (id: string) => `A conveyance claim for this date already exists (${id})`,
+    leaveNotEditable: 'Only a leave application pending approval can be edited. Cancel it and apply again.',
+    regularisationNotEditable: 'Only a request pending approval can be edited.',
+    whitespace: 'Enter some text, not just spaces',
+    checkOutAfterInStrict: 'Check-out must be after check-in',
   },
 
   /** Audit and timeline text written by the field service. */
@@ -5985,6 +6081,8 @@ const field = {
     exportSummary: (n: number, date: string) => `Exported ${n} approved claim(s) to payroll (${date})`,
     visitSubject: (purpose: string, site: string) => `${purpose} visit — ${site}`,
     next: (action: string) => `Next: ${action}`,
+    mockBlocked: (what: string) => `Mock / fake GPS location detected — ${what} blocked`,
+    mockWhat: { checkIn: 'check-in', checkOut: 'check-out', visit: 'field visit' },
   },
 
   /** Payroll CSV columns. */
@@ -6013,7 +6111,8 @@ const field = {
   },
 
   common: {
-    notCheckedIn: 'Not checked in',
+    notCheckedIn: 'Not Checked In',
+    checkedIn: 'Checked In',
     onTime: 'On time',
     loading: 'Loading…',
     date: 'Date',
@@ -6169,6 +6268,10 @@ const field = {
         customer: 'Customer',
         myAccount: (name: string) => `${name} (my customer)`,
         otherSite: 'Other site / new prospect…',
+        linkedTo: 'Linked to',
+        linkNone: 'Customer only',
+        linkKinds: { leads: 'Lead', opportunities: 'Opportunity', tickets: 'Service Ticket' } as Record<string, string>,
+        linkOption: (kind: string, label: string) => `${kind} ${label}`,
         siteName: 'Site name',
         purpose: 'Purpose',
         remarks: 'Remarks',
@@ -6278,6 +6381,11 @@ const targets = {
     notInDivision: 'This user does not belong to that division',
     duplicate: (id: string) => `A target for the same scope, period and metric already exists (${id})`,
     noTargetsRead: 'Your role cannot see targets.',
+    noExport: 'Your role cannot export achievement data.',
+    outOfScope: 'You can only set targets for people or divisions in your scope',
+  },
+  audit: {
+    achievementExported: (n: number, period: string) => `Exported achievement data for ${n} target(s), ${period}`,
   },
 
   badges: {

@@ -27,6 +27,7 @@ import { createRecord, insertRecordIn, patchRecordIn, type Projected, updateReco
 import { ServiceError } from '../types';
 import { canDecide, decideApproval, requestApprovalIn } from '../workflow';
 import { cleanLines, computeTotals, type QuoteLine, validateLines } from './pricing';
+import { resolveQuoteLevels, roleMayDecideQuoteLevel } from './approvalLevels';
 import type { Approval, ApprovalLevel } from '../types';
 
 const E = L.quotations.errors;
@@ -73,7 +74,8 @@ function withPendingLines<T>(lines: QuoteLine[] | undefined, run: () => T): T {
 function derive(ctx: HookContext, c: Record<string, unknown>, isNew: boolean) {
   const { d } = ctx;
   const opp = byId('opportunities', c.opportunityId, d.records);
-  if (c.opportunityId && !opp) throw new ServiceError('validation', E.opportunityMissing, { fieldErrors: { opportunityId: E.opportunityNotFound } });
+  // Out-of-scope opportunities are treated as missing (no quoting on someone else's opportunity by id).
+  if (c.opportunityId && (!opp || (isNew && !canReadRecord(ctx.actor, getResource('opportunities'), opp)))) throw new ServiceError('validation', E.opportunityMissing, { fieldErrors: { opportunityId: E.opportunityNotFound } });
   if (opp) {
     if (isNew && opp.stage === 'lost') throw new ServiceError('invalid_state', E.opportunityLost(String(opp.id)));
     c.customerId = opp.customerId ?? c.customerId;
@@ -95,7 +97,7 @@ function derive(ctx: HookContext, c: Record<string, unknown>, isNew: boolean) {
     for (const k of ['paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms']) if (!String(c[k] ?? '').trim()) c[k] = tpl[k] ?? '';
   }
   const lines = applyPriceList(cleanLines(c.lines), String(c.quoteDate), d.records);
-  const errors = validateLines(lines);
+  const errors = [...validateLines(lines), ...listPriceErrors(ctx, lines, c)];
   if (errors.length) throw new ServiceError('validation', errors[0], { fieldErrors: { lines: errors.join(' · ') } });
   const t = computeTotals(lines, String(c.placeOfSupply), Number(c.freight) || 0, Number(c.insurance) || 0, getPolicies().companyGstState);
   Object.assign(c, {
@@ -114,6 +116,27 @@ function derive(ctx: HookContext, c: Record<string, unknown>, isNew: boolean) {
     landedCostTotal: t.landedCostTotal,
     marginPct: t.marginPct,
   });
+}
+
+const lineSig = (l: QuoteLine) => JSON.stringify([l.productId ?? null, l.description, l.listPrice]);
+
+/** May the actor price an item that is not on a valid price list (QUO-05: only roles that maintain price lists)? */
+export const canSetListPrice = (actor: Actor) => perm(actor, 'priceListItems').update !== 'none';
+
+/**
+ * QUO-05 / BR-15: sales users cannot set list prices. A line that is not on a valid price list may carry a
+ * price only when the actor maintains price lists, or when the same line is already on a version of this
+ * quotation (so others can still edit the draft or create a version).
+ */
+function listPriceErrors(ctx: HookContext, lines: QuoteLine[], c: Record<string, unknown>): string[] {
+  if (canSetListPrice(ctx.actor)) return [];
+  const root = String(c.rootId || c.id || '');
+  const known = new Set(root ? (ctx.d.records.quotations ?? []).filter((q) => rootOf(q) === root).flatMap((q) => cleanLines(q.lines).map(lineSig)) : []);
+  const out: string[] = [];
+  lines.forEach((l, i) => {
+    if (!l.priceLocked && l.listPrice > 0 && !known.has(lineSig(l))) out.push(`${L.quotations.lineErrors.line(i + 1)}: ${L.quotations.lineErrors.notOnPriceList}`);
+  });
+  return out;
 }
 
 export function quoteBeforeCreate(ctx: HookContext, c: Record<string, unknown>) {
@@ -261,7 +284,7 @@ export function submitQuote(actor: Actor, id: string, version: number, reason = 
     if (String(q.validUntil) < todayKey()) throw new ServiceError('validation', E.validityPassed, { fieldErrors: { validUntil: E.inPast } });
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const pct = Number(q.maxDiscountPct) || 0;
-    const levels = discountApprovalLevels(pct);
+    const levels = quoteApprovalChain(actor, q, pct);
     if (!levels.length) {
       patchRecordIn(ctx, 'quotations', id, { status: 'approved', rejectNote: '' }, A.autoApproved(pct));
       return { status: 'approved' };
@@ -281,6 +304,14 @@ export function submitQuote(actor: Actor, id: string, version: number, reason = 
     return { status: 'pending_approval', approvalId: a.id };
   });
 }
+
+/** BR-17 band for the discount, resolved to who actually decides (named Sales Manager, escalation; see approvalLevels.ts). */
+export function quoteApprovalChain(actor: Actor, q: Record<string, unknown>, pct: number): ApprovalLevel[] {
+  return resolveQuoteLevels(discountApprovalLevels(pct), { ownerStaffId: q.ownerId ?? actor.staffId, requesterUserId: actor.user.id, divisionId: q.divisionId, users: demoUsers, workspaceId: actor.workspaceId });
+}
+
+/** canDecide plus the quotation rule that only the role holding the level decides it (REQUIREMENTS §2.2). */
+export const canDecideQuote = (actor: Actor, a: Approval) => canDecide(actor, a) && roleMayDecideQuoteLevel(actor.role.id, a.levels[a.currentLevel]);
 
 /** Pulls a pending request back to draft (e.g. to change the discount). */
 export function backToDraft(actor: Actor, id: string, version: number) {
@@ -442,7 +473,7 @@ export function runQuotationSweep(): number {
       a.remindedAt = nowIso();
       demoUsers
         .map((u) => actorFor(u.id, a.workspaceId))
-        .filter((x) => canDecide(x, a))
+        .filter((x) => canDecideQuote(x, a))
         .forEach((x) => notify(d, { userId: x.user.id, workspaceId: a.workspaceId, kind: 'reminder', title: A.reminder(a.remindedAt!.slice(0, 10), levelName(a.levels[a.currentLevel]), a.summary), link: { page: ROUTES.quotationPendingApprovals.slice(1) } }));
     });
   });
@@ -496,7 +527,7 @@ export function pendingQuoteApprovals(actor: Actor): PendingApprovalRow[] {
     if (a.type !== QUOTE_APPROVAL || a.status !== 'pending' || a.workspaceId !== actor.workspaceId) return;
     const q = quotes.get(a.recordId);
     if (!q) return;
-    const decide = canDecide(actor, a);
+    const decide = canDecideQuote(actor, a);
     if (!decide && !canReadRecord(actor, res(), q)) return;
     const last = a.decisions.filter((x) => x.level < a.currentLevel).map((x) => x.at).sort().pop();
     const since = last ?? a.requestedAt;
@@ -528,6 +559,7 @@ export function decideQuoteApproval(actor: Actor, approvalId: string, decision: 
   const a = getDb().approvals.find((x) => x.id === approvalId && x.workspaceId === actor.workspaceId);
   if (!a) throw new ServiceError('not_found', E.approvalNotFound);
   if (a.type !== QUOTE_APPROVAL) throw new ServiceError('invalid_state', E.notQuotationApproval);
+  if (a.status === 'pending' && a.requestedBy !== actor.user.id && !roleMayDecideQuoteLevel(actor.role.id, a.levels[a.currentLevel])) throw new ServiceError('forbidden', E.notYourLevel(levelName(a.levels[a.currentLevel])));
   return decideApproval(actor, approvalId, decision, note, expectedVersion);
 }
 

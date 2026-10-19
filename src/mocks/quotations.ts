@@ -10,6 +10,7 @@ import { fyLabel } from '../lib/fy';
 import type { RecordData } from '../metadata/types';
 import type { QuoteLine } from '../services/quotations/pricing';
 import { computeTotals } from '../services/quotations/pricing';
+import { resolveQuoteLevels } from '../services/quotations/approvalLevels';
 import type { SeedContext } from './context';
 
 // Default policy values (policies are not readable while the store seeds): company GST state, validity days.
@@ -17,7 +18,7 @@ const COMPANY_STATE = '27';
 const VALIDITY_DAYS = 30;
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 5;
+export const rev = 6;
 
 // Default discount bands (BR-17), mirrored because policies are not readable while seeding.
 const L1 = { capability: 'approve.l1', label: L.roles.approvalLevels[1] };
@@ -201,12 +202,13 @@ export function seed(ctx: SeedContext): void {
       const roll = i % 4;
       if (roll === 0) {
         const q = make(o, { quoteDate: ago(rnd.int(0, 6)), status: 'draft', revision: 0, isLatest: true, discount: machine ? rnd.pick([8, 12, 16]) : 8 });
-        const levels = levelsFor(Number(q.maxDiscountPct));
+        const owner = ctx.users.find((u) => u.staffIds.tc === o.ownerId);
+        // Same approver resolution as submitQuote (named Sales Manager, escalation when nobody holds a level).
+        const levels = resolveQuoteLevels(levelsFor(Number(q.maxDiscountPct)), { ownerStaffId: o.ownerId, requesterUserId: owner?.id ?? 'u_rahul', divisionId: o.divisionId, users: ctx.users });
         // Every other high-discount draft is already waiting for approval (QUO-06 demo data).
         if (levels.length && pendingSeeded++ % 2 === 0) {
           q.status = 'pending_approval';
           ctx.counters.approvals = (ctx.counters.approvals ?? 1000) + 1;
-          const owner = ctx.users.find((u) => u.staffIds.tc === o.ownerId);
           const requestedAt = new Date(ctx.now.getTime() - rnd.int(2, 40) * 3_600_000).toISOString();
           ctx.approvals.push({
             id: `APR-${ctx.counters.approvals}`,

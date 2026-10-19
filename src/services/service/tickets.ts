@@ -171,6 +171,7 @@ export function afterTicketTransition(ctx: HookContext, before: RecordData, afte
   if (to === 'resolved') {
     patch.resolvedAt = now;
     patch.status = 'customer_confirmation';
+    completeLinkedPm(ctx, after, now);
   }
   if (to === 'customer_confirmation' && from !== 'resolved') patch.resolvedAt = after.resolvedAt || now;
   if (from === 'customer_confirmation' && to === 'in_progress') {
@@ -196,6 +197,16 @@ export function afterTicketTransition(ctx: HookContext, before: RecordData, afte
     const next = patchRecordIn(ctx, 'tickets', after.id, patch, to === 'resolved' ? A.resolvedWaiting : undefined);
     if (to === 'resolved') sendClosurePack(ctx, next);
   }
+}
+
+/** SRV-11: resolving a PM service ticket completes its PM visit, so the PM schedule and PM compliance stay right. */
+function completeLinkedPm(ctx: HookContext, t: RecordData, now: string) {
+  if (t.ticketType !== 'pm') return;
+  (ctx.d.records.pmVisits ?? [])
+    .filter((p) => p.ticketId === t.id && p.status !== 'done')
+    .forEach((p) =>
+      patchRecordIn(ctx, 'pmVisits', p.id, { status: 'done', completedAt: now.slice(0, 10), checklist: A.pmChecklistViaTicket(t.id, s(t.resolution).trim().slice(0, 300)), engineerId: p.engineerId || t.assigneeId || null }, A.pmDoneViaTicket(t.id)),
+    );
 }
 
 /** FR-082 + FR-086: job card and feedback link go to the customer contact (simulated). */
@@ -353,6 +364,7 @@ export function opportunitySpotted(actor: Actor, id: string, input: { interest: 
     id,
     { allow: (t) => t.assigneeId === actor.staffId || can(actor, 'ticket.assign') },
     (ctx, t) => {
+      if (t.spottedLeadId) throw new ServiceError('invalid_state', E.leadAlreadySpotted(s(t.spottedLeadId)));
       const customer = byId('customers', t.customerId, ctx.d.records);
       const contact = byId('contacts', t.contactId, ctx.d.records) ?? (ctx.d.records.contacts ?? []).find((c) => c.customerId === t.customerId);
       if (!contact) throw new ServiceError('validation', E.noContact);
@@ -405,7 +417,7 @@ export function feedbackLookup(token: string) {
 
 /** Customer confirms (closes) or says "not resolved"; rating ≤ threshold alerts service leadership (BR-35). */
 export function submitFeedback(token: string, input: { rating: number; comment: string; resolved: boolean }) {
-  if (!(input.rating >= 1 && input.rating <= 5)) throw new ServiceError('validation', E.chooseRating, { fieldErrors: { rating: E.required } });
+  if (!(Number.isInteger(input.rating) && input.rating >= 1 && input.rating <= 5)) throw new ServiceError('validation', E.chooseRating, { fieldErrors: { rating: E.required } });
   const actor = system();
   return commit((d) => {
     const t = (d.records.tickets ?? []).find((x) => x.feedbackToken === token);
@@ -436,7 +448,7 @@ export interface PortalMatch {
   customerId: string;
   customerName: string;
   contactId?: string;
-  machines: { id: string; serialNo: string; model: string; divisionId: string }[];
+  machines: { id: string; serialNo: string; model: string; divisionId: string; /** Warranty / AMC status today (IB-03). */ coverage: string }[];
   divisionIds: string[];
 }
 
@@ -461,7 +473,7 @@ export function portalIdentify(query: string): PortalMatch | null {
     customerId,
     customerName: s(customer?.name) || customerId,
     contactId: contactId ?? (db.contacts ?? []).find((x) => x.customerId === customerId)?.id,
-    machines: (db.machines ?? []).filter((m) => m.customerId === customerId).map((m) => ({ id: m.id, serialNo: s(m.serialNo), model: s(m.model), divisionId: s(m.divisionId) })),
+    machines: (db.machines ?? []).filter((m) => m.customerId === customerId).map((m) => ({ id: m.id, serialNo: s(m.serialNo), model: s(m.model), divisionId: s(m.divisionId), coverage: coverageFor(m.id, todayKey(), db) })),
     divisionIds: (customer?.divisionIds as string[] | undefined) ?? [],
   };
 }

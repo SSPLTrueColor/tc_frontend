@@ -5,7 +5,7 @@ import { formatDate, todayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
 import { uid } from '../../lib/ids';
 import { errorMessage } from '../../services/api/client';
-import { createOrder, draftFromQuotation, draftFromRepeat, eligibleQuotations, repeatableOrders } from '../../services/api/orders';
+import { createOrder, customerNameOf, draftFromQuotation, draftFromRepeat, eligibleQuotations, repeatableOrders } from '../../services/api/orders';
 import { perm } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { getPolicies } from '../../services/policies';
@@ -62,15 +62,15 @@ function SourcePicker() {
             <div className="panel-head">
               <h2 className="panel-title">{P.acceptedQuotations}</h2>
             </div>
-            {data.data.quotes.filter((x) => match(x.quoteNo, x.id, recordTitle('customers', x.customerId, actor))).length ? (
+            {data.data.quotes.filter((x) => match(x.quoteNo, x.id, customerNameOf(x.customerId))).length ? (
               <ul className="flow-list">
                 {data.data.quotes
-                  .filter((x) => match(x.quoteNo, x.id, recordTitle('customers', x.customerId, actor)))
+                  .filter((x) => match(x.quoteNo, x.id, customerNameOf(x.customerId)))
                   .map((x) => (
                     <li key={x.id} className="flow-item">
                       <span className="flow-main">
                         <span className="flow-title">
-                          {String(x.quoteNo ?? x.id)} · {recordTitle('customers', x.customerId, actor)}
+                          {String(x.quoteNo ?? x.id)} · {customerNameOf(x.customerId)}
                         </span>
                         <span className="muted small">
                           {P.accepted(formatMoney(Number(x.grandTotal)), x.acceptedAt ? formatDate(String(x.acceptedAt)) : formatDate(String(x.quoteDate)))}
@@ -92,16 +92,16 @@ function SourcePicker() {
             <div className="panel-head">
               <h2 className="panel-title">{P.repeatPanel}</h2>
             </div>
-            {data.data.repeats.filter((x) => match(x.orderNo, recordTitle('customers', x.customerId, actor))).length ? (
+            {data.data.repeats.filter((x) => match(x.orderNo, customerNameOf(x.customerId))).length ? (
               <ul className="flow-list">
                 {data.data.repeats
-                  .filter((x) => match(x.orderNo, recordTitle('customers', x.customerId, actor)))
+                  .filter((x) => match(x.orderNo, customerNameOf(x.customerId)))
                   .slice(0, 20)
                   .map((x) => (
                     <li key={x.id} className="flow-item">
                       <span className="flow-main">
                         <span className="flow-title">
-                          {recordTitle('customers', x.customerId, actor)} · {String(x.orderNo)}
+                          {customerNameOf(x.customerId)} · {String(x.orderNo)}
                         </span>
                         <span className="muted small">
                           {P.lastOrdered(formatDate(String(x.orderDate)), formatMoney(Number(x.grandTotal)))}
@@ -139,6 +139,8 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
   useEffect(() => {
     if (draft.data && !lines) {
       setLines(draft.data.lines);
+      // PO captured when the quotation was accepted carries forward (no re-entry, SO-02).
+      if (draft.data.po) setPo({ customerPoNo: draft.data.po.customerPoNo, customerPoDate: draft.data.po.customerPoDate || todayKey(), poFileName: draft.data.po.poFileName, poFileSize: 0 });
       const install = draft.data.siteAddresses.find((a) => a.addressType === 'installation') ?? draft.data.siteAddresses[0];
       if (install) setSite(install.id);
     }
@@ -217,7 +219,7 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
             <div className="detail-row">
               <dt>{F.customerId}</dt>
               <dd>
-                <Link to={recordPeekPath(actor.workspaceId, 'customers', d.customerId)}>{recordTitle('customers', d.customerId, actor)}</Link>
+                <Link to={recordPeekPath(actor.workspaceId, 'customers', d.customerId)}>{d.customerName}</Link>
               </dd>
             </div>
             <div className="detail-row">
@@ -249,7 +251,7 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
               <FilePick id="so-po-file" value={po.poFileName} onPick={(name, size) => setPo({ ...po, poFileName: name, poFileSize: size })} invalid={!!errors.poFileName} />
             </Field>
             {d.orderKind === 'machine' && (
-              <Field id="so-site" label={F.siteAddressId} error={errors.siteAddressId} wide help={F.siteAddressIdHelp}>
+              <Field id="so-site" label={F.siteAddressId} required error={errors.siteAddressId} wide help={F.siteAddressIdHelp}>
                 {d.siteAddresses.length ? (
                   <SelectMenu id="so-site" block label={F.siteAddressId} value={site} options={d.siteAddresses.map((a) => ({ value: a.id, label: `${a.label ?? a.addressType}: ${a.line1}, ${a.city}` }))} onChange={setSite} />
                 ) : (

@@ -3,7 +3,7 @@ import type { ViewDefinition, ViewScope } from '../metadata/types';
 import { uid } from '../lib/ids';
 import { type Actor, can, queryableField } from './authz';
 import { commit, getDb } from './db';
-import { collectFields } from './filter';
+import { collectFields, systemDateField } from './filter';
 import { appendAudit } from './ledger';
 import { getResource } from './registry';
 import { ServiceError } from './types';
@@ -47,7 +47,7 @@ export function unavailableViewFields(actor: Actor, v: ViewDefinition): string[]
   const res = getResource(v.resource);
   return collectFields(v.filter).filter((k) => {
     if (k === 'id') return false;
-    const f = res.fields.find((x) => x.key === k);
+    const f = res.fields.find((x) => x.key === k) ?? systemDateField(k);
     return !f || !queryableField(actor, res, f);
   });
 }

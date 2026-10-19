@@ -85,6 +85,10 @@ export function completePm(actor: Actor, id: string, input: { results: { item: s
     E.pmCompleteDenied,
     (ctx, p) => {
       if (p.status === 'done') throw new ServiceError('invalid_state', E.pmAlreadyDone);
+      // Every item of the model-wise checklist must be answered (SRV-11).
+      const answered = new Set(input.results.map((r) => r.item));
+      const missing = pmChecklist(byId('machines', p.machineId, ctx.d.records)).filter((item) => !answered.has(item));
+      if (missing.length) throw new ServiceError('validation', E.pmChecklistIncomplete(missing.length));
       const text = [...input.results.map((r) => `${r.ok ? '✓' : '✗'} ${r.item}`), input.notes.trim() && L.service.checklist.notes(input.notes.trim())].filter(Boolean).join('\n');
       return patchRecordIn(ctx, 'pmVisits', p.id, { status: 'done', completedAt: todayKey(), checklist: text, engineerId: p.engineerId || actor.staffId }, A.pmCompleted(input.results.some((r) => !r.ok)));
     },

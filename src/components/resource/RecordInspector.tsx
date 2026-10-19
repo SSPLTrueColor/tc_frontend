@@ -12,6 +12,8 @@ import { useActor, useRevision } from '../../services/hooks';
 import { getResource, getUser, masterValue } from '../../services/registry';
 import { availableTransitions, deleteRecord, getRecord, type Projected, queryRecords, recordTitle, transitionRecord } from '../../services/runtime';
 import { togglePin, getSettings } from '../../services/settings';
+import { hooksFor } from '../../services/resourceHooks';
+import { isVisible } from '../../services/validation';
 import { ServiceError } from '../../services/types';
 import { Button, IconButton } from '../primitives/Button';
 import { EmptyState, ErrorState, StatusChip, Tabs, useToast } from '../primitives/feedback';
@@ -148,7 +150,7 @@ export function RecordInspector({
           {variant === 'page' && !editing && (
             <footer className="record-page-foot">
               <Button onClick={onClose}>{C.actions.cancel}</Button>
-              <Button icon="pencil" onClick={() => (setTab('details'), setEditing(true))} disabledReason={projected.canUpdate ? undefined : C.states.readOnlyFor(actor.role.label)}>
+              <Button icon="pencil" onClick={() => (setTab('details'), setEditing(true))} disabledReason={editReason(resKey, actor, projected.record, projected.canUpdate)}>
                 {C.actions.edit}
               </Button>
             </footer>
@@ -159,7 +161,7 @@ export function RecordInspector({
         <footer className="dialog-footer">
           <Button onClick={onClose}>{C.actions.cancel}</Button>
           {projected && (
-            <Button variant="primary" icon="pencil" onClick={() => (setTab('details'), setEditing(true))} disabledReason={projected.canUpdate ? undefined : C.states.readOnlyFor(actor.role.label)}>
+            <Button variant="primary" icon="pencil" onClick={() => (setTab('details'), setEditing(true))} disabledReason={editReason(resKey, actor, projected.record, projected.canUpdate)}>
               {C.actions.edit}
             </Button>
           )}
@@ -192,6 +194,15 @@ function PinButton({ actor, res, id }: { actor: Actor; res: ResourceDefinition; 
   return <IconButton icon={pinned ? 'pin-off' : 'pin'} label={pinned ? R.unpin : R.pin} pressed={pinned} onClick={() => togglePin(actor, `${id} · ${recordTitle(res.key, id, actor)}`.slice(0, 48), path)} />;
 }
 
+/** Why Edit is unavailable: role/scope first, then the resource's own rule (resourceHooks.editBlocked). */
+function editReason(resKey: string, actor: Actor, record: RecordData, canUpdate: boolean): string | undefined {
+  if (!canUpdate) return C.states.readOnlyFor(actor.role.label);
+  const res = getResource(resKey);
+  // Closed records (lifecycle terminal, e.g. a Qualified lead) are locked for audit.
+  if (res.lifecycle?.terminal.includes(String(record[res.lifecycle.field]))) return L.common.form.lockedForAudit(res.label.toLowerCase());
+  return hooksFor(resKey).editBlocked?.(record);
+}
+
 function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle, editInFooter, pageActions }: { res: ResourceDefinition; actor: Actor; p: Projected; onEdit: () => void; editing: boolean; onDeleted: () => void; hideTitle?: boolean; editInFooter?: boolean; pageActions?: boolean }) {
   // Full page: the action buttons render inside the right-hand "Actions" card
   const [actionsSlot, setActionsSlot] = useState<HTMLElement | null>(null);
@@ -214,7 +225,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
     try {
       const t = transitions.find((x) => x.to === to)!;
       transitionRecord(actor, res.key, r.id, to, r.version, overrideReason ? { overrideReason } : {});
-      toast(C.toasts.actionDone(r.id, t.action));
+      toast(C.toasts.actionDone(recordTitle(res.key, r.id, actor), t.action));
     } catch (e) {
       if (e instanceof ServiceError && e.code === 'conflict') {
         toast(e.conflicts?.map((c) => c.message).join(' ') ?? e.message, 'danger');
@@ -263,6 +274,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
               key={t.to}
               icon={actionIcon(t.action)}
               variant={i === 0 && !t.disabledReason ? 'primary' : 'secondary'}
+              data-tooltip={t.disabledReason ? undefined : t.action}
               disabledReason={t.disabledReason}
               onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
             >
@@ -271,7 +283,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
           ))}
           {/* In drawers, Edit lives in the footer next to Cancel (owner rule) */}
           {!editInFooter && (
-            <Button icon="pencil" variant="ghost" className="inspector-edit-btn" onClick={onEdit} disabledReason={p.canUpdate ? undefined : C.states.readOnlyFor(actor.role.label)}>
+            <Button icon="pencil" variant="ghost" className="inspector-edit-btn" onClick={onEdit} disabledReason={editReason(res.key, actor, r, p.canUpdate)}>
               {C.actions.edit}
             </Button>
           )}
@@ -284,6 +296,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
               key={t.to}
               icon={actionIcon(t.action)}
               variant={i === 0 && !t.disabledReason ? 'primary' : 'secondary'}
+              data-tooltip={t.disabledReason ? undefined : t.action}
               disabledReason={t.disabledReason}
               onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
             >
@@ -292,7 +305,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
           ))}
           {/* In drawers, Edit lives in the footer next to Cancel (owner rule) */}
           {!editInFooter && (
-            <Button icon="pencil" variant="ghost" className="inspector-edit-btn" onClick={onEdit} disabledReason={p.canUpdate ? undefined : C.states.readOnlyFor(actor.role.label)}>
+            <Button icon="pencil" variant="ghost" className="inspector-edit-btn" onClick={onEdit} disabledReason={editReason(res.key, actor, r, p.canUpdate)}>
               {C.actions.edit}
             </Button>
           )}
@@ -387,7 +400,8 @@ function Details({ res, actor, p }: { res: ResourceDefinition; actor: Actor; p: 
   return (
     <div className="details">
       {res.form.sections.map((s) => {
-        const fields = s.fields.map((k) => res.fields.find((f) => f.key === k)).filter((f): f is FieldDefinition => !!f && p.access[f.key] !== 'hide');
+        // Same visibility rules as the form (visibleWhen): spec fields of another product sub-type are not listed.
+        const fields = s.fields.map((k) => res.fields.find((f) => f.key === k)).filter((f): f is FieldDefinition => !!f && p.access[f.key] !== 'hide' && isVisible(f, p.record));
         if (!fields.length) return null;
         return (
           <section key={s.id} className="detail-section">

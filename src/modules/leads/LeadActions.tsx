@@ -63,7 +63,7 @@ export function LeadActions({ res, actor, record }: RecordExtensionProps) {
           {A.disqualify}
         </Button>
       )}
-      <LogActivityDialog open={dialog === 'log'} onClose={() => setDialog(null)} requireNextFollowUp parent={{ parentResource: 'leads', parentId: record.id, parentLabel: label, customerId: record.customerId as string | undefined }} />
+      <LogActivityDialog open={dialog === 'log'} onClose={() => setDialog(null)} title={A.logFollowUp} requireNextFollowUp parent={{ parentResource: 'leads', parentId: record.id, parentLabel: label, customerId: record.customerId as string | undefined }} />
       {dialog === 'convert' && <ConvertDialog actor={actor} record={record} res={res} onClose={() => setDialog(null)} />}
       {dialog === 'nurture' && <NurtureDialog actor={actor} record={record} res={res} onClose={() => setDialog(null)} />}
       {dialog === 'disqualify' && <DisqualifyDialog actor={actor} record={record} res={res} onClose={() => setDialog(null)} />}

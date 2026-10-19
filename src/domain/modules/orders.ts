@@ -304,7 +304,7 @@ const salesContracts: ResourceDefinition = {
     fc('contractNo', 'text', { readOnly: true, capabilities: ALL, width: 190, subFields: ['customerId'] }),
     fc('salesOrderId', 'relation', { relation: { resource: 'salesOrders' }, required: true, readOnly: true, capabilities: ALL, width: 170 }),
     fc('customerId', 'relation', { relation: { resource: 'customers' }, readOnly: true, capabilities: ALL, width: 200 }),
-    fc('version', 'number', { readOnly: true, width: 80 }),
+    fc('contractVersion', 'number', { readOnly: true, width: 80 }),
     fc('status', 'master', { master: 'contractStatus', readOnly: true, width: 160 }),
     fc('contractValue', 'money', { readOnly: true, currency: 'INR', width: 150 }),
     fc('paymentTerms', 'longtext', { required: true, maxLength: 1500, capabilities: FORM_ONLY }),
@@ -325,7 +325,7 @@ const salesContracts: ResourceDefinition = {
   form: {
     quickCreate: [],
     sections: [
-      { id: 'main', title: O.sections.salesContracts.main, fields: ['contractNo', 'salesOrderId', 'customerId', 'version', 'status', 'contractValue', 'ownerId', 'divisionId'], columns: 2 },
+      { id: 'main', title: O.sections.salesContracts.main, fields: ['contractNo', 'salesOrderId', 'customerId', 'contractVersion', 'status', 'contractValue', 'ownerId', 'divisionId'], columns: 2 },
       { id: 'terms', title: O.sections.salesContracts.terms, fields: ['paymentTerms', 'deliveryTerms', 'loadingTerms', 'installationTerms', 'warrantyTerms', 'sparesTerms', 'inkCommitment', 'amcTerms'], columns: 1 },
       { id: 'sign', title: O.sections.salesContracts.sign, fields: ['sentAt', 'signedAt', 'signedBy'], columns: 2 },
     ],
@@ -338,7 +338,7 @@ const salesContracts: ResourceDefinition = {
       type: 'table',
       filter: group('and', [cond('status', 'neq', 'superseded')]),
       sort: [{ field: 'contractNo', dir: 'desc' }],
-      columns: cols('contractNo', 'salesOrderId', 'customerId', 'version', 'contractValue', 'status', 'signedAt'),
+      columns: cols('contractNo', 'salesOrderId', 'customerId', 'contractVersion', 'contractValue', 'status', 'signedAt'),
     },
     {
       id: 'v_sc_unsigned',

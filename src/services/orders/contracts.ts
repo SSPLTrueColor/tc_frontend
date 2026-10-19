@@ -45,7 +45,7 @@ const pendingOtp = new Map<string, string>();
 const rows = (d: Db, key: string) => (d.records[key] ?? []) as RecordData[];
 
 function contractNoFor(d: Db, order: RecordData, version: number) {
-  const first = contractsOf(d, order.id).find((c) => Number(c.version) === 1);
+  const first = contractsOf(d, order.id).find((c) => Number(c.contractVersion) === 1);
   if (first) return `${String(first.contractNo).replace(/-v\d+$/, '')}-v${version}`;
   const k = `scNo:${order.divisionId}:${fyLabel()}`;
   d.counters[k] = (d.counters[k] ?? 0) + 1;
@@ -63,7 +63,7 @@ export function generateContract(actor: Actor, orderId: string): RecordData {
     const ctx = { d, actor, correlationId: uid('cor') };
     const existing = contractsOf(d, orderId);
     if (existing.some((c) => c.status === 'signed')) throw new ServiceError('invalid_state', E.contractSigned);
-    const version = (Number(existing[0]?.version) || 0) + 1;
+    const version = (Number(existing[0]?.contractVersion) || 0) + 1;
     existing.filter((c) => c.status !== 'superseded').forEach((c) => patchRecordIn(ctx, 'salesContracts', c.id, { status: 'superseded' }, N.contractSuperseded(version)));
     const t = DIVISION_TEMPLATES[String(order.divisionId)] ?? MACHINE_BASE;
     const c = insertRecordIn(ctx, 'salesContracts', {
@@ -72,7 +72,7 @@ export function generateContract(actor: Actor, orderId: string): RecordData {
       customerId: order.customerId,
       ownerId: order.ownerId,
       divisionId: order.divisionId,
-      version,
+      contractVersion: version,
       status: 'draft',
       contractValue: order.grandTotal,
       paymentTerms: (order.paymentTerms as string) || N.defaultPaymentTerms,

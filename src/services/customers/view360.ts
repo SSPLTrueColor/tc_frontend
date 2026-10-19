@@ -17,6 +17,8 @@ export interface LinkedRow {
   id: string;
   title: string;
   status?: { label: string; tone?: Tone };
+  /** Raw status / stage key, for open/closed checks (labels are for display only). */
+  statusKey?: string;
   amount?: number;
   date?: string;
 }
@@ -32,9 +34,13 @@ const DATE = ['expectedCloseDate', 'quoteDate', 'orderDate', 'installDate', 'rep
 
 const readable = (actor: Actor, resKey: string) => isRegistered(resKey) && perm(actor, resKey).read !== 'none';
 
-function statusOf(resKey: string, r: RecordData) {
+const statusFieldOf = (resKey: string) => {
   const res = getResource(resKey);
-  const statusField = res.lifecycle ? res.fields.find((f) => f.key === res.lifecycle!.field) : res.fields.find((f) => (f.key === 'status' || f.key === 'stage') && f.type === 'master');
+  return res.lifecycle ? res.fields.find((f) => f.key === res.lifecycle!.field) : res.fields.find((f) => (f.key === 'status' || f.key === 'stage') && f.type === 'master');
+};
+
+function statusOf(resKey: string, r: RecordData) {
+  const statusField = statusFieldOf(resKey);
   const mv = statusField?.master ? masterValue(statusField.master, r[statusField.key]) : undefined;
   return mv ? { label: mv.label, tone: mv.tone } : undefined;
 }
@@ -48,6 +54,10 @@ function describe(actor: Actor, resKey: string, r: RecordData): LinkedRow {
     id: r.id,
     title: recordTitle(resKey, r.id, actor),
     status: statusOf(resKey, r),
+    statusKey: (() => {
+      const f = statusFieldOf(resKey);
+      return f && r[f.key] !== undefined && r[f.key] !== null ? String(r[f.key]) : undefined;
+    })(),
     amount: amountKey ? Number(r[amountKey]) : undefined,
     date: dateKey ? String(r[dateKey]) : undefined,
   };
@@ -58,6 +68,9 @@ export function linked(actor: Actor, resKey: string, field: string, value: strin
   if (!readable(actor, resKey)) return [];
   return queryRecords(actor, resKey, { where: { [field]: value } }).rows;
 }
+
+/** Number of `resKey` rows linked to a customer that the actor can see (tab badges). */
+export const countLinked = (actor: Actor, resKey: string, customerId: string) => linked(actor, resKey, 'customerId', customerId).length;
 
 export const linkedRows = (actor: Actor, resKey: string, field: string, value: string) => linked(actor, resKey, field, value).map((r) => describe(actor, resKey, r));
 
@@ -140,19 +153,27 @@ export function customer360(actor: Actor, customerId: string) {
 
 export type Customer360 = ReturnType<typeof customer360>;
 
+/** Closed status keys (REQUIREMENTS §4.2) — everything else counts as open. */
+export const CLOSED_LEAD = ['qualified', 'disqualified'];
+export const CLOSED_OPP = ['won', 'lost'];
+export const CLOSED_TICKET = ['resolved', 'customer_confirmation', 'closed', 'cancelled'];
+
+/** Open opportunities of a Customer 360° model (Key Account Plan, CUS-11). */
+export const openOpportunities = (v: Customer360) => v.opportunities.rows.filter((r) => !CLOSED_OPP.includes(String(r.statusKey ?? '')));
+
 /** Counts for the Overview tab. */
 export function customer360Overview(actor: Actor, customerId: string) {
   const v = customer360(actor, customerId);
-  const open = (s: LinkedSet, closed: string[]) => (s.available ? s.rows.filter((r) => !closed.includes(String(r.status?.label ?? '').toLowerCase())).length : undefined);
+  const open = (s: LinkedSet, closed: string[]) => (s.available ? s.rows.filter((r) => !closed.includes(String(r.statusKey ?? ''))).length : undefined);
   return {
     view: v,
     counts: {
       contacts: v.contacts.length,
       sites: v.sites.length,
-      openLeads: open(v.leads, ['qualified', 'disqualified']),
-      openOpportunities: open(v.opportunities, ['won', 'lost']),
+      openLeads: open(v.leads, CLOSED_LEAD),
+      openOpportunities: open(v.opportunities, CLOSED_OPP),
       machines: v.machines.available ? v.machines.rows.length : undefined,
-      openTickets: open(v.tickets, ['closed', 'resolved', 'cancelled']),
+      openTickets: open(v.tickets, CLOSED_TICKET),
     },
     children: linked(actor, 'customers', 'parentId', customerId).map((c) => ({ id: c.id, name: String(c.name) })),
     endCustomers: linked(actor, 'customers', 'dealerId', customerId).map((c) => ({ id: c.id, name: String(c.name) })),

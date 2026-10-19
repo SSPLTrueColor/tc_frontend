@@ -5,7 +5,7 @@
  */
 import { L } from '../../constants/labels';
 import type { RecordData } from '../../metadata/types';
-import { addDays, toDate } from '../../lib/dates';
+import { addDays, toDate, toDateKey } from '../../lib/dates';
 
 type Rows = RecordData[];
 
@@ -15,7 +15,11 @@ export const ms = (v: unknown) => (s(v) ? toDate(s(v)).getTime() : NaN);
 export const hoursBetween = (a: unknown, b: unknown) => (ms(b) - ms(a)) / 3_600_000;
 const avg = (xs: number[]) => (xs.length ? xs.reduce((t, x) => t + x, 0) / xs.length : null);
 const ratio = (num: number, den: number) => (den ? num / den : null);
-export const dayOf = (v: unknown) => s(v).slice(0, 10);
+/** Calendar day (IST wall clock, COM-11) of a stored value: UTC stamps ("…Z") are converted, local strings are sliced. */
+export const dayOf = (v: unknown) => {
+  const x = s(v);
+  return /Z$|[+-]\d{2}:\d{2}$/.test(x) ? toDateKey(new Date(x)) : x.slice(0, 10);
+};
 export const sum = (rows: Rows, key: string) => rows.reduce((t, r) => t + n(r[key]), 0);
 
 /** Date-window test on a "YYYY-MM-DD…" value; open bounds pass. */

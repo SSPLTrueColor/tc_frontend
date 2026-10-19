@@ -151,6 +151,8 @@ export function MyJobPage() {
   const v = t.version;
   const num = (x: string) => (x.trim() === '' ? null : Number(x));
   const maxMb = getPolicies().maxFileMb;
+  // Resolving needs the work to be running (not Waiting for Parts / Customer); checking out is always possible.
+  const canResolve = status === 'in_progress';
 
   return (
     <div className="page">
@@ -339,8 +341,9 @@ export function MyJobPage() {
               </div>
             )}
             <label className="row-gap">
-              <input type="checkbox" checked={resolve} onChange={(e) => setResolve(e.target.checked)} /> {P.resolveCheck}
+              <input type="checkbox" checked={canResolve && resolve} disabled={!canResolve} onChange={(e) => setResolve(e.target.checked)} /> {P.resolveCheck}
             </label>
+            {!canResolve && <p className="muted small">{P.resolveNeedsWork(masterValue('ticketStatus', status)?.label ?? status)}</p>}
             <div>
               <Button
                 variant="primary"
@@ -350,7 +353,7 @@ export function MyJobPage() {
                 onClick={async () => {
                   // Persist the latest job-card text first so "resolve" sees the work performed.
                   if (work.workDone.trim() && work.workDone !== s(visit.workDone)) await run(ST.save, () => serviceApi.saveWork(actor, t.id, { ...work, printCounter: num(work.printCounter), inkUsedMl: num(work.inkUsedMl) }), S.toasts.jobCardSaved);
-                  const ok = await run(ST.checkOut, () => serviceApi.checkOut(actor, t.id, { method, otp: code, signed, resolve }), resolve ? S.toasts.checkedOutResolved : S.toasts.checkedOut);
+                  const ok = await run(ST.checkOut, () => serviceApi.checkOut(actor, t.id, { method, otp: code, signed, resolve: canResolve && resolve }), canResolve && resolve ? S.toasts.checkedOutResolved : S.toasts.checkedOut);
                   if (ok) {
                     setOtp(null);
                     setCode('');

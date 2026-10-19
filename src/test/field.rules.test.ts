@@ -73,7 +73,8 @@ describe('target periods and achievement (TGT-01, BR-47)', () => {
   const e1 = (o: unknown) => o === 'E1';
 
   it('counts only booked orders in the period, optionally by product type', () => {
-    expect(achievementFor(t('order_value'), data, e1)).toBe(1_180_000);
+    // Order value = line value net of discount, before GST (same basis with or without a category): 1,000,000 + 45,000.
+    expect(achievementFor(t('order_value'), data, e1)).toBe(1_045_000);
     expect(achievementFor(t('order_value', { productCategory: 'ink' }), data, e1)).toBe(45_000);
     expect(achievementFor(t('quantity', { productCategory: 'ink' }), data, e1)).toBe(10);
   });

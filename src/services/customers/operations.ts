@@ -12,7 +12,7 @@ import { uid } from '../../lib/ids';
 import { type Actor, can, canReadRecord, canUpdateRecord, perm } from '../authz';
 import { commit, getDb } from '../db';
 import { appendAudit, notify } from '../ledger';
-import { allResources, getResource } from '../registry';
+import { activeMasterValues, allResources, getResource } from '../registry';
 import { insertRecordIn, patchRecordIn } from '../runtime';
 import { userOfStaff } from '../lookups';
 import { ServiceError } from '../types';
@@ -64,13 +64,19 @@ export function mergeCustomers(actor: Actor, keepId: string, removeId: string): 
         }
       });
     }
-    // Survivor keeps its values; blanks are filled from the duplicate. Lists are united.
+    // Survivor keeps its values; blanks are filled from the duplicate. Lists are united. ERP figures are read-only
+    // (CUS-09) and are not copied. A group / dealer link between the two would point at itself after the merge.
     const fill: Record<string, unknown> = {};
+    const survivor = d.records.customers.find((c) => c.id === keepId)!;
     getResource('customers').fields.forEach((f) => {
-      const a = keep[f.key];
+      if (f.readOnly) return;
+      const a = survivor[f.key];
       const b = drop[f.key];
       if (Array.isArray(a) || Array.isArray(b)) fill[f.key] = [...new Set([...((a as string[]) ?? []), ...((b as string[]) ?? [])])];
       else if ((a === undefined || a === null || a === '') && b !== undefined && b !== null && b !== '') fill[f.key] = b;
+    });
+    (['parentId', 'dealerId'] as const).forEach((k) => {
+      if ((fill[k] ?? survivor[k]) === keepId || (fill[k] ?? survivor[k]) === removeId) fill[k] = null;
     });
     patchRecordIn({ d, actor, correlationId }, 'customers', keepId, fill, L.customers.messages.mergeHistory(removeId, String(drop.name)));
     d.records.customers = d.records.customers.filter((c) => c.id !== removeId);
@@ -156,6 +162,17 @@ export interface ConvertInput {
   eventName?: string;
 }
 
+const CITY_ALIASES: Record<string, string> = { delhi: 'delhi_ncr', 'new delhi': 'delhi_ncr', noida: 'delhi_ncr', gurugram: 'delhi_ncr', gurgaon: 'delhi_ncr', bangalore: 'bengaluru', bombay: 'mumbai', madras: 'chennai', tirupur: 'tiruppur' };
+
+/** Territory / hub (and its billing state) for a contact's city, when the city is a hub (BR-04 pre-fill). */
+export function territoryForCity(city: unknown): { territoryId: string; billingState: string } | undefined {
+  const c = String(city ?? '').trim().toLowerCase();
+  if (!c) return undefined;
+  const key = CITY_ALIASES[c] ?? c;
+  const t = activeMasterValues('territory').find((m) => m.key === key || m.label.toLowerCase() === c);
+  return t ? { territoryId: t.key, billingState: String(t.parent ?? '') } : undefined;
+}
+
 export function convertContactToLead(actor: Actor, input: ConvertInput): { leadId: string; customerId: string } {
   if (!isRegistered('leads')) throw new ServiceError('invalid_state', L.customers.messages.leadsUnavailable);
   if (!perm(actor, 'leads').create) throw new ServiceError('forbidden', L.customers.messages.noLeadCreate);
@@ -171,6 +188,10 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
     if (contact.poolStatus === 'converted') throw new ServiceError('invalid_state', L.customers.messages.alreadyConverted);
     if (contact.source === 'exhibition' && !input.eventName?.trim()) errors.eventName = L.customers.messages.eventRequired;
     if (!contact.customerId) {
+      // Pre-fill territory and billing state from the contact's city when not chosen (the lead's state follows the company).
+      const guess = territoryForCity(contact.city);
+      if (!input.territoryId && guess) input = { ...input, territoryId: guess.territoryId };
+      if (!input.billingState && input.territoryId) input = { ...input, billingState: String(activeMasterValues('territory').find((t) => t.key === input.territoryId)?.parent ?? '') || undefined };
       if (!input.companyName?.trim()) errors.companyName = L.customers.messages.companyRequired;
       if (!input.territoryId) errors.territoryId = L.customers.messages.territoryRequired;
       if (!input.billingState) errors.billingState = L.customers.messages.stateRequired;

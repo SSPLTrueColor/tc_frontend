@@ -1,5 +1,5 @@
 /** Customers & Contacts record actions, banners and the Convert to Lead dialog (registered in domain/extensions/customers.tsx). */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { RecordData } from '../../metadata/types';
 import { L } from '../../constants/labels';
@@ -7,7 +7,7 @@ import { ROUTES } from '../../constants/routes';
 import { formatMoney } from '../../lib/format';
 import { recordPeekPath } from '../../lib/routes';
 import { call, errorMessage } from '../../services/api/client';
-import { convertToLead, defaultFollowUp, fuzzyCustomerMatches, isRegistered, refreshErp } from '../../services/api/customers';
+import { convertToLead, defaultFollowUp, fuzzyCustomerMatches, isRegistered, refreshErp, territoryForCity } from '../../services/api/customers';
 import { can, canUpdateRecord, perm } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { activeMasterValues } from '../../services/registry';
@@ -115,10 +115,12 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
   const pool = !contact.customerId;
   const divisions = activeMasterValues('division');
   const sales = (getDb().records.employees ?? []).filter((e) => ['sales_exec', 'sales_manager', 'division_head', 'coordinator'].includes(String(e.roleId)) && e.status !== 'inactive');
+  // BR-04: territory / hub and billing state are pre-filled from the contact's city when it is a hub.
+  const guess = pool ? territoryForCity(contact.city) : undefined;
   const [v, setV] = useState({
     companyName: '',
-    territoryId: '',
-    billingState: '',
+    territoryId: guess?.territoryId ?? '',
+    billingState: guess?.billingState ?? '',
     divisionId: ((contact.divisionIds as string[]) ?? [])[0] ?? actor.divisionIds[0] ?? '',
     productType: 'machine',
     ownerId: String(contact.ownerId ?? actor.staffId),
@@ -129,8 +131,13 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof v, val: string) => setV((x) => ({ ...x, [k]: val }));
+  // CUS-06 / BR-01: the inline company is checked for similar names (non-blocking warning).
+  const similar = pool && v.companyName.trim().length >= 3 ? fuzzyCustomerMatches((getDb().records.customers ?? []).filter((c) => c.workspaceId === actor.workspaceId), v.companyName).slice(0, 3) : [];
   const err = (k: string) => errors[k] && <p className="field-error">{errors[k]}</p>;
+  const saving = useRef(false);
   const save = async () => {
+    if (saving.current) return; // no double submit
+    saving.current = true;
     setBusy(true);
     setErrors({});
     try {
@@ -141,6 +148,7 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
       if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
       else setErrors({ form: errorMessage(e) });
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -168,6 +176,18 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
               </label>
               <input id="cv-company" className="input" maxLength={120} value={v.companyName} onChange={(e) => set('companyName', e.target.value)} data-autofocus />
               {err('companyName')}
+              {similar.length > 0 && (
+                <InlineAlert tone="warning" title={L.customers.banners.duplicateTitle}>
+                  {L.customers.banners.looksLike}{' '}
+                  {similar.map((m, i) => (
+                    <span key={m.id}>
+                      {i > 0 && ', '}
+                      <Link to={recordPeekPath(actor.workspaceId, 'customers', m.id)}>{m.name}</Link> ({Math.round(m.score * 100)}%)
+                    </span>
+                  ))}
+                  . {V.similarHint}
+                </InlineAlert>
+              )}
             </div>
             <div className="form-field">
               <label className="field-label" htmlFor="cv-territory">

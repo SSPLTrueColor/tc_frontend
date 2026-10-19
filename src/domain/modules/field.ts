@@ -227,7 +227,8 @@ export const expenseClaims: ResourceDefinition = {
     fx('expenseType', F.expenseClaims.expenseType, 'master', { master: 'expenseType', required: true, defaultValue: 'conveyance', width: 150 }),
     fx('vehicleType', F.expenseClaims.vehicleType, 'master', { master: 'vehicleType', defaultValue: 'two_wheeler', requiredWhen: { field: 'expenseType', op: 'eq', value: 'conveyance' }, visibleWhen: { field: 'expenseType', op: 'eq', value: 'conveyance' }, clearWhenHidden: true }),
     fx('km', F.expenseClaims.km, 'number', { unit: 'km', min: 0, max: 2000, requiredWhen: { field: 'expenseType', op: 'eq', value: 'conveyance' }, visibleWhen: { field: 'expenseType', op: 'eq', value: 'conveyance' }, clearWhenHidden: true, help: F.expenseClaims.kmHelp }),
-    fx('amount', F.expenseClaims.amount, 'money', { required: true, min: 0, currency: 'INR', width: 130, help: F.expenseClaims.amountHelp }),
+    // BR-46: conveyance amount is calculated (km × rate) by the service, so it is only typed for other expense types.
+    fx('amount', F.expenseClaims.amount, 'money', { requiredWhen: { field: 'expenseType', op: 'neq', value: 'conveyance' }, min: 0, currency: 'INR', width: 130, help: F.expenseClaims.amountHelp }),
     fx('billFileName', F.expenseClaims.billFileName, 'text', { maxLength: 120, requiredWhen: { field: 'expenseType', op: 'neq', value: 'conveyance' }, help: F.expenseClaims.billFileNameHelp }),
     fx('justification', F.expenseClaims.justification, 'longtext', { maxLength: 500, help: F.expenseClaims.justificationHelp, capabilities: FORM_ONLY }),
     fx('policyLimit', F.expenseClaims.policyLimit, 'money', { readOnly: true, currency: 'INR', capabilities: { list: true, export: true } }),
@@ -346,10 +347,11 @@ export const fieldPack: ModulePack = {
     admin: { ...Object.fromEntries(FIELD.map((k) => [k, p('all', 'all', true, true, true)])), targets: p('all', 'all', true, true, true) },
     management: { ...fieldPerms('all', true), targets: p('all', 'all', true, true, true) },
     division_head: { ...fieldPerms('division', true), targets: p('division', 'division', true, true, true) },
-    sales_manager: { ...fieldPerms('team', true), targets: p('team', 'team', true, false, true) },
+    // Permission matrix (REQUIREMENTS §2.2): sales managers view their team's targets; targets are set by Division head / Management / Admin.
+    sales_manager: { ...fieldPerms('team', true), targets: p('team', 'none', false, false, true) },
     sales_exec: { ...fieldPerms('own'), targets: p('own') },
     service_head: { ...fieldPerms('team', true), targets: p('team') },
-    engineer: { ...fieldPerms('own') },
+    engineer: { ...fieldPerms('own'), targets: p('own') },
     coordinator: { ...fieldPerms('division') },
     scm: { ...fieldPerms('own') },
     store: { ...fieldPerms('own') },

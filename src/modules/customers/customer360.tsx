@@ -13,7 +13,7 @@ import { formatMoney } from '../../lib/format';
 import { formatDate, todayKey } from '../../lib/dates';
 import { recordPeekPath } from '../../lib/routes';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
-import { getCustomer360, getCustomer360Overview, getCustomerDocuments, getCustomerTimeline, type LinkedSet, type LinkedRow } from '../../services/api/customers';
+import { countLinked, getCustomer360, getCustomer360Overview, getCustomerDocuments, getCustomerTimeline, type LinkedSet, type LinkedRow, openOpportunities } from '../../services/api/customers';
 import { canUpdateRecord, perm } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { masterLabel, masterValue } from '../../services/registry';
@@ -138,8 +138,9 @@ export const SalesOrdersTab = linkedTab('salesOrders', T.salesOrders, 'shopping-
 export const MachinesTab = linkedTab('machines', T.installedMachines, 'printer');
 
 /** Contacts / Sites tab badge counts (sync, from the local store). */
-export const contactCount = ({ record }: RecordExtensionProps) => (getDb().records.contacts ?? []).filter((c) => c.customerId === record.id).length;
-export const siteCount = ({ record }: RecordExtensionProps) => (getDb().records.addresses ?? []).filter((c) => c.customerId === record.id).length;
+/** Contacts / Sites tab badge counts — scoped like the tab content, so the badge never shows records the user cannot open. */
+export const contactCount = ({ actor, record }: RecordExtensionProps) => countLinked(actor, 'contacts', record.id);
+export const siteCount = ({ actor, record }: RecordExtensionProps) => countLinked(actor, 'addresses', record.id);
 
 // ---------------------------------------------------------------- ERP figures
 
@@ -522,7 +523,7 @@ export function KeyAccountPlanTab({ actor, record, res }: RecordExtensionProps) 
   const raw = getDb().records.customers?.find((c) => c.id === record.id);
   const canEdit = !!raw && canUpdateRecord(actor, res, raw);
   if (!q.data) return <Pending q={q} />;
-  const openOpps = q.data.opportunities.rows.filter((r) => !['won', 'lost'].includes(String(r.status?.label ?? '').toLowerCase()));
+  const openOpps = openOpportunities(q.data);
   const decisionMakers = q.data.contacts.filter((c) => c.buyingRole === 'decision_maker' || c.buyingRole === 'finance');
   const review = record.planNextReview ? String(record.planNextReview) : '';
   return (

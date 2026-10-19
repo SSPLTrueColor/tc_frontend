@@ -8,7 +8,8 @@ import { L } from '../constants/labels';
 const V = L.common.form.v;
 
 export function isEmpty(v: unknown) {
-  return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+  // Whitespace-only text counts as empty, so required fields cannot be filled with blanks.
+  return v === null || v === undefined || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
 }
 
 export function evalCondition(c: FieldCondition | undefined, values: Record<string, unknown>): boolean {

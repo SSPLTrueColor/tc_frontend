@@ -28,7 +28,8 @@ const fmv = mk('machineMoves');
 
 const ENGINEERS = { field: 'roleId', op: 'in' as const, value: ['engineer', 'service_head'] };
 const ACTIVE_EMP = { field: 'status', op: 'neq' as const, value: 'inactive' };
-const SERIAL = { regex: '^[A-Z0-9][A-Z0-9/-]{3,29}$', message: T.validation.serial };
+// Case-insensitive on input; hooks store serial numbers in capitals.
+const SERIAL = { regex: '^[A-Za-z0-9][A-Za-z0-9/-]{3,29}$', message: T.validation.serial };
 const END_AFTER_START = { op: 'gte' as const, field: 'startDate', message: T.validation.endAfterStart };
 
 /** Site readiness checklist items (INS-03). Order = display order. */
@@ -258,6 +259,8 @@ export const warranties: ResourceDefinition = {
     fw('warrantyStatus', 'master', { master: 'warrantyStatus', readOnly: true, computed: warrantyStatus, capabilities: { list: true, export: true }, width: 150 }),
     fw('exclusions', 'longtext', { maxLength: 1000, capabilities: FORM_ONLY }),
     fw('divisionId', 'master', { master: 'division', readOnly: true }),
+    fw('renewalOpportunityId', 'relation', { relation: { resource: 'opportunities' }, readOnly: true }),
+    fw('remindersSent', 'text', { system: true, readOnly: true, capabilities: { form: true } }),
   ],
   relationships: [],
   form: {

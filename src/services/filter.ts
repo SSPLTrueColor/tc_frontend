@@ -1,7 +1,16 @@
 /** Typed filter AST evaluation — shared by grid, saved views, board, calendar, exports and work queues. */
 import type { FilterCondition, FilterGroup, FilterOperator, FieldDefinition } from '../metadata/types';
-import { addDays, todayKey } from '../lib/dates';
+import { L } from '../constants/labels';
+import { addDays, toLocalDateTime, todayKey } from '../lib/dates';
 import { uid } from '../lib/ids';
+
+/** System timestamps every record carries (not declared per resource) as filterable date-time fields. */
+const SYSTEM_DATE_KEYS = ['createdAt', 'updatedAt'] as const;
+export const systemDateField = (key: string): FieldDefinition | undefined =>
+  (SYSTEM_DATE_KEYS as readonly string[]).includes(key)
+    ? { id: `fld_system_${key}`, key, label: L.common.systemFields[key as (typeof SYSTEM_DATE_KEYS)[number]], type: 'datetime', system: true, capabilities: { list: false, sort: true, filter: true, form: false, export: false } }
+    : undefined;
+export const systemDateFields = () => SYSTEM_DATE_KEYS.map((k) => systemDateField(k)!);
 
 export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   eq: 'is',
@@ -52,7 +61,9 @@ const empty = (v: unknown) => v === null || v === undefined || v === '' || (Arra
 export function evalFilterCondition(c: FilterCondition, value: unknown, display?: string): boolean {
   const today = todayKey();
   const s = value === null || value === undefined ? '' : String(value);
-  const day = s.slice(0, 10);
+  // UTC stamps (createdAt "…Z") compare on the IST wall clock like every other date (COM-11).
+  const local = /^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:\d{2})$/.test(s) ? toLocalDateTime(new Date(s)) : s;
+  const day = local.slice(0, 10);
   switch (c.operator) {
     case 'empty':
       return empty(value);
@@ -82,9 +93,9 @@ export function evalFilterCondition(c: FilterCondition, value: unknown, display?
     case 'lt':
       return Number(value) < Number(c.value);
     case 'gte':
-      return typeof value === 'number' ? value >= Number(c.value) : s.slice(0, String(c.value).length) >= String(c.value);
+      return typeof value === 'number' ? value >= Number(c.value) : local.slice(0, String(c.value).length) >= String(c.value);
     case 'lte':
-      return typeof value === 'number' ? value <= Number(c.value) : s.slice(0, String(c.value).length) <= String(c.value);
+      return typeof value === 'number' ? value <= Number(c.value) : local.slice(0, String(c.value).length) <= String(c.value);
     case 'in':
       return Array.isArray(c.value) && c.value.includes(value);
   }

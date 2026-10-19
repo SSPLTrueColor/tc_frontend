@@ -6,7 +6,7 @@ import { notify } from '../../services/ledger';
 import { byId, coverageFor, userOfStaff } from '../../services/lookups';
 import { queueMessage } from '../../services/outbox';
 import { getResource } from '../../services/registry';
-import { registerResourceHooks } from '../../services/resourceHooks';
+import { type HookContext, registerResourceHooks } from '../../services/resourceHooks';
 import { ServiceError } from '../../services/types';
 import {
   customerRecipient,
@@ -14,11 +14,15 @@ import {
   ensureRenewalOpportunity,
   generatePmVisits,
   handoverComplete,
+  handoverOwnerId,
   missingReadiness,
   missingSteps,
   nextContractNo,
+  runRenewalSweep,
   serviceDesk,
 } from '../../services/installed/logic';
+import { currentActor } from '../../services/authz';
+import { isSignedIn } from '../../services/session';
 import {
   ComponentsTab,
   ContractActions,
@@ -59,6 +63,27 @@ const fail = (field: string, message: string): never => {
 
 // ---------------------------------------------------------------- installations (INS-03 … INS-06)
 
+/** BR-02: an installation is scheduled only at an installation site with map coordinates (lat / lng). */
+function assertMappedSite(d: HookContext['d'], c: Record<string, unknown>) {
+  if (!c.scheduledAt) return;
+  const site = byId('addresses', c.siteAddressId, d.records);
+  if (!site) fail('siteAddressId', S.siteNeededToSchedule);
+  else if (site.lat == null || site.lng == null || site.lat === '' || site.lng === '') fail('siteAddressId', S.siteNeedsLatLng);
+}
+
+/** INS-05 customer notification: engineer and date of the installation (simulated WhatsApp / email). */
+function notifyCustomerOfSchedule(ctx: HookContext, r: Record<string, unknown> & { id: string }) {
+  const to = customerRecipient(ctx.d, r.customerId);
+  const eng = byId('employees', r.engineerId, ctx.d.records);
+  queueMessage(ctx, {
+    channel: to.channel,
+    to: to.to,
+    subject: S.scheduledSubject(r.id),
+    body: S.scheduledBody(String(eng?.fullName ?? ''), String(eng?.mobile ?? ''), String(r.scheduledAt).replace('T', ' at ')),
+    related: { resource: 'installations', recordId: r.id },
+  });
+}
+
 registerResourceHooks('installations', {
   title: (r) => S.installationTitle(r.id, String(byId('customers', r.customerId)?.name ?? r.customerId ?? '')),
   beforeCreate: ({ d }, c) => {
@@ -72,16 +97,24 @@ registerResourceHooks('installations', {
     }
     if (!c.divisionId && c.productId) c.divisionId = byId('products', c.productId, d.records)?.divisionId ?? null;
     if (c.serialNo) c.serialNo = String(c.serialNo).toUpperCase();
+    assertMappedSite(d, c);
   },
-  afterCreate: ({ d, actor }, r) => {
+  afterCreate: (ctx, r) => {
+    const { d, actor } = ctx;
     const link = { resource: 'installations', recordId: r.id };
-    if (r.engineerId) tell(d, actor.workspaceId, r.engineerId, S.assignedToYou(r.id), link, actor.user.id);
+    if (r.engineerId) tell(d, actor.workspaceId, r.engineerId, S.assignedToYou(r.id, r.scheduledAt ? String(r.scheduledAt).replace('T', ' ') : undefined), link, actor.user.id);
     serviceDesk(r.divisionId, d)
       .filter((e) => e.roleId === 'coordinator')
       .forEach((e) => tell(d, actor.workspaceId, e.id, S.newJobForCoordinator(r.id), link, actor.user.id));
+    // BR-26: the handover form is issued to the sales owner to fill.
+    const so = byId('salesOrders', r.salesOrderId, d.records);
+    tell(d, actor.workspaceId, handoverOwnerId(r, d), S.handoverRequest(r.id, String(so?.orderNo ?? so?.id ?? '—')), link, actor.user.id);
+    // INS-05: customer notified when the job is created already scheduled.
+    if (r.engineerId && r.scheduledAt) notifyCustomerOfSchedule(ctx, r);
   },
-  beforeUpdate: (_ctx, before, c) => {
+  beforeUpdate: ({ d }, before, c) => {
     if (before.status === 'signed_off') throw new ServiceError('invalid_state', S.lockedAfterSignOff);
+    if (c.scheduledAt && (c.scheduledAt !== before.scheduledAt || c.siteAddressId !== before.siteAddressId)) assertMappedSite(d, c);
     if (c.serialNo) c.serialNo = String(c.serialNo).toUpperCase();
     // Handover is complete once all three sections are written (INS-04).
     if (!before.handoverAt && handoverComplete(c)) c.handoverAt = nowLocal();
@@ -93,17 +126,7 @@ registerResourceHooks('installations', {
     const reassigned = after.engineerId && after.engineerId !== before.engineerId;
     const rescheduled = after.scheduledAt && after.scheduledAt !== before.scheduledAt;
     if (reassigned) tell(ctx.d, ctx.actor.workspaceId, after.engineerId, S.assignedToYou(after.id, after.scheduledAt ? String(after.scheduledAt).replace('T', ' ') : undefined), link, ctx.actor.user.id);
-    if ((reassigned || rescheduled) && after.engineerId && after.scheduledAt) {
-      const r = customerRecipient(ctx.d, after.customerId);
-      const eng = byId('employees', after.engineerId, ctx.d.records);
-      queueMessage(ctx, {
-        channel: r.channel,
-        to: r.to,
-        subject: S.scheduledSubject(after.id),
-        body: S.scheduledBody(String(eng?.fullName ?? ''), String(eng?.mobile ?? ''), String(after.scheduledAt).replace('T', ' at ')),
-        related: link,
-      });
-    }
+    if ((reassigned || rescheduled) && after.engineerId && after.scheduledAt) notifyCustomerOfSchedule(ctx, after);
   },
   beforeTransition: (_ctx, r, to) => {
     if (to === 'site_ready') {
@@ -229,6 +252,8 @@ registerResourceHooks('amcContracts', {
       if (String(r.endDate) < todayKey()) throw new ServiceError('invalid_state', S.endPassed);
       if (!(Number(r.value) > 0)) throw new ServiceError('invalid_state', S.valueBeforeActivate);
     }
+    // Expiry is automatic after the end date (REQUIREMENTS §4.2); before that, renew or mark lost.
+    if (to === 'expired' && String(r.endDate) >= todayKey()) throw new ServiceError('invalid_state', S.expireAfterEnd(formatDate(String(r.endDate))));
     if (to === 'lost' && !r.lostReason) throw new ServiceError('validation', S.lostReasonRequired, { fieldErrors: { lostReason: S.required } });
   },
   afterTransition: (ctx, _before, after) => {
@@ -265,3 +290,17 @@ registerResourceHooks('trainingRecords', {
 });
 
 registerRecordTab('customers', { id: 'training', label: TABS.customerTraining, component: CustomerTrainingTab, count: ({ actor, record }) => countFor(actor, 'trainingRecords', { customerId: record.id }) });
+
+// IB-05 renewal sweep on the simulated clock (reminders, due / expired contracts, draft activation, warranty
+// expiry): shortly after start and every minute while signed in; writes only when something is due.
+if (typeof window !== 'undefined') {
+  const tick = () => {
+    try {
+      if (isSignedIn()) runRenewalSweep(currentActor());
+    } catch {
+      /* the sweep must never break the app; it retries on the next tick */
+    }
+  };
+  window.setTimeout(tick, 2000);
+  window.setInterval(tick, 60_000);
+}

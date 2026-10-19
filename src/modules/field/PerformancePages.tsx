@@ -15,6 +15,7 @@ import { activeMasterValues, masterLabel } from '../../services/registry';
 import { Button, IconButton } from '../../components/primitives/Button';
 import { Badge, EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
+import { confirmDelete } from '../../components/primitives/overlay';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { Meter, metricValue, PAGE_SIZE, Pager, SearchBox, Stat } from './common';
@@ -47,19 +48,26 @@ export function PayrollExportPage() {
           icon="download"
           loading={busy}
           disabledReason={!selected.size ? P.selectFirst : undefined}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              const csv = await fieldApi.exportClaims(actor, [...selected]);
-              downloadText(P.fileName(todayKey()), csv);
-              toast(P.exported(selected.size));
-              setSelected(new Set());
-            } catch (e) {
-              toast(errorMessage(e), 'danger');
-            } finally {
-              setBusy(false);
-            }
-          }}
+          onClick={() =>
+            confirmDelete({
+              title: L.field.confirms.exportTitle,
+              message: L.field.confirms.exportBody(selected.size, formatMoney(total)),
+              confirmLabel: L.field.actions.exportToPayroll,
+              onConfirm: async () => {
+                setBusy(true);
+                try {
+                  const csv = await fieldApi.exportClaims(actor, [...selected]);
+                  downloadText(P.fileName(todayKey()), csv);
+                  toast(P.exported(selected.size));
+                  setSelected(new Set());
+                } catch (e) {
+                  toast(errorMessage(e), 'danger');
+                } finally {
+                  setBusy(false);
+                }
+              },
+            })
+          }
         >
           {L.field.actions.exportToPayroll}
         </Button>
@@ -141,6 +149,7 @@ type TvaSort = 'pct_asc' | 'pct_desc' | 'name';
 export function TargetVsActualPage() {
   const P = L.targets.pages.targetVsActual;
   const actor = useActor();
+  const toast = useToast();
   const [params, setParams] = useSearchParams();
   const type = params.get('period') ?? 'quarter';
   const start = periodStartFor(type, params.get('start') ?? todayKey());
@@ -174,7 +183,14 @@ export function TargetVsActualPage() {
         <strong>{periodLabel(type, start)}</strong>
         <IconButton icon="chevron-right" label={P.next} onClick={() => setParams({ period: type, start: shiftPeriod(type, start, 1) })} />
         <span className="spacer" />
-        <Button icon="download" disabledReason={!all.length ? P.noRows : !perm(actor, 'targets').export ? P.noExport : undefined} onClick={() => downloadText(P.fileName(start), fieldApi.achievementCsv(rows))}>
+        <Button icon="download" disabledReason={!all.length ? P.noRows : !perm(actor, 'targets').export ? P.noExport : undefined} onClick={async () => {
+            try {
+              downloadText(P.fileName(start), await fieldApi.exportAchievement(actor, rows, periodLabel(type, start)));
+            } catch (e) {
+              toast(errorMessage(e), 'danger');
+            }
+          }}
+        >
           {P.export}
         </Button>
       </div>
@@ -305,6 +321,7 @@ export function ActivityScorecardPage() {
   const [page, setPage] = useState(0);
   const q = useServiceQuery(() => fieldApi.scorecard(actor, week), [actor.user.id, week]);
   const all = q.data ?? [];
+  if (perm(actor, 'targets').read === 'none') return <NoAccess what={T.activityScorecard.title} />;
   const needle = search.trim().toLowerCase();
   const rows = all.filter((r) => (!needle || String(r.employee.fullName).toLowerCase().includes(needle)) && (role === 'all' || r.employee.roleId === role));
   const pageRows = rows.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
@@ -404,6 +421,7 @@ export function LeaderboardsPage() {
   const division = params.get('division');
   const q = useServiceQuery(() => fieldApi.leaderboard(actor, division, month), [actor.user.id, division, month]);
   const d = q.data;
+  if (perm(actor, 'targets').read === 'none') return <NoAccess what={T.leaderboards.title} />;
   return (
     <div className="page">
       <PageHeader title={T.leaderboards.title} description={P.description} />

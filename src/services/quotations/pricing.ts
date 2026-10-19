@@ -17,6 +17,8 @@ export interface QuoteLine {
   discountPct: number;
   /** Discount as a rupee amount for the whole line (overrides `discountPct`). */
   discountAmt: number;
+  /** Which discount input the user chose (QUO-04 "% or amount"); amount mode also applies while the amount is still 0. */
+  discountType?: 'pct' | 'amt';
   hsnSac: string;
   gstRate: number;
   /** Unit landed cost, copied from the price list (financial; hidden unless permitted). */
@@ -27,7 +29,8 @@ export interface QuoteLine {
 
 export const GST_RATES = [0, 5, 12, 18, 28];
 
-const r2 = (n: number) => Math.round(n * 100) / 100;
+/** Round to paise; toPrecision(12) removes binary noise first (10.05 × 50 % = 5.025 → 5.03, not 5.02). */
+const r2 = (n: number) => Math.round(Number((n * 100).toPrecision(12))) / 100;
 
 export interface LineAmounts {
   gross: number;
@@ -43,7 +46,9 @@ export function lineAmounts(l: QuoteLine): LineAmounts {
   const amt = Number(l.discountAmt) || 0;
   const discount = r2(amt > 0 ? Math.min(amt, gross) : (gross * Math.min(100, Math.max(0, Number(l.discountPct) || 0))) / 100);
   const net = r2(gross - discount);
-  return { gross, discount, net, effectivePct: gross ? r2((discount / gross) * 100) : 0, tax: r2((net * (Number(l.gstRate) || 0)) / 100) };
+  // Rounded UP to 0.01 % so an amount discount of e.g. 5.004 % still counts as "above 5 %" for BR-17 bands.
+  const effectivePct = gross ? Math.max(0, Math.ceil((discount / gross) * 10000 - 1e-6) / 100) : 0;
+  return { gross, discount, net, effectivePct, tax: r2((net * (Number(l.gstRate) || 0)) / 100) };
 }
 
 export interface QuoteTotals {
@@ -68,14 +73,17 @@ export interface QuoteTotals {
  * BR-16: CGST+SGST when the place of supply is the company's GST state, otherwise IGST.
  * Freight and insurance are taxed at the rate of the highest-value line (Assumption, REQUIREMENTS BR-16).
  */
-/** BR-16 split (same rounding as lookups.gstSplit) with the company state passed in. */
+/**
+ * BR-16 split with the company state passed in. Worked in whole paise so binary floating point never
+ * tips a half-paisa the wrong way; CGST and SGST are each taxable × rate/2 (always equal).
+ */
 function split(sameState: boolean, taxable: number, ratePct: number) {
-  const tax = Math.round(taxable * ratePct) / 100;
+  const paise = Math.round(taxable * 100);
   if (sameState) {
-    const half = Math.round(tax * 50) / 100;
-    return { cgst: half, sgst: Math.round((tax - half) * 100) / 100, igst: 0 };
+    const half = Math.round((paise * ratePct) / 200) / 100;
+    return { cgst: half, sgst: half, igst: 0 };
   }
-  return { cgst: 0, sgst: 0, igst: Math.round(tax * 100) / 100 };
+  return { cgst: 0, sgst: 0, igst: Math.round((paise * ratePct) / 100) / 100 };
 }
 
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
@@ -174,6 +182,7 @@ export function cleanLines(lines: unknown): QuoteLine[] {
       listPrice: Number(l.listPrice) || 0,
       discountPct: Number(l.discountPct) || 0,
       discountAmt: Number(l.discountAmt) || 0,
+      ...(l.discountType === 'amt' || l.discountType === 'pct' ? { discountType: l.discountType } : {}),
       hsnSac: String(l.hsnSac ?? '').trim(),
       gstRate: Number(l.gstRate) || 0,
       landedCost: l.landedCost === null || l.landedCost === undefined || (l.landedCost as unknown) === '' ? null : Number(l.landedCost),

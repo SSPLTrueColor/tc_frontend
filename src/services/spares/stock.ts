@@ -123,6 +123,7 @@ function add(f: StockFigures, r: RecordData) {
 
 /** Whether the actor sees every engineer's stock (Store In-charge, Service Leadership, Management, admin) or only their own. */
 export function engineerStockScope(actor: Actor): 'all' | 'own' | 'none' {
+  if (!can(actor, 'spares.engineerStock')) return 'none';
   if (can(actor, 'spares.engineerStockAll')) return 'all';
   return (actor.role.resources.requisitions?.read ?? 'none') === 'own' ? 'own' : 'none';
 }

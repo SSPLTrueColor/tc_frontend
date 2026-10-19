@@ -608,7 +608,7 @@ export function ContractTab({ actor, record }: RecordExtensionProps) {
       {current ? (
         <section className="detail-section">
           <h3 className="detail-section-title">
-            <Link to={recordPeekPath('tc', 'salesContracts', current.id)}>{R.contractHeading(String(current.contractNo), String(current.version))}</Link> {chip('contractStatus', current.status)}
+            <Link to={recordPeekPath('tc', 'salesContracts', current.id)}>{R.contractHeading(String(current.contractNo), String(current.contractVersion))}</Link> {chip('contractStatus', current.status)}
           </h3>
           <dl className="detail-list">
             <Row label={R.contractValue}>{formatMoney(Number(current.contractValue))}</Row>
@@ -670,7 +670,7 @@ export function ContractTab({ actor, record }: RecordExtensionProps) {
           {R.earlierVersions(
             v.contracts
               .filter((c) => c.status === 'superseded')
-              .map((c) => `v${c.version}`)
+              .map((c) => `v${c.contractVersion}`)
               .join(', '),
           )}
         </p>
