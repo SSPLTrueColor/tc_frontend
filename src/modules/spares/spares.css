@@ -1,0 +1,23 @@
+/* Spares & consumables — layout helpers only (template tokens). */
+.sp-stack {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.sp-stack > section {
+  display: grid;
+  gap: 6px;
+}
+.sp-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.sp-table-wrap {
+  overflow-x: auto;
+}
+.sp-table-wrap .mini-table td,
+.sp-table-wrap .mini-table th {
+  white-space: nowrap;
+}

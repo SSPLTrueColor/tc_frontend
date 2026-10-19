@@ -1,0 +1,114 @@
+/* Service module — layout helpers on top of the template classes (tokens only). */
+.svc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+.svc-tile {
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+  background: var(--s-panel);
+}
+.svc-tile.is-hot {
+  border-color: color-mix(in srgb, var(--s-danger) 55%, var(--s-border));
+}
+.svc-tile-title {
+  font-weight: var(--fw-semibold);
+}
+.svc-week {
+  display: grid;
+  grid-template-columns: repeat(7, 22px);
+  gap: 2px;
+}
+.svc-week span {
+  height: 22px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-supportive);
+  background: var(--s-hover);
+}
+.svc-week span.has-jobs {
+  background: color-mix(in srgb, var(--s-accent) 22%, transparent);
+}
+.svc-jobs {
+  display: grid;
+  gap: 8px;
+}
+.svc-job {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-panel);
+  color: inherit;
+  text-decoration: none;
+}
+.svc-job:hover {
+  background: var(--s-hover);
+}
+.svc-job-top {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.svc-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+.svc-steps .btn {
+  min-height: 44px;
+  justify-content: center;
+}
+.svc-signature {
+  width: 100%;
+  height: 140px;
+  border: 1px dashed var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-canvas);
+  touch-action: none;
+}
+.svc-stars {
+  display: flex;
+  gap: 6px;
+}
+.svc-stars button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--s-border);
+  background: var(--s-panel);
+  color: inherit;
+  font-size: var(--fs-secondary);
+  cursor: pointer;
+}
+.svc-stars button.is-on {
+  background: var(--s-accent);
+  color: #fff;
+  border-color: transparent;
+}
+.svc-print {
+  max-width: 860px;
+}
+.svc-print h2 {
+  font-size: var(--fs-secondary);
+  margin: 12px 0 6px;
+}
+@media print {
+  .rail,
+  .sidebar,
+  .topbar,
+  .preview-banner,
+  .no-print {
+    display: none !important;
+  }
+  .svc-print {
+    max-width: none;
+  }
+}

@@ -1,0 +1,124 @@
+/* Reports & overview — module styles on top of the template's .chart / .stats / .panel classes (tokens only). */
+.rb-rows {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.rb-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 34%) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  border-radius: 6px;
+  color: var(--s-text);
+  text-decoration: none;
+}
+a.rb-row:hover,
+button.rb-row:hover {
+  background: var(--s-hover);
+}
+.rb-label {
+  font-size: var(--fs-supportive);
+  color: var(--s-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+.rb-track {
+  position: relative;
+  height: 14px;
+  border-left: 1px solid var(--s-chart-grid);
+}
+.rb-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 2px;
+  background: var(--s-chart-1);
+  border-radius: 0 4px 4px 0;
+}
+.rb-axis {
+  display: grid;
+  grid-template-columns: minmax(90px, 34%) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 4px;
+}
+.rb-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-supportive);
+  color: var(--s-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.dash-section {
+  margin-bottom: 20px;
+}
+.dash-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.dash-section-title {
+  font-size: var(--fs-secondary);
+  font-weight: var(--fw-semibold);
+}
+.rep-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.rep-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.rep-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--s-text);
+  text-decoration: none;
+}
+.rep-card:hover {
+  background: var(--s-hover);
+}
+.rep-card-title {
+  font-weight: var(--fw-semibold);
+}
+.rep-frs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rep-table th .th-btn {
+  font-weight: 400;
+}
+.rep-table td.num,
+.rep-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 760px) {
+  .rep-groups {
+    grid-template-columns: 1fr;
+  }
+}
+.rep-toolbar > .input {
+  width: 220px;
+  flex: 0 0 auto;
+}
+.rep-date {
+  display: inline-block;
+  width: 250px;
+}
+@media (max-width: 760px) {
+  .rep-toolbar > .input,
+  .rep-date {
+    width: 100%;
+  }
+}

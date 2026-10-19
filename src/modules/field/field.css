@@ -1,0 +1,35 @@
+/* Field & performance: only what the template classes do not cover. Tokens only. */
+.field-page .field-checkin-body {
+  display: grid;
+  gap: 12px;
+}
+.field-page .field-big-btn {
+  width: 100%;
+  min-height: 48px;
+  font-size: var(--fs-secondary);
+}
+.field-loc {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.field-loc .segmented,
+.field-page .form-field .segmented {
+  flex-wrap: wrap;
+}
+.field-route {
+  width: 100%;
+  max-height: 380px;
+  background: var(--s-canvas);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  color: var(--s-text-muted);
+}
+.field-toolbar {
+  flex-wrap: wrap;
+}
+@media (max-width: 760px) {
+  .field-page .field-toolbar .btn {
+    flex: 1 1 auto;
+  }
+}

@@ -4419,6 +4419,10 @@ a.stat:hover {
 }
 .inspector-drawer > .tabs {
   padding: 0 var(--sp-4);
+  /* Records with many tabs (e.g. Customer 360) scroll the strip instead of clipping the last tab. */
+  overflow-x: auto;
+  scrollbar-width: thin;
+  flex-wrap: nowrap;
 }
 .inspector-drawer .inspector-body {
   padding: 12px var(--sp-5) 16px;
@@ -5075,4 +5079,39 @@ html:root[data-palette][data-theme='dark'] {
   --c-rail-selected-icon: var(--pal-rail-selected-icon);
   --c-rail-hover-bg: var(--pal-rail-hover);
   --c-rail-badge-ring: var(--pal-rail);
+}
+
+/* ---------------------------------------------------------------- Simulated sign-in (True Color) */
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--s-canvas);
+}
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  display: grid;
+  gap: 16px;
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.login-brand .rail-brand {
+  pointer-events: none;
+}
+.login-title {
+  font-size: var(--fs-primary);
+  font-weight: var(--fw-semibold);
+}
+.login-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.login-foot {
+  text-align: center;
 }

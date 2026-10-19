@@ -1,0 +1,79 @@
+/* Catalog & administration pages — tokens only. */
+.cat-stack {
+  display: grid;
+  gap: 8px;
+}
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.cat-tree,
+.cat-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cat-tree ul {
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 1px solid var(--s-border);
+}
+.cat-tree li {
+  padding: 4px 0;
+}
+.cat-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.cat-node .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cat-num {
+  width: 90px;
+}
+.cat-sla td,
+.cat-sla th {
+  white-space: nowrap;
+}
+.cat-sla .input {
+  width: 64px;
+}
+.cat-row-error td {
+  background: var(--s-danger-bg);
+}
+.cat-errors {
+  color: var(--s-danger);
+}
+.cat-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.cat-cards .panel p {
+  margin-bottom: 10px;
+}
+.cat-sticky-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--s-canvas);
+  padding: 10px 0;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  border-top: 1px solid var(--s-border);
+}
+.cat-wide {
+  grid-column: 1 / -1;
+}
+.cat-sla .row-gap {
+  flex-wrap: nowrap;
+}
+.cat-bands {
+  max-width: 720px;
+}

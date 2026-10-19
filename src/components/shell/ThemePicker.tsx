@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { cx } from '../../lib/format';
 import { derivePalette, findPalette, isHex, type Palette, PRESET_PALETTES } from '../../lib/palette';
-import { deleteCustomPalette, getSettings, saveCustomPalette, updateSettings, useActor, useRevision } from '../../store/session';
+import { useActor, useRevision } from '../../services/hooks';
+import { deleteCustomPalette, getSettings, saveCustomPalette, updateSettings } from '../../services/settings';
 import { Button, IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
 import { InfoTip } from '../primitives/InfoTip';

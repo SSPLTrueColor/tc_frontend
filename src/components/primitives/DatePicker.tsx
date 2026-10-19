@@ -12,7 +12,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 
 /**
  * THE date picker for the whole project (owner rule: no native date/datetime inputs).
- * Value: "YYYY-MM-DD" or, with `withTime`, "YYYY-MM-DDTHH:mm" (clinic local time).
+ * Value: "YYYY-MM-DD" or, with `withTime`, "YYYY-MM-DDTHH:mm" (IST wall-clock time).
  * Calendar popover: ‹ month › navigation, Monday-first grid, today ring, selected accent fill.
  * Keyboard: ←/→ day, ↑/↓ week, PageUp/PageDown month, Home/End week start/end, Enter select, Esc close.
  */

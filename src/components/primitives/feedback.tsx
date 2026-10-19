@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import type { Tone } from '../../types/ui';
+import type { Tone } from '../../metadata/types';
 import { cx } from '../../lib/format';
 import { isMasked, maskSensitive, type SensitiveFieldType } from '../../lib/phiMask';
 import { Button } from './Button';
