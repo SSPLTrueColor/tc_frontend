@@ -27,7 +27,7 @@ import { RecordInspector } from '../components/resource/RecordInspector';
 import { ColumnManager, FilterButton, ViewBar } from '../components/resource/ViewControls';
 import { PageHeader } from '../components/shell/PageHeader';
 
-const PAGE_SIZES = [25, 50, 100];
+const PAGE_SIZES = [25, 50, 100, 250, 500]; // above 100 rows the table virtualizes (renders only visible rows)
 
 interface Working {
   filter: FilterGroup;
@@ -207,7 +207,7 @@ export function ResourcePage() {
                 Quick add
               </Button>
             )}
-            <Button variant="primary" icon="plus" onClick={primary} disabledReason={perm(actor, resource).create ? undefined : `${actor.role.label} cannot create ${res.labelPlural.toLowerCase()}`}>
+            <Button icon="plus" onClick={primary} /* same look as Export (owner rule) */ disabledReason={perm(actor, resource).create ? undefined : `${actor.role.label} cannot create ${res.labelPlural.toLowerCase()}`}>
               {res.form.primaryLabel ?? `New ${res.label.toLowerCase()}`}
             </Button>
           </div>
@@ -219,19 +219,6 @@ export function ResourcePage() {
             <input type="search" className="input input-compact" placeholder="Search" aria-label={`Search ${res.labelPlural.toLowerCase()}`} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
           <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
-          {view.type === 'table' && (
-            <ColumnManager
-              res={res}
-              actor={actor}
-              columns={working.columns}
-              onChange={(c) => setWorking((w) => ({ ...w, columns: c }))}
-              density={working.density}
-              onDensity={(d) => setWorking((w) => ({ ...w, density: d }))}
-              groupBy={working.groupBy}
-              onGroupBy={(g) => setWorking((w) => ({ ...w, groupBy: g }))}
-              onReset={() => setWorking((w) => ({ ...w, columns: fromView(view).columns, groupBy: view.groupBy, density: view.density, rowLines: view.rowLines ?? 1 }))}
-            />
-          )}
           {/* Rich views only (rows with several lines): switch between 2-line and 3-line rows */}
           {view.type === 'table' && (view.rowLines ?? 1) > 1 && (
             <div className="segmented row-lines-toggle" role="radiogroup" aria-label="Lines per row">
@@ -256,7 +243,7 @@ export function ResourcePage() {
                 <Button
                   ref={bulkRef}
                   iconRight="chevron-down"
-                  onClick={() => setBulkOpen(true)}
+                  onClick={() => setBulkOpen((o) => !o)}
                   disabledReason={!res.lifecycle ? 'No bulk status actions for this record type' : !bulkActions.length ? 'No action applies to all selected rows' : undefined}
                 >
                   Change status
@@ -292,6 +279,19 @@ export function ResourcePage() {
               />
               </div>
             </>
+          )}
+          {view.type === 'table' && (
+            <ColumnManager
+              res={res}
+              actor={actor}
+              columns={working.columns}
+              onChange={(c) => setWorking((w) => ({ ...w, columns: c }))}
+              density={working.density}
+              onDensity={(d) => setWorking((w) => ({ ...w, density: d }))}
+              groupBy={working.groupBy}
+              onGroupBy={(g) => setWorking((w) => ({ ...w, groupBy: g }))}
+              onReset={() => setWorking((w) => ({ ...w, columns: fromView(view).columns, groupBy: view.groupBy, density: view.density, rowLines: view.rowLines ?? 1 }))}
+            />
           )}
         </div>
         {staleView && <InlineAlert tone="warning">The requested view is unavailable (deleted or not shared with you). Showing “{view.name}”.</InlineAlert>}
@@ -462,12 +462,7 @@ export function RecordPage() {
     <div className="page">
       <PageHeader
         title={visible ? `${res.label} ${recordId}` : res.label}
-        crumbs={[{ label: res.labelPlural, to: `/${res.key}` }, { label: recordId }]}
-        actions={
-          <Button icon="chevron-left" onClick={() => navigate(`/${res.key}?peek=${recordId}`)}>
-            Back to list
-          </Button>
-        }
+        onBack={() => navigate(`/${res.key}?peek=${recordId}`)}
       />
       <div className="record-page">
         <RecordInspector resKey={resource} recordId={recordId} onClose={() => navigate(-1)} variant="page" />

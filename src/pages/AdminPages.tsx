@@ -4,7 +4,7 @@ import { appRoles, demoUsers, NO_ACCESS } from '../domain/pack';
 import type { FieldAccess, MasterDefinition, Tone } from '../metadata/types';
 import { cx } from '../lib/format';
 import { recordPeekPath } from '../lib/routes';
-import { tokenRegistry, railSkins } from '../tokens/tokens';
+import { tokenRegistry } from '../tokens/tokens';
 import { actorFor, can, fieldAccess, SCOPE_LABELS } from '../services/authz';
 import { addDraftField, discardDraft, draftSummary, ensureDraft, getDraft, type NewFieldSpec, publishDraft, removeDraftField, revertDraftMaster, setDraftMaster, validateDraft, type ConfigIssue } from '../services/config';
 import { getDb, STORAGE_KEY } from '../services/db';
@@ -24,6 +24,7 @@ import { ResetDialog } from '../components/shell/AppShell';
 import { confirmDelete } from '../components/primitives/overlay';
 import { relativeTime } from '../lib/dates';
 import { DateText, EmptyValue } from '../components/primitives/display';
+import { ThemePicker } from '../components/shell/ThemePicker';
 
 const TONES: Tone[] = ['neutral', 'info', 'success', 'warning', 'danger', 'accent'];
 
@@ -859,27 +860,9 @@ export function SettingsPage() {
       <div className="settings-grid">
         <section className="panel">
           <h2 className="panel-title">Appearance</h2>
-          <fieldset className="form-field">
-            <legend className="field-label">Theme</legend>
-            <div className="segmented">
-              {(['system', 'light', 'dark'] as const).map((t) => (
-                <button key={t} type="button" className={cx('seg-btn', s.theme === t && 'is-on')} aria-pressed={s.theme === t} onClick={() => set({ theme: t })}>
-                  {t[0].toUpperCase() + t.slice(1)}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <fieldset className="form-field">
-            <legend className="field-label">Icon rail skin</legend>
-            <div className="skin-grid">
-              {railSkins.map((k) => (
-                <button key={k.id} type="button" className={cx('skin', s.railSkin === k.id && 'is-on')} aria-pressed={s.railSkin === k.id} onClick={() => set({ railSkin: k.id })}>
-                  <span className="skin-swatch" style={{ background: k.swatch }} aria-hidden="true" />
-                  {k.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          {/* Theme changer: mode + colour palettes (presets and custom). Replaces the separate rail-skin picker —
+              presets cover the locked rail skins (charcoal, navy, black, light). */}
+          <ThemePicker />
           <fieldset className="form-field">
             <legend className="field-label">Navigation density</legend>
             <div className="segmented">
