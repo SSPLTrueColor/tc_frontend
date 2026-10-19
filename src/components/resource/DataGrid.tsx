@@ -605,7 +605,7 @@ function CardList({ res, actor, rows, onOpen, activeId, columns, selected, onSel
 }
 
 export function fieldWidth(res: ResourceDefinition, key: string) {
-  if (key === 'id') return 132; // ID link + copy button fit without truncating (e.g. INV-1098)
+  if (key === 'id') return 176; // ID link + copy button fit our longer IDs (e.g. LD-2627-0001) without truncating
   const f = res.fields.find((x) => x.key === key);
   if (!f) return DEFAULT_W;
   if (f.width) return f.width;
