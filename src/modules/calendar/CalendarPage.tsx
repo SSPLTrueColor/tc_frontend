@@ -316,6 +316,15 @@ export function CalendarPage() {
               {title}
             </h2>
             <span className="spacer" />
+            {!sideOpen && (
+              <Button
+                icon="plus"
+                aria-label="Create event"
+                variant="primary"
+                onClick={() => setDialog({ kind: 'create', start: `${cursor < today ? today : cursor}T10:00`, end: `${cursor < today ? today : cursor}T11:00`, allDay: false })}
+                disabledReason={canCreate ? undefined : `${actor.role.label} cannot create calendar events`}
+              />
+            )}
             <div className="segmented" role="radiogroup" aria-label="Calendar view">
               {VIEWS.map((v) => (
                 <button key={v.id} type="button" role="radio" aria-checked={view === v.id} className={cx('seg-btn', view === v.id && 'is-on')} onClick={() => changeView(v.id)}>
