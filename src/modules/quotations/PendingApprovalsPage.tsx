@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { formatDateTime } from '../../lib/dates';
@@ -223,11 +223,14 @@ function DecideDialog({ row, decision, onClose }: { row: PendingApprovalRow; dec
   const [busy, setBusy] = useState(false);
   const approve = decision === 'approved';
   const last = row.step === row.steps;
+  const inFlight = useRef(false);
   const submit = async () => {
+    if (inFlight.current) return;
     if (!approve && note.trim().length < 5) {
       setError(P.commentRequired);
       return;
     }
+    inFlight.current = true;
     setBusy(true);
     setError('');
     try {
@@ -238,6 +241,7 @@ function DecideDialog({ row, decision, onClose }: { row: PendingApprovalRow; dec
       if (e instanceof ServiceError && e.fieldErrors?.note) setError(e.fieldErrors.note);
       toast(errorMessage(e), 'danger');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };

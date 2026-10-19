@@ -7,7 +7,7 @@ import { addDays, todayKey } from '../../lib/dates';
 import { formatMoney } from '../../lib/format';
 import { recordPagePath, recordPeekPath } from '../../lib/routes';
 import { errorMessage } from '../../services/api/client';
-import { sendPaymentReminders } from '../../services/api/orders';
+import { customerNameOf, sendPaymentReminders } from '../../services/api/orders';
 import { can, canReadResource } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterValue } from '../../services/registry';
@@ -88,9 +88,9 @@ export function PaymentSchedulePage() {
         inRange(m) &&
         (!status || statusOf(m, today) === status) &&
         (!division || m.divisionId === division) &&
-        (!needle || `${recordTitle('customers', m.customerId, actor)} ${recordTitle('salesOrders', m.salesOrderId, actor)} ${m.label}`.toLowerCase().includes(needle)),
+        (!needle || `${customerNameOf(m.customerId)} ${recordTitle('salesOrders', m.salesOrderId, actor)} ${m.label}`.toLowerCase().includes(needle)),
     );
-    const val = (m: RecordData): string | number => (sort.key === 'outstanding' ? outstandingOf(m) : sort.key === 'customer' ? recordTitle('customers', m.customerId, actor) : String(m.dueDate));
+    const val = (m: RecordData): string | number => (sort.key === 'outstanding' ? outstandingOf(m) : sort.key === 'customer' ? customerNameOf(m.customerId) : String(m.dueDate));
     return [...list].sort((a, b) => (val(a) < val(b) ? -sort.dir : val(a) > val(b) ? sort.dir : 0));
   }, [data.data, range, q, status, division, sort, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -202,7 +202,7 @@ export function PaymentSchedulePage() {
                             <td className="nowrap">
                               <DateText value={String(m.dueDate)} />
                             </td>
-                            <td>{recordTitle('customers', m.customerId, actor)}</td>
+                            <td>{customerNameOf(m.customerId)}</td>
                             <td>
                               <Link className="rel-link" to={recordPeekPath(actor.workspaceId, 'salesOrders', String(m.salesOrderId))}>
                                 {recordTitle('salesOrders', m.salesOrderId, actor)}

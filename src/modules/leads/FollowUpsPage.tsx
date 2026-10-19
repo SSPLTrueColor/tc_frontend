@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, Skeleton, Tabs } from '../../components/primiti
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { Pager } from '../opportunities/PipelinePage';
 import { L } from '../../constants/labels';
 
 const T = L.leads.pages.followUps;
@@ -26,19 +27,54 @@ export function FollowUpsPage() {
   const [type, setType] = useState('');
   const [q, setQ] = useState('');
   const [logFor, setLogFor] = useState<FollowUpItem | null>(null);
+  const [pageState, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
   const query = useServiceQuery(() => leadsQueries.followUps(actor, 7), [actor.user.id]);
   const all = query.data ?? [];
   const types = [...new Map(all.map((i) => [i.resource, i.resourceLabel])).entries()];
   const rows = all.filter((i) => i.bucket === bucket && (!type || i.resource === type) && (!q || `${i.record.id} ${i.title}`.toLowerCase().includes(q.toLowerCase())));
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+  const page = Math.min(pageState, pageCount - 1);
+  const pageRows = rows.slice(page * pageSize, (page + 1) * pageSize);
   const counts = (b: Bucket) => all.filter((i) => i.bucket === b && (!type || i.resource === type)).length;
 
   return (
     <div className="page">
       <PageHeader title={L.nav.pages.followUps.title} description={T.description} />
-      <Tabs<Bucket> label={T.periodLabel} value={bucket} onChange={setBucket} tabs={(['overdue', 'today', 'upcoming'] as Bucket[]).map((b) => ({ id: b, label: BUCKET_LABEL[b], count: query.data ? counts(b) : undefined }))} />
+      <Tabs<Bucket>
+        label={T.periodLabel}
+        value={bucket}
+        onChange={(b) => {
+          setBucket(b);
+          setPage(0);
+        }}
+        tabs={(['overdue', 'today', 'upcoming'] as Bucket[]).map((b) => ({
+          id: b,
+          label: BUCKET_LABEL[b],
+          count: query.data ? counts(b) : undefined,
+        }))}
+      />
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
-        <SelectMenu label={T.recordType} value={type} options={[{ value: '', label: T.allRecordTypes }, ...types.map(([value, label]) => ({ value, label }))]} onChange={setType} />
+        <input
+          type="search"
+          className="input input-compact"
+          placeholder={T.searchPlaceholder}
+          aria-label={T.searchLabel}
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(0);
+          }}
+        />
+        <SelectMenu
+          label={T.recordType}
+          value={type}
+          options={[{ value: '', label: T.allRecordTypes }, ...types.map(([value, label]) => ({ value, label }))]}
+          onChange={(v) => {
+            setType(v);
+            setPage(0);
+          }}
+        />
         <span className="toolbar-count muted">{T.count(rows.length)}</span>
       </div>
       <div className="content-surface">
@@ -49,30 +85,45 @@ export function FollowUpsPage() {
         ) : !query.data ? (
           <Skeleton rows={6} />
         ) : rows.length ? (
-          <ul className="flow-list">
-            {rows.map((i) => {
-              const owner = i.ownerId ? byId('employees', i.ownerId) : undefined;
-              const company = i.customerId && i.resource !== 'customers' ? safeTitle('customers', i.customerId, actor) : '';
-              return (
-                <li key={`${i.resource}:${i.record.id}`} className="flow-item">
-                  <span className={`tag tone-${i.bucket === 'overdue' ? 'danger' : i.bucket === 'today' ? 'warning' : 'neutral'}`}>{formatDate(i.due)}</span>
-                  <Link to={recordPeekPath(actor.workspaceId, i.resource, i.record.id)} className="flow-main">
-                    <span className="flow-title">
-                      {i.record.id} · {i.title}
-                    </span>
-                    <span className="muted small">
-                      {i.resourceLabel}
-                      {company && company !== i.title ? ` · ${company}` : ''}
-                      {owner ? ` · ${String(owner.fullName)}` : ''}
-                    </span>
-                  </Link>
-                  <Button icon="message" onClick={() => setLogFor(i)}>
-                    {L.leads.actions.logFollowUp}
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
+          <>
+            <ul className="flow-list">
+              {pageRows.map((i) => {
+                const owner = i.ownerId ? byId('employees', i.ownerId) : undefined;
+                const company = i.customerId && i.resource !== 'customers' ? safeTitle('customers', i.customerId, actor) : '';
+                return (
+                  <li key={`${i.resource}:${i.record.id}`} className="flow-item">
+                    <span className={`tag tone-${i.bucket === 'overdue' ? 'danger' : i.bucket === 'today' ? 'warning' : 'neutral'}`}>{formatDate(i.due)}</span>
+                    <Link to={recordPeekPath(actor.workspaceId, i.resource, i.record.id)} className="flow-main">
+                      <span className="flow-title">
+                        {i.record.id} · {i.title}
+                      </span>
+                      <span className="muted small">
+                        {i.resourceLabel}
+                        {company && company !== i.title ? ` · ${company}` : ''}
+                        {owner ? ` · ${String(owner.fullName)}` : ''}
+                      </span>
+                    </Link>
+                    <Button icon="message" onClick={() => setLogFor(i)}>
+                      {L.leads.actions.logFollowUp}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+            {rows.length > 25 && (
+              <Pager
+                page={page}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                total={rows.length} range={T.range}
+                onPage={setPage}
+                onSize={(n) => {
+                  setPageSize(n);
+                  setPage(0);
+                }}
+              />
+            )}
+          </>
         ) : (
           <EmptyState icon="calendar-clock" title={bucket === 'overdue' ? T.emptyOverdue : bucket === 'today' ? T.emptyToday : T.emptyUpcoming}>
             {bucket === 'overdue' ? T.emptyOverdueBody : T.emptyBody}
@@ -84,7 +135,13 @@ export function FollowUpsPage() {
           open
           onClose={() => setLogFor(null)}
           requireNextFollowUp
-          parent={{ parentResource: logFor.resource, parentId: logFor.record.id, parentLabel: `${logFor.record.id} · ${logFor.title}`, customerId: logFor.resource === 'customers' ? logFor.record.id : logFor.customerId }}
+          title={L.leads.actions.logFollowUp}
+          parent={{
+            parentResource: logFor.resource,
+            parentId: logFor.record.id,
+            parentLabel: `${logFor.record.id} · ${logFor.title}`,
+            customerId: logFor.resource === 'customers' ? logFor.record.id : logFor.customerId,
+          }}
         />
       )}
     </div>

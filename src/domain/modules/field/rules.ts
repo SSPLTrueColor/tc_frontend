@@ -170,6 +170,14 @@ const lineNet = (l: Record<string, unknown>) => {
   return Math.max(0, gross - disc);
 };
 
+/**
+ * Order value used for targets, rankings and Deal of the Month: line value net of discount, before GST,
+ * freight and insurance (Assumption — BR-47 does not say). The same basis is used with and without a
+ * product-category filter, so category targets add up to the all-products figure.
+ */
+export const orderNetValue = (o: Record<string, unknown>, lineFilter: (l: Record<string, unknown>) => boolean = () => true) =>
+  ((o.lines as Record<string, unknown>[] | undefined) ?? []).filter(lineFilter).reduce((s, l) => s + lineNet(l), 0);
+
 export interface TargetLike {
   metric: string;
   periodType: string;
@@ -193,10 +201,7 @@ export function achievementFor(t: TargetLike, data: AchievementData, inScope: (o
       return Math.round(
         booked
           .filter((o) => within(o.orderDate))
-          .reduce((s, o) => {
-            const lines = (o.lines as Record<string, unknown>[] | undefined) ?? [];
-            return s + (t.productCategory ? lines.filter(catOk).reduce((x, l) => x + lineNet(l), 0) : Number(o.grandTotal) || lines.reduce((x, l) => x + lineNet(l), 0));
-          }, 0),
+          .reduce((s, o) => s + orderNetValue(o, catOk), 0),
       );
     case 'quantity':
       return booked.filter((o) => within(o.orderDate)).reduce((s, o) => s + ((o.lines as Record<string, unknown>[] | undefined) ?? []).filter(catOk).reduce((x, l) => x + (Number(l.qty) || 0), 0), 0);

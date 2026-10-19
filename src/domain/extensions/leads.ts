@@ -28,8 +28,14 @@ injectLeadDeps({
   firstContactHours: () => getPolicies().leadFirstContactHours,
 });
 
+/** Whitespace-only text counts as empty, so required text (e.g. exhibition / event name, BR-06) cannot be blanks. */
+const trimText = (c: Record<string, unknown>) => {
+  for (const k of ['campaign', 'eventName', 'requirement', 'decisionMaker', 'currentSetup', 'city', 'specPodMedia', 'specPodFinishing', 'specLabelSubstrate', 'specOther']) if (typeof c[k] === 'string') c[k] = (c[k] as string).trim();
+};
+
 registerResourceHooks('leads', {
   beforeCreate: (ctx, c) => {
+    trimText(c);
     resolveOwner(ctx, c);
     const err = ownerDivisionError(ctx.d, c.ownerId, c.divisionId);
     if (err) throw new ServiceError('validation', err, { fieldErrors: { ownerId: err } });
@@ -40,6 +46,7 @@ registerResourceHooks('leads', {
     if (customer && !c.industry) c.industry = customer.industry;
   },
   beforeUpdate: (ctx, before, c) => {
+    trimText(c);
     if (before.status === 'qualified') throw new ServiceError('invalid_state', L.leads.errors.qualifiedReadOnly(String(before.opportunityId ?? '')));
     if (c.ownerId !== before.ownerId || c.divisionId !== before.divisionId) {
       const err = ownerDivisionError(ctx.d, c.ownerId, c.divisionId);
@@ -51,12 +58,23 @@ registerResourceHooks('leads', {
     if (!rec.firstContactAt) rec.firstContactAt = nowLocal();
     rec.disqualifyReason = null;
     rec.nurtureUntil = null;
-    if (!rec.nextFollowUpAt || String(rec.nextFollowUpAt) < todayKey()) throw new ServiceError('validation', L.leads.errors.followUpRequired, { fieldErrors: { nextFollowUpAt: L.leads.errors.required } });
+    // Reactivation (Nurture / Disqualified → Contacted): disqualifying clears the follow-up date and a nurture
+    // re-contact date may already have passed, so plan the next follow-up for tomorrow (BR-07 default).
+    if (!rec.nextFollowUpAt || String(rec.nextFollowUpAt) < todayKey()) rec.nextFollowUpAt = addDays(todayKey(), 1);
   },
 });
 
 // LEAD-09 / BR-08: the first logged activity is the first contact; it moves New → Contacted.
 registerResourceHooks('activities', {
+  // BR-07: a follow-up logged on an open lead must plan the next follow-up (today or later) — enforced on the service, not only in the dialog.
+  beforeCreate: (ctx, a) => {
+    if (a.parentResource !== 'leads') return;
+    const lead = (ctx.d.records.leads ?? []).find((l) => l.id === a.parentId);
+    if (!lead || !['new', 'contacted', 'nurture'].includes(String(lead.status))) return;
+    // Field check-ins (ATT-05) log a 'visit' activity whose next step is the visit's own next-action date, which may be blank.
+    const missing = !a.nextFollowUpAt && a.activityType !== 'visit';
+    if (missing || (a.nextFollowUpAt && String(a.nextFollowUpAt).slice(0, 10) < todayKey())) throw new ServiceError('validation', L.leads.errors.followUpRequired, { fieldErrors: { nextFollowUpAt: L.leads.errors.required } });
+  },
   afterCreate: (ctx, a) => {
     if (a.parentResource !== 'leads') return;
     const lead = (ctx.d.records.leads ?? []).find((l) => l.id === a.parentId);

@@ -10,6 +10,14 @@ import { ServiceError } from '../types';
 /** Statuses that mean "finished" across modules (in addition to each lifecycle's terminal list). */
 const CLOSED = new Set(['done', 'closed', 'completed', 'cancelled', 'won', 'lost', 'disqualified', 'qualified', 'rejected', 'expired', 'superseded', 'signed_off', 'renewed', 'consumed', 'returned', 'converted', 'inactive', 'approved', 'withdrawn']);
 
+/**
+ * The leaver's own history stays with them (BR-52: closed records keep their owner): logs, attendance, claims,
+ * leave, plans, targets and authored content never block a deactivation.
+ */
+const PERSONAL = new Set(['activities', 'attendance', 'regularisations', 'leaves', 'expenseClaims', 'beatPlans', 'fieldVisits', 'targets', 'calendarEvents', 'machineReadings', 'trainingRecords', 'knowledgeArticles']);
+/** Statuses that are finished for one resource only (e.g. a delivered dispatch; a delivered sales order is still open). */
+const CLOSED_FOR: Record<string, string[]> = { dispatches: ['delivered'], dealerOrders: ['delivered'], paymentMilestones: ['received'], pmVisits: ['missed'], salesContracts: ['signed'] };
+
 export interface OwnedOpen {
   resource: string;
   label: string;
@@ -20,9 +28,9 @@ export interface OwnedOpen {
 export function ownedOpenRecords(staffId: string, store = getDb().records): OwnedOpen[] {
   const out: OwnedOpen[] = [];
   for (const def of appPack.resources) {
-    if (!def.ownerField || def.key === 'employees') continue;
+    if (!def.ownerField || def.key === 'employees' || PERSONAL.has(def.key)) continue;
     const res = getResource(def.key);
-    const terminal = new Set(res.lifecycle?.terminal ?? []);
+    const terminal = new Set([...(res.lifecycle?.terminal ?? []), ...(CLOSED_FOR[res.key] ?? [])]);
     const statusKey = res.lifecycle?.field ?? (res.fields.some((f) => f.key === 'status') ? 'status' : undefined);
     const count = (store[res.key] ?? []).filter((r) => r[res.ownerField!] === staffId && (!statusKey || (!terminal.has(String(r[statusKey])) && !CLOSED.has(String(r[statusKey]))))).length;
     if (count) out.push({ resource: res.key, label: res.labelPlural, count });

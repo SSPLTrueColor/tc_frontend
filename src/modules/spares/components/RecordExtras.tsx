@@ -12,6 +12,7 @@ import { formatDate } from '../../../lib/dates';
 import { formatMoney } from '../../../lib/format';
 import { recordPeekPath } from '../../../lib/routes';
 import * as api from '../../../services/api/spares';
+import { can } from '../../../services/authz';
 import { byId, contractRateFor, listPriceFor } from '../../../services/lookups';
 import { masterValue } from '../../../services/registry';
 import { recordTitle } from '../../../services/runtime';
@@ -86,6 +87,7 @@ export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
 /** Customer 360° → "Consumables" tab (CON-01 / FR-098): machines, consumables orders, rate contracts, samples, reorder status. */
 export function CustomerConsumablesTab({ actor, record }: RecordExtensionProps) {
   const q = useServiceQuery(() => api.customerConsumables(actor, record.id), [actor.user.id, record.id]);
+  if (!can(actor, 'consumables.view')) return <p className="muted small">{L.consumables.errors.noAccessTab}</p>;
   if (q.error)
     return (
       <ErrorState title={CT.loadError} onRetry={q.retry}>

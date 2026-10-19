@@ -62,11 +62,12 @@ export const customers: ResourceDefinition = {
     fc('overdue', FC.overdue, 'money', { readOnly: true, help: FC.erpHelp, capabilities: READ_ONLY_ERP, width: 130 }),
     fc('erpSyncedAt', FC.erpSyncedAt, 'datetime', { readOnly: true, capabilities: { list: true, sort: true } }),
     fc('lastActivityAt', FC.lastActivityAt, 'datetime', { readOnly: true, capabilities: { list: true, sort: true, filter: true } }),
-    // FR-011 account plan (key accounts)
+    // FR-011 account plan (key accounts). "Not in the past" is checked in the service hook only when the date changes,
+    // so an overdue review date already on record does not block other edits.
     fc('planObjectives', FC.planObjectives, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY, visibleWhen: { field: 'keyAccount', op: 'truthy' } }),
     fc('planKeyContacts', FC.planKeyContacts, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY, visibleWhen: { field: 'keyAccount', op: 'truthy' } }),
     fc('planRisks', FC.planRisks, 'longtext', { maxLength: 1000, capabilities: FORM_ONLY, visibleWhen: { field: 'keyAccount', op: 'truthy' } }),
-    fc('planNextReview', FC.planNextReview, 'date', { dateRule: 'future', visibleWhen: { field: 'keyAccount', op: 'truthy' }, capabilities: { list: true, sort: true, filter: true, form: true, export: true } }),
+    fc('planNextReview', FC.planNextReview, 'date', { visibleWhen: { field: 'keyAccount', op: 'truthy' }, capabilities: { list: true, sort: true, filter: true, form: true, export: true } }),
   ],
   relationships: [
     { id: 'rel_cus_contacts', label: LC.relationships.contacts, resource: 'contacts', foreignKey: 'customerId' },

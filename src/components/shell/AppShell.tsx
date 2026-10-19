@@ -14,6 +14,7 @@ import { useActor, useRevision } from '../../services/hooks';
 import { getResource, getRole } from '../../services/registry';
 import { searchRecords } from '../../services/search';
 import { getSettings, SIDEBAR_MAX, SIDEBAR_MIN, switchSession, toggleFavorite, togglePin, updateSettings } from '../../services/settings';
+import { errorMessage } from '../../services/api/client';
 import { listViews } from '../../services/views';
 import { relativeTime } from '../../lib/dates';
 import { applyPalette, DEFAULT_PALETTE_ID, findPalette, type Palette } from '../../lib/palette';
@@ -74,6 +75,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // COM-12: the account menu opens Help (with the guided tour) through this event.
+  useEffect(() => {
+    const open = () => setHelpOpen(true);
+    window.addEventListener(OPEN_HELP_EVENT, open);
+    return () => window.removeEventListener(OPEN_HELP_EVENT, open);
+  }, []);
   const mod = activeModule(location.pathname);
   const drawerNav = tablet;
 
@@ -807,6 +814,8 @@ function ThemeButton({ inRail = false }: { inRail?: boolean }) {
   );
 }
 
+const OPEN_HELP_EVENT = 'tc:open-help';
+
 function AccountMenu({ inRail = false }: { inRail?: boolean }) {
   const actor = useActor();
   const [open, setOpen] = useState(false);
@@ -849,7 +858,12 @@ function AccountMenu({ inRail = false }: { inRail?: boolean }) {
                 onClick={() => {
                   setOpen(false);
                   if (u.id === actor.user.id) return;
-                  switchSession(u.id, actor.workspaceId);
+                  try {
+                    switchSession(u.id, actor.workspaceId);
+                  } catch (e) {
+                    toast(errorMessage(e), 'danger');
+                    return;
+                  }
                   toast(C.account.nowViewingAs(u.name, C.account.rolePosition(getRole(u.roleId).label, u.title)), 'info');
                 }}
               >
@@ -889,6 +903,19 @@ function AccountMenu({ inRail = false }: { inRail?: boolean }) {
             >
               <Icon name="sliders" />
               <span className="menu-label">{C.account.personalSettings}</span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => {
+                setOpen(false);
+                window.dispatchEvent(new Event(OPEN_HELP_EVENT));
+              }}
+            >
+              <Icon name="info" />
+              <span className="menu-label">{C.account.help}</span>
             </button>
           </li>
           <li>

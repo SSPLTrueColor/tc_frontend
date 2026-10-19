@@ -81,12 +81,15 @@ export function resumePatch(t: Record<string, unknown>, now: string): Record<str
   return patch;
 }
 
-/** Hours since the earliest breached running/met clock passed its due time (for escalation). */
+/**
+ * Hours since the earliest still-breached (running) clock passed its due time, for escalation (BR-32).
+ * A clock that was met late raises the first alert (0 h) but does not keep climbing the matrix:
+ * once the response or arrival is done late, only clocks that are still overdue escalate further.
+ */
 export function hoursSinceBreach(states: ClockState[], now: string): number | null {
-  const breached = states.filter((s) => s.status === 'breached' || s.status === 'breached_met').map((s) => s.due!);
-  if (!breached.length) return null;
-  const first = breached.sort()[0];
-  return minutesBetween(first, now) / 60;
+  const running = states.filter((s) => s.status === 'breached').map((s) => s.due!);
+  if (running.length) return minutesBetween(running.sort()[0], now) / 60;
+  return states.some((s) => s.status === 'breached_met') ? 0 : null;
 }
 
 /** "2h 15m", "3d 4h" — compact duration for SLA chips. */

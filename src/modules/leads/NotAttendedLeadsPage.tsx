@@ -54,7 +54,7 @@ export function NotAttendedLeadsPage() {
     setEscalation('');
   };
 
-  if (perm(actor, 'leads').read === 'none') return <NoAccess what={L.leads.records.leads.many} />;
+  if (perm(actor, 'leads').read === 'none') return <NoAccess what={L.leads.records.leads.many.toLowerCase()} />;
   const res = getResource('leads');
   const sla = query.data?.slaHours;
 
@@ -64,7 +64,7 @@ export function NotAttendedLeadsPage() {
       label: T.cols.lead,
       sort: (r) => r.lead.id,
       render: (r) => (
-        <Link to={recordPeekPath(actor.workspaceId, 'leads', r.lead.id)} className="mono">
+        <Link to={recordPeekPath(actor.workspaceId, 'leads', r.lead.id)} className="mono nowrap">
           {r.lead.id}
         </Link>
       ),
@@ -191,6 +191,7 @@ export function NotAttendedLeadsPage() {
           open
           onClose={() => setLogFor(null)}
           requireNextFollowUp
+          title={L.leads.actions.logFollowUp}
           parent={{ parentResource: 'leads', parentId: logFor.lead.id, parentLabel: `${logFor.lead.id} · ${logFor.customer}`, customerId: logFor.lead.customerId as string | undefined }}
         />
       )}

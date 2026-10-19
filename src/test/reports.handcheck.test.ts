@@ -12,6 +12,9 @@ import { createDb, getDb, __setDb } from '../services/db';
 import { runReport } from '../services/api/reports';
 import { dashboardFor, resolveRange } from '../services/reports/overview';
 import { dayOf } from '../services/reports/kpis';
+import { decodeFilter, evalFilterCondition, newCondition } from '../services/filter';
+import { queryRecords } from '../services/runtime';
+import { keyOfSlug } from '../constants/routes';
 
 type R = RecordData;
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
@@ -169,5 +172,63 @@ describe('QA hand-check: dashboard KPIs = Appendix C from raw records', () => {
     expect(dayOf('2026-10-18T20:00')).toBe('2026-10-18');
     expect(dayOf('2026-10-18')).toBe('2026-10-18');
     expect(Number.isFinite(nowMs())).toBe(true);
+    // List drill-down filters use the same day, so a KPI and its filtered list agree.
+    const stamp = '2026-10-18T20:00:00.000Z';
+    const local = toDateKey(new Date(stamp));
+    expect(evalFilterCondition(newCondition('createdAt', 'gte', local), stamp)).toBe(true);
+    expect(evalFilterCondition(newCondition('createdAt', 'lte', local), stamp)).toBe(true);
+  });
+  it('count KPIs drill down to a list with exactly that many rows (every role family)', () => {
+    const COUNT_KPIS = ['leads', 'open-tickets', 'resolved', 'orders-in', 'processing', 'delivered', 'open-req', 'completed', 'mine', 'due-week'];
+    for (const u of ['u_rahul', 'u_rohan', 'u_karan', 'u_manoj', 'u_ravi', 'u_swati', 'u_rajesh', 'u_tanvi', 'u_suresh']) {
+      const a = actorFor(u, 'tc');
+      for (const k of dashboardFor(a, resolveRange('30d')).kpis) {
+        const url = new URL(`http://x${k.to ?? ''}`);
+        const key = keyOfSlug(url.pathname.slice(1));
+        if (!key) continue;
+        const f = url.searchParams.get('f');
+        const res = queryRecords(a, key, { filter: f ? decodeFilter(f)! : undefined });
+        expect(res.ignoredFields, `${u} ${k.id}`).toEqual([]);
+        if (COUNT_KPIS.includes(k.id)) expect(res.rows.length, `${u} ${k.id}`).toBe(k.value);
+        if (k.id === 'revenue') expect(res.rows.reduce((t, r) => t + n(r.grandTotal), 0), `${u} revenue`).toBeCloseTo(k.value!, 2);
+      }
+    }
+  });
+});
+
+describe('QA: report scope and export (ADM-07, COM-08, COM-09)', () => {
+  beforeAll(() => __setDb(createDb()));
+
+  it('every report runs for every role without leaking rows outside the role scope', async () => {
+    const { demoUsers } = await import('../domain/pack');
+    const { listReports } = await import('../services/api/reports');
+    for (const u of demoUsers) {
+      const a = actorFor(u.id, 'tc');
+      for (const def of listReports(a)) {
+        const res = runReport(a, def.id, { from: addDays(todayKey(), -364), to: todayKey() });
+        expect(Array.isArray(res.rows), `${u.id} ${def.id}`).toBe(true);
+      }
+    }
+    // Sales Executive's CRM adoption lists only himself (no colleagues shown as "inactive").
+    const karan = actorFor('u_karan', 'tc');
+    expect(runReport(karan, 'crm-adoption', {}).rows.map((r) => r.id)).toEqual([karan.staffId]);
+  });
+
+  it('export is limited to roles with X in the matrix and every export is audited', async () => {
+    const { canExportReports, exportReport } = await import('../services/api/reports');
+    const allowed = ['u_rahul', 'u_vikram', 'u_suresh', 'u_manoj', 'u_swati'];
+    const denied = ['u_rohan', 'u_karan', 'u_ravi', 'u_meera', 'u_rajesh', 'u_prakash', 'u_tanvi'];
+    allowed.forEach((u) => expect(canExportReports(actorFor(u, 'tc')), u).toBe(true));
+    denied.forEach((u) => expect(canExportReports(actorFor(u, 'tc')), u).toBe(false));
+    const admin = actorFor('u_rahul', 'tc');
+    const f = { from: addDays(todayKey(), -29), to: todayKey() };
+    const result = runReport(admin, 'order-backlog', f);
+    const before = getDb().audit.length;
+    const csv = exportReport(admin, 'order-backlog', result, f);
+    expect(csv.split('\n').length).toBe(result.rows.length + 1);
+    expect(getDb().audit.length).toBe(before + 1);
+    expect(getDb().audit[getDb().audit.length - 1].action).toBe('export');
+    const karan = actorFor('u_karan', 'tc');
+    expect(() => exportReport(karan, 'order-backlog', runReport(karan, 'order-backlog', f), f)).toThrow();
   });
 });

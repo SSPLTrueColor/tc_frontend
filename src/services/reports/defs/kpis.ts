@@ -4,10 +4,12 @@ import { ROUTES } from '../../../constants/routes';
 import { addDays } from '../../../lib/dates';
 import { recordPeekPath } from '../../../lib/routes';
 import { staffOfUser } from '../../lookups';
+import { perm } from '../../authz';
 import { getPolicies } from '../../policies';
 import { activityScorecard, amcRenewalRate, attachRate, avgSalesCycleDays, collections, csat, dayOf, firstTimeFix, inRange, isBooked, leadConversion, leadResponseHours, mttrHours, orderBacklog, overdueFollowUps, pipeline, pmCompliance, quoteToOrder, repeatRate, slaCompliance, winRate } from '../kpis';
 import { applyFilters, empName, list, n, reportPath, s } from '../helpers';
 import type { ReportDef, ReportRow } from '../types';
+import type { RecordData } from '../../../metadata/types';
 
 const row = (key: string, o: Record<string, unknown>): ReportRow => ({ _key: key, ...o });
 const D = L.reports.defs;
@@ -110,7 +112,11 @@ export const kpiReports: ReportDef[] = [
       const acts = ds.get('activities');
       const overdue = overdueFollowUps(ds.get('leads'), ds.get('opportunities'), ctx.today);
       const since = addDays(ctx.today, -6);
-      const people = applyFilters(ds.get('employees').filter((e) => e.status !== 'inactive' && !['admin'].includes(s(e.roleId))), f, { division: 'divisionIds' });
+      // Only people whose activity the viewer can see (activity log scope), so nobody looks "inactive" just because their records are out of scope.
+      const actScope = perm(ctx.actor, 'activities').read;
+      const visible = (e: RecordData) =>
+        actScope === 'all' || (actScope === 'division' ? ((e.divisionIds as string[] | undefined) ?? []).some((d) => ctx.actor.divisionIds.includes(d)) : ctx.actor.teamStaffIds.includes(s(e.id)));
+      const people = applyFilters(ds.get('employees').filter((e) => e.status !== 'inactive' && !['admin'].includes(s(e.roleId)) && visible(e)), f, { division: 'divisionIds' });
       const rows = people.map((e) => {
         const mine = acts.filter((a) => a.byId === e.id);
         const last = mine.map((a) => dayOf(a.at)).sort().pop() ?? '';

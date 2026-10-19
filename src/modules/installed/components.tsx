@@ -16,7 +16,7 @@ import { coverageFor } from '../../services/lookups';
 import { activeMasterValues, getResource, masterLabel, masterValue } from '../../services/registry';
 import { queryRecords, recordTitle } from '../../services/runtime';
 import { ServiceError } from '../../services/types';
-import { allSteps, handoverComplete, hasResource, missingReadiness, missingSteps, READINESS_FIELDS, signOffBlockers } from '../../services/installed/logic';
+import { allSteps, canFillHandover, handoverComplete, hasResource, missingReadiness, missingSteps, READINESS_FIELDS, signOffBlockers } from '../../services/installed/logic';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
 import { FieldValue } from '../../components/resource/FieldValue';
@@ -914,14 +914,85 @@ export function ReadinessTab({ actor, record }: RecordExtensionProps) {
 
 export function HandoverTab({ actor, record }: RecordExtensionProps) {
   useRevision();
-  const done = handoverComplete(rawInstallation(record));
+  const raw = rawInstallation(record);
+  const done = handoverComplete(raw);
+  const [editing, setEditing] = useState(false);
+  const allowed = canFillHandover(actor, raw);
   return (
     <>
       <InlineAlert tone={done ? 'success' : 'info'} title={done ? M.handoverDone : M.handoverPending}>
         {M.handoverEditHint}
       </InlineAlert>
-      <FieldList actor={actor} resKey="installations" record={record} keys={['hoExpectations', 'hoCommitments', 'hoKeyContacts', 'handoverAt']} />
+      {raw.status !== 'signed_off' && (
+        <div className="row-gap" style={{ margin: '8px 0' }}>
+          <Button icon="pencil" variant={done ? 'secondary' : 'primary'} onClick={() => setEditing(true)} disabledReason={allowed ? undefined : T.service.handoverDenied}>
+            {A.fillHandover}
+          </Button>
+        </div>
+      )}
+      <FieldList actor={actor} resKey="installations" record={raw} keys={['hoExpectations', 'hoCommitments', 'hoKeyContacts', 'handoverAt']} />
+      {editing && <HandoverDialog record={raw} onClose={() => setEditing(false)} />}
     </>
+  );
+}
+
+/** INS-04 Sales-to-Service handover form (sales owner or service desk). */
+function HandoverDialog({ record, onClose }: { record: RecordData; onClose: () => void }) {
+  const actor = useActor();
+  const toast = useToast();
+  const F = T.fields.installations;
+  const [values, setValues] = useState({ hoExpectations: String(record.hoExpectations ?? ''), hoCommitments: String(record.hoCommitments ?? ''), hoKeyContacts: String(record.hoKeyContacts ?? '') });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const fields = [
+    ['hoExpectations', F.hoExpectations, 1000],
+    ['hoCommitments', F.hoCommitments, 1000],
+    ['hoKeyContacts', F.hoKeyContacts, 500],
+  ] as const;
+  const submit = async () => {
+    setBusy(true);
+    setErrors({});
+    try {
+      await installedApi.saveHandover(actor, record.id, values, Number(record.version));
+      toast(M.handoverSaved);
+      onClose();
+    } catch (e) {
+      setErrors(fieldErrorsOf(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      size="md"
+      title={M.handoverTitle(record.id)}
+      description={M.handoverDescription}
+      footer={
+        <>
+          <Button onClick={onClose}>{A.cancel}</Button>
+          <Button variant="primary" loading={busy} onClick={submit}>
+            {A.saveHandover}
+          </Button>
+        </>
+      }
+    >
+      <form
+        className="form-grid"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        {fields.map(([k, label, max], i) => (
+          <Field key={k} id={`ho-${k}`} label={label} required error={errors[k]}>
+            <textarea id={`ho-${k}`} className="input textarea" rows={3} maxLength={max} value={values[k]} onChange={(e) => setValues({ ...values, [k]: e.target.value })} aria-invalid={!!errors[k] || undefined} data-autofocus={i === 0 || undefined} />
+          </Field>
+        ))}
+        <FormError errors={errors} />
+      </form>
+    </Dialog>
   );
 }
 

@@ -102,8 +102,10 @@ export function rejectRequisition(actor: Actor, id: string, reason: string, vers
 export function issueRequisition(actor: Actor, id: string, input: { issuedQty: number; courier: string; docketNo: string }, version: number) {
   if (!can(actor, 'spares.issue')) throw new ServiceError('forbidden', E.issueForbidden);
   const qty = Math.floor(Number(input.issuedQty));
-  if (!input.courier.trim()) throw fieldErr('courier', E.courierRequired);
-  if (!input.docketNo.trim()) throw fieldErr('docketNo', E.docketRequired);
+  const missing: Record<string, string> = {};
+  if (!input.courier.trim()) missing.courier = E.courierRequired;
+  if (!input.docketNo.trim()) missing.docketNo = E.docketRequired;
+  if (Object.keys(missing).length) throw new ServiceError('validation', Object.values(missing)[0], { fieldErrors: missing });
   return commit((d) => {
     const r = load(d, actor, id, version);
     if (!canUpdateRecord(actor, getResource('requisitions'), r)) throw new ServiceError('forbidden', E.updateForbidden);

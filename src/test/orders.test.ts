@@ -72,7 +72,7 @@ describe('sales order flow', () => {
     expect(draft.blocker).toBeNull();
     // BR-21: PO details mandatory
     expect(() => so.createOrder(owner, { source: 'quotation', sourceId: q.id, lines: draft.lines, customerPoNo: '', customerPoDate: '', poFileName: '', idempotencyKey: 'k0' })).toThrow(ServiceError);
-    const order = so.createOrder(owner, { source: 'quotation', sourceId: q.id, lines: draft.lines, customerPoNo: 'PO-123', customerPoDate: draft.siteAddresses.length ? '2026-01-05' : '2026-01-05', poFileName: 'po.pdf', poFileSize: 1000, idempotencyKey: 'k1' });
+    const order = so.createOrder(owner, { source: 'quotation', sourceId: q.id, lines: draft.lines, customerPoNo: 'PO-123', customerPoDate: draft.siteAddresses.length ? '2026-01-05' : '2026-01-05', poFileName: 'po.pdf', poFileSize: 1000, siteAddressId: draft.siteAddresses[0]?.id, idempotencyKey: 'k1' });
     expect(order.status).toBe('pending_approval');
     // Same quotation cannot be ordered twice (BR-20)
     expect(so.quotationBlocker(getDb(), q)).toMatch(/already exists/);
@@ -107,8 +107,8 @@ describe('sales order flow', () => {
     cur = getDb().records.salesOrders.find((o) => o.id === order.id)!;
     transitionRecord(scm, 'salesOrders', order.id, 'ready_for_dispatch', cur.version);
     const today = new Date().toISOString().slice(0, 10);
-    const dsp = so.recordDispatch(scm, order.id, { dispatchDate: today, transporter: 'VRL', lrNumber: 'LR9', expectedDelivery: today, notifyCustomer: true });
-    const res = so.confirmDelivery(scm, dsp.id, { actualDelivery: today, podFileName: 'pod.pdf' });
+    const dsp = so.recordDispatch(scm, order.id, { dispatchDate: today, transporter: 'VRL', lrNumber: 'LR9', ewayBill: '123456789012', expectedDelivery: today, notifyCustomer: true });
+    const res = so.confirmDelivery(scm, dsp.id, { actualDelivery: today, podFileName: 'pod.pdf', podPhotoName: 'site.jpg' });
     cur = getDb().records.salesOrders.find((o) => o.id === order.id)!;
     expect(cur.status).toBe('delivered');
     if (cur.orderKind === 'machine' && getDb().records.installations) expect(getDb().records.installations.some((i) => i.id === res.installationId && i.salesOrderId === order.id)).toBe(true);
@@ -136,7 +136,7 @@ describe('sales order flow', () => {
     const dsp = so.recordDispatch(scm, ready.id, { dispatchDate: today, transporter: 'VRL', lrNumber: 'LR1', expectedDelivery: today, ewayBill: '123456789012', notifyCustomer: true });
     expect(getDb().records.salesOrders.find((o) => o.id === ready.id)!.status).toBe('dispatched');
     expect(() => so.confirmDelivery(scm, dsp.id, { actualDelivery: today, podFileName: '' })).toThrow(ServiceError);
-    const r = so.confirmDelivery(scm, dsp.id, { actualDelivery: today, podFileName: 'pod.pdf' });
+    const r = so.confirmDelivery(scm, dsp.id, { actualDelivery: today, podFileName: 'pod.pdf', podPhotoName: 'site.jpg' });
     expect(getDb().records.salesOrders.find((o) => o.id === ready.id)!.status).toBe('delivered');
     if (getDb().records.installations) expect(r.installationId).toBeTruthy();
   });
@@ -158,7 +158,7 @@ describe('sales order flow', () => {
       return;
     }
     const c = generateContract(owner, o.id);
-    expect(c.version).toBeGreaterThanOrEqual(1);
+    expect(c.contractVersion).toBeGreaterThanOrEqual(1);
     const { otp } = sendForSignature(owner, c.id);
     expect(() => signContract(owner, c.id, '000000', 'X')).toThrow();
     signContract(owner, c.id, otp, 'Mr Shah');

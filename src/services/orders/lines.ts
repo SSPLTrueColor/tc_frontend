@@ -1,6 +1,7 @@
 /** Order line maths (QuoteLine shape from docs/CONTRACTS.md) — shared by quotations-to-order and repeat orders. */
 import { L } from '../../constants/labels';
-import { gstSplit } from '../lookups';
+import { getPolicies } from '../policies';
+import { computeTotals as quoteTotals, lineAmounts, type QuoteLine as PricingLine } from '../quotations/pricing';
 
 export interface QuoteLine {
   productId: string;
@@ -30,57 +31,22 @@ export interface OrderTotals {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export const lineGross = (l: QuoteLine) => r2((Number(l.qty) || 0) * (Number(l.listPrice) || 0));
+/** Quotation maths (src/services/quotations/pricing.ts) so a pre-filled order matches its quotation to the paisa. */
+const asQuote = (l: QuoteLine): PricingLine => ({ ...l, productId: l.productId, lineType: l.lineType ?? 'other', discountPct: Number(l.discountPct) || 0, discountAmt: Number(l.discountAmt) || 0, hsnSac: l.hsnSac ?? '' });
+
+export const lineGross = (l: QuoteLine) => lineAmounts(asQuote(l)).gross;
 /** Discount in rupees: an explicit amount wins over a percentage. */
-export const lineDiscount = (l: QuoteLine) => r2(Number(l.discountAmt) > 0 ? Number(l.discountAmt) : (lineGross(l) * (Number(l.discountPct) || 0)) / 100);
-export const lineNet = (l: QuoteLine) => r2(lineGross(l) - lineDiscount(l));
+export const lineDiscount = (l: QuoteLine) => lineAmounts(asQuote(l)).discount;
+export const lineNet = (l: QuoteLine) => lineAmounts(asQuote(l)).net;
 export const lineDiscountPct = (l: QuoteLine) => (lineGross(l) > 0 ? r2((lineDiscount(l) / lineGross(l)) * 100) : 0);
 
 /**
- * BR-16: GST per line by place of supply; freight and insurance are taxed at the main supply's
- * rate (the highest-value line). Rounded to paise.
+ * BR-16: GST grouped per rate exactly as on the quotation (CGST and SGST equal halves per rate); freight and
+ * insurance are taxed at the main supply's rate (the highest-value line). Rounded to paise.
  */
 export function computeTotals(lines: QuoteLine[], placeOfSupply: string, freight = 0, insurance = 0): OrderTotals {
-  let subtotal = 0;
-  let discountTotal = 0;
-  let cgst = 0;
-  let sgst = 0;
-  let igst = 0;
-  let mainRate = 0;
-  let mainNet = -1;
-  for (const l of lines) {
-    const net = lineNet(l);
-    subtotal += lineGross(l);
-    discountTotal += lineDiscount(l);
-    const t = gstSplit(placeOfSupply, net, Number(l.gstRate) || 0);
-    cgst += t.cgst;
-    sgst += t.sgst;
-    igst += t.igst;
-    if (net > mainNet) {
-      mainNet = net;
-      mainRate = Number(l.gstRate) || 0;
-    }
-  }
-  const extras = (Number(freight) || 0) + (Number(insurance) || 0);
-  if (extras > 0) {
-    const t = gstSplit(placeOfSupply, extras, mainRate);
-    cgst += t.cgst;
-    sgst += t.sgst;
-    igst += t.igst;
-  }
-  const taxable = r2(subtotal - discountTotal + extras);
-  return {
-    subtotal: r2(subtotal),
-    discountTotal: r2(discountTotal),
-    freight: r2(Number(freight) || 0),
-    insurance: r2(Number(insurance) || 0),
-    taxable,
-    cgst: r2(cgst),
-    sgst: r2(sgst),
-    igst: r2(igst),
-    grandTotal: r2(taxable + cgst + sgst + igst),
-    maxDiscountPct: lines.reduce((m, l) => Math.max(m, lineDiscountPct(l)), 0),
-  };
+  const t = quoteTotals(lines.map(asQuote), placeOfSupply, Number(freight) || 0, Number(insurance) || 0, getPolicies().companyGstState);
+  return { subtotal: t.subtotal, discountTotal: t.discountTotal, freight: t.freight, insurance: t.insurance, taxable: t.taxable, cgst: t.cgst, sgst: t.sgst, igst: t.igst, grandTotal: t.grandTotal, maxDiscountPct: t.maxDiscountPct };
 }
 
 export interface LineDiff {

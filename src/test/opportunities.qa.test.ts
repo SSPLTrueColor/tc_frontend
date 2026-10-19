@@ -1,9 +1,9 @@
 /** QA probes for BRD 4.3 Opportunity & Pipeline (OPP-01…07) — stage flow, Mark Lost, roles, demos, samples. */
 import { appPack } from '../domain/pack';
 import { actorFor } from '../services/authz';
-import { createDb, getDb, __setDb } from '../services/db';
+import { commit, createDb, getDb, __setDb } from '../services/db';
 import { createRecord, getRecord, queryRecords, transitionRecord, updateRecord } from '../services/runtime';
-import { markLost, sweepStagnation } from '../services/opportunities';
+import { acceptedQuotationFor, markLost, sweepStagnation } from '../services/opportunities';
 import { addDays, todayKey } from '../lib/dates';
 import '../domain/extensions/index';
 
@@ -15,10 +15,9 @@ const rohan = () => actorFor('u_rohan', WS);
 
 function fresh() {
   __setDb(createDb(new Date()));
-  const d = getDb();
   const at = new Date().toISOString();
-  d.records.customers ??= [];
-  d.records.customers.push({ id: 'C-9001', workspaceId: WS, version: 1, createdAt: at, updatedAt: at, createdBy: 'system', name: 'QA Prints', territoryId: 'surat', divisionIds: ['TX'] });
+  // Through commit, so a failed write's rollback keeps the fixture.
+  commit((d) => (d.records.customers ??= []).push({ id: 'C-9001', workspaceId: WS, version: 1, createdAt: at, updatedAt: at, createdBy: 'system', name: 'QA Prints', territoryId: 'surat', divisionIds: ['TX'] }));
 }
 const newOpp = (extra: Record<string, unknown> = {}) =>
   createRecord(karan(), 'opportunities', { name: 'QA opp', customerId: 'C-9001', divisionId: 'TX', oppType: 'additional_machine', value: 1_000_000, expectedCloseDate: addDays(todayKey(), 30), ownerId: karan().staffId, ...extra }).record;
@@ -81,6 +80,10 @@ describe('opportunities QA probes', () => {
     const c = transitionRecord(karan(), 'demos', d1.id, 'cancelled', d1.version).record;
     expect(c.status).toBe('cancelled');
     expect(createRecord(karan(), 'demos', base).record.id).toBeTruthy();
+    // a machine under maintenance cannot be booked
+    const maint = getDb().records.demoMachines.find((x) => x.id !== m.id)!;
+    commit((d) => (d.records.demoMachines.find((x) => x.id === maint.id)!.status = 'maintenance'));
+    expect(() => createRecord(karan(), 'demos', { ...base, demoMachineId: maint.id, scheduledAt: `${addDays(todayKey(), 9)}T10:00` })).toThrow();
     // site demo needs no machine
     expect(createRecord(karan(), 'demos', { ...base, location: 'site', demoMachineId: undefined }).record.id).toBeTruthy();
   });
@@ -116,5 +119,13 @@ describe('opportunities QA probes', () => {
     if (!has('leads')) return;
     const any = getDb().records.opportunities.filter((x) => x.leadId);
     expect(any.every((x) => typeof x.leadId === 'string')).toBe(true);
+  });
+
+  it('OPP-05 hand-off: seeded Won opportunities have an accepted quotation, so Generate Sales Order is enabled', () => {
+    if (!has('quotations')) return;
+    const won = getDb().records.opportunities.filter((o) => o.stage === 'won');
+    expect(won.length).toBeGreaterThan(0);
+    const withQuote = won.filter((o) => acceptedQuotationFor(o.id));
+    expect(withQuote.length / won.length).toBeGreaterThan(0.5);
   });
 });

@@ -23,6 +23,12 @@ export interface ResourceHooks {
   /** Throw a ServiceError to block the transition (e.g. missing data for the next stage). */
   beforeTransition?: (ctx: HookContext, record: RecordData, to: string) => void;
   afterTransition?: (ctx: HookContext, before: RecordData, after: RecordData) => void;
+  /** Throw a ServiceError to refuse a (soft) delete, or repair related records inside the same commit. */
+  beforeDelete?: (ctx: HookContext, record: RecordData) => void;
+  /** Reason a lifecycle step is unavailable to this actor (shown on the disabled button), or undefined. Enforce the rule in beforeTransition too. */
+  transitionBlocked?: (actor: Actor, record: RecordData, to: string) => string | undefined;
+  /** Reason the generic Edit action is unavailable for this record (e.g. a non-draft quotation), or undefined. */
+  editBlocked?: (record: RecordData) => string | undefined;
   /** Display title when the title field alone is not enough. */
   title?: (record: RecordData) => string;
 }
@@ -32,7 +38,7 @@ const composed = new Map<string, ResourceHooks>();
 
 /**
  * Several modules may hook the same resource (e.g. leads and opportunities both react to new
- * activities). Hooks run in registration order; the first `title` wins.
+ * activities). Hooks run in registration order; the first `title` (and the first `editBlocked` reason) wins.
  */
 export function registerResourceHooks(resource: string, hooks: ResourceHooks) {
   registry.set(resource, [...(registry.get(resource) ?? []), hooks]);
@@ -41,7 +47,7 @@ export function registerResourceHooks(resource: string, hooks: ResourceHooks) {
 
 type AnyFn = (...args: never[]) => void;
 function compose(list: ResourceHooks[]): ResourceHooks {
-  const all = <K extends Exclude<keyof ResourceHooks, 'title'>>(k: K) => {
+  const all = <K extends Exclude<keyof ResourceHooks, 'title' | 'editBlocked' | 'transitionBlocked'>>(k: K) => {
     const fns = list.map((h) => h[k]).filter(Boolean) as AnyFn[];
     return fns.length ? (((...args: never[]) => fns.forEach((f) => f(...args))) as ResourceHooks[K]) : undefined;
   };
@@ -52,6 +58,9 @@ function compose(list: ResourceHooks[]): ResourceHooks {
     afterUpdate: all('afterUpdate'),
     beforeTransition: all('beforeTransition'),
     afterTransition: all('afterTransition'),
+    beforeDelete: all('beforeDelete'),
+    transitionBlocked: list.some((h) => h.transitionBlocked) ? (a: Actor, r: RecordData, to: string) => list.map((h) => h.transitionBlocked?.(a, r, to)).find(Boolean) : undefined,
+    editBlocked: list.some((h) => h.editBlocked) ? (r: RecordData) => list.map((h) => h.editBlocked?.(r)).find(Boolean) : undefined,
     title: list.find((h) => h.title)?.title,
   };
 }

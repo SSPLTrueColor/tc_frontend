@@ -112,7 +112,9 @@ export function KpiCard({ kpi }: { kpi: Kpi }) {
         <span className="kpi-icon" aria-hidden="true">
           <Icon name={kpi.icon} size={16} />
         </span>
-        <span className="kpi-label">{kpi.label}</span>
+        <span className="kpi-label" data-tooltip={kpi.label}>
+          {kpi.label}
+        </span>
       </div>
       <div className="kpi-mid">
         <span className="kpi-value">{formatValue(kpi.value, kpi.fmt)}</span>

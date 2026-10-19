@@ -3,18 +3,21 @@
  * (pending approval → completed, plus holds and a cancellation), with payment milestones (some
  * overdue), dispatches (some delayed), processing details and contracts; and 6 months of repeat
  * consumables orders for ink / paper / fabric customers (reorder prediction, achievement).
- * Imports only lib/* and labels (no services: the store seeds before services are ready).
+ * Imports lib/*, labels and the pure quotation pricing maths (no stateful services: the store seeds before services are ready).
  */
 import { L } from '../constants/labels';
 import { addDays } from '../lib/dates';
 import { fyLabel } from '../lib/fy';
 import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
+import { computeTotals as quoteTotals, type QuoteLine as PricingLine } from '../services/quotations/pricing';
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 3;
+export const rev = 5; // 5: quotation GST maths; 4: contractVersion field, delivery photos, Ready for Dispatch / Hold / Payment statuses seeded
 
 const S = L.orders.seed;
+/** Returns `value` after a random draw whose result is no longer used (keeps later seeds unchanged). */
+const afterDraw = <T,>(_draw: unknown, value: T): T => value;
 const MS = L.orders.schedule;
 
 /** Same default as policies.companyGstState (seeds may not import services). */
@@ -36,41 +39,10 @@ interface Line {
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const gross = (l: Line) => r2(l.qty * l.listPrice);
-const disc = (l: Line) => r2(Number(l.discountAmt) > 0 ? Number(l.discountAmt) : (gross(l) * (Number(l.discountPct) || 0)) / 100);
-
+/** Same GST maths as quotations (per rate, equal CGST / SGST halves) so seeded orders match their quotation. */
 function totals(lines: Line[], pos: string, freight = 0, insurance = 0) {
-  let subtotal = 0;
-  let discountTotal = 0;
-  let tax = 0;
-  let mainRate = 0;
-  let mainNet = -1;
-  for (const l of lines) {
-    const net = gross(l) - disc(l);
-    subtotal += gross(l);
-    discountTotal += disc(l);
-    tax += r2((net * l.gstRate) / 100);
-    if (net > mainNet) {
-      mainNet = net;
-      mainRate = l.gstRate;
-    }
-  }
-  tax += r2(((freight + insurance) * mainRate) / 100);
-  const intra = pos === COMPANY_GST_STATE;
-  const taxable = r2(subtotal - discountTotal + freight + insurance);
-  const half = r2(tax / 2);
-  return {
-    subtotal: r2(subtotal),
-    discountTotal: r2(discountTotal),
-    freight,
-    insurance,
-    taxable,
-    cgst: intra ? half : 0,
-    sgst: intra ? r2(tax - half) : 0,
-    igst: intra ? 0 : r2(tax),
-    grandTotal: r2(taxable + tax),
-    maxDiscountPct: lines.reduce((m, l) => Math.max(m, gross(l) ? r2((disc(l) / gross(l)) * 100) : 0), 0),
-  };
+  const t = quoteTotals(lines.map((l) => ({ ...l, discountPct: Number(l.discountPct) || 0, discountAmt: Number(l.discountAmt) || 0, hsnSac: l.hsnSac ?? '', lineType: l.lineType ?? 'other' })) as PricingLine[], pos, freight, insurance, COMPANY_GST_STATE);
+  return { subtotal: t.subtotal, discountTotal: t.discountTotal, freight: t.freight, insurance: t.insurance, taxable: t.taxable, cgst: t.cgst, sgst: t.sgst, igst: t.igst, grandTotal: t.grandTotal, maxDiscountPct: t.maxDiscountPct };
 }
 
 /** Machine order statuses, oldest order first (spread evenly over the available quotations). */
@@ -165,7 +137,8 @@ export function seed(ctx: SeedContext): void {
       expectedDelivery: expected < dispatchDate ? dispatchDate : expected,
       actualDelivery: actual,
       podFileName: delivered ? `POD-${order.id}.pdf` : null,
-      podPhotoName: delivered && rnd.chance(0.6) ? `delivery-${order.id}.jpg` : null,
+      // INS-02: every confirmed delivery has a photo and the signed proof (draw kept so the random stream is unchanged).
+      podPhotoName: delivered ? afterDraw(rnd.chance(0.6), `delivery-${order.id}.jpg`) : null,
       status: delivered ? 'delivered' : 'in_transit',
     });
     if (delivered) order.deliveredAt = actual;
@@ -270,7 +243,7 @@ export function seed(ctx: SeedContext): void {
         customerId: order.customerId,
         ownerId: order.ownerId,
         divisionId: div,
-        version: 1,
+        contractVersion: 1,
         status: rank >= RANK.processing ? 'signed' : 'draft',
         contractValue: order.grandTotal,
         paymentTerms: order.paymentTerms ?? L.orders.notices.defaultPaymentTerms,
@@ -361,6 +334,38 @@ export function seed(ctx: SeedContext): void {
       if (RANK[status] >= RANK.dispatched) addDispatch(order, status);
       prev = order;
     }
+  });
+
+  // ---------------------------------------------------------------- remaining Appendix A statuses
+  // Few machine quotations exist, so some recent consumables orders show Ready for Dispatch, Hold and
+  // Payment Pending / Received. Applied after all random draws so the seeds of later modules stay unchanged.
+  const latestConsumables = new Map<string, RecordData>();
+  orders.filter((o) => o.orderKind === 'consumables' && !o.quotationId).forEach((o) => {
+    const cur = latestConsumables.get(String(o.customerId));
+    if (!cur || String(o.orderDate) > String(cur.orderDate)) latestConsumables.set(String(o.customerId), o);
+  });
+  const PREFER = ['completed', 'delivered', 'confirmed', 'processing'];
+  const showcase = [...latestConsumables.values()]
+    .filter((o) => PREFER.includes(String(o.status)) && String(o.orderDate) >= addDays(today, -45))
+    .sort((a, b) => PREFER.indexOf(String(a.status)) - PREFER.indexOf(String(b.status)));
+  (['ready_for_dispatch', 'on_hold', 'payment_pending', 'payment_received'] as const).forEach((status, i) => {
+    const o = showcase[i];
+    if (!o) return;
+    const drop = (list: RecordData[]) => list.splice(0, list.length, ...list.filter((x) => x.salesOrderId !== o.id));
+    drop(dispatches);
+    drop(milestones);
+    Object.assign(o, { status, deliveredAt: null, completedAt: null, holdReason: status === 'on_hold' ? S.holdReason : null, statusBeforeHold: status === 'on_hold' ? 'processing' : null, ewayBill: null });
+    if (status !== 'ready_for_dispatch') Object.assign(o, { invoiceNo: null, invoiceDate: null });
+    const advance = status === 'payment_pending' || status === 'payment_received';
+    const schedule: [string, number, number][] = advance ? [[MS.advance, 50, 3], [MS.credit, 50, 30]] : [[MS.credit, 100, 30]];
+    let allocated = 0;
+    schedule.forEach(([label, pct, dueIn], k) => {
+      const amount = k === schedule.length - 1 ? r2(Number(o.grandTotal) - allocated) : r2((Number(o.grandTotal) * pct) / 100);
+      allocated += amount;
+      const dueDate = addDays(String(o.orderDate), dueIn);
+      const paid = status === 'payment_received' && k === 0;
+      milestones.push({ ...ctx.base(0), createdAt: `${o.orderDate}T11:00:00.000Z`, updatedAt: `${o.orderDate}T11:00:00.000Z`, id: ctx.nextId('paymentMilestones', 'PM'), label, salesOrderId: o.id, customerId: o.customerId, ownerId: o.ownerId, divisionId: o.divisionId, percent: pct, amount, dueDate, receivedAmount: paid ? amount : 0, receivedAt: paid ? clamp(dueDate) : null, status: paid ? 'received' : dueDate < today ? 'overdue' : 'due' });
+    });
   });
 
   // ---------------------------------------------------------------- open approvals for pending orders (SO-04)

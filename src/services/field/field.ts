@@ -16,7 +16,7 @@ import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn, queryRecords } from '../runtime';
 import { ServiceError } from '../types';
 import { L } from '../../constants/labels';
-import { achievementFor, attendanceMetrics, BOOKED, geofenceCheck, isOfficeRole, OFFICE, periodLabel, periodRange, type Point, routeDistanceKm, TERRITORY_CENTRES } from './rules';
+import { achievementFor, attendanceMetrics, BOOKED, geofenceCheck, isOfficeRole, OFFICE, orderNetValue, periodLabel, periodRange, type Point, routeDistanceKm, TERRITORY_CENTRES } from './rules';
 
 const E = L.field.errors;
 const AU = L.field.audit;
@@ -94,11 +94,29 @@ function requireOwnWrite(actor: Actor, resKey: string) {
   if (!perm(actor, resKey).create) throw new ServiceError('forbidden', E.noAttendanceRole);
 }
 
+/**
+ * ATT-02: a mock/fake GPS location is refused, and the attempt is recorded — audit entry plus a
+ * "mock location" flag on the day's attendance — so it shows on the Exception Dashboard.
+ */
+function recordMockAttempt(actor: Actor, at: string, what: string) {
+  const date = at.slice(0, 10);
+  commit((d) => {
+    const ctx = ctxOf(d, actor);
+    const rec = attendanceOn(actor.staffId, date);
+    const id = rec ? patchRecordIn(ctx, 'attendance', rec.id, { mockLocation: true }, AU.mockBlocked(what)).id : insertRecordIn(ctx, 'attendance', { employeeId: actor.staffId, date, status: 'absent', mockLocation: true, lateByMin: 0, earlyByMin: 0 }, { validate: false }).id;
+    appendAudit(d, actor, { action: 'attendance.mock_location', resource: 'attendance', recordId: id, summary: AU.mockBlocked(what), correlationId: ctx.correlationId });
+  });
+}
+
 export function checkIn(actor: Actor, input: CheckInput): RecordData {
   requireOwnWrite(actor, 'attendance');
   if (!hasLocationConsent(actor)) throw new ServiceError('invalid_state', E.consentFirst);
-  if (input.source === 'mock_app') throw new ServiceError('validation', E.mockCheckIn);
   const date = input.at.slice(0, 10);
+  const prior = attendanceOn(actor.staffId, date);
+  if (input.source === 'mock_app') {
+    if (!prior?.checkInAt) recordMockAttempt(actor, input.at, AU.mockWhat.checkIn);
+    throw new ServiceError('validation', E.mockCheckIn);
+  }
   const existing = attendanceOn(actor.staffId, date);
   if (existing?.checkInAt && !existing.checkOutAt) throw new ServiceError('invalid_state', E.alreadyCheckedIn);
   if (existing?.checkInAt) throw new ServiceError('invalid_state', E.alreadyDone);
@@ -121,7 +139,7 @@ export function checkIn(actor: Actor, input: CheckInput): RecordData {
       checkInPlace: input.place,
       locationSource: input.source,
       insideGeofence: fence.inside,
-      mockLocation: false,
+      mockLocation: !!existing?.mockLocation,
       selfie: !!input.selfie,
       lateByMin: m.lateByMin,
       earlyByMin: 0,
@@ -140,7 +158,10 @@ export function checkOut(actor: Actor, input: Omit<CheckInput, 'selfie' | 'onTou
   const rec = attendanceOn(actor.staffId, date);
   if (!rec?.checkInAt) throw new ServiceError('invalid_state', E.notCheckedIn);
   if (rec.checkOutAt) throw new ServiceError('invalid_state', E.alreadyCheckedOut);
-  if (input.source === 'mock_app') throw new ServiceError('validation', E.mockCheckOut);
+  if (input.source === 'mock_app') {
+    recordMockAttempt(actor, input.at, AU.mockWhat.checkOut);
+    throw new ServiceError('validation', E.mockCheckOut);
+  }
   if (input.at < String(rec.checkInAt)) throw new ServiceError('validation', E.outBeforeIn);
   return commit((d) => {
     const ctx = ctxOf(d, actor);
@@ -216,18 +237,24 @@ export interface ExceptionRow {
 /** ATT-10 exception dashboard: no check-in, late, early exit, no visits logged. Sundays are off. */
 export function attendanceExceptions(actor: Actor, date: string): ExceptionRow[] {
   const rows = teamAttendance(actor, date);
+  const today = todayKey();
+  // Nothing can be an exception yet on a future day; today, "no check-in" starts once the grace period is over.
+  if (date > today) return [];
   const sunday = new Date(`${date}T12:00:00`).getDay() === 0;
+  const { start, graceMin } = getPolicies().shift;
+  const [sh, sm] = start.split(':').map(Number);
+  const pastGrace = date < today || nowLocal().slice(11, 16) > `${String(Math.floor((sh * 60 + sm + graceMin) / 60)).padStart(2, '0')}:${String((sh * 60 + sm + graceMin) % 60).padStart(2, '0')}`;
   const out: ExceptionRow[] = [];
   for (const { employee, record, visits } of rows) {
     if (sunday) continue;
+    if (record?.mockLocation) out.push({ employee, kind: 'mock_location', detail: EX.mock_location });
     if (!record || (!record.checkInAt && record.status !== 'leave')) {
-      out.push({ employee, kind: 'no_check_in', detail: EX.no_check_in });
+      if (pastGrace) out.push({ employee, kind: 'no_check_in', detail: EX.no_check_in });
       continue;
     }
     if (record.status === 'leave') continue;
     if (Number(record.lateByMin) > 0) out.push({ employee, kind: 'late', detail: EX.late(record.lateByMin, String(record.checkInAt).slice(11)) });
     if (Number(record.earlyByMin) > 0) out.push({ employee, kind: 'early_exit', detail: EX.early_exit(record.earlyByMin, String(record.checkOutAt).slice(11)) });
-    if (record.mockLocation) out.push({ employee, kind: 'mock_location', detail: EX.mock_location });
     if (date < todayKey() && record.checkInAt && !record.checkOutAt) out.push({ employee, kind: 'not_checked_out', detail: EX.not_checked_out });
     if (isFieldRole(employee.roleId) && visits === 0 && (date < todayKey() || String(record.checkOutAt ?? ''))) out.push({ employee, kind: 'no_visits', detail: EX.no_visits });
   }
@@ -319,7 +346,14 @@ function markBeat(ctx: HookContext, v: RecordData) {
 export function logVisit(actor: Actor, input: VisitInput): RecordData {
   if (!perm(actor, 'fieldVisits').create) throw new ServiceError('forbidden', E.noVisitRole);
   if (!input.siteLabel.trim()) throw new ServiceError('validation', E.siteRequired, { fieldErrors: { siteLabel: E.required } });
-  if (input.source === 'mock_app') throw new ServiceError('validation', E.mockVisit);
+  if (input.parentResource && input.parentResource !== 'customers') {
+    const link = visitLinks(actor).find((l) => l.resource === input.parentResource && l.id === input.parentId);
+    if (!link || (input.customerId && link.customerId !== input.customerId)) throw new ServiceError('validation', E.linkUnavailable, { fieldErrors: { parentId: E.linkUnavailable } });
+  }
+  if (input.source === 'mock_app') {
+    recordMockAttempt(actor, input.at, AU.mockWhat.visit);
+    throw new ServiceError('validation', E.mockVisit);
+  }
   return commit((d) => {
     const ctx = ctxOf(d, actor);
     const v = insertRecordIn(ctx, 'fieldVisits', {
@@ -356,7 +390,12 @@ function ownVisit(actor: Actor, id: string) {
 export function startVisit(actor: Actor, id: string, at: string, point: Point, source: LocationSource) {
   const v = ownVisit(actor, id);
   if (v.status !== 'planned') throw new ServiceError('invalid_state', E.onlyPlanned);
-  if (source === 'mock_app') throw new ServiceError('validation', E.mockVisitCheckIn);
+  const atSite = recs('fieldVisits').find((x) => x.employeeId === actor.staffId && x.status === 'in_progress');
+  if (atSite) throw new ServiceError('invalid_state', E.alreadyAtSite(String(atSite.siteLabel)));
+  if (source === 'mock_app') {
+    recordMockAttempt(actor, at, AU.mockWhat.visit);
+    throw new ServiceError('validation', E.mockVisitCheckIn);
+  }
   return commit((d) => patchRecordIn(ctxOf(d, actor), 'fieldVisits', id, { status: 'in_progress', checkInAt: at, checkInLat: point.lat, checkInLng: point.lng, locationSource: source }, AU.atSite));
 }
 
@@ -374,10 +413,37 @@ export function completeVisit(actor: Actor, id: string, input: { at: string; rem
   });
 }
 
+export interface VisitLink {
+  resource: 'leads' | 'opportunities' | 'tickets';
+  id: string;
+  label: string;
+  customerId: string;
+}
+
+/** Records a visit can be linked to (ATT-05): open leads, opportunities and tickets the actor can see. */
+const LINKABLE: { resource: VisitLink['resource']; closed: string[]; status: string; title?: string }[] = [
+  { resource: 'leads', closed: ['qualified', 'disqualified'], status: 'status' },
+  { resource: 'opportunities', closed: ['won', 'lost'], status: 'stage', title: 'name' },
+  { resource: 'tickets', closed: ['closed', 'cancelled'], status: 'status', title: 'description' },
+];
+
+export function visitLinks(actor: Actor): VisitLink[] {
+  return LINKABLE.flatMap(({ resource, closed, status, title }) => {
+    if (perm(actor, resource).read === 'none' || !getDb().records[resource]) return [];
+    return queryRecords(actor, resource, {})
+      .rows.filter((r) => r.customerId && !closed.includes(String(r[status])))
+      .map((r) => {
+        const t = title ? String(r[title] ?? '').trim() : '';
+        return { resource, id: r.id, customerId: String(r.customerId), label: t ? `${r.id} · ${t.length > 60 ? `${t.slice(0, 59)}…` : t}` : r.id };
+      });
+  });
+}
+
 export function myVisits(actor: Actor) {
   const today = todayKey();
   const mine = recs('fieldVisits').filter((v) => v.employeeId === actor.staffId);
   return {
+    links: visitLinks(actor),
     active: mine.filter((v) => v.status === 'in_progress'),
     planned: mine.filter((v) => v.status === 'planned' && String(v.plannedFor) <= addDays(today, 7)).sort((a, b) => String(a.plannedFor).localeCompare(String(b.plannedFor))),
     recent: mine
@@ -509,6 +575,13 @@ export function achievement(actor: Actor, periodType: string, periodStart: strin
 }
 
 /** CSV of achievement rows (TGT-05 export for incentive processing). */
+/** TGT-05 export, audit-logged like every export (ADM-07). */
+export function exportAchievement(actor: Actor, rows: AchievementRow[], period: string): string {
+  if (!perm(actor, 'targets').export) throw new ServiceError('forbidden', L.targets.errors.noExport);
+  commit((d) => appendAudit(d, actor, { action: 'export', resource: 'targets', summary: L.targets.audit.achievementExported(rows.length, period), correlationId: uid('cor') }));
+  return achievementCsv(rows);
+}
+
 export function achievementCsv(rows: AchievementRow[]): string {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const T = L.targets.csv;
@@ -533,6 +606,7 @@ export interface ScoreRow {
 
 /** TGT-03: weekly activity scorecard per person in scope, generated from CRM data. */
 export function scorecard(actor: Actor, weekStart: string): ScoreRow[] {
+  if (perm(actor, 'targets').read === 'none') throw new ServiceError('forbidden', L.targets.errors.noTargetsRead);
   const ws = startOfWeek(weekStart);
   const we = addDays(ws, 7);
   const inWeek = (d: unknown) => typeof d === 'string' && d.slice(0, 10) >= ws && d.slice(0, 10) < we;
@@ -572,6 +646,7 @@ export interface Leaderboard {
 
 /** TGT-04: ranking within a division for a month, Deal of the Month and badges. Aggregates only. */
 export function leaderboard(actor: Actor, divisionId: string | null, monthStart: string): Leaderboard {
+  if (perm(actor, 'targets').read === 'none') throw new ServiceError('forbidden', L.targets.errors.noTargetsRead);
   const all = perm(actor, 'targets').read === 'all' || can(actor, 'field.team');
   const divisions = all && ['admin', 'management', 'accounts'].includes(actor.role.id) ? ['TX', 'INK', 'POD', 'LBL', 'PPR', 'FAB'] : actor.divisionIds;
   const division = divisionId && divisions.includes(divisionId) ? divisionId : divisions[0];
@@ -587,7 +662,7 @@ export function leaderboard(actor: Actor, divisionId: string | null, monthStart:
     .map((employee) => {
       const mine = orders.filter((o) => o.ownerId === employee.id);
       const target = recs('targets').find((t) => t.scopeType === 'user' && t.employeeId === employee.id && t.periodType === 'month' && t.periodStart === from && t.metric === 'order_value');
-      const orderValue = Math.round(mine.reduce((s, o) => s + (Number(o.grandTotal) || 0), 0));
+      const orderValue = Math.round(mine.reduce((s, o) => s + orderNetValue(o), 0));
       const targetPct = target ? Math.round((achievementFor(target as never, data, (o) => o === employee.id) / Number(target.targetValue)) * 100) : null;
       return { employee, orderValue, orders: mine.length, targetPct, badges: [] as BadgeKey[], acts: acts.filter((a) => a.byId === employee.id).length, visits: visits.filter((v) => v.employeeId === employee.id).length, refs: refs.filter((l) => l.referrerEmployeeId === employee.id).length };
     })
@@ -601,12 +676,12 @@ export function leaderboard(actor: Actor, divisionId: string | null, monthStart:
   award('acts', 'activityChampion');
   award('visits', 'roadWarrior');
   award('refs', 'referralStar');
-  const top = [...orders].sort((a, b) => Number(b.grandTotal) - Number(a.grandTotal))[0];
+  const top = [...orders].sort((a, b) => orderNetValue(b) - orderNetValue(a))[0];
   return {
     divisions,
     division,
     month: from,
     ranking: ranking.map(({ employee, orderValue, orders: n, targetPct, badges }) => ({ employee, orderValue, orders: n, targetPct, badges })),
-    dealOfTheMonth: top ? { orderId: top.id, orderNo: String(top.orderNo ?? top.id), customer: String(recs('customers').find((c) => c.id === top.customerId)?.name ?? top.customerId), value: Number(top.grandTotal), owner: employeeOf(top.ownerId) } : null,
+    dealOfTheMonth: top ? { orderId: top.id, orderNo: String(top.orderNo ?? top.id), customer: String(recs('customers').find((c) => c.id === top.customerId)?.name ?? top.customerId), value: Math.round(orderNetValue(top)), owner: employeeOf(top.ownerId) } : null,
   };
 }

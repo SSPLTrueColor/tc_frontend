@@ -70,10 +70,16 @@ export const WARRANTY_PM_PER_YEAR = 2;
  */
 export function generatePmVisits(ctx: HookContext, opts: { machine: RecordData; start: string; end: string; perYear: number; amcContractId?: string }): number {
   if (!hasResource('pmVisits') || opts.perYear <= 0) return 0;
-  const step = Math.max(1, Math.round(12 / opts.perYear));
+  // Visits spread evenly over the period; the count follows its length (12 months × 2 / year = 2 visits),
+  // the last visit falls on the end date at the latest.
+  const span = daysBetween(opts.start, opts.end) + 1;
+  if (span <= 0) return 0;
+  const count = Math.max(1, Math.round((opts.perYear * span) / 365));
   const existing = new Set(recordsIn(ctx, 'pmVisits').filter((v) => v.machineId === opts.machine.id).map((v) => String(v.dueDate).slice(0, 7)));
   let n = 0;
-  for (let due = addMonths(opts.start, step); due <= opts.end; due = addMonths(due, step)) {
+  for (let i = 1; i <= count; i++) {
+    const at = addDays(opts.start, Math.round((i * span) / count));
+    const due = at > opts.end ? opts.end : at;
     if (existing.has(due.slice(0, 7))) continue;
     try {
       insertRecordIn(ctx, 'pmVisits', { machineId: opts.machine.id, customerId: opts.machine.customerId, amcContractId: opts.amcContractId ?? null, dueDate: due, status: 'due' });
@@ -118,6 +124,50 @@ export function shareReadinessChecklist(actor: Actor, id: string) {
       related: { resource: 'installations', recordId: id },
     });
     patchRecordIn(ctx, 'installations', id, { readinessSharedAt: nowLocal() }, S.checklistShared(r.name));
+  });
+}
+
+export interface HandoverInput {
+  hoExpectations: string;
+  hoCommitments: string;
+  hoKeyContacts: string;
+}
+
+const HANDOVER_MAX: Record<keyof HandoverInput, number> = { hoExpectations: 1000, hoCommitments: 1000, hoKeyContacts: 500 };
+
+/** Sales owner of the job: owner of the sales order, else the customer's account owner. */
+export function handoverOwnerId(r: RecordData, d = getDb()): string | null {
+  const so = hasResource('salesOrders') ? byId('salesOrders', r.salesOrderId, d.records) : undefined;
+  const id = so?.ownerId ?? byId('customers', r.customerId, d.records)?.ownerId;
+  return id ? String(id) : null;
+}
+
+/** INS-04 / BR-26: the sales owner fills the handover; the service desk (update right) can too. */
+export const canFillHandover = (actor: Actor, r: RecordData, d = getDb()) =>
+  r.status !== 'signed_off' && canReadRecord(actor, res(), r) && (canUpdateRecord(actor, res(), r) || (!!actor.staffId && handoverOwnerId(r, d) === actor.staffId));
+
+/** INS-04 Sales-to-Service handover form: customer expectations, special commitments, key contacts. */
+export function saveHandover(actor: Actor, id: string, input: HandoverInput, expectedVersion: number): RecordData {
+  const fieldErrors: Record<string, string> = {};
+  (Object.keys(HANDOVER_MAX) as (keyof HandoverInput)[]).forEach((k) => {
+    const v = String(input[k] ?? '').trim();
+    if (!v) fieldErrors[k] = S.handoverRequired;
+    else if (v.length > HANDOVER_MAX[k]) fieldErrors[k] = L.installed.validation.maxLength(HANDOVER_MAX[k]);
+  });
+  if (Object.keys(fieldErrors).length) throw new ServiceError('validation', S.handoverFix, { fieldErrors });
+  return commit((d) => {
+    const raw = (d.records.installations ?? []).find((r) => r.id === id);
+    if (!raw || !canReadRecord(actor, res(), raw)) throw new ServiceError('not_found', S.installationNotFound(id));
+    if (raw.status === 'signed_off') throw new ServiceError('invalid_state', S.handoverLocked);
+    if (!canFillHandover(actor, raw, d)) throw new ServiceError('forbidden', S.handoverDenied);
+    if (raw.version !== expectedVersion) throw new ServiceError('version_conflict', S.versionConflict(id));
+    return patchRecordIn(
+      ctxFor(d, actor),
+      'installations',
+      id,
+      { hoExpectations: input.hoExpectations.trim(), hoCommitments: input.hoCommitments.trim(), hoKeyContacts: input.hoKeyContacts.trim(), handoverAt: raw.handoverAt || nowLocal() },
+      S.handoverAudit,
+    );
   });
 }
 
@@ -374,16 +424,33 @@ interface SweepPlan {
   remind: { id: string; threshold: number; daysLeft: number; mark: number[] }[];
   due: string[];
   expire: string[];
+  /** Draft contracts whose start date has come (D7: activated automatically). */
+  activate: string[];
+  /** Warranties ending inside the reminder window with no AMC / CMC to follow (IB-05). */
+  warranty: { id: string; threshold: number; daysLeft: number; mark: number[] }[];
 }
+
+const OPEN_CONTRACT = ['draft', 'active', 'due_for_renewal'];
+const thresholdsDue = (sentRaw: unknown, left: number, days: number[]) => {
+  const sent = new Set(String(sentRaw ?? '').split(',').filter(Boolean).map(Number));
+  const reached = days.filter((x) => left <= x);
+  const unsent = reached.filter((x) => !sent.has(x));
+  return unsent.length ? { threshold: Math.min(...unsent), mark: [...new Set([...sent, ...reached])].sort((a, b) => b - a) } : null;
+};
 
 /** What the renewal sweep would change today (pure; lets callers skip the commit when nothing is due). */
 export function planRenewalSweep(d = getDb()): SweepPlan {
   const today = todayKey();
   const days = [...getPolicies().renewalReminderDays].sort((a, b) => b - a);
   const window = days[0] ?? 90;
-  const plan: SweepPlan = { remind: [], due: [], expire: [] };
-  for (const c of d.records.amcContracts ?? []) {
+  const plan: SweepPlan = { remind: [], due: [], expire: [], activate: [], warranty: [] };
+  const contracts = d.records.amcContracts ?? [];
+  for (const c of contracts) {
     const status = String(c.status);
+    if (status === 'draft') {
+      if (String(c.startDate) <= today && String(c.endDate) >= today && Number(c.value) > 0) plan.activate.push(c.id);
+      continue;
+    }
     if (!['active', 'due_for_renewal'].includes(status)) continue;
     const left = daysBetween(today, String(c.endDate));
     if (left < 0) {
@@ -391,26 +458,73 @@ export function planRenewalSweep(d = getDb()): SweepPlan {
       continue;
     }
     if (status === 'active' && left <= window) plan.due.push(c.id);
-    const sent = new Set(String(c.remindersSent ?? '').split(',').filter(Boolean).map(Number));
-    const reached = days.filter((x) => left <= x);
-    const unsent = reached.filter((x) => !sent.has(x));
-    if (unsent.length) plan.remind.push({ id: c.id, threshold: Math.min(...unsent), daysLeft: left, mark: [...new Set([...sent, ...reached])].sort((a, b) => b - a) });
+    const r = thresholdsDue(c.remindersSent, left, days);
+    if (r) plan.remind.push({ id: c.id, daysLeft: left, ...r });
+  }
+  for (const w of d.records.warranties ?? []) {
+    const left = daysBetween(today, String(w.endDate));
+    if (left < 0 || left > window) continue;
+    const machine = (d.records.machines ?? []).find((m) => m.id === w.machineId);
+    if (!machine || machine.status === 'scrapped') continue;
+    // A contract that runs past the warranty end already follows it.
+    if (contracts.some((c) => c.machineId === w.machineId && OPEN_CONTRACT.includes(String(c.status)) && String(c.endDate) > String(w.endDate))) continue;
+    const r = thresholdsDue(w.remindersSent, left, days);
+    if (r) plan.warranty.push({ id: w.id, daysLeft: left, ...r });
   }
   return plan;
 }
 
+/** IB-05: AMC / CMC opportunity for a machine whose warranty ends with no contract to follow (created once). */
+function ensureWarrantyOpportunity(ctx: HookContext, w: RecordData): string | null {
+  if (w.renewalOpportunityId || !hasResource('opportunities')) return (w.renewalOpportunityId as string) ?? null;
+  const machine = byId('machines', w.machineId, ctx.d.records);
+  const customer = byId('customers', w.customerId ?? machine?.customerId, ctx.d.records);
+  const so = machine?.salesOrderId && hasResource('salesOrders') ? byId('salesOrders', machine.salesOrderId, ctx.d.records) : undefined;
+  const ownerId = customer?.ownerId ?? so?.ownerId;
+  // Estimated value: average AMC / CMC value for the same model, else 0 (sales fills it in).
+  const sameModel = (ctx.d.records.amcContracts ?? []).filter((c) => byId('machines', c.machineId, ctx.d.records)?.model === machine?.model && Number(c.value) > 0);
+  const value = sameModel.length ? Math.round(sameModel.reduce((a, c) => a + Number(c.value), 0) / sameModel.length) : 0;
+  try {
+    const opp = insertRecordIn(ctx, 'opportunities', {
+      name: S.warrantyOppName(String(machine?.serialNo ?? w.machineId), String(customer?.name ?? w.customerId)),
+      customerId: customer?.id ?? w.customerId,
+      divisionId: w.divisionId ?? machine?.divisionId,
+      oppType: 'amc',
+      productId: machine?.productId ?? null,
+      value,
+      expectedCloseDate: w.endDate,
+      stage: 'needs_assessment',
+      probability: getPolicies().stageProbability.needs_assessment,
+      ownerId,
+      machineId: w.machineId ?? null,
+    });
+    patchRecordIn(ctx, 'warranties', w.id, { renewalOpportunityId: opp.id }, S.warrantyOppCreated(opp.id));
+    return opp.id;
+  } catch (e) {
+    appendAudit(ctx.d, ctx.actor, { action: 'renewal.opportunity_skipped', actorType: 'workflow', resource: 'warranties', recordId: w.id, summary: S.renewalOppSkipped(e instanceof Error ? e.message : S.unknownError), correlationId: ctx.correlationId });
+    return null;
+  }
+}
+
 /**
- * IB-05 renewal sweep on the simulated clock: active → due for renewal inside the reminder window
- * (renewal opportunity created), one reminder per threshold (90 / 60 / 30 days) to sales and
- * service owners, and expired after the end date. Idempotent; commits only when something is due.
+ * IB-05 renewal sweep on the simulated clock: draft contracts start on their start date (PM visits
+ * generated), active → due for renewal inside the reminder window (renewal opportunity created), one
+ * reminder per threshold (90 / 60 / 30 days) to sales and service owners, expired after the end date;
+ * warranties ending with no contract to follow get the same reminders and one AMC / CMC opportunity.
+ * Idempotent; commits only when something is due.
  */
 export function runRenewalSweep(actor: Actor): number {
   const plan = planRenewalSweep();
-  const n = plan.remind.length + plan.due.length + plan.expire.length;
+  const n = plan.remind.length + plan.due.length + plan.expire.length + plan.activate.length + plan.warranty.length;
   if (!n) return 0;
   commit((d) => {
     const ctx = ctxFor(d, actor);
     const find = (id: string) => (d.records.amcContracts ?? []).find((c) => c.id === id)!;
+    plan.activate.forEach((id) => {
+      const c = patchRecordIn(ctx, 'amcContracts', id, { status: 'active' }, S.activatedAuto);
+      const m = byId('machines', c.machineId, d.records);
+      if (m) generatePmVisits(ctx, { machine: m, start: String(c.startDate), end: String(c.endDate), perYear: Number(c.pmVisitsPerYear) || 0, amcContractId: c.id });
+    });
     plan.expire.forEach((id) => patchRecordIn(ctx, 'amcContracts', id, { status: 'expired' }, S.expiredAuto));
     plan.due.forEach((id) => {
       patchRecordIn(ctx, 'amcContracts', id, { status: 'due_for_renewal' }, S.dueAuto);
@@ -430,6 +544,20 @@ export function runRenewalSweep(actor: Actor): number {
         related: { resource: 'amcContracts', recordId: id },
       });
       patchRecordIn(ctx, 'amcContracts', id, { remindersSent: mark.join(',') }, S.reminderSent(threshold));
+    });
+    plan.warranty.forEach(({ id, threshold, daysLeft, mark }) => {
+      const w = (d.records.warranties ?? []).find((x) => x.id === id)!;
+      const machine = byId('machines', w.machineId, d.records);
+      const customer = byId('customers', w.customerId ?? machine?.customerId, d.records);
+      const serial = String(machine?.serialNo ?? w.machineId);
+      const title = S.warrantyReminderTitle(serial, daysLeft, threshold);
+      const link = { resource: 'warranties', recordId: id };
+      notifyStaff(ctx, customer?.ownerId, title, link);
+      serviceDesk(w.divisionId ?? machine?.divisionId, d).forEach((e) => notifyStaff(ctx, e.id, title, link));
+      const r = customerRecipient(d, customer?.id ?? w.customerId);
+      queueMessage(ctx, { channel: r.channel, to: r.to, subject: S.warrantyReminderSubject(serial, formatDate(String(w.endDate))), body: S.warrantyReminderBody(formatDate(String(w.endDate))), related: link });
+      patchRecordIn(ctx, 'warranties', id, { remindersSent: mark.join(',') }, S.warrantyReminderSent(threshold));
+      ensureWarrantyOpportunity(ctx, (d.records.warranties ?? []).find((x) => x.id === id)!);
     });
   });
   return n;
@@ -462,6 +590,11 @@ export function renewContract(actor: Actor, id: string, input: RenewInput): Reco
   return commit((d) => {
     const c = loadContract(d, actor, id);
     if (!['active', 'due_for_renewal', 'expired'].includes(String(c.status))) throw new ServiceError('invalid_state', S.cannotRenewStatus(masterLabel('amcStatus', c.status)));
+    // A renewal continues the contract: it cannot start before the current one, nor be over already.
+    const dateErrors: Record<string, string> = {};
+    if (input.startDate <= String(c.startDate)) dateErrors.startDate = S.renewStartAfterOld(formatDate(String(c.startDate)));
+    if (input.endDate < todayKey()) dateErrors.endDate = S.renewEndPassed;
+    if (Object.keys(dateErrors).length) throw new ServiceError('validation', S.fixFields, { fieldErrors: dateErrors });
     const ctx = ctxFor(d, actor);
     const fresh = insertRecordIn(ctx, 'amcContracts', {
       customerId: c.customerId,

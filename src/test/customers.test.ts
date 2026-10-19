@@ -7,9 +7,9 @@ import { createRecord, queryRecords, updateRecord } from '../services/runtime';
 import { ServiceError } from '../services/types';
 import { nameSimilarity, normaliseName } from '../services/customers/duplicates';
 import { convertContactToLead, mergeCustomers, previewTransfer, transferOwnership } from '../services/customers/operations';
-import { rowsFromCsv } from '../services/customers/importContacts';
+import { importRows, rowsFromCsv } from '../services/customers/importContacts';
 import { deletePoolContact, listPoolContacts } from '../services/customers/pool';
-import { customer360, customer360Overview, customerDocuments } from '../services/customers/view360';
+import { countLinked, customer360, customer360Overview, customerDocuments } from '../services/customers/view360';
 import { getRecordTabs } from '../components/resource/extensions';
 import { getResource } from '../services/registry';
 import { L } from '../constants/labels';
@@ -154,5 +154,89 @@ describe('customers module', () => {
     expect(idx.every((i) => i >= 0)).toBe(true);
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
     expect(L.customers.masters.poolStatus.values.converted).toBe('Converted to Lead');
+  });
+  // ---------------------------------------------------------------- QA regressions (scratchpad/qa/customers.md)
+
+  it('rejects whitespace-only names on companies, contacts and sites', () => {
+    const base = { category: 'prospect', divisionIds: ['TX'], territoryId: 'surat', billingState: '24', ownerId: 'E-1011' };
+    expectValidation(() => createRecord(admin(), 'customers', { ...base, name: '   ' }), 'name');
+    expectValidation(() => createRecord(admin(), 'contacts', { name: '  ', mobile: '9811177001', ownerId: 'E-1001', divisionIds: ['TX'] }), 'name');
+    const c = getDb().records.customers[0];
+    expectValidation(() => createRecord(admin(), 'addresses', { customerId: c.id, label: ' ', addressType: 'billing', line1: 'a', city: 'Surat', state: '24', pincode: '395003' }), 'label');
+    expect(createRecord(admin(), 'customers', { ...base, name: '  Trim Prints  ' }).record.name).toBe('Trim Prints');
+  });
+
+  it('lets a key account with an overdue plan review be edited, but not set a new past review date (CUS-11)', () => {
+    const key = getDb().records.customers.find((c) => c.keyAccount && String(c.planNextReview) < '2026-10-19')!;
+    expect(key).toBeTruthy();
+    const editable = { name: `${String(key.name)} Group`, planNextReview: key.planNextReview, keyAccount: true };
+    expect(updateRecord(admin(), 'customers', key.id, editable, key.version).record.name).toBe(`${String(key.name)} Group`);
+    const fresh = getDb().records.customers.find((c) => c.id === key.id)!;
+    expectValidation(() => updateRecord(admin(), 'customers', key.id, { planNextReview: '2026-10-01' }, fresh.version), 'planNextReview');
+  });
+
+  it('only links a Dealer or Distributor as the dealer (CUS-08)', () => {
+    const prospect = getDb().records.customers.find((c) => c.category === 'prospect')!;
+    const dealer = getDb().records.customers.find((c) => c.category === 'dealer' || c.category === 'distributor')!;
+    const base = { name: 'End Customer Prints', category: 'prospect', divisionIds: ['TX'], territoryId: 'surat', billingState: '24', ownerId: 'E-1011' };
+    expectValidation(() => createRecord(admin(), 'customers', { ...base, dealerId: prospect.id }), 'dealerId');
+    expect(createRecord(admin(), 'customers', { ...base, dealerId: dealer.id }).record.dealerId).toBe(dealer.id);
+  });
+
+  it('keeps sites and contacts inside the sales executive’s own companies (REQUIREMENTS §2.2)', () => {
+    const karan = actorFor('u_karan', 'tc');
+    const other = getDb().records.customers.find((c) => c.ownerId !== karan.staffId && getDb().records.addresses.some((a) => a.customerId === c.id))!;
+    const site = getDb().records.addresses.find((a) => a.customerId === other.id)!;
+    expect(() => updateRecord(karan, 'addresses', site.id, { label: 'Changed' }, site.version)).toThrow(ServiceError);
+    expectValidation(() => createRecord(karan, 'addresses', { customerId: other.id, label: 'X', addressType: 'billing', line1: 'a', city: 'Surat', state: '24', pincode: '395003' }), 'customerId');
+    expectValidation(() => createRecord(karan, 'contacts', { name: 'Linked Elsewhere', mobile: '9811177002', customerId: other.id }), 'customerId');
+    const own = getDb().records.customers.find((c) => c.ownerId === karan.staffId)!;
+    expect(createRecord(karan, 'addresses', { customerId: own.id, label: 'Own plant', addressType: 'installation', line1: 'Plot 4', city: 'Surat', state: '24', pincode: '395003' }).record.customerId).toBe(own.id);
+  });
+
+  it('merging a parent into its child leaves no self-reference (CUS-06/08)', () => {
+    const cs = getDb().records.customers;
+    const [a, b] = [cs[0], cs[1]];
+    cs[0] = { ...a, parentId: b.id };
+    mergeCustomers(admin(), a.id, b.id);
+    expect(getDb().records.customers.find((c) => c.id === a.id)!.parentId).toBeNull();
+    expect(getDb().audit.some((x) => x.action === 'customers.merge' && x.recordId === a.id)).toBe(true);
+  });
+
+  it('flags duplicate emails and over-long values inside an import file, and reports the real reason (CUS-05/06)', () => {
+    const rows = rowsFromCsv(`name,mobile,email\nA,,dup@example.com\nB,,DUP@example.com\n${'N'.repeat(81)},9811100991,`);
+    expect(rows[1].errors[0]).toMatch(/Same email as line 2/);
+    expect(rows[2].errors[0]).toMatch(/80 characters/);
+  });
+
+  it('imports a contact into the pool when the matched company is outside the importer’s scope', () => {
+    const karan = actorFor('u_karan', 'tc');
+    const other = getDb().records.customers.find((c) => c.ownerId !== karan.staffId)!;
+    const rows = rowsFromCsv(`name,company,mobile,email\nScoped Person,${String(other.name).replace(/,/g, ' ')},9811100992,`);
+    expect(rows[0].customerId).toBe(other.id);
+    const r = importRows(karan, rows);
+    expect(r.created.length).toBe(1);
+    expect(getDb().records.contacts.find((c) => c.id === r.created[0])!.customerId).toBeNull();
+  });
+
+  it('counts open leads / opportunities / tickets by status key and scopes tab badges', () => {
+    const c = getDb().records.customers.find((x) => (getDb().records.opportunities ?? []).some((o) => o.customerId === x.id))!;
+    const o = customer360Overview(admin(), c.id);
+    const opps = (getDb().records.opportunities ?? []).filter((x) => x.customerId === c.id && !['won', 'lost'].includes(String(x.stage)));
+    expect(o.counts.openOpportunities).toBe(opps.length);
+    const karan = actorFor('u_karan', 'tc');
+    const own = getDb().records.customers.find((x) => x.ownerId === karan.staffId)!;
+    expect(countLinked(karan, 'contacts', own.id)).toBeLessThanOrEqual(getDb().records.contacts.filter((x) => x.customerId === own.id).length);
+  });
+  it('pre-fills territory and billing state from the pool contact’s city on Convert to Lead (BR-04)', () => {
+    const pool = getDb().records.contacts.find((c) => !c.customerId && c.source !== 'exhibition')!;
+    const i = getDb().records.contacts.findIndex((c) => c.id === pool.id);
+    getDb().records.contacts[i] = { ...pool, city: 'Surat' };
+    if (!allResources().some((r) => r.key === 'leads')) return;
+    const r = convertContactToLead(admin(), { contactId: pool.id, companyName: 'City Prefill Prints', divisionId: 'TX', productType: 'machine', ownerId: 'E-1011', nextFollowUpAt: '2026-10-25' });
+    const co = getDb().records.customers.find((c) => c.id === r.customerId)!;
+    expect(co.territoryId).toBe('surat');
+    expect(co.billingState).toBe('24');
+    expect(getDb().records.leads.find((l) => l.id === r.leadId)!.state).toBe('24');
   });
 });

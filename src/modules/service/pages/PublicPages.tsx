@@ -3,11 +3,11 @@ import { useParams } from 'react-router-dom';
 import { organization } from '../../../domain/pack';
 import { errorMessage } from '../../../services/api/client';
 import { publicApi } from '../../../services/api/service';
-import { activeMasterValues } from '../../../services/registry';
+import { activeMasterValues, masterValue } from '../../../services/registry';
 import type { PortalMatch } from '../../../services/service/tickets';
 import { ServiceError } from '../../../services/types';
 import { Button } from '../../../components/primitives/Button';
-import { ErrorState, InlineAlert, Skeleton } from '../../../components/primitives/feedback';
+import { ErrorState, InlineAlert, Skeleton, StatusChip } from '../../../components/primitives/feedback';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import '../service.css';
 import { L } from '../../../constants/labels';
@@ -157,6 +157,7 @@ export function PortalPage() {
       setBusy(false);
     }
   };
+  const selected = match?.machines.find((m) => m.id === machineId);
   const submit = async () => {
     if (!match) return;
     setBusy(true);
@@ -208,6 +209,11 @@ export function PortalPage() {
                 {PT.machine}
               </label>
               <SelectMenu id="pt-m" block label={PT.machine} value={machineId} options={[...match.machines.map((m) => ({ value: m.id, label: `${m.serialNo} · ${m.model}` })), { value: '', label: PT.noMachine }]} onChange={setMachineId} />
+              {selected && (
+                <span className="row-gap" style={{ marginTop: 4 }}>
+                  <StatusChip label={S.banner.coverage(masterValue('coverage', selected.coverage)?.label ?? selected.coverage)} tone={masterValue('coverage', selected.coverage)?.tone} />
+                </span>
+              )}
             </div>
           )}
           <div className="form-field">

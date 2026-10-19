@@ -47,7 +47,7 @@ export function FilePick({ id, value, onPick, accept = '.pdf,.jpg,.jpeg,.png', i
         }}
       />
       {value && <span className="muted small">{O.file.attached(value)}</span>}
-      <span className="muted small">{O.file.hint(getPolicies().maxFileMb)}</span>
+      <span className="muted small">{(accept.includes('pdf') ? O.file.hint : O.file.photoHint)(getPolicies().maxFileMb)}</span>
     </div>
   );
 }

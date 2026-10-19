@@ -4,7 +4,8 @@
  * rows — no device contacts or camera are accessed.
  */
 import { normaliseMobile, validateEmail, validateMobile } from '../../lib/validators';
-import { type Actor } from '../authz';
+import { type Actor, canReadRecord } from '../authz';
+import { getResource } from '../registry';
 import { getDb } from '../db';
 import { createRecord } from '../runtime';
 import { ServiceError } from '../types';
@@ -60,6 +61,8 @@ export function parseCsv(text: string): string[][] {
   return rows;
 }
 
+const MAX_LEN = { name: 80, designation: 80, city: 60, email: 120, company: 120 } as const;
+
 const SOURCES = ['website', 'exhibition', 'referral', 'dealer', 'social', 'meta_ads', 'google_ads', 'indiamart', 'cold_call', 'walk_in', 'agency'];
 
 /** Validates rows: name required, mobile or email (BR-03), formats, duplicates in store and within the file. */
@@ -68,9 +71,15 @@ export function validateRows(raw: Omit<ImportRow, 'errors' | 'line' | 'customerI
   const contacts = d.records.contacts ?? [];
   const customers = d.records.customers ?? [];
   const seenMobile = new Map<string, number>();
+  const seenEmail = new Map<string, number>();
+  const E = L.customers.import.errors;
   return raw.map((r, i) => {
     const row: ImportRow = { ...r, line: startLine + i, errors: [] };
     if (!row.name.trim()) row.errors.push(L.customers.import.errors.nameRequired);
+    // Same limits as the contact form, so a row shown as "Ready" never fails on import.
+    (Object.entries(MAX_LEN) as [keyof typeof MAX_LEN, number][]).forEach(([k, n]) => {
+      if (row[k].trim().length > n) row.errors.push(E.tooLong(L.customers.import.cols[k], n));
+    });
     if (!row.mobile.trim() && !row.email.trim()) row.errors.push(L.customers.import.errors.reachRequired);
     if (row.mobile.trim() && validateMobile(row.mobile)) row.errors.push(validateMobile(row.mobile)!);
     if (row.email.trim() && validateEmail(row.email)) row.errors.push(validateEmail(row.email)!);
@@ -81,6 +90,11 @@ export function validateRows(raw: Omit<ImportRow, 'errors' | 'line' | 'customerI
     if (m) {
       if (seenMobile.has(m)) row.errors.push(L.customers.import.errors.sameMobile(seenMobile.get(m)!));
       else seenMobile.set(m, row.line);
+    }
+    const e = row.email.trim().toLowerCase();
+    if (e) {
+      if (seenEmail.has(e)) row.errors.push(E.sameEmail(seenEmail.get(e)!));
+      else seenEmail.set(e, row.line);
     }
     if (row.company.trim()) {
       const hit = customers.find((c) => normaliseName(c.name) === normaliseName(row.company));
@@ -128,10 +142,13 @@ export function importRows(actor: Actor, rows: ImportRow[]): { created: string[]
       skipped.push({ line: r.line, reason: L.customers.import.errors.alreadyExists(r.duplicateOf) });
       continue;
     }
+    // A company outside the importer's scope is not linked: the contact goes to the Contact Pool instead.
+    const company = r.customerId ? (getDb().records.customers ?? []).find((c) => c.id === r.customerId) : undefined;
+    const customerId = company && canReadRecord(actor, getResource('customers'), company) ? company.id : null;
     try {
       const out = createRecord(actor, 'contacts', {
         name: r.name.trim(),
-        customerId: r.customerId ?? null,
+        customerId,
         designation: r.designation,
         mobile: r.mobile ? normaliseMobile(r.mobile) : null,
         email: r.email.trim().toLowerCase() || null,
@@ -143,7 +160,8 @@ export function importRows(actor: Actor, rows: ImportRow[]): { created: string[]
       });
       created.push(out.record.id);
     } catch (e) {
-      skipped.push({ line: r.line, reason: e instanceof Error ? e.message : L.customers.import.errors.couldNotImport });
+      const fieldError = e instanceof ServiceError ? Object.values(e.fieldErrors ?? {}).find(Boolean) : undefined;
+      skipped.push({ line: r.line, reason: fieldError ?? (e instanceof Error ? e.message : L.customers.import.errors.couldNotImport) });
     }
   }
   return { created, skipped };

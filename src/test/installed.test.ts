@@ -102,12 +102,12 @@ describe('installed base', () => {
     if (!c) return;
     c.endDate = addDays(todayKey(), 25);
     c.remindersSent = '';
-    const before = d.outbox.length;
+    const before = d.outbox.filter((m) => m.related?.recordId === c.id).length;
     expect(runRenewalSweep(svc())).toBeGreaterThan(0);
     const after = getDb().records.amcContracts.find((x) => x.id === c.id)!;
     expect(after.status).toBe('due_for_renewal');
     expect(after.remindersSent).toBe('90,60,30');
-    expect(getDb().outbox.length).toBe(before + 1);
+    expect(getDb().outbox.filter((m) => m.related?.recordId === c.id).length).toBe(before + 1);
     expect(runRenewalSweep(svc())).toBe(0);
     const fresh = renewContract(svc(), c.id, { contractType: 'cmc', startDate: addDays(todayKey(), 26), endDate: addDays(todayKey(), 390), value: 250000, pmVisitsPerYear: 4 });
     expect(getDb().records.amcContracts.find((x) => x.id === c.id)!.status).toBe('renewed');

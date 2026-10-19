@@ -11,7 +11,8 @@ import { employeeOf, trackedKmFor } from '../../services/field/field';
 import { attendanceMetrics, conveyanceAmount, expenseLimit, managerLevel, periodLabel, periodStartFor } from '../../services/field/rules';
 import { getDb } from '../../services/db';
 import { getPolicies } from '../../services/policies';
-import { masterLabel } from '../../services/registry';
+import { getResource, masterLabel } from '../../services/registry';
+import { canUpdateRecord } from '../../services/authz';
 import { type HookContext, registerResourceHooks } from '../../services/resourceHooks';
 import { insertRecordIn, patchRecordIn, updateRecord } from '../../services/runtime';
 import { ServiceError, type Approval } from '../../services/types';
@@ -33,17 +34,52 @@ const divisionsOf = (staffId: unknown) => ((employeeOf(staffId)?.divisionIds as 
 const rows = (ctx: HookContext, key: string) => ctx.d.records[key] ?? [];
 const recordOf = (ctx: HookContext, key: string, id: string) => rows(ctx, key).find((r) => r.id === id);
 
+/** Required free text: trims it, and refuses whitespace-only input (the shared validator only checks for ''). */
+const trimText = (c: Record<string, unknown>, key: string, required = true) => {
+  if (typeof c[key] !== 'string') return;
+  c[key] = (c[key] as string).trim();
+  if (required && !c[key]) fail(key, E.whitespace);
+};
+
+/** The engine checks the create permission only; the new record must also fall inside the actor's write scope. */
+const requireWriteScope = (ctx: HookContext, resKey: string, c: Record<string, unknown>, field: string, message: string) => {
+  if (!canUpdateRecord(ctx.actor, getResource(resKey), { ...c, id: String(c.id ?? ''), workspaceId: ctx.actor.workspaceId, version: 1 } as never)) fail(field, message);
+};
+
+/** Keeps the approval card in step with an edited pending request. */
+const refreshApproval = (ctx: HookContext, recordId: string, summary: string, reason: string) =>
+  ctx.d.approvals
+    .filter((a) => a.recordId === recordId && a.status === 'pending')
+    .forEach((a) => {
+      a.summary = summary;
+      a.reason = reason;
+      a.version++;
+    });
+
 // ---------------------------------------------------------------- regularisation (ATT-04)
+
+function checkRegularisation(ctx: HookContext, c: Record<string, unknown>, selfId?: string) {
+  trimText(c, 'reason');
+  const date = String(c.date ?? '');
+  if (date > todayKey()) fail('date', E.regulariseFuture);
+  if (c.requestedCheckIn && String(c.requestedCheckIn).slice(0, 10) !== date) fail('requestedCheckIn', E.checkInDate);
+  if (c.requestedCheckOut && String(c.requestedCheckOut).slice(0, 10) !== date) fail('requestedCheckOut', E.checkOutDate);
+  if (c.requestedCheckIn && c.requestedCheckOut && String(c.requestedCheckOut) <= String(c.requestedCheckIn)) fail('requestedCheckOut', E.checkOutAfterInStrict);
+  if (rows(ctx, 'regularisations').some((r) => r.id !== selfId && r.employeeId === c.employeeId && r.date === date && r.status === 'pending')) fail('date', E.regularisationPending);
+}
+const regularisationSummary = (r: Record<string, unknown>) => AP.regularisationSummary(String(r.date), nameOf(r.employeeId), String(r.requestedCheckIn).slice(11), String(r.requestedCheckOut).slice(11));
 
 registerResourceHooks('regularisations', {
   beforeCreate: (ctx, c) => {
     ownerDefault(ctx, c);
+    requireWriteScope(ctx, 'regularisations', c, 'date', E.notYourRecord);
     c.status = 'pending';
-    const date = String(c.date ?? '');
-    if (date > todayKey()) fail('date', E.regulariseFuture);
-    if (c.requestedCheckIn && String(c.requestedCheckIn).slice(0, 10) !== date) fail('requestedCheckIn', E.checkInDate);
-    if (c.requestedCheckOut && String(c.requestedCheckOut).slice(0, 10) !== date) fail('requestedCheckOut', E.checkOutDate);
-    if (rows(ctx, 'regularisations').some((r) => r.employeeId === c.employeeId && r.date === date && r.status === 'pending')) fail('date', E.regularisationPending);
+    checkRegularisation(ctx, c);
+  },
+  beforeUpdate: (ctx, before, c) => {
+    if (before.status !== 'pending') throw new ServiceError('invalid_state', E.regularisationNotEditable);
+    checkRegularisation(ctx, c, before.id);
+    refreshApproval(ctx, before.id, regularisationSummary(c), String(c.reason));
   },
   afterCreate: (ctx, r) =>
     requestApprovalIn(ctx, {
@@ -51,7 +87,7 @@ registerResourceHooks('regularisations', {
       resource: 'regularisations',
       recordId: r.id,
       reason: String(r.reason),
-      summary: AP.regularisationSummary(String(r.date), nameOf(r.employeeId), String(r.requestedCheckIn).slice(11), String(r.requestedCheckOut).slice(11)),
+      summary: regularisationSummary(r),
       levels: [managerLevel(roleOf(r.employeeId))],
       divisionIds: divisionsOf(r.employeeId),
     }),
@@ -76,23 +112,35 @@ registerApprovalType('attendance.regularisation', {
 
 function priceExpense(c: Record<string, unknown>) {
   const rates = getPolicies().conveyance;
+  trimText(c, 'description');
   if (c.expenseType === 'conveyance') {
     const km = Number(c.km);
     if (!(km > 0)) fail('km', E.enterKm);
     c.amount = conveyanceAmount(km, String(c.vehicleType ?? 'two_wheeler'), rates);
   }
+  if (!(Number(c.amount) > 0)) fail('amount', E.amountPositive);
   c.policyLimit = expenseLimit(String(c.expenseType), String(c.vehicleType ?? 'two_wheeler'), rates);
   if (Number(c.amount) > Number(c.policyLimit) && !String(c.justification ?? '').trim()) fail('justification', E.aboveLimit(money(c.policyLimit)));
+}
+
+/** One conveyance claim per person per day: the day's tracked km cannot be claimed twice. */
+function noDuplicateConveyance(ctx: HookContext, c: Record<string, unknown>, selfId?: string) {
+  if (c.expenseType !== 'conveyance') return;
+  const dup = rows(ctx, 'expenseClaims').find((x) => x.id !== selfId && x.employeeId === c.employeeId && x.expenseType === 'conveyance' && x.claimDate === c.claimDate);
+  if (dup) fail('claimDate', E.duplicateConveyance(dup.id));
 }
 
 registerResourceHooks('expenseClaims', {
   beforeCreate: (ctx, c) => {
     ownerDefault(ctx, c);
+    requireWriteScope(ctx, 'expenseClaims', c, 'description', E.notYourRecord);
     priceExpense(c);
+    noDuplicateConveyance(ctx, c);
   },
-  beforeUpdate: (_ctx, before, c) => {
+  beforeUpdate: (ctx, before, c) => {
     if (!['draft', 'rejected'].includes(String(before.status))) throw new ServiceError('invalid_state', E.claimNotEditable);
     priceExpense(c);
+    noDuplicateConveyance(ctx, c, before.id);
   },
   beforeTransition: (_ctx, r, to) => {
     if (to === 'submitted') priceExpense(r);
@@ -149,13 +197,25 @@ const eachDay = (from: string, to: string) => {
   return out;
 };
 
+function checkLeave(ctx: HookContext, c: Record<string, unknown>, selfId?: string) {
+  trimText(c, 'reason');
+  if (String(c.toDate) < String(c.fromDate)) fail('toDate', E.leaveEndBeforeStart);
+  if (eachDay(String(c.fromDate), String(c.toDate)).length > 30) fail('toDate', E.leaveTooLong);
+  const clash = rows(ctx, 'leaves').find((l) => l.id !== selfId && l.employeeId === c.employeeId && ['pending', 'approved'].includes(String(l.status)) && String(l.fromDate) <= String(c.toDate) && String(l.toDate) >= String(c.fromDate));
+  if (clash) fail('fromDate', E.leaveOverlap(clash.id, String(clash.fromDate), String(clash.toDate)));
+}
+const leaveSummary = (l: Record<string, unknown>) => AP.leaveSummary(masterLabel('leaveType', l.leaveType), String(l.fromDate), String(l.toDate), nameOf(l.employeeId));
+
 registerResourceHooks('leaves', {
   beforeCreate: (ctx, c) => {
     ownerDefault(ctx, c);
-    if (String(c.toDate) < String(c.fromDate)) fail('toDate', E.leaveEndBeforeStart);
-    if (eachDay(String(c.fromDate), String(c.toDate)).length > 30) fail('toDate', E.leaveTooLong);
-    const clash = rows(ctx, 'leaves').find((l) => l.employeeId === c.employeeId && ['pending', 'approved'].includes(String(l.status)) && String(l.fromDate) <= String(c.toDate) && String(l.toDate) >= String(c.fromDate));
-    if (clash) fail('fromDate', E.leaveOverlap(clash.id, String(clash.fromDate), String(clash.toDate)));
+    requireWriteScope(ctx, 'leaves', c, 'fromDate', E.notYourRecord);
+    checkLeave(ctx, c);
+  },
+  beforeUpdate: (ctx, before, c) => {
+    if (before.status !== 'pending') throw new ServiceError('invalid_state', E.leaveNotEditable);
+    checkLeave(ctx, c, before.id);
+    refreshApproval(ctx, before.id, leaveSummary(c), String(c.reason));
   },
   afterCreate: (ctx, l) =>
     requestApprovalIn(ctx, {
@@ -163,7 +223,7 @@ registerResourceHooks('leaves', {
       resource: 'leaves',
       recordId: l.id,
       reason: String(l.reason),
-      summary: AP.leaveSummary(masterLabel('leaveType', l.leaveType), String(l.fromDate), String(l.toDate), nameOf(l.employeeId)),
+      summary: leaveSummary(l),
       levels: [managerLevel(roleOf(l.employeeId))],
       divisionIds: divisionsOf(l.employeeId),
     }),
@@ -195,6 +255,9 @@ registerApprovalType('leave.request', {
 registerResourceHooks('fieldVisits', {
   beforeCreate: (ctx, c) => {
     ownerDefault(ctx, c);
+    requireWriteScope(ctx, 'fieldVisits', c, 'employeeId', E.notYourRecord);
+    trimText(c, 'siteLabel');
+    if (c.status === 'planned' && String(c.plannedFor ?? '') < todayKey()) fail('plannedFor', E.planPastVisit);
     if (!c.parentLabel) c.parentLabel = c.siteLabel;
     if (c.customerId && !c.parentResource) {
       c.parentResource = 'customers';
@@ -203,15 +266,26 @@ registerResourceHooks('fieldVisits', {
   },
 });
 
+function noDuplicateBeat(ctx: HookContext, c: Record<string, unknown>, selfId?: string) {
+  const dup = rows(ctx, 'beatPlans').find((b) => b.id !== selfId && b.employeeId === c.employeeId && b.date === c.date && (c.customerId ? b.customerId === c.customerId : String(b.siteLabel).toLowerCase() === String(c.siteLabel).toLowerCase()));
+  if (dup) fail('siteLabel', E.duplicatePlan(dup.id));
+}
+
 registerResourceHooks('beatPlans', {
   beforeCreate: (ctx, c) => {
     ownerDefault(ctx, c);
+    requireWriteScope(ctx, 'beatPlans', c, 'employeeId', E.notYourRecord);
+    trimText(c, 'siteLabel');
     c.weekStart = startOfWeek(String(c.date));
     c.status = 'planned';
     if (String(c.date) < todayKey()) fail('date', E.planPastDay);
+    noDuplicateBeat(ctx, c);
   },
-  beforeUpdate: (_ctx, _b, c) => {
+  beforeUpdate: (ctx, before, c) => {
+    trimText(c, 'siteLabel');
+    if (c.date !== before.date && String(c.date) < todayKey()) fail('date', E.planPastDay);
     c.weekStart = startOfWeek(String(c.date));
+    noDuplicateBeat(ctx, c, before.id);
   },
 });
 
@@ -231,8 +305,14 @@ function normaliseTarget(ctx: HookContext, c: Record<string, unknown>, selfId?: 
 }
 
 registerResourceHooks('targets', {
-  beforeCreate: (ctx, c) => normaliseTarget(ctx, c),
-  beforeUpdate: (ctx, before, c) => normaliseTarget(ctx, c, before.id),
+  beforeCreate: (ctx, c) => {
+    normaliseTarget(ctx, c);
+    requireWriteScope(ctx, 'targets', c, c.scopeType === 'division' ? 'divisionId' : 'employeeId', L.targets.errors.outOfScope);
+  },
+  beforeUpdate: (ctx, before, c) => {
+    normaliseTarget(ctx, c, before.id);
+    requireWriteScope(ctx, 'targets', c, c.scopeType === 'division' ? 'divisionId' : 'employeeId', L.targets.errors.outOfScope);
+  },
 });
 
 // ---------------------------------------------------------------- record actions

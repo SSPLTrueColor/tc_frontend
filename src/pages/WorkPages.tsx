@@ -4,7 +4,7 @@ import { formatDate, relativeTime, todayKey } from '../lib/dates';
 import { cx } from '../lib/format';
 import { recordPeekPath, resourceKeyFromParams, resourcePath } from '../lib/routes';
 import { useServiceQuery } from '../hooks/useServiceQuery';
-import { perm } from '../services/authz';
+import { canReadRecord, canUpdateRecord, perm } from '../services/authz';
 import { getDb } from '../services/db';
 import { listNotifications, markAllRead, markNotification, snoozeNotification } from '../services/collab';
 import { useActor, useRevision } from '../services/hooks';
@@ -274,7 +274,9 @@ export function FullPageFormPage() {
   const res = getResource(resource);
   if (recordId) {
     const raw = getDb().records[resource]?.find((r) => r.id === recordId);
-    if (!raw) return <ErrorState title={L.common.form.notFound} />;
+    // Out-of-scope records look exactly like missing ones (COM-01: a direct URL never reveals them).
+    if (!raw || !canReadRecord(actor, res, raw)) return <ErrorState title={L.common.form.notFound} />;
+    if (!canUpdateRecord(actor, res, raw)) return <NoAccess what={L.common.form.editing(res.labelPlural.toLowerCase())} />;
     if (res.lifecycle?.terminal.includes(String(raw[res.lifecycle.field]))) return <ErrorState title={L.common.form.notEditable}>{L.common.form.lockedForAudit(res.label.toLowerCase())}</ErrorState>;
   } else if (!perm(actor, resource).create) return <NoAccess what={L.common.form.creating(res.labelPlural.toLowerCase())} />;
   return <FullPageForm resKey={resource} recordId={recordId} />;
@@ -295,17 +297,19 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
     window.addEventListener('beforeunload', h);
     return () => window.removeEventListener('beforeunload', h);
   }, [form.dirty]);
+  // "Save & Issue" only for documents whose lifecycle has an Issued step (not tasks, users …).
+  const canIssue = !!form.res.lifecycle?.transitions.some((t) => t.to === 'issued');
   const save = async (issue: boolean) => {
     const out = await form.submit();
     if (!out) return;
-    if (issue && form.res.lifecycle) {
+    if (issue && canIssue) {
       try {
         transitionRecord(form.actor, resKey, out.record.id, 'issued', out.record.version);
       } catch (e) {
         toast(e instanceof ServiceError ? e.message : C.toasts.savedNotIssued, 'danger');
       }
     }
-    toast(issue ? C.toasts.savedIssued(out.record.id) : C.toasts.savedDraft(out.record.id));
+    toast(issue ? C.toasts.savedIssued(out.record.id) : canIssue ? C.toasts.savedDraft(out.record.id) : C.toasts.saved(out.record.id));
     navigate(recordPeekPath('tc', resKey, out.record.id));
   };
   return (
@@ -322,10 +326,10 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
         <div className="full-form-bar">
           <Button onClick={guard.requestClose}>{C.actions.cancel}</Button>
           <span className="spacer" />
-          <Button loading={form.submitting} onClick={() => void save(false)}>
-            {C.actions.saveDraft}
+          <Button variant={canIssue ? undefined : 'primary'} loading={form.submitting} onClick={() => void save(false)}>
+            {canIssue ? C.actions.saveDraft : C.actions.save}
           </Button>
-          {form.res.lifecycle && (
+          {canIssue && (
             <Button variant="primary" loading={form.submitting} onClick={() => void save(true)}>
               {C.actions.saveAndIssue}
             </Button>

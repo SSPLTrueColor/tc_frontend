@@ -7,7 +7,7 @@ import { addDays, formatDate, formatWeekday, nowLocal, startOfWeek, todayKey } f
 import { cx } from '../../lib/format';
 import { recordPagePath } from '../../lib/routes';
 import { call, errorMessage } from '../../services/api/client';
-import { fieldApi } from '../../services/api/field';
+import { fieldApi, type VisitLink } from '../../services/api/field';
 import { can } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterValue } from '../../services/registry';
@@ -64,7 +64,9 @@ function VisitCheckIn({ switcher }: { switcher: ReactNode }) {
   const peek = params.get('peek');
   const q = useServiceQuery(() => fieldApi.myVisits(actor), [actor.user.id]);
   const [source, setSource] = useLocationSource();
-  const [logging, setLogging] = useState(false);
+  // Deep link from a lead / opportunity / ticket: ?mode=checkin&log=1&link=<resource>:<id> opens Log Visit pre-linked (ATT-05).
+  const [logging, setLogging] = useState(params.get('log') === '1');
+  const deepLink = params.get('link') ?? '';
   const [planning, setPlanning] = useState(false);
   const [closing, setClosing] = useState<RecordData | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -181,7 +183,18 @@ function VisitCheckIn({ switcher }: { switcher: ReactNode }) {
           </section>
         </>
       )}
-      {logging && q.data && <LogVisitDialog customers={q.data.customers} source={source} onClose={() => setLogging(false)} />}
+      {logging && q.data && (
+        <LogVisitDialog
+          customers={q.data.customers}
+          links={q.data.links}
+          initialLink={deepLink}
+          source={source}
+          onClose={() => {
+            setLogging(false);
+            if (params.has('log')) setParams({ mode: 'checkin' }, { replace: true });
+          }}
+        />
+      )}
       {closing && <CompleteVisitDialog visit={closing} onClose={() => setClosing(null)} />}
       <QuickCreateDialog open={planning} resKey="fieldVisits" initial={{ plannedFor: addDays(todayKey(), 1) }} onClose={() => setPlanning(false)} onCreated={() => toast(P.planned)} />
       {peek && <RecordInspector resKey="fieldVisits" recordId={peek} onClose={() => setParams({ mode: 'checkin' })} />}
@@ -189,10 +202,12 @@ function VisitCheckIn({ switcher }: { switcher: ReactNode }) {
   );
 }
 
-function LogVisitDialog({ customers, source, onClose }: { customers: { id: string; name: string; mine: boolean }[]; source: Parameters<typeof getLocation>[0]; onClose: () => void }) {
+function LogVisitDialog({ customers, links, initialLink, source, onClose }: { customers: { id: string; name: string; mine: boolean }[]; links: VisitLink[]; initialLink?: string; source: Parameters<typeof getLocation>[0]; onClose: () => void }) {
   const actor = useActor();
   const toast = useToast();
-  const [customerId, setCustomerId] = useState<string>(customers.find((c) => c.mine)?.id ?? (customers[0]?.id || OTHER));
+  const preset = links.find((l) => `${l.resource}:${l.id}` === initialLink);
+  const [customerId, setCustomerId] = useState<string>(preset?.customerId ?? customers.find((c) => c.mine)?.id ?? (customers[0]?.id || OTHER));
+  const [linkKey, setLinkKey] = useState(preset ? `${preset.resource}:${preset.id}` : '');
   const [site, setSite] = useState('');
   const [purpose, setPurpose] = useState('follow_up');
   const [remarks, setRemarks] = useState('');
@@ -202,6 +217,8 @@ function LogVisitDialog({ customers, source, onClose }: { customers: { id: strin
   const [busy, setBusy] = useState(false);
   const customer = customers.find((c) => c.id === customerId);
   const P = L.field.pages.fieldVisits.log;
+  const customerLinks = links.filter((l) => l.customerId === customerId);
+  const link = customerLinks.find((l) => `${l.resource}:${l.id}` === linkKey);
   const E = L.field.errors;
   const save = async () => {
     setError('');
@@ -211,7 +228,8 @@ function LogVisitDialog({ customers, source, onClose }: { customers: { id: strin
     setBusy(true);
     try {
       const { point } = await getLocation(source, actor.staffId);
-      const r = await fieldApi.logVisit(actor, { customerId: customer?.id ?? null, siteLabel, purpose, remarks, nextAction, nextActionDate: nextDate || null, point, source, at: nowLocal() });
+      const parent = link ? { parentResource: link.resource, parentId: link.id, parentLabel: `${link.label} · ${siteLabel}` } : {};
+      const r = await fieldApi.logVisit(actor, { customerId: customer?.id ?? null, siteLabel, purpose, remarks, nextAction, nextActionDate: nextDate || null, point, source, at: nowLocal(), ...parent });
       toast(r.queued ? P.queued : P.logged(siteLabel), r.queued ? 'info' : 'success');
       onClose();
     } catch (e) {
@@ -240,8 +258,35 @@ function LogVisitDialog({ customers, source, onClose }: { customers: { id: strin
           <label className="field-label" htmlFor="lv-customer">
             {P.customer} <span className="req">*</span>
           </label>
-          <SelectMenu id="lv-customer" block searchable label={P.customer} value={customerId} options={[...customers.map((c) => ({ value: c.id, label: c.mine ? P.myAccount(c.name) : c.name })), { value: OTHER, label: P.otherSite }]} onChange={setCustomerId} />
+          <SelectMenu
+            id="lv-customer"
+            block
+            searchable
+            label={P.customer}
+            value={customerId}
+            options={[...customers.map((c) => ({ value: c.id, label: c.mine ? P.myAccount(c.name) : c.name })), { value: OTHER, label: P.otherSite }]}
+            onChange={(v) => {
+              setCustomerId(v);
+              setLinkKey('');
+            }}
+          />
         </div>
+        {customerLinks.length > 0 && (
+          <div className="form-field span-all">
+            <label className="field-label" htmlFor="lv-link">
+              {P.linkedTo}
+            </label>
+            <SelectMenu
+              id="lv-link"
+              block
+              searchable
+              label={P.linkedTo}
+              value={linkKey}
+              options={[{ value: '', label: P.linkNone }, ...customerLinks.map((l) => ({ value: `${l.resource}:${l.id}`, label: P.linkOption(P.linkKinds[l.resource], l.label) }))]}
+              onChange={setLinkKey}
+            />
+          </div>
+        )}
         {customerId === OTHER && (
           <div className="form-field span-all">
             <label className="field-label" htmlFor="lv-site">

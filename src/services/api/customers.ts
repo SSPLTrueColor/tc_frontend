@@ -39,6 +39,7 @@ export const importContacts = (actor: Actor, rows: ImportRow[]) => call(() => im
 
 // ---- small sync helpers used by forms and banners
 export { CONTACT_CSV_TEMPLATE } from '../customers/importContacts';
-export { defaultFollowUp, isRegistered } from '../customers/operations';
+export { defaultFollowUp, isRegistered, territoryForCity } from '../customers/operations';
 export { fuzzyCustomerMatches } from '../customers/duplicates';
 export { isPoolContact } from '../customers/pool';
+export { countLinked, openOpportunities } from '../customers/view360';

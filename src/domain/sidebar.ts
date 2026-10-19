@@ -110,7 +110,7 @@ const SIDEBAR: Group[] = [
     resources: ['spareParts', 'requisitions', 'warrantyClaims'],
     pages: [
       { id: 'mainStoreStock', icon: 'archive', capability: 'spares.stock' },
-      { id: 'engineerStock', icon: 'users' },
+      { id: 'engineerStock', icon: 'users', capability: 'spares.engineerStock' },
       { id: 'minimumLevelAlerts', icon: 'alert', capability: 'spares.stock' },
     ],
   },

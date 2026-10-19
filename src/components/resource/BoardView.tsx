@@ -38,7 +38,7 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
     if (t.confirm && !window.confirm(t.confirm)) return;
     try {
       transitionRecord(actor, res.key, r.id, to, r.version);
-      toast(L.common.toasts.actionDone(r.id, t.action));
+      toast(L.common.toasts.moved(recordTitle(res.key, r.id, actor), values.find((v) => v.key === to)?.label ?? to));
     } catch (e) {
       toast(e instanceof ServiceError ? e.message : L.common.toasts.moveFailed, 'danger');
     }

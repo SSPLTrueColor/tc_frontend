@@ -43,7 +43,9 @@ export function CompareVersionsPage() {
   const base = useServiceQuery(() => getQuote(actor, recordId), [recordId, actor.user.id]);
   const revs = base.data?.revisions ?? [];
   const idx = revs.findIndex((r) => r.id === recordId);
-  const withId = params.get('with') ?? (idx > 0 ? revs[idx - 1].id : revs.find((r) => r.id !== recordId)?.id ?? '');
+  // ?with= must be another version of the same quotation; anything else falls back to the previous version.
+  const asked = params.get('with');
+  const withId = !base.data ? asked ?? '' : asked && asked !== recordId && revs.some((r) => r.id === asked) ? asked : idx > 0 ? revs[idx - 1].id : revs.find((r) => r.id !== recordId)?.id ?? '';
   const other = useServiceQuery(() => (withId ? getQuote(actor, withId) : null), [withId, actor.user.id]);
   const title = base.data ? C.title(String(base.data.record.quoteNo).replace(/-R\d+$/, '')) : L.nav.pages.quotationCompare.title;
   if (base.error || other.error)

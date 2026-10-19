@@ -1,102 +1,130 @@
+/** QA regression tests for BRD 4.9 / 4.10 defects (scratchpad QA report spares-consumables). */
 import '../domain/extensions/spares';
-import { actorFor, canReadRecord } from '../services/authz';
+import { actorFor, can } from '../services/authz';
 import { commit, createDb, getDb, __setDb } from '../services/db';
-import { getResource } from '../services/registry';
 import { createRecord, transitionRecord, updateRecord } from '../services/runtime';
-import { customerConsumables } from '../services/spares/consumables';
+import { customerConsumables, dealerOrderList } from '../services/spares/consumables';
+import { engineerStockScope } from '../services/spares/stock';
 import { issueRequisition, recordConsumption } from '../services/spares/requisitions';
 import type { RecordData } from '../metadata/types';
 
 const base = { workspaceId: 'tc', version: 1, createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', createdBy: 'system' };
-const probe = (name: string, fn: () => unknown) => {
+const req = (id: string) => getDb().records.requisitions.find((x) => x.id === id)!;
+const fieldErr = (fn: () => unknown, key: string) => {
   try {
-    const r = fn();
-    console.log('PROBE', name, 'OK', JSON.stringify(r)?.slice(0, 160));
+    fn();
   } catch (e) {
-    console.log('PROBE', name, 'THREW', (e as Error).message, JSON.stringify((e as { fieldErrors?: unknown }).fieldErrors ?? ''));
+    return ((e as { fieldErrors?: Record<string, string> }).fieldErrors ?? {})[key] ?? (e as Error).message;
   }
+  throw new Error(`expected ${key} to fail`);
 };
 
-describe('probe', () => {
-  it('probes', () => {
+describe('spares requisition QA fixes (SPR-03/04/05, Appendix A)', () => {
+  const ravi = () => actorFor('u_ravi', 'tc');
+  const ajay = () => actorFor('u_ajay', 'tc');
+  const sanjay = () => actorFor('u_sanjay', 'tc');
+  const store = () => actorFor('u_prakash', 'tc');
+  beforeEach(() => {
     __setDb(createDb(new Date('2026-10-19T10:00:00')));
-    const ravi = actorFor('u_ravi', 'tc');
-    const ajay = actorFor('u_ajay', 'tc');
-    const sanjay = actorFor('u_sanjay', 'tc');
-    const store = actorFor('u_prakash', 'tc');
-    const part: RecordData = { ...base, id: 'SP-9001', partNo: 'TC-TEST-PH', description: 'Test print head', category: 'print_head', hsn: '84439990', price: 100000, uom: 'Nos', warrantyApplicable: false, returnable: true, stockMain: 3, minLevel: 2, critical: true, status: 'active' };
+    const part: RecordData = { ...base, id: 'SP-9001', partNo: 'TC-TEST-PH', description: 'Test print head', category: 'print_head', hsn: '84439990', price: 1000, uom: 'Nos', warrantyApplicable: true, returnable: false, stockMain: 5, minLevel: 1, critical: false, status: 'active' };
+    const noWarranty: RecordData = { ...part, id: 'SP-9002', partNo: 'TC-TEST-NW', warrantyApplicable: false };
     commit((d) => {
-    d.records.spareParts = [part, ...(d.records.spareParts ?? [])];
-    d.records.tickets = [
-      { ...base, id: 'TKT-R', status: 'in_progress', customerId: null, machineId: null, divisionId: 'TX', assigneeId: ravi.staffId },
-      { ...base, id: 'TKT-A', status: 'in_progress', customerId: null, machineId: null, divisionId: 'TX', assigneeId: ajay.staffId },
-      ...(d.records.tickets ?? []),
-    ];
+      d.records.spareParts = [part, noWarranty, ...(d.records.spareParts ?? [])];
+      d.records.tickets = [
+        { ...base, id: 'TKT-R', status: 'in_progress', customerId: null, machineId: null, divisionId: 'TX', assigneeId: ravi().staffId },
+        { ...base, id: 'TKT-A', status: 'in_progress', customerId: null, machineId: null, divisionId: 'TX', assigneeId: ajay().staffId },
+        ...(d.records.tickets ?? []),
+      ];
     });
-    const tres = getResource('tickets');
-    console.log('ravi reads TKT-A', canReadRecord(ravi, tres, getDb().records.tickets[1]));
-    probe('qty 0', () => createRecord(ravi, 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 0 }).record.id);
-    probe('qty 1.5', () => createRecord(ravi, 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1.5 }).record.id);
-    probe('qty 51', () => createRecord(ravi, 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 51 }).record.id);
-    probe('ravi on ajay ticket', () => createRecord(ravi, 'requisitions', { ticketId: 'TKT-A', partId: 'SP-9001', qty: 1 }).record.id);
-    probe('ravi engineerId=ajay', () => createRecord(ravi, 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1, engineerId: ajay.staffId }).record.engineerId);
-    probe('store create', () => createRecord(store, 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1 }).record.id);
-    // service head raises & self-approves
-    const own = createRecord(sanjay, 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1 }).record;
-    probe('sanjay self-approve via transition', () => transitionRecord(sanjay, 'requisitions', own.id, 'approved', own.version).record.status);
-    const r = createRecord(ravi, 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 2 }).record;
-    probe('store approve', () => transitionRecord(store, 'requisitions', r.id, 'approved', r.version).record.status);
-    probe('ravi skip to received', () => transitionRecord(ravi, 'requisitions', r.id, 'received', r.version).record.status);
-    probe('store edit qty while requested', () => updateRecord(store, 'requisitions', r.id, { qty: 5 }, r.version).record.qty);
-    let cur = getDb().records.requisitions.find((x) => x.id === r.id)!;
-    transitionRecord(sanjay, 'requisitions', r.id, 'approved', cur.version);
-    cur = getDb().records.requisitions.find((x) => x.id === r.id)!;
-    probe('edit qty after approval', () => updateRecord(ravi, 'requisitions', r.id, { qty: 1 }, cur.version));
-    probe('issue courier whitespace', () => issueRequisition(store, r.id, { issuedQty: 1, courier: '  ', docketNo: 'x' }, cur.version));
-    probe('issue qty 0', () => issueRequisition(store, r.id, { issuedQty: 0, courier: 'BD', docketNo: 'x' }, cur.version));
-    probe('issue qty -1', () => issueRequisition(store, r.id, { issuedQty: -1, courier: 'BD', docketNo: 'x' }, cur.version));
-    const issued = issueRequisition(store, r.id, { issuedQty: 2.7, courier: 'BD', docketNo: 'D1' }, cur.version);
-    console.log('issuedQty', issued.issuedQty);
-    probe('issue again stale', () => issueRequisition(store, r.id, { issuedQty: 1, courier: 'BD', docketNo: 'D1' }, cur.version));
-    probe('store ack receipt', () => transitionRecord(store, 'requisitions', r.id, 'received', issued.version).record.status);
-    cur = getDb().records.requisitions.find((x) => x.id === r.id)!;
-    probe('consume warranty on non-warranty part', () => recordConsumption(ravi, r.id, { consumedQty: 1, basis: 'warranty', defectiveReturned: false }, cur.version));
-    probe('consume 3 > issued 2', () => recordConsumption(ravi, r.id, { consumedQty: 3, basis: 'chargeable', defectiveReturned: false }, cur.version));
-    probe('ajay consume ravi req', () => recordConsumption(ajay, r.id, { consumedQty: 1, basis: 'chargeable', defectiveReturned: false }, cur.version));
-    console.log('stock', getDb().records.spareParts.find((p) => p.id === 'SP-9001')!.stockMain);
-    // warranty claims via form
-    probe('claim form for non-consumed req', () => createRecord(store, 'warrantyClaims', { partId: 'SP-9001', requisitionId: r.id, oem: 'epson', raisedOn: '2026-10-18', qty: 1 }).record.id);
-    probe('claim future raisedOn', () => createRecord(store, 'warrantyClaims', { partId: 'SP-9001', oem: 'epson', raisedOn: '2026-12-18', qty: 1 }).record.id);
-    // spare parts
+  });
+
+  it('rejects fractional quantities, other engineers’ tickets and raising for someone else', () => {
+    expect(fieldErr(() => createRecord(ravi(), 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1.5 }), 'qty')).toMatch(/whole number/);
+    expect(fieldErr(() => createRecord(ravi(), 'requisitions', { ticketId: 'TKT-A', partId: 'SP-9001', qty: 1 }), 'ticketId')).toMatch(/assigned to you/);
+    expect(fieldErr(() => createRecord(ravi(), 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1, engineerId: ajay().staffId }), 'engineerId')).toMatch(/themselves/);
+    expect(createRecord(ravi(), 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1 }).record.engineerId).toBe(ravi().staffId);
+  });
+
+  it('blocks self-approval, store edits of the request and store receipt acknowledgement', () => {
+    const own = createRecord(sanjay(), 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 1 }).record;
+    expect(() => transitionRecord(sanjay(), 'requisitions', own.id, 'approved', own.version)).toThrow(/Separation of duties/);
+    const r = createRecord(ravi(), 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 2 }).record;
+    expect(() => updateRecord(store(), 'requisitions', r.id, { qty: 5 }, r.version)).toThrow(/requester or service leadership/);
+    transitionRecord(sanjay(), 'requisitions', r.id, 'approved', r.version);
+    issueRequisition(store(), r.id, { issuedQty: 2, courier: 'Blue Dart', docketNo: 'BD1' }, req(r.id).version);
+    expect(() => transitionRecord(store(), 'requisitions', r.id, 'received', req(r.id).version)).toThrow(/acknowledge receipt/);
+    expect(() => updateRecord(sanjay(), 'requisitions', r.id, { engineerId: ajay().staffId }, req(r.id).version)).toThrow(/still Requested/);
+    transitionRecord(ravi(), 'requisitions', r.id, 'received', req(r.id).version);
+    recordConsumption(ravi(), r.id, { consumedQty: 1, basis: 'warranty', defectiveReturned: false }, req(r.id).version);
+    expect(getDb().records.spareParts.find((p) => p.id === 'SP-9001')!.stockMain).toBe(4); // 5 − 2 issued + 1 unused back
+    // Terminal: locked for everyone, including the administrator.
+    expect(() => updateRecord(actorFor('u_rahul', 'tc'), 'requisitions', r.id, { urgency: 'urgent' }, req(r.id).version)).toThrow(/can no longer be changed/);
+  });
+
+  it('warranty claims (OEM) need a warranty consumption, once, within the consumed quantity', () => {
+    const r = createRecord(ravi(), 'requisitions', { ticketId: 'TKT-R', partId: 'SP-9001', qty: 2 }).record;
+    const claim = { partId: 'SP-9001', requisitionId: r.id, oem: 'epson', raisedOn: '2026-10-18', qty: 1 };
+    expect(fieldErr(() => createRecord(store(), 'warrantyClaims', claim), 'requisitionId')).toMatch(/consumed under warranty/);
+    transitionRecord(sanjay(), 'requisitions', r.id, 'approved', r.version);
+    issueRequisition(store(), r.id, { issuedQty: 2, courier: 'Blue Dart', docketNo: 'BD1' }, req(r.id).version);
+    transitionRecord(ravi(), 'requisitions', r.id, 'received', req(r.id).version);
+    recordConsumption(ravi(), r.id, { consumedQty: 1, basis: 'warranty', defectiveReturned: false }, req(r.id).version);
+    expect(fieldErr(() => createRecord(store(), 'warrantyClaims', { ...claim, qty: 2 }), 'qty')).toMatch(/more than the 1 consumed/);
+    expect(createRecord(store(), 'warrantyClaims', claim).record.status).toBe('raised');
+    expect(fieldErr(() => createRecord(store(), 'warrantyClaims', claim), 'requisitionId')).toMatch(/already exists/);
+    expect(fieldErr(() => createRecord(store(), 'warrantyClaims', { ...claim, requisitionId: null, partId: 'SP-9002' }), 'partId')).toMatch(/not covered by warranty/);
+  });
+
+  it('spare part master trims description and upper-cases part numbers on edit', () => {
     const admin = actorFor('u_rahul', 'tc');
-    probe('part desc whitespace', () => createRecord(admin, 'spareParts', { partNo: 'NEW-1', description: '   ', category: 'pump', hsn: '84439990', price: 10 }).record.id);
-    probe('part dup lowercase', () => createRecord(admin, 'spareParts', { partNo: 'tc-test-ph', description: 'x', category: 'pump', hsn: '84439990', price: 10 }).record.id);
-    probe('part bad hsn', () => createRecord(admin, 'spareParts', { partNo: 'NEW-2', description: 'x', category: 'pump', hsn: '12', price: 10 }).record.id);
-    const other = getDb().records.spareParts.find((p) => p.id !== 'SP-9001')!;
-    probe('part update dup lowercase', () => updateRecord(admin, 'spareParts', other.id, { partNo: 'tc-test-ph' }, other.version).record.partNo);
-    probe('store edit price', () => updateRecord(store, 'spareParts', 'SP-9001', { price: 1 }, 1));
-    probe('scm edit minLevel', () => updateRecord(actorFor('u_rajesh', 'tc'), 'spareParts', 'SP-9001', { minLevel: 5 }, getDb().records.spareParts.find((p) => p.id === 'SP-9001')!.version).record.minLevel);
-    // rate contracts
-    const cust = getDb().records.customers[0];
-    const machineProduct = getDb().records.products.find((p) => p.productType === 'machine');
-    const ink = getDb().records.products.find((p) => p.productType === 'ink')!;
-    probe('rc machine product', () => createRecord(admin, 'rateContracts', { customerId: cust.id, productId: machineProduct?.id, rate: 10, validFrom: '2026-10-01', validTo: '2026-12-01' }).record.id);
-    probe('rc rate 0', () => createRecord(admin, 'rateContracts', { customerId: cust.id, productId: ink.id, rate: 0, validFrom: '2030-10-01', validTo: '2030-12-01' }).record.id);
-    probe('rc to<from', () => createRecord(admin, 'rateContracts', { customerId: cust.id, productId: ink.id, rate: 10, validFrom: '2031-10-01', validTo: '2031-09-01' }).record.id);
-    // sample
-    probe('sd trial before dispatch', () => createRecord(admin, 'sampleDispatches', { customerId: cust.id, productId: ink.id, qty: 1, dispatchedOn: '2026-10-10', trialDate: '2026-10-01' }).record.id);
-    probe('sd machine product', () => createRecord(admin, 'sampleDispatches', { customerId: cust.id, productId: machineProduct?.id, qty: 1 }).record.id);
-    // dealer orders as sales exec
+    expect(fieldErr(() => createRecord(admin, 'spareParts', { partNo: 'NEW-1', description: '   ', category: 'pump', hsn: '84439990', price: 10 }), 'description')).toMatch(/required/);
+    const p = getDb().records.spareParts.find((x) => x.id === 'SP-9002')!;
+    expect(updateRecord(admin, 'spareParts', p.id, { partNo: ' tc-new-9 ' }, p.version).record.partNo).toBe('TC-NEW-9');
+  });
+});
+
+describe('consumables QA fixes (CON-01/02/05/06, BR-41)', () => {
+  beforeEach(() => __setDb(createDb(new Date('2026-10-19T10:00:00'))));
+
+  it('rate contracts: consumables products only, rate above zero', () => {
+    const admin = actorFor('u_rahul', 'tc');
+    const d = getDb();
+    const cust = d.records.customers[0];
+    const machine = d.records.products.find((p) => p.productType === 'machine')!;
+    const ink = d.records.products.find((p) => p.productType === 'ink')!;
+    expect(fieldErr(() => createRecord(admin, 'rateContracts', { customerId: cust.id, productId: machine.id, rate: 10, validFrom: '2030-10-01', validTo: '2030-12-01' }), 'productId')).toMatch(/ink, paper/);
+    expect(fieldErr(() => createRecord(admin, 'rateContracts', { customerId: cust.id, productId: ink.id, rate: 0, validFrom: '2030-10-01', validTo: '2030-12-01' }), 'rate')).toMatch(/above zero/);
+  });
+
+  it('sample / trial dispatch: trial not before dispatch, consumables products only', () => {
+    const admin = actorFor('u_rahul', 'tc');
+    const d = getDb();
+    const cust = d.records.customers[0];
+    const machine = d.records.products.find((p) => p.productType === 'machine')!;
+    const ink = d.records.products.find((p) => p.productType === 'ink')!;
+    expect(fieldErr(() => createRecord(admin, 'sampleDispatches', { customerId: cust.id, productId: ink.id, qty: 1, dispatchedOn: '2026-10-10', trialDate: '2026-10-01' }), 'trialDate')).toMatch(/before the dispatch/);
+    expect(fieldErr(() => createRecord(admin, 'sampleDispatches', { customerId: cust.id, productId: machine.id, qty: 1 }), 'productId')).toMatch(/ink, paper or fabric/);
+  });
+
+  it('dealer orders: dealer must be in scope, consumables products only', () => {
     const karan = actorFor('u_karan', 'tc');
-    const dealer = getDb().records.customers.find((c) => ['dealer', 'distributor'].includes(String(c.category)) && c.ownerId !== karan.staffId)!;
-    probe('karan dealer order other owner', () => {
-      const x = createRecord(karan, 'dealerOrders', { dealerId: dealer.id, endCustomer: 'Shree Prints', productId: ink.id, qty: 1, rate: 10, orderDate: '2026-10-10' }).record;
-      return { id: x.id, owner: x.ownerId, karan: karan.staffId, dealerOwner: dealer.ownerId };
-    });
-    probe('dealer machine product', () => createRecord(admin, 'dealerOrders', { dealerId: dealer.id, endCustomer: 'Shree Prints', productId: machineProduct?.id, qty: 1, rate: 10, orderDate: '2026-10-10' }).record.id);
-    probe('dealer endCustomer whitespace', () => createRecord(admin, 'dealerOrders', { dealerId: dealer.id, endCustomer: '   ', productId: ink.id, qty: 1, rate: 10, orderDate: '2026-10-10' }).record.id);
-    // customer consumables leak
-    probe('engineer customerConsumables', () => Object.keys(customerConsumables(ravi, cust.id)));
-    probe('store customerConsumables', () => customerConsumables(store, cust.id).orderCount);
+    const d = getDb();
+    const ink = d.records.products.find((p) => p.productType === 'ink' && p.status !== 'inactive')!;
+    const machine = d.records.products.find((p) => p.productType === 'machine')!;
+    const foreign = d.records.customers.find((c) => ['dealer', 'distributor'].includes(String(c.category)) && c.ownerId !== karan.staffId)!;
+    expect(dealerOrderList(karan).dealers.some((x) => x.value === foreign.id)).toBe(false);
+    expect(fieldErr(() => createRecord(karan, 'dealerOrders', { dealerId: foreign.id, endCustomer: 'Shree Prints', productId: ink.id, qty: 1, rate: 10, orderDate: '2026-10-10' }), 'dealerId')).toMatch(/in your scope/);
+    const admin = actorFor('u_rahul', 'tc');
+    expect(fieldErr(() => createRecord(admin, 'dealerOrders', { dealerId: foreign.id, endCustomer: 'Shree Prints', productId: machine.id, qty: 1, rate: 10, orderDate: '2026-10-10' }), 'productId')).toMatch(/ink, paper/);
+  });
+
+  it('Customer 360 Consumables tab data and Engineer Stock follow the role', () => {
+    const cust = getDb().records.customers[0];
+    expect(() => customerConsumables(actorFor('u_ravi', 'tc'), cust.id)).toThrow(/cannot view consumables/);
+    expect(customerConsumables(actorFor('u_rahul', 'tc'), cust.id).orderCount).toBeGreaterThanOrEqual(0);
+    expect(engineerStockScope(actorFor('u_karan', 'tc'))).toBe('none');
+    expect(can(actorFor('u_karan', 'tc'), 'spares.engineerStock')).toBe(false);
+    expect(engineerStockScope(actorFor('u_ravi', 'tc'))).toBe('own');
+    expect(engineerStockScope(actorFor('u_prakash', 'tc'))).toBe('all');
   });
 });

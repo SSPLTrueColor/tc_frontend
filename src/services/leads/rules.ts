@@ -4,7 +4,7 @@
  */
 import type { RecordData } from '../../metadata/types';
 import { appPack } from '../../domain/pack';
-import { addDays, todayKey } from '../../lib/dates';
+import { addDays, nowLocal, todayKey } from '../../lib/dates';
 import { nowIso } from '../../lib/clock';
 import { uid } from '../../lib/ids';
 import { normaliseMobile, validateEmail, validateMobile } from '../../lib/validators';
@@ -18,6 +18,7 @@ import { activeMasterValues, allResources, getResource, masterLabel } from '../r
 import type { HookContext } from '../resourceHooks';
 import { createRecord, insertRecordIn, queryRecords, recordTitle } from '../runtime';
 import { ServiceError, type Db } from '../types';
+import { validateValues } from '../validation';
 import { isFollowUpDue, isNotAttended, scoreLead } from '../../domain/modules/leads/computed';
 import { L } from '../../constants/labels';
 
@@ -185,6 +186,16 @@ export function createLeadWithParty(actor: Actor, lead: Record<string, unknown>,
   if (Object.keys(partyErrors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: partyErrors });
   if ((company && !hasResource('customers')) || (contact && !hasResource('contacts'))) throw new ServiceError('invalid_state', E.customersMissing);
   if (company && !perm(actor, 'customers').create) throw new ServiceError('forbidden', E.noCustomerCreate);
+  // Pre-validate the lead itself so a failing lead never leaves an orphan company / contact behind.
+  if (company || contact) {
+    const probe: Record<string, unknown> = { ...lead, status: 'new', nextFollowUpAt: lead.nextFollowUpAt || addDays(todayKey(), 1) };
+    const leadErrors = validateValues(getResource('leads'), probe);
+    if (company) delete leadErrors.customerId;
+    delete leadErrors.contactId;
+    const ownerErr = ownerDivisionError(getDb(), lead.ownerId, lead.divisionId);
+    if (ownerErr) leadErrors.ownerId = ownerErr;
+    if (Object.keys(leadErrors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: leadErrors });
+  }
   let customerId = lead.customerId as string | undefined;
   let contactId = lead.contactId as string | undefined;
   if (company || contact) {
@@ -306,6 +317,8 @@ export function qualifyLead(actor: Actor, id: string, version: number, q: Qualif
         leadId: lead.id,
         divisionId: lead.divisionId,
         oppType: lead.productType === 'machine' ? 'new_machine' : 'consumables',
+        productType: lead.productType ?? undefined,
+        notes: q.requirement.trim(),
         value: Number(q.value),
         expectedCloseDate: q.expectedCloseDate,
         stage: 'needs_assessment',
@@ -314,7 +327,8 @@ export function qualifyLead(actor: Actor, id: string, version: number, q: Qualif
         ownerId: lead.ownerId,
         decisionMakers: q.decisionMaker.trim(),
         nextFollowUpAt: lead.nextFollowUpAt && String(lead.nextFollowUpAt) >= todayKey() ? lead.nextFollowUpAt : addDays(todayKey(), 3),
-        lastActivityAt: lead.lastActivityAt,
+        // Conversion is itself an update: a new opportunity must not open with a stagnation alert (BR-12).
+        lastActivityAt: nowLocal(),
       },
       { validate: false },
     );
@@ -612,7 +626,9 @@ export function importLeads(actor: Actor, rows: ImportPreviewRow[], eventName: s
   if (!can(actor, 'leads.import') || !perm(actor, 'leads').create) throw new ServiceError('forbidden', E.importNoAccess);
   if (!eventName.trim()) throw new ServiceError('validation', E.importEvent, { fieldErrors: { eventName: E.required } });
   if (!hasResource('customers') || !hasResource('contacts')) throw new ServiceError('invalid_state', E.importNeedsCustomers);
-  const valid = rows.filter((r) => !r.errors.length);
+  // Re-validate on the service: the preview rows come from the page and must not be trusted.
+  const checked = previewImport(actor, rows.map((r) => r.values));
+  const valid = checked.filter((r) => !r.errors.length);
   const created: string[] = [];
   commit((d) => {
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };

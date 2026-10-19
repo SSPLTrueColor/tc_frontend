@@ -11,7 +11,7 @@ import { downloadText, exportCsv } from '../services/exporter';
 import { cloneGroup, decodeFilter, encodeFilter, OPERATOR_LABELS, VALUELESS } from '../services/filter';
 import { useActor, useRevision } from '../services/hooks';
 import { getResource, masterLabel } from '../services/registry';
-import { availableTransitions, displayText, queryRecords, transitionRecord } from '../services/runtime';
+import { availableTransitions, displayText, queryRecords, recordTitle, transitionRecord } from '../services/runtime';
 import { getSettings, pushRecent } from '../services/settings';
 import { ServiceError } from '../services/types';
 import { listViews, unavailableViewFields } from '../services/views';
@@ -119,7 +119,7 @@ export function ResourcePage() {
     return (
       <div className="page">
         <PageHeader title={res.labelPlural} crumbs={[{ label: res.labelPlural }]} />
-        <NoAccess what={res.labelPlural.toLowerCase()} />
+        <NoAccess what={res.labelPlural} />
       </div>
     );
   }
@@ -154,7 +154,7 @@ export function ResourcePage() {
         onSelect: () => {
           try {
             transitionRecord(actor, resource, r.id, t.to, raw!.version);
-            toast(C.toasts.actionDone(r.id, t.action));
+            toast(C.toasts.actionDone(recordTitle(res.key, r.id, actor), t.action));
           } catch (e) {
             toast(e instanceof ServiceError ? e.message : C.toasts.actionFailed, 'danger');
           }

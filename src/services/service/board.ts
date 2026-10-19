@@ -105,11 +105,11 @@ export function suggestEngineers(actor: Actor, ticket: RecordData): Suggestion[]
     .sort((a, b) => Number(!!a.blocked) - Number(!!b.blocked) || b.score - a.score);
 }
 
-/** Unassigned tickets the actor can see, most urgent first. */
+/** Unassigned tickets the actor can see (open or re-opened with no service engineer), most urgent first. */
 export function unassignedTickets(actor: Actor) {
   const rank: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
   return queryRecords(actor, 'tickets', {})
-    .rows.filter((t) => ['open', 'reopened'].includes(s(t.status)))
+    .rows.filter((t) => ['open', 'reopened'].includes(s(t.status)) && !t.assigneeId)
     .sort((a, b) => (rank[s(a.priority)] ?? 9) - (rank[s(b.priority)] ?? 9) || s(a.responseDueAt).localeCompare(s(b.responseDueAt)));
 }
 

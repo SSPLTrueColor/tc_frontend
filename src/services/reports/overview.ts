@@ -250,6 +250,11 @@ const openTicketsAsOf = (tickets: Rows, day: string) => tickets.filter((t) => da
 const overdueAsOf = (ms_: Rows, day: string) => ms_.filter((m) => dayOf(m.dueDate) < day).reduce((t, m) => t + Math.max(0, n(m.amount) - (s(m.receivedAt) && dayOf(m.receivedAt) <= day ? n(m.receivedAmount) : 0)), 0);
 const atEnds = (bs: Bucket[], f: (day: string) => number) => bs.map((b) => f(b.to));
 
+/** List conditions matching isBooked() (confirmed or later, not cancelled). */
+const BOOKED_CONDS: [string, 'neq', string][] = [
+  ['status', 'neq', 'pending_approval'],
+  ['status', 'neq', 'cancelled'],
+];
 const dateConds = (key: string, r: { from: string; to: string }): [string, 'gte' | 'lte', string][] => [
   [key, 'gte', r.from],
   [key, 'lte', r.to],
@@ -306,7 +311,7 @@ const booked = (ds: Dataset, from: string, to: string) => within(ds.get('salesOr
 function revenueKpi(c: Ctx): Kpi {
   const cur = booked(c.ds, c.range.from, c.range.to);
   const prev = booked(c.ds, c.prev.from, c.prev.to);
-  return kpi({ id: 'revenue', label: K.orderValue, icon: 'receipt', fmt: 'money', value: sum(cur, 'grandTotal'), prev: sum(prev, 'grandTotal'), spark: perBucket(c.bs, c.ds.get('salesOrders').filter(isBooked), 'orderDate', 'grandTotal'), sub: KS.salesOrders(cur.length), to: listWith('salesOrders', dateConds('orderDate', c.range)) });
+  return kpi({ id: 'revenue', label: K.orderValue, icon: 'receipt', fmt: 'money', value: sum(cur, 'grandTotal'), prev: sum(prev, 'grandTotal'), spark: perBucket(c.bs, c.ds.get('salesOrders').filter(isBooked), 'orderDate', 'grandTotal'), sub: KS.salesOrders(cur.length), to: listWith('salesOrders', [...BOOKED_CONDS, ...dateConds('orderDate', c.range)]) });
 }
 
 function pipelineKpi(c: Ctx): Kpi {
@@ -325,7 +330,7 @@ function winRateKpi(c: Ctx): Kpi {
   const prev = closedIn(opps, c.prev.from, c.prev.to);
   const won = opps.filter((o) => o.stage === 'won');
   const wr = winRate(cur);
-  return kpi({ id: 'winrate', label: K.winRate, icon: 'target', fmt: 'pct', value: wr, prev: winRate(prev), spark: c.bs.map((b) => won.filter((o) => inRange(o.wonAt || o.stageChangedAt || o.updatedAt, b.from, b.to)).length), sub: KS.wonLost(cur.filter((o) => o.stage === 'won').length, cur.filter((o) => o.stage === 'lost').length), to: listWith('opportunities', [['stage', 'in', ['won', 'lost']]]) });
+  return kpi({ id: 'winrate', label: K.winRate, icon: 'target', fmt: 'pct', value: wr, prev: winRate(prev), spark: c.bs.map((b) => won.filter((o) => inRange(o.wonAt || o.stageChangedAt || o.updatedAt, b.from, b.to)).length), sub: KS.wonLost(cur.filter((o) => o.stage === 'won').length, cur.filter((o) => o.stage === 'lost').length), to: listWith('opportunities', [['stage', 'in', ['won', 'lost']], ...dateConds('stageChangedAt', c.range)]) });
 }
 
 function leadsKpi(c: Ctx): Kpi {
@@ -404,7 +409,7 @@ function outstandingKpi(c: Ctx): Kpi {
   const ms_ = milestones(c.ds);
   const open = ms_.filter((m) => outstandingOf(m) > 0);
   const next30 = open.filter((m) => dayOf(m.dueDate) >= c.today && dayOf(m.dueDate) <= addDays(c.today, 30));
-  return kpi({ id: 'outstanding', label: K.outstanding, icon: 'file-text', fmt: 'money', value: open.reduce((t, m) => t + outstandingOf(m), 0), good: 'down', delta: null, spark: c.bs.map((b) => within(ms_, 'dueDate', b.from, b.to).reduce((t, m) => t + outstandingOf(m), 0)), sub: KS.dueIn30(compactInr(next30.reduce((t, m) => t + outstandingOf(m), 0))), to: ROUTES.paymentSchedule });
+  return kpi({ id: 'outstanding', label: K.outstanding, icon: 'file-text', fmt: 'money', value: open.reduce((t, m) => t + outstandingOf(m), 0), good: 'down', delta: null, spark: c.bs.map((b) => within(ms_, 'dueDate', b.from, b.to).reduce((t, m) => t + outstandingOf(m), 0)), sub: KS.dueIn30(compactInr(next30.reduce((t, m) => t + outstandingOf(m), 0))), to: listWith('paymentMilestones', [['status', 'neq', 'received']]) });
 }
 
 function kpisFor(family: string, c: Ctx): Kpi[] {
@@ -451,9 +456,9 @@ function supplyKpis(c: Ctx): Kpi[] {
   const below = c.ds.get('spareParts').filter((p) => p.belowMin || n(p.stockMain) < n(p.minLevel));
   const inProcessing = orders.filter((o) => ['payment_received', 'processing'].includes(s(o.status)));
   return [
-    kpi({ id: 'orders-in', label: K.ordersBooked, icon: 'shopping-cart', fmt: 'number', value: cur.length, prev: booked(c.ds, c.prev.from, c.prev.to).length, spark: perBucket(c.bs, orders.filter(isBooked), 'orderDate'), sub: compactInr(sum(cur, 'grandTotal')), to: listWith('salesOrders', dateConds('orderDate', c.range)) }),
+    kpi({ id: 'orders-in', label: K.ordersBooked, icon: 'shopping-cart', fmt: 'number', value: cur.length, prev: booked(c.ds, c.prev.from, c.prev.to).length, spark: perBucket(c.bs, orders.filter(isBooked), 'orderDate'), sub: compactInr(sum(cur, 'grandTotal')), to: listWith('salesOrders', [...BOOKED_CONDS, ...dateConds('orderDate', c.range)]) }),
     kpi({ id: 'processing', label: K.processing, icon: 'package', fmt: 'number', value: inProcessing.length, delta: null, spark: [], sub: KS.readyForDispatch(orders.filter((o) => o.status === 'ready_for_dispatch').length), to: listWith('salesOrders', [['status', 'in', ['payment_received', 'processing']]]) }),
-    kpi({ id: 'delivered', label: K.delivered, icon: 'truck', fmt: 'number', value: delivered(c.range.from, c.range.to).length, prev: delivered(c.prev.from, c.prev.to).length, spark: c.bs.map((b) => delivered(b.from, b.to).length), to: resourcePath('tc', 'dispatches') }),
+    kpi({ id: 'delivered', label: K.delivered, icon: 'truck', fmt: 'number', value: delivered(c.range.from, c.range.to).length, prev: delivered(c.prev.from, c.prev.to).length, spark: c.bs.map((b) => delivered(b.from, b.to).length), to: listWith('dispatches', dateConds('actualDelivery', c.range)) }),
     kpi({ id: 'delayed', label: K.delayed, icon: 'alert', fmt: 'number', value: delayed.length, good: 'down', delta: null, spark: [], to: reportPath('delayed-dispatches') }),
     kpi({ id: 'spares', label: K.sparesBelowMin, icon: 'wrench', fmt: 'number', value: below.length, good: 'down', delta: null, spark: [], to: ROUTES.minimumLevelAlerts }),
   ];
@@ -465,10 +470,10 @@ function profilingKpis(c: Ctx): Kpi[] {
   const raised = (from: string, to: string) => within(reqs, 'createdAt', from, to);
   const done = (from: string, to: string) => within(reqs.filter((r) => r.status === 'results_shared'), 'updatedAt', from, to);
   return [
-    kpi({ id: 'open-req', label: K.openRequests, icon: 'printer', fmt: 'number', value: open.length, good: 'down', delta: pctChange(raised(c.range.from, c.range.to).length, raised(c.prev.from, c.prev.to).length), spark: perBucket(c.bs, reqs, 'createdAt'), sub: KS.raisedInRange(raised(c.range.from, c.range.to).length), to: resourcePath('tc', 'sampleRequests') }),
-    kpi({ id: 'completed', label: K.resultsShared, icon: 'check-square', fmt: 'number', value: done(c.range.from, c.range.to).length, prev: done(c.prev.from, c.prev.to).length, spark: c.bs.map((b) => done(b.from, b.to).length), to: listWith('sampleRequests', [['status', 'eq', 'results_shared']]) }),
-    kpi({ id: 'mine', label: K.assignedToMe, icon: 'users', fmt: 'number', value: open.filter((r) => r.assigneeId === c.actor.staffId).length, delta: null, spark: [], to: listWith('sampleRequests', [['assigneeId', 'eq', c.actor.staffId]]) }),
-    kpi({ id: 'due-week', label: K.dueThisWeek, icon: 'calendar-clock', fmt: 'number', value: open.filter((r) => s(r.dueDate) >= c.today && s(r.dueDate) <= addDays(c.today, 7)).length, good: 'down', delta: null, spark: [], to: resourcePath('tc', 'sampleRequests') }),
+    kpi({ id: 'open-req', label: K.openRequests, icon: 'printer', fmt: 'number', value: open.length, good: 'down', delta: pctChange(raised(c.range.from, c.range.to).length, raised(c.prev.from, c.prev.to).length), spark: perBucket(c.bs, reqs, 'createdAt'), sub: KS.raisedInRange(raised(c.range.from, c.range.to).length), to: listWith('sampleRequests', [['status', 'in', ['requested', 'in_progress']]]) }),
+    kpi({ id: 'completed', label: K.resultsShared, icon: 'check-square', fmt: 'number', value: done(c.range.from, c.range.to).length, prev: done(c.prev.from, c.prev.to).length, spark: c.bs.map((b) => done(b.from, b.to).length), to: listWith('sampleRequests', [['status', 'eq', 'results_shared'], ...dateConds('updatedAt', c.range)]) }),
+    kpi({ id: 'mine', label: K.assignedToMe, icon: 'users', fmt: 'number', value: open.filter((r) => r.assigneeId === c.actor.staffId).length, delta: null, spark: [], to: listWith('sampleRequests', [['assigneeId', 'eq', c.actor.staffId], ['status', 'in', ['requested', 'in_progress']]]) }),
+    kpi({ id: 'due-week', label: K.dueThisWeek, icon: 'calendar-clock', fmt: 'number', value: open.filter((r) => s(r.dueDate) >= c.today && s(r.dueDate) <= addDays(c.today, 7)).length, good: 'down', delta: null, spark: [], to: listWith('sampleRequests', [['status', 'in', ['requested', 'in_progress']], ['dueDate', 'gte', c.today], ['dueDate', 'lte', addDays(c.today, 7)]]) }),
   ];
 }
 

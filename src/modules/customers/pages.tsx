@@ -472,6 +472,7 @@ export function ContactImportPage() {
   const I = L.customers.import;
   const [params, setParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
+  const importing = useRef(false);
   const [rows, setRows] = useState<ImportRow[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -570,6 +571,8 @@ export function ContactImportPage() {
                 loading={busy === 'import'}
                 disabledReason={valid.length ? undefined : I.noValid}
                 onClick={async () => {
+                  if (importing.current) return; // no double submit
+                  importing.current = true;
                   setBusy('import');
                   try {
                     const r = await importContacts(actor, rows);
@@ -578,6 +581,7 @@ export function ContactImportPage() {
                   } catch (e) {
                     toast(errorMessage(e), 'danger');
                   } finally {
+                    importing.current = false;
                     setBusy(null);
                   }
                 }}

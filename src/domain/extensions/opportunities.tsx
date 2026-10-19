@@ -6,7 +6,7 @@ import { nowIso } from '../../lib/clock';
 import { formatMoney } from '../../lib/format';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { activitiesFor } from '../../services/activities';
-import { canUpdateRecord } from '../../services/authz';
+import { canUpdateRecord, perm } from '../../services/authz';
 import { userOfStaff } from '../../services/lookups';
 import { notify } from '../../services/ledger';
 import { masterLabel } from '../../services/registry';
@@ -37,10 +37,19 @@ const notifyStaff = (ctx: HookContext, staffId: unknown, title: string, link: { 
 
 // ---------------------------------------------------------------- opportunities
 
+/** Whitespace-only text counts as empty, so required names / artwork cannot be blanks. */
+const trimText = (c: Record<string, unknown>, keys: string[]) => keys.forEach((k) => typeof c[k] === 'string' && (c[k] = (c[k] as string).trim()));
+const OPP_TEXT = ['name', 'competitors', 'decisionMakers', 'notes'];
+const SAMPLE_TEXT = ['title', 'artwork', 'fabricDetails', 'results', 'customerFeedback'];
+
 registerResourceHooks('opportunities', {
-  beforeCreate: (ctx, c) => applyCreateDefaults(ctx, c),
+  beforeCreate: (ctx, c) => {
+    trimText(c, OPP_TEXT);
+    applyCreateDefaults(ctx, c);
+  },
   afterCreate: (ctx, r) => notifyStaff(ctx, r.ownerId, T.messages.assigned(ctx.actor.user.name, r.id, String(r.name)), { resource: 'opportunities', recordId: r.id }),
   beforeUpdate: (ctx, before, c) => {
+    trimText(c, OPP_TEXT);
     if (before.ownerId !== c.ownerId || before.customerId !== c.customerId || before.productId !== c.productId) {
       if (before.customerId !== c.customerId) c.territoryId = null;
       if (before.productId !== c.productId) c.productType = null;
@@ -71,13 +80,22 @@ registerResourceHooks('opportunities', {
 
 // ---------------------------------------------------------------- demos: copy context, no double booking
 
-function demoGuard(ctx: HookContext, c: Record<string, unknown>, selfId?: string) {
+function demoGuard(ctx: HookContext, c: Record<string, unknown>, before?: RecordData) {
+  const selfId = before?.id;
   const opp = ctx.d.records.opportunities?.find((o) => o.id === c.opportunityId);
   if (opp) {
     c.customerId = opp.customerId ?? null;
     c.divisionId = opp.divisionId ?? null;
   }
-  if (c.location !== 'centre' || !c.demoMachineId || !c.scheduledAt || ['cancelled', 'done'].includes(String(c.status))) return;
+  if (c.location !== 'centre' || !c.demoMachineId || ['cancelled', 'done'].includes(String(c.status))) return;
+  const machine = ctx.d.records.demoMachines?.find((m) => m.id === c.demoMachineId);
+  // Only a new booking or a moved one must use an active machine; recording results on an old booking stays possible.
+  const moved = !before || before.demoMachineId !== c.demoMachineId || before.scheduledAt !== c.scheduledAt;
+  if (machine && machine.status !== 'active' && moved) {
+    const msg = T.messages.demoMachineUnavailable(String(machine.name), masterLabel('demoMachineStatus', machine.status));
+    throw new ServiceError('validation', msg, { fieldErrors: { demoMachineId: T.messages.demoMachineUnavailableField } });
+  }
+  if (!c.scheduledAt) return;
   const start = String(c.scheduledAt);
   const end = addMinutes(start, Number(c.durationMin) || 120);
   const clash = (ctx.d.records.demos ?? []).find(
@@ -88,7 +106,7 @@ function demoGuard(ctx: HookContext, c: Record<string, unknown>, selfId?: string
 
 registerResourceHooks('demos', {
   beforeCreate: (ctx, c) => demoGuard(ctx, c),
-  beforeUpdate: (ctx, before, c) => demoGuard(ctx, c, before.id),
+  beforeUpdate: (ctx, before, c) => demoGuard(ctx, c, before),
   afterCreate: (ctx, r) => notifyStaff(ctx, r.ownerId, T.messages.demoBooked(r.id, String(r.scheduledAt).replace('T', ' ')), { resource: 'demos', recordId: r.id }),
   beforeTransition: (_ctx, r, to) => {
     if (to === 'done' && !String(r.results ?? '').trim()) throw new ServiceError('validation', T.messages.demoResultsNeeded, { fieldErrors: { results: T.messages.demoResultsField } });
@@ -96,7 +114,9 @@ registerResourceHooks('demos', {
 });
 
 registerResourceHooks('sampleRequests', {
+  beforeUpdate: (_ctx, _before, c) => trimText(c, SAMPLE_TEXT),
   beforeCreate: (ctx, c) => {
+    trimText(c, SAMPLE_TEXT);
     const opp = ctx.d.records.opportunities?.find((o) => o.id === c.opportunityId);
     if (opp) {
       c.customerId = opp.customerId ?? null;
@@ -144,6 +164,7 @@ function OpportunityActions({ actor, res, record }: RecordExtensionProps) {
         open={logging}
         onClose={() => setLogging(false)}
         requireNextFollowUp={open}
+        title={T.actions.logFollowUp}
         parent={{ parentResource: 'opportunities', parentId: record.id, parentLabel: `${record.id} · ${String(record.name)}`, customerId: record.customerId ? String(record.customerId) : undefined }}
       />
       {losing && <MarkLostDialog actor={actor} record={record} onClose={() => setLosing(false)} />}
@@ -178,7 +199,13 @@ function OpportunityBanner({ actor, record }: RecordExtensionProps) {
 }
 
 function Timeline({ actor, record }: RecordExtensionProps) {
-  const q = useServiceQuery(() => activitiesFor(actor, 'opportunities', record.id), [record.id, actor.user.id]);
+  // LEAD-10: the opportunity carries the lead's history, so the timeline also lists the activities logged on its lead.
+  const leadId = record.leadId ? String(record.leadId) : '';
+  const q = useServiceQuery(
+    () =>
+      [...activitiesFor(actor, 'opportunities', record.id), ...(leadId && perm(actor, 'activities').read !== 'none' ? activitiesFor(actor, 'leads', leadId) : [])].sort((a, b) => String(b.at).localeCompare(String(a.at))),
+    [record.id, leadId, actor.user.id],
+  );
   if (q.error)
     return (
       <ErrorState title={T.timeline.errorTitle} onRetry={q.retry}>
@@ -192,6 +219,7 @@ function Timeline({ actor, record }: RecordExtensionProps) {
       {q.data.map((a: RecordData) => (
         <li key={a.id} className="flow-item">
           <span className="tag tone-neutral">{masterLabel('activityType', a.activityType)}</span>
+          {a.parentResource === 'leads' && <span className="tag tone-info">{T.timeline.fromLead(String(a.parentId))}</span>}
           <span className="flow-main">
             <span className="flow-title">{String(a.subject)}</span>
             <span className="muted small">

@@ -72,7 +72,8 @@ export function LinesTable({ lines, showMargin, compact }: { lines: QuoteLine[];
 type TotalsInput = Pick<QuoteTotals, 'subtotal' | 'discountTotal' | 'freight' | 'insurance' | 'taxable' | 'cgst' | 'sgst' | 'igst' | 'grandTotal' | 'amountInWords' | 'landedCostTotal' | 'marginPct'>;
 
 /** Totals block: list value, discount, freight, insurance, taxable, CGST/SGST or IGST, total, words. */
-export function TotalsBlock({ t, showMargin }: { t: TotalsInput; showMargin?: boolean }) {
+/** `interState` (place of supply ≠ company GST state) picks IGST vs CGST + SGST even when the tax is ₹0. */
+export function TotalsBlock({ t, showMargin, interState }: { t: TotalsInput; showMargin?: boolean; interState?: boolean }) {
   const X = T.totals;
   const row = (label: string, value: number | null | undefined, strong = false) => (
     <div className="detail-row">
@@ -87,7 +88,7 @@ export function TotalsBlock({ t, showMargin }: { t: TotalsInput; showMargin?: bo
       {Number(t.freight) > 0 && row(X.freight, t.freight)}
       {Number(t.insurance) > 0 && row(X.insurance, t.insurance)}
       {row(X.taxable, t.taxable)}
-      {Number(t.igst) > 0 ? (
+      {(interState ?? Number(t.igst) > 0) ? (
         row(X.igst, t.igst)
       ) : (
         <>
@@ -114,9 +115,9 @@ export function TotalsBlock({ t, showMargin }: { t: TotalsInput; showMargin?: bo
 }
 
 /** GST summary by rate (Pricing & GST tab, Quotation PDF). */
-export function TaxSummary({ totals, className = '' }: { totals: Pick<QuoteTotals, 'taxByRate' | 'igst'>; className?: string }) {
+export function TaxSummary({ totals, className = '', interState }: { totals: Pick<QuoteTotals, 'taxByRate' | 'igst'>; className?: string; interState?: boolean }) {
   const C = T.tabContent;
-  const igst = Number(totals.igst) > 0;
+  const igst = interState ?? Number(totals.igst) > 0;
   return (
     <div className="table-scroll">
       <table className={`mini-table ${className}`.trim()}>

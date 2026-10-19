@@ -13,11 +13,11 @@ import { quotationsApi } from '../../services/api/quotations';
 import { perm } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { byId } from '../../services/lookups';
-import { discountApprovalLevels, getPolicies } from '../../services/policies';
+import { getPolicies } from '../../services/policies';
 import { activeMasterValues, getUser, masterLabel, masterValue } from '../../services/registry';
 import { queryRecords, updateRecord } from '../../services/runtime';
 import { computeTotals, roi } from '../../services/quotations/pricing';
-import { getQuote, levelName } from '../../services/quotations/workflow';
+import { getQuote, levelName, quoteApprovalChain } from '../../services/quotations/workflow';
 import { ServiceError } from '../../services/types';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
 import { Button, IconButton } from '../../components/primitives/Button';
@@ -184,7 +184,10 @@ function useRun(onClose: () => void) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const inFlight = useRef(false);
   const run = async (op: () => Promise<unknown>, done: string) => {
+    if (inFlight.current) return; // double click: one request only
+    inFlight.current = true;
     setBusy(true);
     setErrors({});
     try {
@@ -195,6 +198,7 @@ function useRun(onClose: () => void) {
       if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
       toast(errorMessage(e), 'danger');
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -206,7 +210,7 @@ function SubmitDialog({ record, onClose }: DProps) {
   const [reason, setReason] = useState('');
   const { busy, errors, run } = useRun(onClose);
   const pct = Number(record.maxDiscountPct) || 0;
-  const levels = discountApprovalLevels(pct);
+  const levels = quoteApprovalChain(actor, record, pct);
   const no = String(record.quoteNo);
   return (
     <Dialog
@@ -453,6 +457,7 @@ function VersionDialog({ record, onClose }: DProps) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const inFlight = useRef(false);
   return (
     <Dialog
       open
@@ -467,6 +472,8 @@ function VersionDialog({ record, onClose }: DProps) {
             variant="primary"
             loading={busy}
             onClick={async () => {
+              if (inFlight.current) return;
+              inFlight.current = true;
               setBusy(true);
               setError('');
               try {
@@ -477,6 +484,7 @@ function VersionDialog({ record, onClose }: DProps) {
               } catch (e) {
                 setError(errorMessage(e));
               } finally {
+                inFlight.current = false;
                 setBusy(false);
               }
             }}
@@ -592,9 +600,10 @@ export function PricingTab({ actor, record }: Props) {
       <TotalsBlock
         t={{ subtotal: Number(r.subtotal), discountTotal: Number(r.discountTotal), freight: Number(r.freight), insurance: Number(r.insurance), taxable: Number(r.taxable), cgst: Number(r.cgst), sgst: Number(r.sgst), igst: Number(r.igst), grandTotal: Number(r.grandTotal), amountInWords: String(r.amountInWords ?? ''), landedCostTotal: r.landedCostTotal as number | null, marginPct: r.marginPct as number | null }}
         showMargin={q.data.showMargin}
+        interState={!sameState}
       />
       <h3 className="panel-title">{C.taxSummary}</h3>
-      <TaxSummary totals={totals} />
+      <TaxSummary totals={totals} interState={!sameState} />
     </div>
   );
 }

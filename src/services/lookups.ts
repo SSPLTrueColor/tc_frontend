@@ -47,12 +47,13 @@ export function contractRateFor(customerId: string, productId: string, dateKey =
 
 /** BR-16: CGST+SGST inside the company's GST state, otherwise IGST. Amounts rounded to paise. */
 export function gstSplit(placeOfSupplyState: string, taxable: number, ratePct: number) {
-  const tax = Math.round(taxable * ratePct) / 100;
+  // Work in paise; CGST and SGST are always equal halves (rate ÷ 2 each, rounded half-up to the paisa), BR-16.
+  const paise = Math.round(taxable * 100);
   if (placeOfSupplyState === getPolicies().companyGstState) {
-    const half = Math.round(tax * 50) / 100;
-    return { cgst: half, sgst: Math.round((tax - half) * 100) / 100, igst: 0 };
+    const half = Math.round((paise * ratePct) / 200) / 100;
+    return { cgst: half, sgst: half, igst: 0 };
   }
-  return { cgst: 0, sgst: 0, igst: Math.round(tax * 100) / 100 };
+  return { cgst: 0, sgst: 0, igst: Math.round((paise * ratePct) / 100) / 100 };
 }
 
 const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];

@@ -253,7 +253,7 @@ export function PipelinePage() {
 }
 
 /** Table footer (same markup as the resource list footer): range, numbered pages, rows per page. */
-function Pager({ page, pageCount, pageSize, total, onPage, onSize }: { page: number; pageCount: number; pageSize: number; total: number; onPage: (p: number) => void; onSize: (n: number) => void }) {
+export function Pager({ page, pageCount, pageSize, total, onPage, onSize, range = T.range }: { page: number; pageCount: number; pageSize: number; total: number; onPage: (p: number) => void; onSize: (n: number) => void; range?: (from: number, to: number, total: number) => string }) {
   const from = total ? page * pageSize + 1 : 0;
   const to = Math.min(total, (page + 1) * pageSize);
   const pages: (number | 'gap')[] = [];
@@ -264,7 +264,7 @@ function Pager({ page, pageCount, pageSize, total, onPage, onSize }: { page: num
   return (
     <div className="grid-footer">
       <span className="grid-footer-range" aria-live="polite">
-        {T.range(from, to, total)}
+        {range(from, to, total)}
       </span>
       <nav className="grid-pages" aria-label={T.pagination}>
         <IconButton icon="chevron-left" label={T.previousPage} disabledReason={page === 0 ? T.firstPage : undefined} onClick={() => onPage(page - 1)} />

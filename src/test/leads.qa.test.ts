@@ -6,6 +6,7 @@ import { logActivity } from '../services/activities';
 import { createRecord, getRecord, queryRecords, transitionRecord, updateRecord } from '../services/runtime';
 import { createLeadWithParty, disqualifyLead, importLeads, nurtureLead, previewImport, qualifyLead, toImportRows, parseCsv } from '../services/leads/rules';
 import { addDays, nowLocal, todayKey } from '../lib/dates';
+import { isStagnant } from '../domain/modules/opportunities';
 import '../domain/extensions/index';
 
 const has = (k: string) => appPack.resources.some((r) => r.key === k);
@@ -27,6 +28,13 @@ describe('leads QA probes', () => {
     const after = getDb().records.leads.find((x) => x.id === l.id)!;
     expect(after.status).toBe('contacted');
     expect(after.nextFollowUpAt).toBe(addDays(todayKey(), 2));
+  });
+
+  it('BR-07: logging a follow-up on an open lead without a next follow-up date is rejected by the service', () => {
+    if (!has('customers')) return;
+    const l = lead('contacted');
+    expect(() => logActivity(admin(), { parentResource: 'leads', parentId: l.id, parentLabel: l.id, activityType: 'call', subject: 'Call', at: nowLocal(), nextFollowUpAt: null })).toThrow(/next follow-up/);
+    expect(() => logActivity(admin(), { parentResource: 'leads', parentId: l.id, parentLabel: l.id, activityType: 'call', subject: 'Call', at: nowLocal(), nextFollowUpAt: addDays(todayKey(), -1) })).toThrow(/next follow-up/);
   });
 
   it('Appendix A: New → Contacted only by logging the first contact (no manual "Mark Contacted")', () => {
@@ -90,6 +98,8 @@ describe('leads QA probes', () => {
     expect(opp.productType).toBe(l.productType);
     expect(String(opp.notes ?? '')).toContain('Needs 3.2 m printer');
     expect(opp.contactId).toBe(l.contactId);
+    // A fresh opportunity is not stagnant (BR-12).
+    expect(isStagnant(opp)).toBe(false);
     // Double submit with the stale version is rejected — no duplicate opportunity.
     expect(() => qualifyLead(admin(), l.id, l.version, { requirement: 'r', budget: 1, decisionMaker: 'd', timeline: '1_3m', opportunityName: 'Opp', value: 1, expectedCloseDate: addDays(todayKey(), 60) })).toThrow();
     expect(getDb().records.opportunities.filter((o) => o.leadId === l.id).length).toBe(1);
@@ -122,11 +132,11 @@ describe('leads QA probes', () => {
     if (!has('customers')) return;
     const l = lead('contacted', karan().staffId);
     if (!l) return;
-    const r = updateRecord(karan(), 'leads', l.id, { ownerId: rohan().staffId, nextFollowUpAt: addDays(todayKey(), 1) }, l.version).record;
-    expect(r.ownerId).toBe(karan().staffId);
+    expect(() => updateRecord(karan(), 'leads', l.id, { ownerId: rohan().staffId, nextFollowUpAt: addDays(todayKey(), 1) }, l.version)).toThrow(/Lead owner/);
     const sneha = actorFor('u_sneha', WS).staffId;
-    const fresh = getDb().records.leads.find((x) => x.id === l.id)!;
-    expect(() => updateRecord(admin(), 'leads', l.id, { ownerId: sneha, nextFollowUpAt: addDays(todayKey(), 1) }, fresh.version)).toThrow();
+    expect(() => updateRecord(admin(), 'leads', l.id, { ownerId: sneha, nextFollowUpAt: addDays(todayKey(), 1) }, l.version)).toThrow(/does not work in/);
+    // Manager reassigns inside the team.
+    expect(updateRecord(rohan(), 'leads', l.id, { ownerId: rohan().staffId, nextFollowUpAt: addDays(todayKey(), 1) }, l.version).record.ownerId).toBe(rohan().staffId);
   });
 
   it('§2.2 scope: exec sees own only, manager sees team, out-of-scope direct read is not found; store has no access', () => {

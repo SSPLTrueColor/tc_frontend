@@ -6,7 +6,7 @@ import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { formatDate } from '../../lib/dates';
 import { recordPeekPath } from '../../lib/routes';
 import { errorMessage } from '../../services/api/client';
-import { advanceOrderProcessing, processingBoard, updateOrderProcessing, validateProcessing, type ProcessingInput, type ProcessingRow } from '../../services/api/orders';
+import { advanceOrderProcessing, customerNameOf, processingBoard, updateOrderProcessing, validateProcessing, type ProcessingInput, type ProcessingRow } from '../../services/api/orders';
 import { can, canReadResource } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterValue } from '../../services/registry';
@@ -70,9 +70,9 @@ export function OrderProcessingPage() {
       if (kind && o.orderKind !== kind) return false;
       if (division && o.divisionId !== division) return false;
       if (etaOnly && !etaPassed) return false;
-      return !needle || `${o.orderNo} ${o.poToPrincipalNo ?? ''} ${recordTitle('customers', o.customerId, actor)} ${recordTitle('products', o.productId, actor)}`.toLowerCase().includes(needle);
+      return !needle || `${o.orderNo} ${o.poToPrincipalNo ?? ''} ${customerNameOf(o.customerId)} ${recordTitle('products', o.productId, actor)}`.toLowerCase().includes(needle);
     });
-    const val = (r: ProcessingRow): string => (sort.key === 'customer' ? recordTitle('customers', r.order.customerId, actor) : String(r.order[sort.key] ?? '9999-12-31'));
+    const val = (r: ProcessingRow): string => (sort.key === 'customer' ? customerNameOf(r.order.customerId) : String(r.order[sort.key] ?? '9999-12-31'));
     return [...list].sort((a, b) => (val(a) < val(b) ? -sort.dir : val(a) > val(b) ? sort.dir : 0));
   }, [data.data, search, status, customs, kind, division, etaOnly, sort]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,7 +210,7 @@ export function OrderProcessingPage() {
                                 {masterValue('orderKind', o.orderKind)?.label} · {formatDate(String(o.orderDate))}
                               </div>
                             </td>
-                            <td>{recordTitle('customers', o.customerId, actor)}</td>
+                            <td>{customerNameOf(o.customerId)}</td>
                             <td>{o.productId ? recordTitle('products', o.productId, actor) : <EmptyValue />}</td>
                             <td>{chip('soStatus', o.status)}</td>
                             {isEditing ? (
