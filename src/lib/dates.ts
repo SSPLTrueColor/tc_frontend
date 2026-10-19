@@ -1,7 +1,9 @@
 /**
- * Date helpers. Clinic times are stored as local wall-clock strings
- * ("YYYY-MM-DDTHH:mm") in the workspace's clinic time — no implicit UTC shifts.
+ * Date helpers. Times are stored as local wall-clock strings ("YYYY-MM-DDTHH:mm", IST)
+ * with no implicit UTC shifts. "Today" comes from the simulated clock.
  */
+import { now, nowMs } from './clock';
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 export function toDateKey(d: Date): string {
@@ -32,8 +34,10 @@ export function addDays(dateKey: string, days: number): string {
 }
 
 export function todayKey(): string {
-  return toDateKey(new Date());
+  return toDateKey(now());
 }
+
+export const nowLocal = () => toLocalDateTime(now());
 
 export function startOfWeek(dateKey: string): string {
   const d = parseLocal(dateKey);
@@ -42,7 +46,7 @@ export function startOfWeek(dateKey: string): string {
   return toDateKey(d);
 }
 
-// Project date format (owner rule): cells "16 Oct, 2026"; full/tooltip "Fri, 16 Oct 2026 08:30 AM".
+// Indian format (BRD COM-11): cells "16-10-2026"; full/tooltip "Fri, 16-10-2026 08:30 AM".
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -52,16 +56,13 @@ export function toDate(s: string): Date {
 }
 export const hasTime = (s: string) => /T\d{2}:\d{2}/.test(s);
 
-const dmy = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+const dmy = (d: Date) => `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
 const hm = (d: Date) => {
   const h = d.getHours() % 12 || 12;
   return `${pad(h)}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
 };
 
-export const formatDate = (s: string) => {
-  const d = toDate(s);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${d.getFullYear()}`;
-};
+export const formatDate = (s: string) => dmy(toDate(s));
 export const formatDateTime = (s: string) => `${dmy(toDate(s))} ${hm(toDate(s))}`;
 export const formatTime = (s: string) => hm(toDate(s));
 /** Short weekday + day + month, for calendar headers: "Fri, 16 Oct". */
@@ -76,7 +77,7 @@ export const formatWeekdayFull = (s: string) => {
 };
 
 export function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  const diff = nowMs() - new Date(iso).getTime();
   const min = Math.round(diff / 60000);
   if (min < 1) return 'just now';
   if (min < 60) return `${min}m ago`;

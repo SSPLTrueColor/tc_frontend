@@ -1,9 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { activeModule, appModules, appMonogram, appName, demoUsers, getRole } from '../../app/nav';
+import { appModules, demoUsers, organization, workspaces } from '../../domain/pack';
 import { cx } from '../../lib/format';
+import { pagePath, recordPeekPath, resourcePath, wsBase } from '../../lib/routes';
 import { PHONE, TABLET, useMedia } from '../../lib/useMedia';
-import { getPersistError, getSettings, resetDemoData, SIDEBAR_MAX, SIDEBAR_MIN, switchUser, toggleFavorite, togglePin, updateSettings, useActor, useRevision } from '../../store/session';
+import { can, canReadResource } from '../../services/authz';
+import { listNotifications, markAllRead, markNotification, snoozeNotification } from '../../services/collab';
+import { getPersistError, resetDb } from '../../services/db';
+import { idleExpired, signOut, touchSession } from '../../services/session';
+import { isOffline, pendingWrites, setOffline, subscribeOffline } from '../../services/offline';
+import { useActor, useRevision } from '../../services/hooks';
+import { getResource, getRole } from '../../services/registry';
+import { searchRecords } from '../../services/search';
+import { getSettings, SIDEBAR_MAX, SIDEBAR_MIN, switchSession, toggleFavorite, togglePin, updateSettings } from '../../services/settings';
+import { listViews } from '../../services/views';
+import { relativeTime } from '../../lib/dates';
 import { applyPalette, DEFAULT_PALETTE_ID, findPalette } from '../../lib/palette';
 import { Button, IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
@@ -13,8 +24,20 @@ import { HelpContent } from './help';
 import { InfoTip } from '../primitives/InfoTip';
 import { TOPBAR_TITLE_SLOT } from './PageHeader';
 
-const moduleHome = (m: (typeof appModules)[number]) => m.pages[0]?.path ?? '/dashboard';
+function moduleVisible(actor: ReturnType<typeof useActor>, m: (typeof appModules)[number]) {
+  if (m.resources.some((r) => canReadResource(actor, r))) return true;
+  return (m.pages ?? []).some((p) => !p.capability || can(actor, p.capability));
+}
 
+/** Module of the current URL: /admin/* → admin; /<resource> → its module; /<page> → the module owning the page. */
+function activeModule(pathname: string) {
+  const seg = pathname.split('/')[1] ?? '';
+  if (!seg || seg === 'dashboard') return 'home';
+  if (seg === 'admin') return 'admin';
+  const byResource = appModules.find((m) => m.resources.includes(seg));
+  if (byResource) return byResource.id;
+  return appModules.find((m) => m.id !== 'admin' && (m.pages ?? []).some((p) => p.path.split('/')[0] === seg))?.id ?? seg;
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
   useRevision();
@@ -30,6 +53,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   const drawerNav = tablet;
 
   useEffect(() => setNavOpen(false), [location.pathname]);
+
+  // Simulated session timeout (NFR-08): activity keeps the session alive; idle sessions lock.
+  const toast = useToast();
+  const navigate = useNavigate();
+  useEffect(() => {
+    let last = 0;
+    const onActivity = () => {
+      if (Date.now() - last > 15_000) {
+        last = Date.now();
+        touchSession();
+      }
+    };
+    const timer = window.setInterval(() => {
+      if (idleExpired()) {
+        signOut('idle');
+        toast('Signed out after inactivity. Sign in again to continue.', 'info');
+        navigate('/login');
+      }
+    }, 20_000);
+    window.addEventListener('pointerdown', onActivity);
+    window.addEventListener('keydown', onActivity);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('pointerdown', onActivity);
+      window.removeEventListener('keydown', onActivity);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Theme + rail skin are personal settings.
   useEffect(() => {
@@ -62,7 +112,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="preview-banner" role="note">
         <Icon name="info" size={14} />
         <span>
-          <strong>Prototype</strong> · Synthetic data stored only in this browser · Roles are simulated (no real sign-in) · Nothing is sent, charged or shared.
+          <strong>Prototype</strong> · Demo data stored only in this browser · Sign-in and roles are simulated · No email, WhatsApp or ERP message is really sent.
         </span>
         <button type="button" className="link" onClick={() => setHelpOpen(true)}>
           What is real?
@@ -95,17 +145,27 @@ export function AppShell({ children }: { children: ReactNode }) {
 // ---------------------------------------------------------------- Icon rail
 
 function IconRail({ mod, onSearch, onHelp }: { mod: string; onSearch: () => void; onHelp: () => void }) {
+  const actor = useActor();
+  const unread = listNotifications(actor).filter((n) => !n.readAt).length;
+  const navigate = useNavigate();
+  const location = useLocation();
   return (
     <nav className="rail" aria-label="Modules">
-      <Link to="/dashboard" className="rail-brand" aria-label={`${appName} home`} data-tooltip={appName}>
-        <span aria-hidden="true">{appMonogram}</span>
+      <Link to={`${wsBase(actor.workspaceId)}/dashboard`} className="rail-brand" aria-label={`${organization.name} home`} data-tooltip={organization.name}>
+        <span aria-hidden="true">{organization.monogram}</span>
       </Link>
       <ul className="rail-list">
         {appModules
-          .filter((m) => m.id !== 'admin')
+          .filter((m) => m.id !== 'admin' && moduleVisible(actor, m))
           .map((m) => (
             <li key={m.id}>
-              <Link to={moduleHome(m)} className={cx('rail-item', mod === m.id && 'is-active')} aria-current={mod === m.id ? 'page' : undefined} aria-label={m.label} data-tooltip={m.label}>
+              <Link
+                to={m.id === 'home' ? `${wsBase(actor.workspaceId)}/dashboard` : m.resources[0] ? resourcePath(actor.workspaceId, m.resources[0]) : pagePath(actor.workspaceId, m.id, m.pages![0].path)}
+                className={cx('rail-item', mod === m.id && 'is-active')}
+                aria-current={mod === m.id ? 'page' : undefined}
+                aria-label={m.label}
+                data-tooltip={m.label}
+              >
                 <Icon name={m.icon} />
               </Link>
             </li>
@@ -118,15 +178,29 @@ function IconRail({ mod, onSearch, onHelp }: { mod: string; onSearch: () => void
           </button>
         </li>
         <li>
+          <button type="button" className={cx('rail-item', mod === 'work' && location.pathname.endsWith('inbox') && 'is-active')} aria-label={`Work inbox${unread ? `, ${unread} unread` : ''}`} data-tooltip="Work inbox" onClick={() => navigate(pagePath(actor.workspaceId, 'work', 'inbox'))}>
+            <Icon name="inbox" />
+            {unread > 0 && (
+              <span className="rail-badge" aria-hidden="true">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
+          </button>
+        </li>
+        <li>
           <button type="button" className="rail-item" aria-label="AI assistant (not available)" data-tooltip="AI assistant — not enabled in this prototype" aria-disabled="true" onClick={onHelp}>
             <Icon name="sparkles" />
           </button>
+        </li>
+        <li>
+          <Link to={pagePath(actor.workspaceId, 'admin', 'settings')} className={cx('rail-item', mod === 'admin' && 'is-active')} aria-label="Administration and settings" data-tooltip="Administration">
+            <Icon name="settings" />
+          </Link>
         </li>
       </ul>
     </nav>
   );
 }
-
 
 // ---------------------------------------------------------------- Context sidebar
 
@@ -182,8 +256,26 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
   };
 
   // Everything the sidebar can open, built once — the search and the favourites use the same entries.
-  const pages: NavEntry[] = m.pages.map((p) => ({ key: `page:${p.id}`, label: p.label, path: p.path, icon: p.icon, active: location.pathname === p.path }));
-  const groups: { rk: string; label: string; items: NavEntry[] }[] = [];
+  const pages: NavEntry[] = (m.pages ?? [])
+    .filter((p) => !p.capability || can(actor, p.capability))
+    .map((p) => {
+      const path = pagePath(actor.workspaceId, m.id, p.path);
+      return { key: `page:${p.id}`, label: p.label, path, icon: p.icon, active: location.pathname === path };
+    });
+  const groups = m.resources
+    .filter((r) => canReadResource(actor, r))
+    .map((rk) => {
+      const res = getResource(rk);
+      const views = listViews(actor, rk);
+      const base = `/${rk}`;
+      const current = location.pathname === base ? new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || views[0]?.id) : undefined;
+      const withIcons = m.navChildIcons?.includes(rk);
+      const items: NavEntry[] = views.map((v) => {
+        const typeIcon = v.type === 'board' ? 'board' : v.type === 'calendar' ? 'calendar' : 'list';
+        return { key: `view:${v.id}`, label: v.name, path: `${base}?view=${v.id}`, icon: withIcons ? typeIcon : undefined, altIcon: typeIcon, active: current === v.id };
+      });
+      return { rk, label: res.labelPlural, items };
+    });
   const all = [...pages, ...groups.flatMap((g) => g.items)];
   const needle = q.trim().toLowerCase();
   const results = needle ? all.filter((e) => e.label.toLowerCase().includes(needle)) : [];
@@ -231,6 +323,17 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
               {pages.map((e) => (
                 <NavItem key={e.key} entry={e} />
               ))}
+              {m.id === 'admin' &&
+                (m.pages ?? [])
+                  .filter((p) => p.capability && !can(actor, p.capability))
+                  .map((p) => (
+                    <li key={p.id}>
+                      <span className="nav-row is-disabled" data-tooltip={`Not available for ${actor.role.label}`}>
+                        <Icon name="lock" />
+                        <span className="nav-label">{p.label}</span>
+                      </span>
+                    </li>
+                  ))}
             </ul>
             {groups.length > 0 && <span className="nav-section is-static">Menu</span>}
             {groups.map((g) => {
@@ -340,6 +443,7 @@ function ContextSidebar({ mod }: { mod: string }) {
 }
 
 function MobileNav({ mod, onClose, onSearch, onHelp, showRail }: { mod: string; onClose: () => void; onSearch: () => void; onHelp: () => void; showRail: boolean }) {
+  const actor = useActor();
   const ref = useRef<HTMLDivElement>(null);
   useLayer(true, onClose);
   useEffect(() => {
@@ -350,10 +454,12 @@ function MobileNav({ mod, onClose, onSearch, onHelp, showRail }: { mod: string; 
       <div ref={ref} className="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation">
         {showRail && (
           <div className="mobile-modules">
-            {appModules.map((m) => (
+            {appModules
+              .filter((m) => moduleVisible(actor, m))
+              .map((m) => (
                 <Link
                   key={m.id}
-                  to={moduleHome(m)}
+                  to={m.id === 'home' ? `${wsBase(actor.workspaceId)}/dashboard` : m.resources[0] ? resourcePath(actor.workspaceId, m.resources[0]) : pagePath(actor.workspaceId, m.id, m.pages![0].path)}
                   className={cx('mobile-module', mod === m.id && 'is-active')}
                   aria-current={mod === m.id ? 'page' : undefined}
                 >
@@ -380,7 +486,7 @@ function MobileNav({ mod, onClose, onSearch, onHelp, showRail }: { mod: string; 
   );
 }
 
-// ---------------------------------------------------------------- Top bar: notifications, account
+// ---------------------------------------------------------------- Top bar: workspace, notifications, account
 
 function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: boolean; onSearch: () => void }) {
   const actor = useActor();
@@ -403,6 +509,8 @@ function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: 
         <kbd>Ctrl K</kbd>
       </button>
       <div className="topbar-right">
+        {workspaces.length > 1 && <WorkspaceSwitcher />}
+        <OfflineToggle />
         <NotificationBell />
         <AccountMenu />
       </div>
@@ -410,25 +518,126 @@ function TopBar({ onMenu, showMenu, onSearch }: { onMenu: () => void; showMenu: 
   );
 }
 
-function NotificationBell() {
+/** NFR-15 simulated offline mode: queues field writes; going online syncs them and reports conflicts. */
+function OfflineToggle() {
+  const off = useSyncExternalStore(subscribeOffline, isOffline, isOffline);
+  const pending = useSyncExternalStore(subscribeOffline, () => pendingWrites().length, () => 0);
+  const toast = useToast();
+  return (
+    <IconButton
+      icon={off ? 'eye-off' : 'activity'}
+      label={off ? `Offline (simulated)${pending ? `, ${pending} change(s) waiting to sync` : ''}. Go online` : 'Online. Simulate going offline'}
+      badge={off ? pending : undefined}
+      aria-pressed={off}
+      className={off ? 'is-offline' : undefined}
+      onClick={() => {
+        const r = setOffline(!off);
+        if (!r) toast('Offline (simulated): attendance, visits and job cards are saved on this device until you go online', 'info');
+        else if (r.conflicts.length) toast(`Back online: ${r.synced.length} synced, ${r.conflicts.length} conflict(s) — ${r.conflicts.map((c) => `${c.label}: ${c.message}`).join('; ')}`, 'danger');
+        else toast(r.synced.length ? `Back online: ${r.synced.length} change(s) synced` : 'Back online', 'success');
+      }}
+    />
+  );
+}
+
+function WorkspaceSwitcher() {
+  const actor = useActor();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const ws = workspaces.find((w) => w.id === actor.workspaceId)!;
   return (
     <>
-      <IconButton ref={ref} icon="bell" label="Notifications" onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} />
+      <button ref={ref} type="button" className="ws-switch" data-tooltip={`${organization.name} / ${ws.name}`} aria-label={`Workspace: ${ws.name}. Switch workspace`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <Icon name="building" size={14} />
+        <span className="ws-name">{ws.name}</span>
+        <Icon name="chevrons-up-down" size={14} />
+      </button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Switch workspace" width={260}>
+        <p className="pop-label dialog-title-row">
+          {organization.name} · workspaces
+          <InfoTip text="Records are isolated per workspace." label="About workspaces" />
+        </p>
+        <ul className="menu">
+          {workspaces.map((w) => (
+            <li key={w.id}>
+              <button
+                type="button"
+                className={cx('menu-item', w.id === actor.workspaceId && 'is-current')}
+                onClick={() => {
+                  setOpen(false);
+                  if (w.id === actor.workspaceId) return;
+                  switchSession(actor.user.id, w.id);
+                  const rest = location.pathname.split('/').slice(5).join('/') || 'dashboard';
+                  navigate(`${wsBase(w.id)}/${rest}`);
+                }}
+              >
+                <Icon name={w.id === actor.workspaceId ? 'check' : 'circle'} />
+                <span className="menu-label">{w.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Popover>
+    </>
+  );
+}
+
+function NotificationBell() {
+  const actor = useActor();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const navigate = useNavigate();
+  const items = listNotifications(actor);
+  const unread = items.filter((n) => !n.readAt).length;
+  const go = (n: (typeof items)[number]) => {
+    markNotification(actor, n.id, true);
+    setOpen(false);
+    if (!n.link) return;
+    if ('page' in n.link) navigate(`/${n.link.page}`);
+    else navigate(recordPeekPath(actor.workspaceId, n.link.resource, n.link.recordId));
+  };
+  return (
+    <>
+      <IconButton ref={ref} icon="bell" label={`Notifications${unread ? `, ${unread} unread` : ''}`} badge={unread} onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} />
       <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Notifications" width={360} align="end">
         <div className="pop-head">
           <span className="dialog-title-row">
             <strong>Notifications</strong>
             <InfoTip text="Reading a notification never approves or completes the linked work." label="About notifications" />
           </span>
+          <Button variant="ghost" onClick={() => markAllRead(actor)} disabledReason={unread ? undefined : 'Nothing unread'}>
+            Mark all read
+          </Button>
         </div>
-        <p className="muted pop-empty">You’re all caught up.</p>
+        {items.length ? (
+          <ul className="notif-list">
+            {items.slice(0, 12).map((n) => (
+              <li key={n.id} className={cx('notif', !n.readAt && 'is-unread')}>
+                <button type="button" className="notif-main" onClick={() => go(n)}>
+                  {!n.readAt && <span className="unread-dot" aria-label="Unread" />}
+                  <span>
+                    <span className="notif-title">{n.title}</span>
+                    <span className="muted small">
+                      {n.kind.replace('_', ' ')} · {relativeTime(n.createdAt)}
+                    </span>
+                  </span>
+                </button>
+                <IconButton icon="calendar-clock" label="Snooze for 4 hours" onClick={() => snoozeNotification(actor, n.id, 4)} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted pop-empty">You’re all caught up.</p>
+        )}
+        <Link className="pop-foot link" to={pagePath(actor.workspaceId, 'work', 'inbox')} onClick={() => setOpen(false)}>
+          Open Work inbox
+        </Link>
       </Popover>
     </>
   );
 }
-
 
 function AccountMenu() {
   const actor = useActor();
@@ -436,6 +645,7 @@ function AccountMenu() {
   const [confirmReset, setConfirmReset] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const toast = useToast();
+  const navigate = useNavigate();
   return (
     <>
       <button ref={ref} type="button" className="account-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)} aria-label={`Account: ${actor.user.name}, ${actor.role.label}`}>
@@ -446,8 +656,8 @@ function AccountMenu() {
         </span>
       </button>
       <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label="Account and role" width={300} align="end">
-        <p className="pop-label">Simulated sign-in (demo users)</p>
-        <ul className="menu">
+        <p className="pop-label">Switch demo user (simulated sign-in)</p>
+        <ul className="menu" style={{ maxHeight: 300, overflowY: 'auto' }}>
           {demoUsers.map((u) => (
             <li key={u.id}>
               <button
@@ -456,7 +666,7 @@ function AccountMenu() {
                 onClick={() => {
                   setOpen(false);
                   if (u.id === actor.user.id) return;
-                  switchUser(u.id);
+                  switchSession(u.id, actor.workspaceId);
                   toast(`Now viewing as ${u.name} (${getRole(u.roleId).label})`, 'info');
                 }}
               >
@@ -475,6 +685,32 @@ function AccountMenu() {
           <li>
             <button
               type="button"
+              className="menu-item"
+              onClick={() => {
+                setOpen(false);
+                navigate('/inbox');
+              }}
+            >
+              <Icon name="inbox" />
+              <span className="menu-label">My work</span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => {
+                setOpen(false);
+                navigate(pagePath(actor.workspaceId, 'admin', 'settings'));
+              }}
+            >
+              <Icon name="sliders" />
+              <span className="menu-label">Personal settings</span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
               className="menu-item is-danger"
               onClick={() => {
                 setOpen(false);
@@ -483,6 +719,20 @@ function AccountMenu() {
             >
               <Icon name="reset" />
               <span className="menu-label">Reset demo data…</span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              className="menu-item"
+              onClick={() => {
+                setOpen(false);
+                signOut();
+                navigate('/login');
+              }}
+            >
+              <Icon name="door-open" />
+              <span className="menu-label">Sign out</span>
             </button>
           </li>
         </ul>
@@ -510,7 +760,7 @@ export function ResetDialog({ open, onClose }: { open: boolean; onClose: () => v
           <Button
             variant="danger"
             onClick={() => {
-              resetDemoData();
+              resetDb();
               onClose();
               toast('Demo data reset', 'info');
             }}
@@ -520,7 +770,7 @@ export function ResetDialog({ open, onClose }: { open: boolean; onClose: () => v
         </>
       }
     >
-      <p className="muted">All records and changes you made will be discarded.</p>
+      <p className="muted">All records, comments, approvals, messages, views and configuration changes made in this browser will be discarded.</p>
     </Dialog>
   );
 }
@@ -553,22 +803,42 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
       onClose();
       navigate(to);
     };
-    appModules.forEach((m) => m.pages.forEach((p) => out.push({ id: `p-${p.id}`, label: p.label, hint: m.label, icon: p.icon, run: go(p.path) })));
+    appModules.forEach((m) => {
+      (m.pages ?? []).filter((p) => !p.capability || can(actor, p.capability)).forEach((p) => out.push({ id: `p-${p.id}`, label: p.label, hint: m.label, icon: p.icon, run: go(pagePath(actor.workspaceId, m.id, p.path)) }));
+      m.resources
+        .filter((r) => canReadResource(actor, r))
+        .forEach((r) => {
+          const res = getResource(r);
+          out.push({ id: `r-${r}`, label: res.labelPlural, hint: m.label, icon: res.icon === 'calendar' ? 'calendar' : res.icon, run: go(resourcePath(actor.workspaceId, r)) });
+          listViews(actor, r).forEach((v) => out.push({ id: `v-${v.id}`, label: `${res.labelPlural}: ${v.name}`, hint: 'Saved view', icon: 'list', run: go(resourcePath(actor.workspaceId, r, { view: v.id })) }));
+        });
+    });
     getSettings(actor.user.id).recents.forEach((r) => out.push({ id: `rec-${r.path}`, label: r.label, hint: 'Recent', icon: 'reset', run: go(r.path) }));
     return out;
-  }, [actor.user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [actor.user.id, actor.workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const records = useMemo(() => (open ? searchRecords(actor, q) : []), [q, open, actor.user.id, actor.workspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
   const needle = q.trim().toLowerCase();
   const list: Cmd[] = [
+    ...records.map((h) => ({
+      id: `rec-${h.resource}-${h.id}`,
+      label: `${h.id} · ${h.title}`,
+      hint: h.exact ? `${h.resourceLabel} · exact ID` : h.resourceLabel,
+      icon: 'search',
+      run: () => {
+        onClose();
+        navigate(recordPeekPath(actor.workspaceId, h.resource, h.id));
+      },
+    })),
     ...commands.filter((c) => !needle || c.label.toLowerCase().includes(needle)).slice(0, needle ? 12 : 10),
   ];
 
   return (
-    <Dialog open={open} onClose={onClose} title="Search" description="Pages you can access." size="md">
+    <Dialog open={open} onClose={onClose} title="Search" description="Pages, saved views and records you can access. Search covers fields your role can see in full; masked fields are not searchable." size="md">
       <div className="palette">
         <input
           className="input"
-          placeholder="Type a page name…"
+          placeholder="Type a name, ID (e.g. P-1003) or page…"
           aria-label="Search"
           role="combobox"
           aria-expanded="true"

@@ -1,0 +1,72 @@
+/* Orders module — layout helpers on top of the template classes (tokens only). */
+.orders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+.orders-num {
+  width: 88px;
+  text-align: right;
+}
+.orders-tag {
+  margin-left: 6px;
+}
+.orders-row-added td {
+  background: color-mix(in srgb, var(--c-warning-fg, #b45309) 8%, transparent);
+}
+.orders-row-changed td {
+  background: color-mix(in srgb, var(--c-info-fg, #2563eb) 6%, transparent);
+}
+.orders-totals {
+  max-width: 420px;
+  margin-left: auto;
+  margin-top: var(--sp-3);
+}
+.orders-file {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.orders-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-supportive);
+}
+.orders-print {
+  display: grid;
+  gap: var(--sp-4);
+  max-width: 900px;
+}
+.orders-print-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+.orders-print-title {
+  font-size: var(--fs-primary);
+  font-weight: var(--fw-semibold);
+}
+.orders-print-sign {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding-top: var(--sp-6, 32px);
+}
+@media print {
+  .rail,
+  .sidebar,
+  .topbar,
+  .preview-banner,
+  .page-header,
+  .skip-link {
+    display: none !important;
+  }
+  .orders-print {
+    border: 0;
+    box-shadow: none;
+    max-width: none;
+  }
+}

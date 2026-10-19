@@ -16,7 +16,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => setSlot(document.getElementById(TOPBAR_TITLE_SLOT)), []);
   useEffect(() => {
-    document.title = `${title} · True Color`;
+    document.title = `${title} · True Color CRM`;
   }, [title]);
   return (
     <>
