@@ -203,7 +203,7 @@ const readCatalog = { products: READ, priceLists: READ, priceListItems: READ };
 
 export const catalogPack: ModulePack = {
   id: 'catalog',
-  nav: { id: 'catalog', label: 'Products', icon: 'blocks', resources: ['products', 'priceLists', 'priceListItems'] },
+  nav: { id: 'catalog', label: 'Products', icon: 'tag', resources: ['products', 'priceLists', 'priceListItems'] },
   resources: [products, priceLists, priceListItems, notificationTemplates],
   masters,
   permissions: {

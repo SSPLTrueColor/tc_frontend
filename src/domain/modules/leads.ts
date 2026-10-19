@@ -263,7 +263,7 @@ const RULES_EDIT = p('all', 'all', true, true, true);
 
 export const leadsPack: ModulePack = {
   id: 'leads',
-  nav: { id: 'leads', label: 'Sales', icon: 'activity', resources: ['leads'], pages: [{ id: 'follow-ups', label: 'Follow-ups', icon: 'calendar-clock', path: 'follow-ups' }, { id: 'leads-import', label: 'Import leads', icon: 'download', path: 'leads/import' }] },
+  nav: { id: 'leads', label: 'Sales', icon: 'target', resources: ['leads'], pages: [{ id: 'follow-ups', label: 'Follow-ups', icon: 'calendar-clock', path: 'follow-ups' }, { id: 'leads-import', label: 'Import leads', icon: 'download', path: 'leads/import' }] },
   resources: [leads, assignmentRules, leadScoringRules],
   masters: leadMasters,
   // REQUIREMENTS §2.2 "Leads & opps" column.

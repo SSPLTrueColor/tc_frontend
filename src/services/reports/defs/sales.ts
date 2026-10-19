@@ -46,7 +46,7 @@ export const salesReports: ReportDef[] = [
           { key: 'machines', label: 'Machines', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.value) - n(a.value)),
-        chart: { label: 'Top 10 customers by booked value', unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.customer), value: n(r.value) }))) },
+        chart: { polarity: 'higher', label: 'Top 10 customers by booked value', unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.customer), value: n(r.value) }))) },
         kpis: [
           { label: 'Customers ordering', value: String(rows.length) },
           { label: 'Booked value', value: `money:${sum(orders, 'grandTotal')}` },
@@ -95,7 +95,7 @@ export const salesReports: ReportDef[] = [
           { key: 'pmDone', label: 'PM visits done', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.tickets) - n(a.tickets)),
-        chart: { label: 'Machines with most tickets', unit: 'tickets', data: top(rows.map((r) => ({ key: r._key, label: s(r.serial), value: n(r.tickets) }))) },
+        chart: { polarity: 'lower', label: 'Machines with most tickets', unit: 'tickets', data: top(rows.map((r) => ({ key: r._key, label: s(r.serial), value: n(r.tickets) }))) },
       };
     },
   },
@@ -132,7 +132,7 @@ export const salesReports: ReportDef[] = [
           { key: 'hasContract', label: 'AMC/CMC lined up' },
         ],
         rows: rows.sort((a, b) => n(a.daysLeft) - n(b.daysLeft)),
-        chart: { label: 'Warranties ending per month', unit: 'machines', data: [...byMonth.entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.length })) },
+        chart: { polarity: 'neutral', label: 'Warranties ending per month', unit: 'machines', data: [...byMonth.entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.length })) },
         kpis: [{ label: 'Without an AMC/CMC lined up', value: String(rows.filter((r) => r.hasContract === 'No').length) }],
       };
     },
@@ -173,7 +173,7 @@ export const salesReports: ReportDef[] = [
           { key: 'owner', label: 'Sales owner' },
         ],
         rows: rows.sort((a, b) => n(a.daysLeft) - n(b.daysLeft)),
-        chart: { label: 'Renewal value by month', unit: '₹', money: true, data: [...groupBy(rows, (r) => monthKey(r.endDate)).entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
+        chart: { polarity: 'neutral', label: 'Renewal value by month', unit: '₹', money: true, data: [...groupBy(rows, (r) => monthKey(r.endDate)).entries()].sort().map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
         kpis: [{ label: 'Value up for renewal', value: `money:${rows.reduce((t, r) => t + n(r.value), 0)}` }],
       };
     },
@@ -251,7 +251,7 @@ export const salesReports: ReportDef[] = [
           { key: 'conversion', label: 'Conversion', type: 'pct' },
         ],
         rows: sorted,
-        chart: { label: 'Conversion %', unit: '%', data: sorted.slice(0, 12).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.conversion) * 100) })) },
+        chart: { polarity: 'higher', label: 'Conversion %', unit: '%', data: sorted.slice(0, 12).map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.conversion) * 100) })) },
         kpis: [
           { label: 'Leads', value: String(leads.length) },
           { label: 'Conversion', value: `pct:${pctOf(q, leads.length) ?? ''}` },
@@ -287,7 +287,7 @@ export const salesReports: ReportDef[] = [
           { key: 'nextFollowUp', label: 'Next follow-up', type: 'date' },
         ],
         rows: rows.sort((a, b) => n(b.age) - n(a.age)),
-        chart: { label: 'Open leads by age', unit: 'leads', data: buckets.map(([lb, a, b]) => ({ key: lb, label: lb, value: rows.filter((r) => n(r.age) >= a && n(r.age) <= b).length })) },
+        chart: { polarity: 'ageing', label: 'Open leads by age', unit: 'leads', data: buckets.map(([lb, a, b]) => ({ key: lb, label: lb, value: rows.filter((r) => n(r.age) >= a && n(r.age) <= b).length })) },
       };
     },
   },
@@ -318,7 +318,7 @@ export const salesReports: ReportDef[] = [
           { key: 'notAttended', label: 'Not attended now', type: 'number', link: () => list('leads', { view: 'v_leads_not_attended' }) },
         ],
         rows: rows.sort((a, b) => n(b.avgHours) - n(a.avgHours)),
-        chart: { label: 'Average first response (hours)', unit: 'h', data: rows.filter((r) => r.avgHours !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.avgHours) * 10) / 10 })) },
+        chart: { polarity: 'lower', label: 'Average first response (hours)', unit: 'h', data: rows.filter((r) => r.avgHours !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.avgHours) * 10) / 10 })) },
         kpis: [{ label: 'Average first response', value: `hours:${leadResponseHours(leads) ?? ''}`, hint: `SLA ${sla} h (policy)` }],
       };
     },
@@ -345,7 +345,7 @@ export const salesReports: ReportDef[] = [
           { key: 'overdueDays', label: 'Days overdue', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.overdueDays) - n(a.overdueDays)),
-        chart: { label: 'Overdue follow-ups per owner', unit: 'follow-ups', data: top([...groupBy(rows, (r) => s(r.owner)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
+        chart: { polarity: 'lower', label: 'Overdue follow-ups per owner', unit: 'follow-ups', data: top([...groupBy(rows, (r) => s(r.owner)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.length }))) },
       };
     },
   },
@@ -369,7 +369,7 @@ export const salesReports: ReportDef[] = [
           { key: 'budget', label: 'Stated budget lost', type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.leads) - n(a.leads)),
-        chart: { label: 'Disqualified leads by reason', unit: 'leads', data: rows.map((r) => ({ key: r._key, label: s(r.reason), value: n(r.leads) })) },
+        chart: { polarity: 'neutral', label: 'Disqualified leads by reason', unit: 'leads', data: rows.map((r) => ({ key: r._key, label: s(r.reason), value: n(r.leads) })) },
       };
     },
   },
@@ -405,7 +405,7 @@ export const salesReports: ReportDef[] = [
           { key: 'activities', label: 'Activities', type: 'number' },
         ],
         rows: rows.sort((a, b) => n(b.booked) - n(a.booked)),
-        chart: { label: 'Booked value per salesperson', unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.owner), value: n(r.booked) }))) },
+        chart: { polarity: 'higher', label: 'Booked value per salesperson', unit: '₹', money: true, data: top(rows.map((r) => ({ key: r._key, label: s(r.owner), value: n(r.booked) }))) },
       };
     },
   },
@@ -440,7 +440,7 @@ export const salesReports: ReportDef[] = [
           { key: 'avgDiscount', label: 'Avg highest discount', type: 'pct' },
         ],
         rows: sorted,
-        chart: { label: 'Quotation value', unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
+        chart: { polarity: 'higher', label: 'Quotation value', unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
         kpis: [
           { label: 'Quotations', value: String(qs.length) },
           { label: 'Total value', value: `money:${sum(qs, 'grandTotal')}` },
@@ -499,7 +499,7 @@ export const salesReports: ReportDef[] = [
           { key: 'orderedValue', label: 'Ordered value', type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.rate) - n(a.rate)),
-        chart: { label: 'Quote-to-order %', unit: '%', data: rows.filter((r) => r.rate !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.rate) * 100) })) },
+        chart: { polarity: 'higher', label: 'Quote-to-order %', unit: '%', data: rows.filter((r) => r.rate !== null).map((r) => ({ key: r._key, label: s(r.owner), value: Math.round(n(r.rate) * 100) })) },
         kpis: [{ label: 'Quote-to-order', value: `pct:${quoteToOrder(qs, orders) ?? ''}` }],
       };
     },
@@ -527,7 +527,7 @@ export const salesReports: ReportDef[] = [
           { key: 'owner', label: 'Owner' },
         ],
         rows: rows.sort((a, b) => n(b.value) - n(a.value)),
-        chart: { label: 'Lost value by reason', unit: '₹', money: true, data: [...groupBy(rows, (r) => s(r.reason)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
+        chart: { polarity: 'neutral', label: 'Lost value by reason', unit: '₹', money: true, data: [...groupBy(rows, (r) => s(r.reason)).entries()].map(([k, v]) => ({ key: k, label: k, value: v.reduce((t, r) => t + n(r.value), 0) })) },
       };
     },
   },
@@ -562,7 +562,7 @@ export const salesReports: ReportDef[] = [
           { key: 'discountValue', label: 'Discount given', type: 'money' },
         ],
         rows: rows.sort((a, b) => n(b.avg) - n(a.avg)),
-        chart: { label: 'Average discount %', unit: '%', data: rows.map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.avg) * 1000) / 10 })) },
+        chart: { polarity: 'lower', label: 'Average discount %', unit: '%', data: rows.map((r) => ({ key: r._key, label: s(r.group), value: Math.round(n(r.avg) * 1000) / 10 })) },
       };
     },
   },
@@ -595,7 +595,7 @@ export const salesReports: ReportDef[] = [
           { key: 'avg', label: 'Average order', type: 'money' },
         ],
         rows: sorted,
-        chart: { label: 'Order value', unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
+        chart: { polarity: 'higher', label: 'Order value', unit: '₹', money: true, data: sorted.map((r) => ({ key: r._key, label: s(r.group), value: n(r.value) })) },
         kpis: [
           { label: 'Orders booked', value: String(os.length) },
           { label: 'Value booked', value: `money:${sum(os, 'grandTotal')}` },
@@ -625,7 +625,7 @@ export const salesReports: ReportDef[] = [
           { key: 'owner', label: 'Owner' },
         ],
         rows: rows.sort((a, b) => n(b.age) - n(a.age)),
-        chart: { label: 'Backlog value by step', unit: '₹', money: true, data: BACKLOG.map((st) => ({ key: st, label: label('soStatus', st), value: rows.filter((r) => r.status === st).reduce((t, r) => t + n(r.value), 0) })).filter((d) => d.value > 0) },
+        chart: { polarity: 'neutral', label: 'Backlog value by step', unit: '₹', money: true, data: BACKLOG.map((st) => ({ key: st, label: label('soStatus', st), value: rows.filter((r) => r.status === st).reduce((t, r) => t + n(r.value), 0) })).filter((d) => d.value > 0) },
         kpis: [{ label: 'Backlog value', value: `money:${rows.reduce((t, r) => t + n(r.value), 0)}` }],
       };
     },
@@ -715,7 +715,7 @@ export const salesReports: ReportDef[] = [
           { key: 'owner', label: 'Owner' },
         ],
         rows: rows.sort((a, b) => n(b.age) - n(a.age)),
-        chart: { label: 'Overdue amount by age', unit: '₹', money: true, data: c.ageing.map((b) => ({ key: b.key, label: b.label, value: b.amount })) },
+        chart: { polarity: 'ageing', label: 'Overdue amount by age', unit: '₹', money: true, data: c.ageing.map((b) => ({ key: b.key, label: b.label, value: b.amount })) },
         kpis: [
           { label: 'Due in period', value: `money:${c.dueAmount}` },
           { label: 'Received', value: `money:${c.received}` },

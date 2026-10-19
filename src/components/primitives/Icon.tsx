@@ -1,5 +1,15 @@
 import {
   Activity,
+  BarChart3,
+  FileText,
+  MapPin,
+  Package,
+  Printer,
+  ShoppingCart,
+  Tag,
+  Target,
+  Truck,
+  Wrench,
   AlertTriangle,
   ArrowDown,
   ArrowUp,
@@ -125,6 +135,17 @@ const ICONS: Record<string, LucideIcon> = {
   trash: Trash2,
   users: Users,
   x: X,
+  // Module icons — one distinct picture per business module (no repeats in the icon rail).
+  target: Target,
+  'file-text': FileText,
+  'shopping-cart': ShoppingCart,
+  printer: Printer,
+  wrench: Wrench,
+  package: Package,
+  tag: Tag,
+  'map-pin': MapPin,
+  'bar-chart': BarChart3,
+  truck: Truck,
 };
 
 export function Icon({ name, size = 16, className }: { name: string; size?: number; className?: string }) {

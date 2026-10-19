@@ -19,7 +19,7 @@ export const installedPack: ModulePack = {
   nav: {
     id: 'installed',
     label: 'Installed base',
-    icon: 'blocks',
+    icon: 'printer',
     resources: ['installations', 'machines', 'amcContracts', 'warranties', 'trainingRecords', 'machineComponents', 'machineReadings', 'machineMoves'],
     pages: [{ id: 'renewals', label: 'Renewals', icon: 'reset', path: 'renewals' }],
     navChildIcons: [],

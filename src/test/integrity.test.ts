@@ -89,3 +89,10 @@ describe('seed plausibility', () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe('navigation', () => {
+  it('uses a distinct icon for every module in the icon rail', () => {
+    const icons = appModules.map((m) => m.icon);
+    expect(icons.filter((x, i) => icons.indexOf(x) !== i)).toEqual([]);
+  });
+});
