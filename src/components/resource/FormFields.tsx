@@ -3,7 +3,7 @@
  * Layout (sections/columns) is presentation only; validation and access come
  * from the resource schema + Authorization Service.
  */
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import type { FieldAccess, FieldDefinition, LineItemColumn, RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx, formatMoney } from '../../lib/format';
 import type { Actor } from '../../services/authz';
@@ -17,7 +17,9 @@ import { MultiSelectMenu } from '../primitives/MultiSelectMenu';
 import { DatePicker } from '../primitives/DatePicker';
 import { InfoTip } from '../primitives/InfoTip';
 import { ImageTile } from '../primitives/People';
+import { fieldIcon } from './fieldIcon';
 import { Button, IconButton } from '../primitives/Button';
+import { Menu, type MenuItem } from '../primitives/overlay';
 import { Icon } from '../primitives/Icon';
 import { FieldValue } from './FieldValue';
 
@@ -103,6 +105,7 @@ export function FieldInput({
       const current = getMaster(field.master!).values.find((v) => v.key === value);
       return (
         <SelectMenu
+          icon={fieldIcon(field)}
           id={id}
           block
           label={field.label}
@@ -153,6 +156,7 @@ export function FieldInput({
       const dependent = field.relation?.filterBy && !values[field.relation.filterBy.fromField];
       return (
         <SelectMenu
+          icon={fieldIcon(field)}
           id={id}
           block
           label={field.label}
@@ -168,11 +172,30 @@ export function FieldInput({
     }
     case 'lineitems':
       return <LineItemsEditor field={field} value={(value as Values[]) ?? []} onChange={onChange} id={id} />;
+    case 'email':
+    case 'phone':
+      // phone / email icon inside the input (same icon as in tables and details)
+      return (
+        <div className="input-affix has-start has-icon">
+          <span className="affix affix-start">
+            <Icon name={field.type === 'phone' ? 'f-phone' : 'f-email'} size={14} />
+          </span>
+          <input
+            {...common}
+            type={field.type === 'email' ? 'email' : 'tel'}
+            autoComplete="off"
+            maxLength={field.maxLength}
+            value={String(value ?? '')}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={field.placeholder}
+          />
+        </div>
+      );
     default:
       return (
         <input
           {...common}
-          type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'}
+          type="text"
           autoComplete="off"
           maxLength={field.maxLength}
           value={String(value ?? '')}
@@ -225,9 +248,15 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
                 ))}
                 <td className="num">{formatMoney((Number(row.qty) || 0) * (Number(row.unitPrice) || 0))}</td>
                 <td className="li-actions">
-                  <IconButton icon="arrow-up" label={`Move row ${i + 1} up`} onClick={() => move(i, -1)} disabled={i === 0} />
-                  <IconButton icon="arrow-down" label={`Move row ${i + 1} down`} onClick={() => move(i, 1)} disabled={i === value.length - 1} />
-                  <IconButton icon="trash" label={`Remove row ${i + 1}`} onClick={() => onChange(value.filter((_, j) => j !== i))} />
+                  {/* one ⋯ menu per row (Move up / Move down / Remove) instead of three icons */}
+                  <RowMenu
+                    label={`Row ${i + 1}`}
+                    items={[
+                      { id: 'up', label: 'Move up', icon: 'arrow-up', onSelect: () => move(i, -1), disabledReason: i === 0 ? 'Already first' : undefined },
+                      { id: 'down', label: 'Move down', icon: 'arrow-down', onSelect: () => move(i, 1), disabledReason: i === value.length - 1 ? 'Already last' : undefined },
+                      { id: 'rm', label: 'Remove line', icon: 'trash', danger: true, separatorBefore: true, onSelect: () => onChange(value.filter((_, j) => j !== i)) },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}
@@ -275,7 +304,18 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
       />
     );
   }
-  return <input className="input input-compact" aria-label={label} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+  return <input className="input input-compact" aria-label={label} placeholder={col.key === 'description' ? 'Optional description' : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+}
+
+function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <IconButton ref={ref} icon="more" label={`${label} actions`} aria-haspopup="menu" onClick={() => setOpen((o) => !o)} />
+      <Menu open={open} onClose={() => setOpen(false)} anchor={ref} label={`${label} actions`} items={items} />
+    </>
+  );
 }
 
 /** Renders one field row with label, help, error association and access-aware read-only states. */
@@ -306,6 +346,7 @@ export function FormField({
     return (
       <div className={cx('form-field', wide && 'span-2')}>
         <span className="field-label" id={`${id}-label`}>
+          <Icon name={fieldIcon(field)} size={16} className="field-icon" />
           {field.label}
           {access === 'mask' && (
             <span className="field-flag">
@@ -321,9 +362,10 @@ export function FormField({
     );
   }
   return (
-    <div className={cx('form-field', wide && 'span-2', error && 'has-error')} data-field={field.key}>
+    <div className={cx('form-field', wide && 'span-2', error && 'has-error')} data-field={field.key} data-type={field.type}>
       <span className="field-label-row">
         <label className="field-label" htmlFor={id} id={`${id}-label`}>
+          <Icon name={fieldIcon(field)} size={16} className="field-icon" />
           {field.label}
           {required ? <span className="req"> *</span> : <span className="optional"> (optional)</span>}
         </label>
@@ -363,7 +405,9 @@ export function FormSections({
   access,
   actor,
   record,
+  layout = 'simple',
 }: {
+  layout?: 'simple' | 'canvas';
   res: ResourceDefinition;
   sectionIds?: string[];
   fieldKeys?: string[];
@@ -378,6 +422,33 @@ export function FormSections({
     if (fieldKeys) return [{ id: 'quick', title: '', fields: fieldKeys, columns: 1 as const }];
     return res.form.sections.filter((s) => !sectionIds || sectionIds.includes(s.id));
   }, [res, sectionIds, fieldKeys]);
+  if (layout === 'canvas') {
+    // Canvas: the title field as a large borderless heading, then every field as an icon · label | value row
+    const all = sections.flatMap((s) => s.fields).map((k) => res.fields.find((f) => f.key === k)).filter((f): f is FieldDefinition => !!f && access[f.key] !== 'hide');
+    const title = all.find((f) => f.key === res.titleField && f.type === 'text' && access[f.key] === 'edit');
+    return (
+      <div className="form-canvas">
+        {title && (
+          <input
+            className={cx('canvas-title', errors[title.key] && 'is-invalid')}
+            aria-label={title.label}
+            placeholder={title.label}
+            value={String(values[title.key] ?? '')}
+            maxLength={title.maxLength}
+            onChange={(e) => setValue(title.key, e.target.value)}
+          />
+        )}
+        {title && errors[title.key] && <p className="field-error">{errors[title.key]}</p>}
+        <div className="canvas-rows">
+          {all
+            .filter((f) => f !== title)
+            .map((f) => (
+              <FormField key={f.key} field={f} access={access[f.key]} values={values} setValue={setValue} error={errors[f.key]} actor={actor} record={record} />
+            ))}
+        </div>
+      </div>
+    );
+  }
   return (
     <>
       {sections.map((s) => {

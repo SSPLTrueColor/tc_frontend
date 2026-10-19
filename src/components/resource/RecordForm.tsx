@@ -3,7 +3,9 @@ import type { RecordData, ResourceDefinition } from '../../metadata/types';
 import { uid } from '../../lib/ids';
 import { can, fieldAccessMap } from '../../services/authz';
 import { commit, getDb } from '../../services/db';
-import { useActor } from '../../services/hooks';
+import { useActor, useRevision } from '../../services/hooks';
+import { getSettings, updateSettings } from '../../services/settings';
+import { cx } from '../../lib/format';
 import { getResource } from '../../services/registry';
 import { createRecord, getRecord, type Projected, updateRecord } from '../../services/runtime';
 import { type ScheduleConflict, ServiceError } from '../../services/types';
@@ -221,7 +223,7 @@ export function useUnsavedGuard(dirty: boolean, onClose: () => void) {
   return { requestClose, dialog };
 }
 
-function FormBody({ form, fieldKeys, sectionIds, children }: { form: RecordFormState; fieldKeys?: string[]; sectionIds?: string[]; children?: ReactNode }) {
+function FormBody({ form, fieldKeys, sectionIds, children, layout }: { form: RecordFormState; fieldKeys?: string[]; sectionIds?: string[]; children?: ReactNode; layout?: 'simple' | 'canvas' }) {
   return (
     <form
       className="record-form"
@@ -242,6 +244,7 @@ function FormBody({ form, fieldKeys, sectionIds, children }: { form: RecordFormS
         access={form.access}
         actor={form.actor}
         record={form.loaded?.record}
+        layout={layout}
       />
       {children}
     </form>
@@ -321,6 +324,8 @@ export function FormDrawer({ resKey, recordId, open, onClose, initial, onSaved }
 
 function FormDrawerInner({ resKey, recordId, onClose, initial, onSaved }: { resKey: string; recordId?: string; onClose: () => void; initial?: Values; onSaved?: (r: RecordData) => void }) {
   const form = useRecordForm({ resKey, recordId, initial });
+  useRevision();
+  const layout = getSettings(form.actor.user.id).formLayout ?? 'simple';
   const toast = useToast();
   const guard = useUnsavedGuard(form.dirty, onClose);
   const save = async (overrideReason?: string) => {
@@ -333,10 +338,11 @@ function FormDrawerInner({ resKey, recordId, onClose, initial, onSaved }: { resK
   };
   return (
     <>
-      <Drawer
-        open
+      <FormFrame
+        kind="form"
         onClose={guard.requestClose}
         title={`${recordId ? `Edit ${form.res.label.toLowerCase()} ${recordId}` : `New ${form.res.label.toLowerCase()}`}${form.dirty ? ' · unsaved' : ''}`}
+        layoutSwitch={<LayoutSwitch />}
         footer={
           <>
             <Button onClick={guard.requestClose}>Cancel</Button>
@@ -346,12 +352,44 @@ function FormDrawerInner({ resKey, recordId, onClose, initial, onSaved }: { resK
           </>
         }
       >
-        <FormBody form={form}>
+        <FormBody form={form} layout={layout}>
           <ConflictPanel form={form} onOverride={(r) => save(r)} />
         </FormBody>
-      </Drawer>
+      </FormFrame>
       {guard.dialog}
     </>
+  );
+}
+
+/** Simple | Canvas switch (per user), shared by add/edit forms and the step wizard. */
+function LayoutSwitch() {
+  useRevision();
+  const actor = useActor();
+  const layout = getSettings(actor.user.id).formLayout ?? 'simple';
+  return (
+    <div className="segmented form-layout-switch" role="radiogroup" aria-label="Form layout">
+      {(['simple', 'canvas'] as const).map((l) => (
+        <button key={l} type="button" role="radio" aria-checked={layout === l} className={cx('seg-btn', layout === l && 'is-on')} onClick={() => updateSettings(actor.user.id, { formLayout: l })}>
+          {l === 'simple' ? 'Simple' : 'Canvas'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Form frame: side drawer OR popup (user choice)
+
+/** Forms open in a side drawer; the step wizard opens as a popup (no Drawer | Popup switch — owner rule). */
+function FormFrame({ kind, onClose, title, footer, children, layoutSwitch }: { kind: 'form' | 'wizard'; onClose: () => void; title: string; footer: ReactNode; children: ReactNode; layoutSwitch?: ReactNode }) {
+  const extra = layoutSwitch ? <span className="form-header-switches">{layoutSwitch}</span> : undefined;
+  return kind === 'form' ? (
+    <Drawer open onClose={onClose} title={title} headerExtra={extra} footer={footer}>
+      {children}
+    </Drawer>
+  ) : (
+    <Dialog open size="lg" onClose={onClose} title={title} headerExtra={extra} footer={footer}>
+      {children}
+    </Dialog>
   );
 }
 
@@ -405,12 +443,10 @@ function WizardInner({ resKey, onClose, onCreated }: { resKey: string; onClose: 
   };
 
   return (
-    <Dialog
-      open
-      size="lg"
+    <FormFrame
+      kind="wizard"
       onClose={onClose}
       title={`Register ${form.res.label.toLowerCase()}`}
-      description="Step-by-step registration. Progress is saved as a local draft in this browser."
       footer={
         <>
           {resumed || form.dirty ? (
@@ -465,7 +501,7 @@ function WizardInner({ resKey, onClose, onCreated }: { resKey: string; onClose: 
       ) : (
         <FormBody form={form} sectionIds={steps[step].sections} />
       )}
-    </Dialog>
+    </FormFrame>
   );
 }
 

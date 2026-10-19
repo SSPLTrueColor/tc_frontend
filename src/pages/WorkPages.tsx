@@ -307,7 +307,7 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
       <PageHeader
         title={recordId ? `Edit ${form.res.label.toLowerCase()} ${recordId}` : `New ${form.res.label.toLowerCase()}`}
         description="Full-page editor. Totals are calculated; payments are recorded separately after issuing."
-        crumbs={[{ label: form.res.labelPlural, to: back }, { label: recordId ?? 'New' }]}
+        onBack={guard.requestClose}
       />
       <div className="full-form panel">
         <FormBody form={form}>
