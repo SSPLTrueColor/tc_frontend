@@ -1,3 +1,4 @@
+import { SalesWorkspacePage } from './SalesWorkspacePage';
 import type { AppRoute } from '../types';
 import { ROUTES } from '../../constants/routes';
 import { FollowUpsPage } from './FollowUpsPage';
@@ -11,6 +12,7 @@ import { NotAttendedLeadsPage } from './NotAttendedLeadsPage';
  * ROUTES.leadScoringRules, so the admin resource route serves them; old URLs redirect via LEGACY_REDIRECTS.
  */
 export const routes: AppRoute[] = [
+  { path: '/sales', element: <SalesWorkspacePage /> },
   { path: ROUTES.leadNew, element: <NewLeadPage /> },
   { path: ROUTES.importLeads, element: <ImportLeadsPage /> },
   { path: ROUTES.followUps, element: <FollowUpsPage /> },

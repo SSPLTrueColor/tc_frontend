@@ -403,3 +403,22 @@
   }
 }
 
+
+/* Review correction: quiet slate badges, independent of semantic accent colours. */
+:root {
+  --c-link: var(--s-text);
+  --status-bg: #eef1f5;
+  --status-fg: #475569;
+}
+:root[data-theme='dark'] {
+  --c-link: var(--s-text);
+  --status-bg: #303a48;
+  --status-fg: #d4dce7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --c-link: var(--s-text);
+    --status-bg: #303a48;
+    --status-fg: #d4dce7;
+  }
+}

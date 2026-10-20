@@ -1,3 +1,5 @@
+import { injectQuotationLeadLookup } from '../modules/quotationComputed';
+import { byId } from '../../services/lookups';
 /** quotations module: runtime hooks, approval type, record actions/tabs and the expiry/reminder job. */
 import { L } from '../../constants/labels';
 import { registerRecordActions, registerRecordBanner, registerRecordTab } from '../../components/resource/extensions';
@@ -8,6 +10,7 @@ import { registerApprovalType } from '../../services/workflow';
 import { ApprovalTab, DocumentsTab, LinesTab, OpportunityQuotesTab, PricingTab, QuoteActions, QuoteBanner, RoiTab, TermsTab, VersionsTab } from '../../modules/quotations/RecordExtensions';
 
 const T = L.quotations.tabs;
+injectQuotationLeadLookup((id) => byId('opportunities', id)?.leadId ?? null);
 
 registerResourceHooks('quotations', {
   beforeCreate: quoteBeforeCreate,

@@ -1,5 +1,6 @@
 /** Opportunities module: stage guards, defaults, demo double-booking check, record actions, banner and timeline. */
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { addMinutes, formatDate, overlaps, todayKey } from '../../lib/dates';
 import { nowIso } from '../../lib/clock';
 import { formatMoney } from '../../lib/format';
@@ -15,8 +16,8 @@ import { acceptedQuotationFor, applyCreateDefaults, checkStageEntry, isStagnant,
 import { getPolicies } from '../../services/policies';
 import { ServiceError } from '../../services/types';
 import type { RecordData } from '../../metadata/types';
-import { registerRecordActions, registerRecordBanner, registerRecordTab, type RecordExtensionProps } from '../../components/resource/extensions';
-import { Button } from '../../components/primitives/Button';
+import { registerCardActions, registerRecordActions, registerRecordBanner, registerRecordTab, registerStageMoveHandler, type RecordExtensionProps } from '../../components/resource/extensions';
+import { Button, IconButton } from '../../components/primitives/Button';
 import { DateText } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/primitives/feedback';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
@@ -239,5 +240,22 @@ function Timeline({ actor, record }: RecordExtensionProps) {
 }
 
 registerRecordActions('opportunities', OpportunityActions);
+
+/** List row / board card: Create Quotation for an open opportunity (QUO-01 — the quotation links to it). */
+function OpportunityCardActions({ actor, record, surface }: RecordExtensionProps) {
+  const navigate = useNavigate();
+  if (!OPEN_STAGES.includes(String(record.stage)) || !perm(actor, 'quotations').create) return null;
+  const create = () => navigate(toPath(ROUTES.quotationNew, {}, { opportunity: record.id }));
+  // Pipeline board card: a labelled button so the action reads at a glance; list rows keep the compact icon.
+  if (surface === 'board') return <Button icon="file-text" className="card-cta" onClick={create}>{T.actions.createQuotation}</Button>;
+  return <IconButton icon="file-text" className="convert-icon-btn" label={T.actions.createQuotation} onClick={create} />;
+}
+registerCardActions('opportunities', OpportunityCardActions);
+
+// Dragging / switching an open opportunity to Lost opens Mark Lost (reason + competitor are mandatory, FR-031).
+registerStageMoveHandler('opportunities', {
+  targets: ({ actor, res, record }) => (OPEN_STAGES.includes(String(record.stage)) && canUpdateRecord(actor, res, record) ? ['lost'] : []),
+  Dialog: ({ actor, record, onClose }) => <MarkLostDialog actor={actor} record={record} onClose={onClose} />,
+});
 registerRecordBanner('opportunities', OpportunityBanner);
 registerRecordTab('opportunities', { id: 'timeline', label: T.tabs.timeline, component: Timeline });

@@ -135,7 +135,7 @@ describe('leads module', () => {
 
   it('exposes the async Not Attended Leads service and BRD labels', async () => {
     expect(typeof leadsApi.notAttended).toBe('function');
-    expect(L.leads.actions.convertToOpportunity).toBe('Convert to Opportunity');
+    expect(L.leads.actions.convertToOpportunity).toBe('Create Opportunity');
     expect(L.leads.actions.logFollowUp).toBe('Log Follow-up');
     expect(L.leads.fields.leads.productType).toBe('Product type');
     expect(L.leads.masters.lostReason.values.bought_competitor).toBe('Bought Competitor');

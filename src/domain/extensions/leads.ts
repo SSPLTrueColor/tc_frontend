@@ -10,8 +10,8 @@ import { ServiceError } from '../../services/types';
 import { injectLeadDeps } from '../modules/leads/computed';
 import { L } from '../../constants/labels';
 import { ownerDivisionError, resolveOwner, sweepLeads } from '../../services/leads/rules';
-import { registerRecordActions, registerRecordBanner } from '../../components/resource/extensions';
-import { LeadActions, LeadBanner } from '../../modules/leads/LeadActions';
+import { registerCardActions, registerRecordActions, registerRecordBanner, registerStageMoveHandler } from '../../components/resource/extensions';
+import { LeadCardActions, LeadActions, LeadBanner, LeadMoveDialog, leadMoveTargets } from '../../modules/leads/LeadActions';
 
 // Computed fields (score, SLA flags) read live data through these lookups; activity counts are cached per store revision.
 let countCache: { rev: number; counts: Map<string, number> } = { rev: -1, counts: new Map() };
@@ -106,3 +106,6 @@ if (typeof window !== 'undefined') {
   subscribe(schedule);
   schedule();
 }
+
+registerCardActions('leads', LeadCardActions);
+registerStageMoveHandler('leads', { targets: leadMoveTargets, Dialog: LeadMoveDialog });

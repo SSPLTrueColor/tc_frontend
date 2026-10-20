@@ -7,51 +7,108 @@
   margin: 0 0 var(--sp-3);
   padding: 0;
   display: grid;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
+/* Each line is a bordered block: "Item n" + remove on top, then a fixed 6-column grid
+   (Product ×2 · Type · Description ×3 / Qty · List price · Discount · GST · HSN · Net) so every column lines up. */
 .qt-line {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
   gap: var(--sp-2);
-  align-items: start;
-  padding: var(--sp-3) 0;
-  border-bottom: 1px solid var(--s-border);
+  padding: var(--sp-2) var(--sp-4) var(--sp-4);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-panel);
+}
+.qt-line-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--c-control-h-compact);
 }
 .qt-line-n {
-  color: var(--s-text-muted);
+  color: var(--s-text-secondary);
   font-size: var(--fs-supportive);
-  padding-top: var(--sp-5);
-}
-.qt-line-del {
-  margin-top: var(--sp-5);
+  font-weight: var(--fw-medium);
 }
 .qt-line-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--sp-2) var(--sp-3);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--sp-3);
+  align-items: start;
 }
 .qt-span-2 {
   grid-column: span 2;
+}
+.qt-span-3 {
+  grid-column: span 3;
 }
 .qt-line-grid input.num,
 .qt-line-grid .field-readonly.num {
   text-align: right;
   justify-content: flex-end;
 }
+@media (max-width: 1100px) {
+  .qt-line-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .qt-span-2, .qt-span-3 { grid-column: 1 / -1; }
+}
 @media (max-width: 760px) {
-  .qt-span-2 {
-    grid-column: 1 / -1;
-  }
+  .qt-line-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Read-only values (Customer, Division, List price, Net) sit in a box the same height as the inputs beside them. */
+.qt-editor .qt-readonly-box {
+  min-height: var(--c-control-h);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-sunken);
+  color: var(--s-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .qt-disc {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px;
   gap: var(--sp-1);
+}
+.qt-disc .select-menu-trigger {
+  width: 100%;
+  height: var(--c-control-h);
+  justify-content: space-between;
 }
 .qt-bottom {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
-  gap: var(--sp-4);
-  margin-top: var(--sp-3);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: var(--sp-5);
+  align-items: start;
+  margin-top: var(--sp-4);
+}
+.qt-extras {
+  gap: var(--sp-3);
+}
+.qt-extras > p.muted {
+  margin: 0;
+}
+/* Totals: a summary card; amounts right-aligned in one column, words wrap under the label. */
+.qt-editor .qt-totals {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-sunken);
+}
+.qt-editor .qt-totals .detail-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.qt-editor .qt-totals dd {
+  text-align: right;
+}
+.qt-editor .qt-totals .detail-row:has(strong) {
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--s-border);
 }
 .qt-totals .num,
 .qt-totals dd.num {

@@ -51,6 +51,7 @@ const SIDEBAR: Group[] = [
     icon: 'target',
     resources: ['leads'],
     pages: [
+      { id: 'salesWorkspace', icon: 'target', path: '/sales', capability: 'read:leads' },
       { id: 'notAttendedLeads', icon: 'alert', capability: 'read:leads' },
       { id: 'followUps', icon: 'calendar-clock' },
       { id: 'importLeads', icon: 'download', capability: 'leads.import+create:leads' },
@@ -62,7 +63,7 @@ const SIDEBAR: Group[] = [
     resources: ['opportunities', 'demos', 'sampleRequests', 'demoMachines'],
     pages: [
       { id: 'pipeline', icon: 'board', capability: 'read:opportunities' },
-      { id: 'salesForecast', icon: 'activity', capability: 'read:opportunities' },
+      { id: 'salesForecast', icon: 'gauge', capability: 'read:opportunities' },
       { id: 'demoMachineCalendar', icon: 'calendar-days', capability: 'read:demoMachines' },
     ],
   },
@@ -120,7 +121,7 @@ const SIDEBAR: Group[] = [
     resources: ['rateContracts', 'sampleDispatches'],
     pages: [
       { id: 'repeatOrders', icon: 'reset', capability: 'consumables.view' },
-      { id: 'leakageList', icon: 'activity', capability: 'consumables.view' },
+      { id: 'leakageList', icon: 'droplet', capability: 'consumables.view' },
       { id: 'reorderPrediction', icon: 'calendar-clock', capability: 'consumables.view' },
       { id: 'dealerOrders', icon: 'building', capability: 'consumables.view' },
     ],
@@ -203,9 +204,28 @@ export const RESOURCE_PAGES: Record<string, { module: ModuleId; path: string }> 
 };
 
 /** Sidebar modules in the engine's ModuleDefinition shape. */
-export const sidebarModules: ModuleDefinition[] = SIDEBAR.map((g) => ({
+const WORKSPACES: { id: ModuleId; label: string; members: ModuleId[]; sectioned?: boolean }[] = [
+  { id: 'home', label: 'My Work', members: ['home'] },
+  { id: 'customers', label: 'Customers', members: ['customers'] },
+  // Sales is long (4 BRD modules): one collapsible section per module, no per-view rows (views are tabs on the page).
+  { id: 'leads', label: 'Sales', members: ['leads', 'opportunities', 'quotations', 'consumables'], sectioned: true },
+  { id: 'orders', label: 'Orders & Delivery', members: ['orders', 'dispatch'] },
+  { id: 'installed', label: 'Machines & Service', members: ['installed', 'service', 'spares'] },
+  { id: 'field', label: 'Field Team', members: ['field'] },
+  { id: 'targets', label: 'Performance', members: ['targets', 'reports'] },
+  { id: 'admin', label: 'Settings', members: ['admin'] },
+];
+export const workspaceForModule = (id: string) => WORKSPACES.find((w) => w.members.includes(id as ModuleId))?.id ?? id;
+
+export const sidebarModules: ModuleDefinition[] = WORKSPACES.map((workspace) => {
+  const members = SIDEBAR.filter((g) => workspace.members.includes(g.id));
+  const sections = workspace.sectioned
+    ? members.map((g) => ({ id: g.id, label: (L.nav.modules[g.id] as { title: string; nav?: string }).nav ?? L.nav.modules[g.id].title, icon: g.icon, resources: g.resources, pages: g.pages.map((p) => p.id as string) }))
+    : undefined;
+  return { ...members[0], label: workspace.label, resources: members.flatMap((g) => g.resources), pages: members.flatMap((g) => g.pages), sections };
+}).map((g) => ({
   id: g.id,
-  label: L.nav.modules[g.id].nav,
+  label: g.label,
   icon: g.icon,
   resources: g.resources,
   pages: g.pages.map((p) => {
@@ -213,7 +233,8 @@ export const sidebarModules: ModuleDefinition[] = SIDEBAR.map((g) => ({
     return { id: p.id, label: page.nav ?? page.title, icon: p.icon, path: p.path ?? (ROUTES as Record<string, string>)[p.id], capability: p.capability };
   }),
   navChildIcons: [],
+  sections: g.sections,
 }));
 
 /** Full BRD module name (page title / breadcrumb) for a sidebar module id. */
-export const moduleTitle = (id: string) => (L.nav.modules as Record<string, { title: string }>)[id]?.title ?? id;
+export const moduleTitle = (id: string) => WORKSPACES.find((w) => w.id === workspaceForModule(id))?.label ?? id;

@@ -1,3 +1,4 @@
+import { SalesWorkspaceTabs } from '../modules/leads/SalesWorkspaceTabs';
 import { useShortcuts } from '../hooks/useShortcuts';
 import { listCrumb } from '../components/shell/crumbs';
 import { Pagination } from '../components/primitives/Pagination';
@@ -14,11 +15,12 @@ import { downloadText, exportCsv } from '../services/exporter';
 import { cloneGroup, decodeFilter, encodeFilter, OPERATOR_LABELS, VALUELESS } from '../services/filter';
 import { useActor, useRevision } from '../services/hooks';
 import { getResource, masterLabel } from '../services/registry';
-import { availableTransitions, displayText, queryRecords, recordTitle, transitionRecord } from '../services/runtime';
+import { availableTransitions, displayText, queryRecords, transitionRecord } from '../services/runtime';
 import { getSettings, pushRecent, updateSettings } from '../services/settings';
 import { ServiceError } from '../services/types';
 import { listViews, unavailableViewFields } from '../services/views';
 import { Button } from '../components/primitives/Button';
+import { Icon } from '../components/primitives/Icon';
 // (kept for the commented-out "All of" chip line) import { FadeScroller } from '../components/primitives/FadeScroller';
 import { EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../components/primitives/feedback';
 import { Menu, type MenuItem } from '../components/primitives/overlay';
@@ -62,7 +64,8 @@ export function ResourcePage() {
   const views = listViews(actor, resource);
   const settings = getSettings(actor.user.id);
   const requestedView = params.get('view');
-  const view = views.find((v) => v.id === requestedView) ?? views.find((v) => v.id === settings.defaultViews[resource]) ?? views.find((v) => v.id === settings.lastViews[resource]) ?? views[0];
+  // Lists land on the user's chosen default view, else the first (unfiltered) one — never on whichever filtered view was used last.
+  const view = views.find((v) => v.id === requestedView) ?? views.find((v) => v.id === settings.defaultViews[resource]) ?? views[0];
   useEffect(() => {
     if (view && getSettings(actor.user.id).lastViews[resource] !== view.id) updateSettings(actor.user.id, { lastViews: { ...getSettings(actor.user.id).lastViews, [resource]: view.id } });
   }, [view?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -145,26 +148,11 @@ export function ResourcePage() {
   };
   primaryRef.current = perm(actor, resource).create ? primary : undefined;
 
+  // Stage / status moves happen in place: drag on the board, or the status chip in the list (StatusCellMenu).
   const rowMenu = (r: RecordData): MenuItem[] => {
-    const raw = getDb().records[resource].find((x) => x.id === r.id);
     return [
       { id: 'open', label: LS.openInInspector, icon: 'eye', onSelect: () => open(r.id) },
       { id: 'page', label: LS.openFullPage, icon: 'layout-dashboard', onSelect: () => navigate(recordPagePath(actor.workspaceId, res.key, r.id)) },
-      ...availableTransitions(actor, res, r).map((t, i) => ({
-        id: `t-${t.to}`,
-        label: t.action,
-        icon: 'chevron-right',
-        separatorBefore: i === 0,
-        disabledReason: t.disabledReason ?? (t.confirm ? C.confirm.openToConfirm : undefined),
-        onSelect: () => {
-          try {
-            transitionRecord(actor, resource, r.id, t.to, raw!.version);
-            toast(C.toasts.actionDone(recordTitle(res.key, r.id, actor), t.action));
-          } catch (e) {
-            toast(e instanceof ServiceError ? e.message : C.toasts.actionFailed, 'danger');
-          }
-        },
-      })),
     ];
   };
 
@@ -192,7 +180,8 @@ export function ResourcePage() {
   return (
     <div className={cx('page page-resource', `page-res-${res.key}`, peek && 'has-inspector')}>
       <div className="page-main">
-        <PageHeader title={res.labelPlural} description={res.description} />
+        <PageHeader title={['leads', 'opportunities'].includes(resource) ? 'Leads & Opportunities' : res.labelPlural} description={res.description} />
+        {['leads', 'opportunities'].includes(resource) && <SalesWorkspaceTabs actor={actor} active={resource} />}
         {/* Line 1: saved views as underline tabs (+) … Export · primary action — one full-width line under it */}
         <div className="view-toolbar view-tabs-row">
           <ViewBar
@@ -228,7 +217,6 @@ export function ResourcePage() {
             <IconSearch />
             <SearchInput ref={searchRef} dense placeholder={`${LS.search} (/)`} aria-label={LS.searchAria(res.labelPlural.toLowerCase())} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
-          <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
           {/* Rich views only (rows with several lines): switch between 2-line and 3-line rows */}
           {view.type === 'table' && (view.rowLines ?? 1) > 1 && (
             <div className="segmented row-lines-toggle" role="radiogroup" aria-label={LS.linesPerRow}>
@@ -303,17 +291,18 @@ export function ResourcePage() {
               onReset={() => setWorking((w) => ({ ...w, columns: fromView(view).columns, groupBy: view.groupBy, density: view.density, rowLines: view.rowLines ?? 1 }))}
             />
           )}
+          {/* Filters: funnel icon at the far end of the toolbar */}
+          <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
         </div>
         {staleView && <InlineAlert tone="warning">{LS.staleView(view.name)}</InlineAlert>}
-        {/* Owner rule: the "All of: …" filter-chip line is hidden — active filters show as the dot on "Filters";
-            the record count and bulk actions moved to the search line.
-        {working.filter.children.length > 0 && (
-          <div className="subbar">
-            <FadeScroller className="subbar-chips" label={LS.activeFilters}>
-              <FilterChips res={res} filter={working.filter} onChange={setFilter} actor={actor} />
-            </FadeScroller>
+        {view.type === 'board' && working.filter.children.length > 0 && (
+          <div className="board-filter-summary">
+            <FilterChips res={res} filter={working.filter} onChange={setFilter} actor={actor} />
+            <Button variant="ghost" size="compact" onClick={() => setFilter({ ...working.filter, children: [] })}>
+              {C.actions.clearAll}
+            </Button>
           </div>
-        )} */}
+        )}
         {unavailable.length > 0 && <InlineAlert tone="info">{LS.ignoredConditions}</InlineAlert>}
         <div className={cx('content-surface', isPaged && result.total > 0 && 'is-table')}>
           {queryError ? (
@@ -444,7 +433,11 @@ export function FilterChips({ res, filter, onChange, actor }: { res: ReturnType<
   };
   return (
     <div className="filter-chips" aria-label={LS.activeFilters}>
-      <span className="muted small">{filter.join === 'and' ? LS.allOfJoin : LS.anyOfJoin}:</span>
+      <span className="filter-chips-label">
+        <Icon name="filter" size={14} />
+        {LS.activeFilters}
+        {conds.length + groups > 1 && <span className="muted"> · {filter.join === 'and' ? LS.allOfJoin : LS.anyOfJoin}</span>}
+      </span>
       {conds.map((c) => (
         <span key={c.id} className="filter-chip">
           <span>

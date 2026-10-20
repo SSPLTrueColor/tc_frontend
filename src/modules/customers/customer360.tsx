@@ -252,7 +252,7 @@ export function OverviewTab({ actor, record }: RecordExtensionProps) {
       </Section>
       <Section title={O.recent}>
         {recent.length ? (
-          <ul className="related-list">
+          <ul className="related-list activity-list">
             {recent.map((a) => (
               <li key={a.id}>
                 <span className="muted small nowrap">

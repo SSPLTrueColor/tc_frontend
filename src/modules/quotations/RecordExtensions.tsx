@@ -17,7 +17,7 @@ import { getPolicies } from '../../services/policies';
 import { activeMasterValues, getUser, masterLabel, masterValue } from '../../services/registry';
 import { queryRecords, updateRecord } from '../../services/runtime';
 import { computeTotals, roi } from '../../services/quotations/pricing';
-import { getQuote, levelName, quoteApprovalChain } from '../../services/quotations/workflow';
+import { getQuote, levelName, quoteApprovalChain, quotationOrigin } from '../../services/quotations/workflow';
 import { ServiceError } from '../../services/types';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
 import { Button, IconButton } from '../../components/primitives/Button';
@@ -64,6 +64,7 @@ export function QuoteActions({ actor, record }: Props) {
       return null;
     }
   })();
+  const origin = view ? quotationOrigin(actor, record.id) : undefined;
   const canUpdate = !!view?.canUpdate;
   const ro = canUpdate ? undefined : T.common.readOnlyFor(actor.role.label);
   const expired = String(raw.validUntil) < todayKey();
@@ -127,6 +128,9 @@ export function QuoteActions({ actor, record }: Props) {
 
   return (
     <>
+      {origin?.leadId && <Button icon="chevron-right" onClick={() => navigate(recordPeekPath(actor.workspaceId, 'leads', origin.leadId!))}>Open Lead · {origin.leadId}</Button>}
+      {origin?.directCustomer && <span className="muted small">Existing-customer opportunity</span>}
+      {latest && Number(raw.revision) > 0 && status === 'draft' && <StatusChip label="Under Revision" tone="warning" />}
       {primary}
       <IconButton ref={moreRef} icon="more-vertical" label={A.menu} aria-haspopup="menu" onClick={() => setMenu(true)} />
       <Menu
@@ -704,17 +708,17 @@ export function VersionsTab({ actor, record }: Props) {
   if (!q.data) return <TabState q={q} error={C.versionsError} rows={3} />;
   return (
     <ul className="flow-list">
-      {q.data.revisions.map((r) => {
+      {[...q.data.revisions].reverse().map((r) => {
         const st = masterValue('quoteStatus', r.status);
         return (
           <li key={r.id} className="flow-item">
-            <span className="tag tone-neutral">R{Number(r.revision) || 0}</span>
+            <StatusChip label={`v${(Number(r.revision) || 0) + 1} · ${r.isLatest ? 'Active' : 'Previous'}`} tone={r.isLatest ? 'success' : 'neutral'} />
             <Link to={quotePath(r.id)} className="flow-main">
               <span className="flow-title">
                 {String(r.quoteNo)} · {formatMoney(Number(r.grandTotal) || 0)}
               </span>
               <span className="muted small">
-                {formatDate(String(r.quoteDate))} · {r.revisionNote ? String(r.revisionNote) : C.firstIssue}
+                {formatDateTime(String(r.createdAt ?? r.quoteDate))} · {getUser(String(r.createdBy))?.name ?? 'Sales team'} · {r.revisionNote ? String(r.revisionNote) : C.firstIssue}
               </span>
             </Link>
             {st && <StatusChip label={st.label} tone={st.tone} />}

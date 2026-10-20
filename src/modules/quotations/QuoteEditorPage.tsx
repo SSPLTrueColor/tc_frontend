@@ -258,7 +258,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
           </div>
           <div className="form-field">
             <span className="field-label">{F.customerId}</span>
-            <span className="field-readonly">{customer?.name ?? <EmptyValue />}</span>
+            <span className="field-readonly qt-readonly-box">{customer?.name ?? <EmptyValue />}</span>
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="qt-contact">
@@ -268,7 +268,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
           </div>
           <div className="form-field">
             <span className="field-label">{F.divisionId}</span>
-            <span className="field-readonly">{divisionId ? masterLabel('division', divisionId) : <EmptyValue />}</span>
+            <span className="field-readonly qt-readonly-box">{divisionId ? masterLabel('division', divisionId) : <EmptyValue />}</span>
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="qt-date">
@@ -306,9 +306,28 @@ function QuoteEditor({ data }: { data: EditorData }) {
               const id = `qt-l${i}`;
               return (
                 <li key={i} className="qt-line">
-                  <span className="qt-line-n" aria-hidden="true">
-                    {i + 1}
-                  </span>
+                  <div className="qt-line-head">
+                    <span className="qt-line-n" aria-hidden="true">
+                      {T.lineTable.item} {i + 1}
+                    </span>
+                    <IconButton
+                      icon="trash"
+                      label={E.removeLine(i + 1)}
+                      className="qt-line-del"
+                      disabledReason={lines.length === 1 ? E.needOneLine : undefined}
+                      onClick={() =>
+                        confirmDelete({
+                          title: E.removeLineTitle(i + 1),
+                          message: E.removeLineBody(lines[i].description || E.untitledLine),
+                          confirmLabel: T.actions.remove,
+                          onConfirm: () => {
+                            setLines((ls) => ls.filter((_, j) => j !== i));
+                            setDirty(true);
+                          },
+                        })
+                      }
+                    />
+                  </div>
                   <div className="qt-line-grid">
                     <div className="form-field qt-span-2">
                       <label className="field-label" htmlFor={`${id}-p`}>
@@ -322,7 +341,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                       </label>
                       <SelectMenu id={`${id}-t`} label={E.lineType(i + 1)} block value={lines[i].lineType} options={activeMasterValues('quoteLineType').map((t) => ({ value: t.key, label: t.label }))} onChange={(v) => setLine(i, { lineType: v })} />
                     </div>
-                    <div className="form-field qt-span-2">
+                    <div className="form-field qt-span-3">
                       <label className="field-label" htmlFor={`${id}-d`}>
                         {E.description_}
                       </label>
@@ -342,7 +361,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                         {(l.priceLocked || !mayPrice) && <InfoTip text={l.priceLocked ? E.priceLocked : E.priceNotListed} label={E.aboutListPrice} />}
                       </span>
                       {l.priceLocked || !mayPrice ? (
-                        <span id={`${id}-lp`} className="field-readonly num">
+                        <span id={`${id}-lp`} className="field-readonly qt-readonly-box num">
                           {formatMoney(l.listPrice)}
                         </span>
                       ) : (
@@ -392,28 +411,11 @@ function QuoteEditor({ data }: { data: EditorData }) {
                     </div>
                     <div className="form-field">
                       <span className="field-label">{T.lineTable.net}</span>
-                      <span className="field-readonly num">
+                      <span className="field-readonly qt-readonly-box num">
                         <strong>{formatMoney(a.net)}</strong>
                       </span>
                     </div>
                   </div>
-                  <IconButton
-                    icon="trash"
-                    label={E.removeLine(i + 1)}
-                    className="qt-line-del"
-                    disabledReason={lines.length === 1 ? E.needOneLine : undefined}
-                    onClick={() =>
-                      confirmDelete({
-                        title: E.removeLineTitle(i + 1),
-                        message: E.removeLineBody(lines[i].description || E.untitledLine),
-                        confirmLabel: T.actions.remove,
-                        onConfirm: () => {
-                          setLines((ls) => ls.filter((_, j) => j !== i));
-                          setDirty(true);
-                        },
-                      })
-                    }
-                  />
                 </li>
               );
             })}

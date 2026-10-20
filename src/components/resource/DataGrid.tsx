@@ -1,3 +1,4 @@
+import { getCardActions } from './extensions';
 import { Fragment, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import type { ColumnState, FieldAccess, FieldDefinition, RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx } from '../../lib/format';
@@ -13,6 +14,8 @@ import { useToast } from '../primitives/feedback';
 import { Menu, type MenuItem } from '../primitives/overlay';
 import { FieldInput } from './FormFields';
 import { FieldValue } from './FieldValue';
+import { StatusCellMenu, useStageMove } from './MoveStageButton';
+import { useUnsavedGuard } from '../settings/kit';
 import { LineItemsTable, lineItemsOf } from './LineItems';
 import { ImageTile } from '../primitives/People';
 import { isEmpty } from '../../services/validation';
@@ -26,6 +29,8 @@ const INLINE_TYPES = new Set(['text', 'number', 'money', 'master', 'date', 'rela
 /** Row action icons (view, edit, more): column width fits exactly this many 30px icons. */
 const ROW_ACTION_ICONS = 3;
 const ACTIONS_W = ROW_ACTION_ICONS * 30 + (ROW_ACTION_ICONS - 1) * 2 + 16;
+/** Extra room for a module's row action icon (e.g. "Create Opportunity" on leads). */
+const CARD_ACTION_W = 32;
 const DEFAULT_W = 150;
 /**
  * Virtualization rule: when a flat, one-line table renders more than this many rows, only the rows in
@@ -71,6 +76,42 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<{ id: string; key: string } | null>(null);
+  // In-place edits are staged per row: nothing is saved until the row's ✓ (Apply) is clicked; ✕ discards them.
+  const [drafts, setDrafts] = useState<Record<string, Record<string, unknown>>>({});
+  useUnsavedGuard(Object.keys(drafts).length > 0);
+  const toast = useToast();
+  const { move, dialog } = useStageMove(res, actor);
+  const CardActions = getCardActions(res.key);
+  const stage = (r: RecordData, key: string, v: unknown) =>
+    setDrafts((d) => {
+      const row = { ...d[r.id] };
+      if (JSON.stringify(v ?? null) === JSON.stringify(r[key] ?? null)) delete row[key];
+      else row[key] = v;
+      const next = { ...d };
+      if (Object.keys(row).length) next[r.id] = row;
+      else delete next[r.id];
+      return next;
+    });
+  const discard = (id: string) =>
+    setDrafts((d) => {
+      const next = { ...d };
+      delete next[id];
+      return next;
+    });
+  const apply = (r: RecordData) => {
+    const patch = drafts[r.id];
+    if (!patch) return;
+    try {
+      const raw = getDb().records[res.key].find((x) => x.id === r.id);
+      updateRecord(actor, res.key, r.id, patch, raw?.version ?? r.version);
+      discard(r.id);
+      toast(C.toasts.saved(r.id));
+    } catch (e) {
+      const fe = e instanceof ServiceError ? e.fieldErrors : undefined;
+      const first = fe && Object.keys(fe)[0];
+      toast(first ? `${colLabel(res, first)}: ${fe![first]}` : e instanceof ServiceError ? e.message : C.toasts.saveFailed, 'danger');
+    }
+  };
   const [menu, setMenu] = useState<{ row: RecordData } | null>(null);
   const menuAnchor = useRef<HTMLElement | null>(null);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
@@ -99,7 +140,9 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
   // Configured widths are minimums. When the table has spare room, share it across the data
   // columns in proportion to their width (Actions/checkbox keep their fixed size).
   const baseW = (c: ColumnState) => c.width ?? fieldWidth(res, c.key);
-  const fixedW = 40 + (masterDetail ? 32 : 0) + ACTIONS_W;
+  // Room for a module row action, or for the "Edited" tag while a row has staged edits.
+  const actionsW = ACTIONS_W + Math.max(CardActions ? CARD_ACTION_W : 0, Object.keys(drafts).length ? 52 : 0);
+  const fixedW = 40 + (masterDetail ? 32 : 0) + actionsW;
   const dataW = ordered.reduce((sum, c) => sum + baseW(c), 0);
   const scale = wrapW && dataW ? Math.max(1, (wrapW - fixedW) / dataW) : 1;
   const widths = new Map(ordered.map((c) => [c.key, Math.floor(baseW(c) * scale)]));
@@ -271,7 +314,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                 </th>
               );
             })}
-            <th className="col-actions sticky-right" scope="col" style={{ width: ACTIONS_W, minWidth: ACTIONS_W, maxWidth: ACTIONS_W }}>
+            <th className="col-actions sticky-right" scope="col" style={{ width: actionsW, minWidth: actionsW, maxWidth: actionsW }}>
               Actions
             </th>
           </tr>
@@ -310,12 +353,14 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                   const isOpen = expanded.has(r.id);
                   const raw = getDb().records[res.key].find((x) => x.id === r.id);
                   const rowCanEdit = !!raw && canUpdateRecord(actor, res, raw);
+                  const draft = drafts[r.id];
+                  const shown = draft ? { ...r, ...draft } : r;
                   return (
                     <Fragment key={r.id}>
                       <tr
                         data-row
                         tabIndex={0}
-                        className={cx(selected.has(r.id) && 'is-selected', activeId === r.id && 'is-active')}
+                        className={cx(selected.has(r.id) && 'is-selected', activeId === r.id && 'is-active', draft && 'is-dirty')}
                         aria-selected={selected.has(r.id)}
                         onKeyDown={(e) => onRowKey(e, r)}
                         // selecting / copying text in a row must not open the record
@@ -346,12 +391,14 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                           const f = res.fields.find((x) => x.key === c.key);
                           const w = colW(c);
                           const isEditing = editing?.id === r.id && editing.key === c.key;
-                          const inline = !!f && rowCanEdit && access[c.key] === 'edit' && INLINE_TYPES.has(f.type) && !f.visibleWhen && !f.relation?.filterBy;
+                          const isStatus = !!res.lifecycle && c.key === res.lifecycle.field;
+                          const dirtyCell = !!draft && c.key in draft;
+                          const inline = !!f && !isStatus && rowCanEdit && access[c.key] === 'edit' && INLINE_TYPES.has(f.type) && !f.visibleWhen && !f.relation?.filterBy;
                           return (
                             <td
                               key={c.key}
                               style={{ width: w, minWidth: w, maxWidth: w, left: c.pinned ? offsets[c.key] : undefined }}
-                              className={cx(c.pinned && 'sticky-left', f && ['money', 'number'].includes(f.type) && 'td-num', sortedKey === c.key && 'is-sorted', inline && 'is-editable', inline && f?.type === 'master' && 'is-choice', isEditing && 'is-editing')}
+                              className={cx(c.pinned && 'sticky-left', f && ['money', 'number'].includes(f.type) && 'td-num', sortedKey === c.key && 'is-sorted', inline && 'is-editable', inline && f?.type === 'master' && 'is-choice', isEditing && 'is-editing', dirtyCell && 'is-dirty')}
                               // ClickUp-style: hovering an editable cell outlines it; a single click edits it in place
                               onClick={(e) => {
                                 if (isDragClick(e)) {
@@ -364,12 +411,16 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                               }}
                             >
                               {isEditing && f ? (
-                                <InlineEditor res={res} actor={actor} field={f} record={r} onDone={() => setEditing(null)} />
+                                <InlineEditor actor={actor} field={f} record={shown} onStage={(v) => stage(r, f.key, v)} onDone={() => setEditing(null)} />
                               ) : c.key === 'id' ? (
                                 <IdCell id={r.id} onOpen={() => onOpen(r.id)} />
+                              ) : isStatus ? (
+                                <span className="cell" onClick={(e) => e.stopPropagation()}>
+                                  {rowCanEdit && !draft ? <StatusCellMenu res={res} actor={actor} record={r} move={move} /> : <RichCell res={res} actor={actor} field={f!} record={r} access={access} lines={rowLines} />}
+                                </span>
                               ) : f ? (
                                 <span className="cell">
-                                  <RichCell res={res} actor={actor} field={f} record={r} access={access} lines={rowLines} />
+                                  <RichCell res={res} actor={actor} field={f} record={shown} access={access} lines={rowLines} />
                                   {inline && (
                                     <button
                                       type="button"
@@ -388,10 +439,25 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                             </td>
                           );
                         })}
-                        <td className="col-actions sticky-right" style={{ width: ACTIONS_W, minWidth: ACTIONS_W, maxWidth: ACTIONS_W }} onClick={(e) => e.stopPropagation()}>
+                        <td className="col-actions sticky-right" style={{ width: actionsW, minWidth: actionsW, maxWidth: actionsW }} onClick={(e) => e.stopPropagation()}>
                           <span className="row-actions">
-                            <IconButton icon="eye" label={LS.viewRow(r.id)} onClick={() => onOpen(r.id)} />
-                            <IconButton icon="pencil" label={LS.editRow(r.id)} onClick={() => onEdit(r.id)} disabledReason={rowCanEdit ? undefined : C.states.readOnlyForRole} />
+                            {draft ? (
+                              <>
+                                <span className="row-edited-tag">{LS.edited}</span>
+                                <IconButton icon="check" className="row-apply" label={LS.applyRow(r.id)} onClick={() => apply(r)} />
+                                <IconButton icon="x" label={LS.discardRow(r.id)} onClick={() => discard(r.id)} />
+                              </>
+                            ) : (
+                              <>
+                                {CardActions && (
+                                  <span className="row-card-actions">
+                                    <CardActions res={res} actor={actor} record={r} />
+                                  </span>
+                                )}
+                                <IconButton icon="eye" label={LS.viewRow(r.id)} onClick={() => onOpen(r.id)} />
+                                <IconButton icon="pencil" label={LS.editRow(r.id)} onClick={() => onEdit(r.id)} disabledReason={rowCanEdit ? undefined : C.states.readOnlyForRole} />
+                              </>
+                            )}
                             <IconButton
                               icon="more"
                               label={LS.rowActions(r.id)}
@@ -407,7 +473,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                       {isOpen && masterDetail && (
                         <tr className="detail-row-expanded">
                           <td colSpan={ordered.length + 3}>
-                            <div className="detail-card" style={wrapW ? { width: Math.max(320, wrapW - 56 - ACTIONS_W - 12) } : undefined}>
+                            <div className="detail-card" style={wrapW ? { width: Math.max(320, wrapW - 56 - actionsW - 12) } : undefined}>
                               <LineItemsSummary res={res} record={r} title={LS.lineItems(res.label)} />
                             </div>
                           </td>
@@ -426,6 +492,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
         </tbody>
       </table>
       {menu && <Menu open onClose={() => setMenu(null)} anchor={menuAnchor} label={LS.actionsFor(menu.row.id)} items={rowMenu(menu.row)} />}
+      {dialog}
     </div>
   );
 }
@@ -507,25 +574,15 @@ function LineItemsSummary({ res, record, title }: { res: ResourceDefinition; rec
   );
 }
 
-function InlineEditor({ res, actor, field, record, onDone }: { res: ResourceDefinition; actor: Actor; field: FieldDefinition; record: RecordData; onDone: () => void }) {
+/** In-place cell editor: commits into the row's staged draft (never saves); the row's ✓ applies all its edits. */
+function InlineEditor({ actor, field, record, onStage, onDone }: { actor: Actor; field: FieldDefinition; record: RecordData; onStage: (v: unknown) => void; onDone: () => void }) {
   const [value, setValue] = useState<unknown>(record[field.key]);
-  const [error, setError] = useState('');
-  const toast = useToast();
-  const saving = useRef(false);
+  const done = useRef(false);
   const save = (v: unknown = value) => {
-    if (saving.current) return;
-    if (JSON.stringify(v ?? null) === JSON.stringify(record[field.key] ?? null)) return onDone();
-    saving.current = true;
-    try {
-      updateRecord(actor, res.key, record.id, { [field.key]: v }, record.version);
-      toast(C.toasts.fieldUpdated(record.id, field.label));
-      onDone();
-    } catch (e) {
-      const msg = e instanceof ServiceError ? e.fieldErrors?.[field.key] ?? e.message : C.toasts.saveFailed;
-      setError(msg);
-      toast(msg, 'danger');
-      saving.current = false;
-    }
+    if (done.current) return;
+    done.current = true;
+    if (JSON.stringify(v ?? null) !== JSON.stringify(record[field.key] ?? null)) onStage(v);
+    onDone();
   };
   // One click: the cell click opened the editor — open its dropdown / calendar (or focus the input) right away
   const boxRef = useRef<HTMLDivElement>(null);
@@ -563,51 +620,60 @@ function InlineEditor({ res, actor, field, record, onDone }: { res: ResourceDefi
         values={{ ...record, [field.key]: value }}
         actor={actor}
         id={`inline-${record.id}-${field.key}`}
-        invalid={!!error}
         compact
       />
-      {error && <span className="sr-only">{error}</span>}
     </div>
   );
 }
 
 /** Responsive / mobile row variant: deliberate card list instead of a squeezed table. */
 function CardList({ res, actor, rows, onOpen, activeId, columns, selected, onSelectedChange }: GridProps) {
+  const CardActions = getCardActions(res.key);
+  const { move, dialog } = useStageMove(res, actor);
   const access = fieldAccessMap(actor, res);
   const extra = columns.filter((c) => !c.hidden && c.key !== res.titleField && c.key !== 'id' && access[c.key] && access[c.key] !== 'hide').slice(0, 3);
   return (
-    <ul className="card-list" aria-label={LS.listAria(res.labelPlural)}>
-      {rows.map((r) => (
-        <li key={r.id} className={cx('card-row', activeId === r.id && 'is-active')}>
-          <Checkbox
-            
-            aria-label={LS.selectRow(r.id)}
-            checked={selected.has(r.id)}
-            onChange={() => {
-              const n = new Set(selected);
-              if (n.has(r.id)) n.delete(r.id);
-              else n.add(r.id);
-              onSelectedChange(n);
-            }}
-          />
-          <button type="button" className="card-main" onClick={() => onOpen(r.id)}>
-            <span className="card-title">{recordTitle(res.key, r.id, actor)}</span>
-            <span className="card-meta mono">{r.id}</span>
-            <span className="card-fields">
-              {extra.map((c) => {
-                const f = res.fields.find((x) => x.key === c.key)!;
-                return (
-                  <span key={c.key} className="card-field">
-                    <span className="muted">{f.label}: </span>
-                    <FieldValue field={f} value={r[c.key]} access={access[c.key]} actor={actor} linkRelations={false} />
-                  </span>
-                );
-              })}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="card-list" aria-label={LS.listAria(res.labelPlural)}>
+        {rows.map((r) => (
+          <li key={r.id} className={cx('card-row', activeId === r.id && 'is-active')}>
+            <Checkbox
+              
+              aria-label={LS.selectRow(r.id)}
+              checked={selected.has(r.id)}
+              onChange={() => {
+                const n = new Set(selected);
+                if (n.has(r.id)) n.delete(r.id);
+                else n.add(r.id);
+                onSelectedChange(n);
+              }}
+            />
+            <button type="button" className="card-main" onClick={() => onOpen(r.id)}>
+              <span className="card-title">{recordTitle(res.key, r.id, actor)}</span>
+              <span className="card-meta mono">{r.id}</span>
+              <span className="card-fields">
+                {extra.map((c) => {
+                  const f = res.fields.find((x) => x.key === c.key)!;
+                  return (
+                    <span key={c.key} className="card-field">
+                      <span className="muted">{f.label}: </span>
+                      <FieldValue field={f} value={r[c.key]} access={access[c.key]} actor={actor} linkRelations={false} />
+                    </span>
+                  );
+                })}
+              </span>
+            </button>
+            {(CardActions || res.lifecycle) && (
+              <div className="mobile-card-actions">
+                {res.lifecycle && canUpdateRecord(actor, res, r) && <StatusCellMenu res={res} actor={actor} record={r} move={move} />}
+                {CardActions && <CardActions res={res} actor={actor} record={r} />}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {dialog}
+    </>
   );
 }
 

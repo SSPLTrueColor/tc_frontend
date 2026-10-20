@@ -313,6 +313,11 @@ export interface ModuleDefinition {
   pages?: { id: string; label: string; icon: string; path: string; capability?: string }[];
   /** Resource groups whose child rows show icons (default: text-only indented children). */
   navChildIcons?: string[];
+  /**
+   * Compact sidebar: one collapsible section per member module (its record lists + pages, one row each).
+   * Saved views stay as tabs on the list page and in the sidebar search instead of separate rows.
+   */
+  sections?: { id: string; label: string; icon: string; resources: string[]; pages: string[] }[];
 }
 
 export interface DomainPack {

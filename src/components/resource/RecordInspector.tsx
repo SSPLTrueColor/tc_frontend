@@ -1,10 +1,11 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { MoveStageButton } from './MoveStageButton';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import type { FieldDefinition, RecordData, ResourceDefinition } from '../../metadata/types';
 import { formatTime, relativeTime } from '../../lib/dates';
 import { cx } from '../../lib/format';
-import { recordEditPath, recordPagePath, recordPeekPath } from '../../lib/routes';
+import { recordEditPath, recordListPeekPath, recordPagePath, recordPeekPath } from '../../lib/routes';
 import { type Actor, canReadResource, perm } from '../../services/authz';
 import { listComments } from '../../services/collab';
 import { getDb } from '../../services/db';
@@ -189,7 +190,7 @@ export function RecordInspector({
 }
 
 function PinButton({ actor, res, id }: { actor: Actor; res: ResourceDefinition; id: string }) {
-  const path = recordPeekPath(actor.workspaceId, res.key, id);
+  const path = recordListPeekPath(actor.workspaceId, res.key, id);
   const pinned = getSettings(actor.user.id).pins.some((p) => p.path === path);
   return <IconButton icon={pinned ? 'pin-off' : 'pin'} label={pinned ? R.unpin : R.pin} pressed={pinned} onClick={() => togglePin(actor, `${id} · ${recordTitle(res.key, id, actor)}`.slice(0, 48), path)} />;
 }
@@ -252,16 +253,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
       {editInFooter && !editing && (
         // Drawer: workflow actions are icon buttons on the same line as "ID · Updated · version"
         <div className="inspector-icon-actions">
-          {transitions.map((t, i) => (
-            <IconButton
-              key={t.to}
-              icon={actionIcon(t.action)}
-              label={t.action}
-              className={cx(i === 0 && !t.disabledReason && 'is-primary-action')}
-              disabledReason={t.disabledReason}
-              onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
-            />
-          ))}
+          <MoveStageButton res={res} actor={actor} record={r} onRun={(t) => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))} />
           {Actions && <Actions res={res} actor={actor} record={r} />}
           <IconButton ref={moreRef} icon="more" label={C.actions.moreActions} aria-haspopup="menu" onClick={() => setMenuOpen((o) => !o)} />
         </div>
@@ -325,7 +317,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
             label: C.actions.copyLink,
             icon: 'copy',
             onSelect: () => {
-              navigator.clipboard?.writeText(window.location.origin + recordPeekPath(actor.workspaceId, res.key, r.id)).catch(() => {}); // clipboard may be blocked — never crash
+              navigator.clipboard?.writeText(window.location.origin + recordListPeekPath(actor.workspaceId, res.key, r.id)).catch(() => {}); // clipboard may be blocked — never crash
               toast(C.toasts.linkCopied);
             },
           },

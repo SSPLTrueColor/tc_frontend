@@ -24,12 +24,13 @@ import { Icon } from '../primitives/Icon';
 import { Avatar, useToast } from '../primitives/feedback';
 import { Dialog, Drawer, Popover, useLayer } from '../primitives/overlay';
 import { HelpContent } from './help';
+import { GlobalRecordDrawer } from './GlobalRecordDrawer';
 import { InfoTip } from '../primitives/InfoTip';
 import { TOPBAR_TITLE_SLOT } from './PageHeader';
 import { TYPE_ICON } from '../resource/ViewControls';
 import { PaletteEditor, ThemePicker } from './ThemePicker';
 import { GuidedTour, useTour, useTourHighlight } from './GuidedTour';
-import { moduleTitle, RESOURCE_PAGES } from '../../domain/sidebar';
+import { moduleTitle, RESOURCE_PAGES, workspaceForModule } from '../../domain/sidebar';
 import { L } from '../../constants/labels';
 import { SearchInput, TextField } from '../primitives/controls';
 
@@ -38,6 +39,7 @@ const C = L.common;
 /** Where a module's rail icon goes: Dashboard for home, else its first readable resource list or first page. */
 function moduleHome(actor: ReturnType<typeof useActor>, m: (typeof appModules)[number]) {
   if (m.id === 'home') return ROUTES.dashboard;
+  if (m.id === 'leads' && (canReadResource(actor, 'leads') || canReadResource(actor, 'opportunities'))) return '/sales';
   const res = m.resources.find((r) => canReadResource(actor, r));
   if (res) return resourcePath(actor.workspaceId, res);
   const page = (m.pages ?? []).find((p) => !p.capability || can(actor, p.capability)) ?? m.pages![0];
@@ -61,7 +63,7 @@ function activeModule(pathname: string) {
   const key = keyOfSlug(slug);
   const byResource = key && appModules.find((m) => m.resources.includes(key));
   if (byResource) return byResource.id;
-  if (key && RESOURCE_PAGES[key]) return RESOURCE_PAGES[key].module;
+  if (key && RESOURCE_PAGES[key]) return workspaceForModule(RESOURCE_PAGES[key].module);
   if (parts[0] === 'admin') return 'admin';
   const prefix = pages.filter((p) => pathname.startsWith(`${p.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
   return prefix?.m ?? pages.find((p) => p.path.split('/')[1] === parts[0])?.m ?? 'home';
@@ -172,6 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      <GlobalRecordDrawer />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <Drawer open={helpOpen} onClose={() => setHelpOpen(false)} title={C.shell.helpTitle}>
         <HelpContent
@@ -414,7 +417,20 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
       });
       return { rk, label: res.labelPlural, items };
     });
-  const all = [...pages, ...groups.flatMap((g) => g.items)];
+  // Compact (sectioned) sidebar: each section = its record lists (one row each) + its pages; only the section
+  // you are in opens by default. Saved views are not rows here — they are tabs on the list and stay searchable.
+  const resourceRows: NavEntry[] = groups.map((g) => {
+    const base = resourcePath(actor.workspaceId, g.rk);
+    return { key: `res:${g.rk}`, label: g.label, path: base, icon: getResource(g.rk).icon, active: location.pathname === base || location.pathname.startsWith(`${base}/`) };
+  });
+  const sections = (m.sections ?? [])
+    .map((s) => ({
+      ...s,
+      items: [...resourceRows.filter((e) => s.resources.includes(e.key.slice(4))), ...pages.filter((e) => s.pages.includes(e.key.slice(5)))],
+    }))
+    .filter((s) => s.items.length > 0);
+  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
+  const all = [...pages, ...(m.sections ? resourceRows : []), ...groups.flatMap((g) => g.items)];
   const needle = q.trim().toLowerCase();
   const results = needle ? all.filter((e) => e.label.toLowerCase().includes(needle)) : [];
 
@@ -470,8 +486,28 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
                 </ul>
               </>
             )}
-            {pages.length > 0 && <span className="nav-section is-static">{C.sidebar.pages}</span>}
-            <ul className="nav-list">
+            {sections.length > 0 &&
+              sections.map((s) => {
+                const open = sectionOpen[s.id] ?? s.items.some((e) => e.active);
+                return (
+                  <div key={s.id} className="nav-tree nav-section-group">
+                    <button type="button" className={cx('nav-row nav-toggle', !open && s.items.some((e) => e.active) && 'is-active')} aria-expanded={open} onClick={() => setSectionOpen((o) => ({ ...o, [s.id]: !open }))}>
+                      <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} />
+                      <span className="nav-label">{s.label}</span>
+                      <span className="nav-count">{s.items.length}</span>
+                    </button>
+                    {open && (
+                      <ul className="nav-list nav-children has-icons">
+                        {s.items.map((e) => (
+                          <NavItem key={e.key} entry={e} />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            {!sections.length && pages.length > 0 && <span className="nav-section is-static">{C.sidebar.pages}</span>}
+            {!sections.length && <ul className="nav-list">
               {pages.map((e) => (
                 <NavItem key={e.key} entry={e} />
               ))}
@@ -486,9 +522,9 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
                       </span>
                     </li>
                   ))}
-            </ul>
-            {groups.length > 0 && <span className="nav-section is-static">{C.sidebar.menu}</span>}
-            {groups.map((g) => {
+            </ul>}
+            {!sections.length && groups.length > 0 && <span className="nav-section is-static">{C.sidebar.menu}</span>}
+            {!sections.length && groups.map((g) => {
               const open = !collapsedGroups.has(g.rk);
               return (
                 <div key={g.rk} className="nav-tree">
