@@ -120,8 +120,7 @@ export function TaxSummary({ totals, className = '', interState }: { totals: Pic
   const C = T.tabContent;
   const igst = interState ?? Number(totals.igst) > 0;
   return (
-    <div className="table-scroll">
-      <table className={`mini-table ${className}`.trim()}>
+    <Table className={className}>
         <thead>
           <tr>
             <th scope="col">{C.gstRate}</th>
@@ -160,7 +159,6 @@ export function TaxSummary({ totals, className = '', interState }: { totals: Pic
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+    </Table>
   );
 }

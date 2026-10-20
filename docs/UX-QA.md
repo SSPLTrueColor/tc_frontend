@@ -69,7 +69,7 @@ The one failure in the full run was `settings.spec.ts › roles › store` (fixe
 
 ## 5. Known limitations
 
-- **Raw `<table>`** remains in 7 files that need a custom layout (DataGrid, FormFields, ReportTable, OrderProcessingPage, PaymentSchedulePage, LinesTable ×2 / QuotationPdfPage); they are in the ESLint exception list.
+- **Tables**: every page and module now renders through `Table` (static), `DataTable` (sort / search / page) or `DataGrid` (resource lists). `ReportTable`, the line-item editor and the GST summary use `Table` for markup and styling. The only raw `<table>` left are the table components themselves and the quotation PDF print layout (ESLint exception).
 - **Custom list pages** (a few module lists) still build their own toolbar rather than the shared one.
 - **Remaining colours outside tokens** are deliberate: the quotation paper/PDF print layout and the signature canvas are fixed white-on-dark-ink so they print correctly; the rest are `var(--token, #fallback)` fallbacks.
 - **Inline styles**: 71 `style={{…}}`; most are dynamic widths/colours. Three static ones remain (`installed/components.tsx`, `TicketExtensions.tsx`).

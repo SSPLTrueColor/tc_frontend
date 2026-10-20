@@ -7,6 +7,7 @@ import { Button } from '../../components/primitives/Button';
 import { EmptyState } from '../../components/primitives/feedback';
 import { EmptyValue } from '../../components/primitives/display';
 import { Icon } from '../../components/primitives/Icon';
+import { Table } from '../../components/primitives/Table';
 import { Popover } from '../../components/primitives/overlay';
 import { cx } from '../../lib/format';
 import { totalsFor } from '../../services/reports/engine';
@@ -190,7 +191,7 @@ export function ReportTable({ model, title, busy, onChangeFilters }: { model: Ta
       ) : (
         <>
           <div className="rp-scroll" tabIndex={0} role="region" aria-label={`${title}: ${T.scrollable}`}>
-            <table className="rp-table">
+            <Table className="rp-table" scroll={false}>
               <caption className="sr-only">{title}</caption>
               <thead>
                 <tr>
@@ -246,7 +247,7 @@ export function ReportTable({ model, title, busy, onChangeFilters }: { model: Ta
                   </tr>
                 </tfoot>
               )}
-            </table>
+            </Table>
           </div>
           <Pagination className="rp-footer" page={model.page} pageSize={model.size} total={total} noun={T.rows} onPage={model.setPage} onSize={model.setSize} sizes={PAGE_SIZES} />
         </>

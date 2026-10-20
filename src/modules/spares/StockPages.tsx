@@ -215,9 +215,9 @@ export function EngineerStockPage() {
                 rowKey={(r) => r.partId}
                 search={(r) => `${r.partNo} ${r.description}`}
                 initialSort={{ key: 'inHand', dir: 'desc' }}
-                filters={picker}
-                tools={
+                filters={
                   <>
+                    {picker}
                     <LinkButton to={resourcePath(actor.workspaceId, 'requisitions', { view: 'v_req_all' })}>{P.openRequisitions}</LinkButton>
                   </>
                 }

@@ -38,11 +38,6 @@ export default tseslint.config(
     ignores: [
       'src/components/primitives/**',
       'src/components/resource/DataGrid.tsx',
-      'src/components/resource/FormFields.tsx',
-      'src/modules/reports/ReportTable.tsx',
-      'src/modules/orders/OrderProcessingPage.tsx',
-      'src/modules/orders/PaymentSchedulePage.tsx',
-      'src/modules/quotations/LinesTable.tsx',
       'src/modules/quotations/QuotationPdfPage.tsx',
     ],
     rules: {

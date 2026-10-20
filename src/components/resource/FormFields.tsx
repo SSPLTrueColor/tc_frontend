@@ -22,6 +22,7 @@ import { fieldIcon } from './fieldIcon';
 import { Button, IconButton } from '../primitives/Button';
 import { Menu, type MenuItem } from '../primitives/overlay';
 import { Icon } from '../primitives/Icon';
+import { Table } from '../primitives/Table';
 import { FieldValue } from './FieldValue';
 import { L } from '../../constants/labels';
 import { FileButton, Switch, TextField, Textarea } from '../primitives/controls';
@@ -202,8 +203,7 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
   };
   return (
     <div className="line-items" id={id}>
-      <div className="table-scroll">
-        <table className="li-table">
+      <Table className="li-table">
           <thead>
             <tr>
               {cols.map((c) => (
@@ -261,8 +261,7 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
               <td />
             </tr>
           </tfoot>
-        </table>
-      </div>
+      </Table>
     </div>
   );
 }
