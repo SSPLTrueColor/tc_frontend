@@ -159,7 +159,7 @@ export function MyJobPage() {
 
   return (
     <div className="page">
-      <PageHeader title={P.title(t.id)} description={P.description} />
+      <PageHeader crumbs={[{ label: L.nav.pages.myJobs.title, to: ROUTES.myJobs }]} title={P.title(t.id)} description={P.description} />
       <OfflineBar />
       <section className="panel">
         <div className="svc-job-top">

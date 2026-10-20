@@ -1,3 +1,4 @@
+import { listCrumb } from '../../components/shell/crumbs';
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
@@ -65,6 +66,7 @@ export function QuotationPdfPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('quotations')]}
         title={P.title(String(r.quoteNo))}
         description={P.description}
         actions={

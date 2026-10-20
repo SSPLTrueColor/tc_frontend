@@ -1,3 +1,4 @@
+import { lastUsedValues } from '../../services/lastUsed';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { RecordData, ResourceDefinition } from '../../metadata/types';
 import { uid } from '../../lib/ids';
@@ -48,7 +49,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
       return null;
     }
   }, [recordId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [values, setValues] = useState<Values>(() => (loaded ? { ...loaded.record } : initialValues(res, initial)));
+  const [values, setValues] = useState<Values>(() => (loaded ? { ...loaded.record } : initialValues(res, { ...lastUsedValues(actor.user.id, resKey), ...initial })));
   const [baseVersion, setBaseVersion] = useState(loaded?.record.version ?? 0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [errorLinks, setErrorLinks] = useState<Record<string, { label: string; to: string }>>({});

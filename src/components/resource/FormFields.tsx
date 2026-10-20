@@ -3,7 +3,7 @@
  * Layout (sections/columns) is presentation only; validation and access come
  * from the resource schema + Authorization Service.
  */
-import { createContext, useContext, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { FieldAccess, FieldDefinition, LineItemColumn, RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx, formatMoney } from '../../lib/format';
@@ -150,25 +150,8 @@ export function FieldInput({
       );
     case 'image':
       return <ImageInput id={id} label={field.label} value={(value as string | null) ?? null} onChange={onChange} describedBy={describedBy} />;
-    case 'relation': {
-      const opts = relationOptions(actor, field, values);
-      const dependent = field.relation?.filterBy && !values[field.relation.filterBy.fromField];
-      return (
-        <SelectMenu
-          icon={fieldIcon(field)}
-          id={id}
-          block
-          label={field.label}
-          value={String(value ?? '')}
-          invalid={invalid}
-          describedBy={describedBy}
-          disabled={!!dependent || !opts.length}
-          placeholder={dependent ? L.common.form.chooseRelatedFirst : opts.length ? L.common.form.select : L.common.form.noOptions}
-          options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
-          onChange={(v) => onChange(v || null)}
-        />
-      );
-    }
+    case 'relation':
+      return <RelationSelect actor={actor} field={field} values={values} id={id} value={value} invalid={invalid} describedBy={describedBy} onChange={onChange} />;
     case 'lineitems':
       return <LineItemsEditor field={field} value={(value as Values[]) ?? []} onChange={onChange} id={id} />;
     case 'email':
@@ -537,5 +520,33 @@ function ImageInput({ id, label, value, onChange, describedBy }: { id: string; l
         </button>
       )}
     </span>
+  );
+}
+
+
+/** Record lookup. When it depends on another field (a customer's contacts / machines) and that parent has exactly one match, the match is picked for you. */
+function RelationSelect({ actor, field, values, id, value, invalid, describedBy, onChange }: { actor: Actor; field: FieldDefinition; values: Values; id: string; value: unknown; invalid?: boolean; describedBy?: string; onChange: (v: unknown) => void }) {
+  const opts = relationOptions(actor, field, values);
+  const parent = field.relation?.filterBy ? values[field.relation.filterBy.fromField] : undefined;
+  const dependent = !!field.relation?.filterBy && !parent;
+  const only = opts.length === 1 ? opts[0].id : null;
+  useEffect(() => {
+    if (field.relation?.filterBy && parent && only && !value) onChange(only);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parent, only]);
+  return (
+    <SelectMenu
+      icon={fieldIcon(field)}
+      id={id}
+      block
+      label={field.label}
+      value={String(value ?? '')}
+      invalid={invalid}
+      describedBy={describedBy}
+      disabled={dependent || !opts.length}
+      placeholder={dependent ? L.common.form.chooseRelatedFirst : opts.length ? L.common.form.select : L.common.form.noOptions}
+      options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
+      onChange={(v) => onChange(v || null)}
+    />
   );
 }

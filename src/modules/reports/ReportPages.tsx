@@ -25,7 +25,7 @@ import { ChartSkeleton, ReportChart } from './ReportChart';
 import { ReportTable, TableSkeleton, useTableModel } from './ReportTable';
 import { useReportPrefs } from './usePrefs';
 import { useReportState } from './useReportState';
-import { LinkButton, SearchInput } from '../../components/primitives/controls';
+import { SearchInput } from '../../components/primitives/controls';
 
 const P = L.reports.page;
 
@@ -215,25 +215,25 @@ function ReportPage({ def }: { def: ReportDef }) {
 
   return (
     <div className="page rp-page">
-      <PageHeader title={def.title} description={def.description} />
-      <div className="rp-head">
-        <p className="rp-desc">{def.description}</p>
-        <div className="rp-actions">
-          <LinkButton to={reportPath(def.group)} variant="ghost" data-tooltip={P.moreInCategory}>
-            <Icon name="chevron-left" />
-            <span className="btn-label">{REPORT_GROUPS.find((g) => g.id === def.group)?.label}</span>
-          </LinkButton>
-          <IconButton className={cx('rp-fav', fav && 'is-on')} icon="star" label={fav ? P.unfavourite(def.title) : P.favourite(def.title)} pressed={fav} variant="secondary" onClick={() => prefs.toggle(def.id)} />
-          <Button
-            icon="file-spreadsheet"
-            loading={exporting}
-            onClick={doExport}
-            disabledReason={!canExportReports(actor) ? L.reports.viewer.cannotExport(actor.role.label) : !out || !model.rows.length ? L.reports.viewer.nothingToExport : undefined}
-          >
-            {P.exportExcel}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        crumbs={[{ label: REPORT_GROUPS.find((g) => g.id === def.group)?.label ?? L.nav.pages.reports.title, to: reportPath(def.group) }]}
+        title={def.title}
+        description={def.description}
+        actions={
+          <>
+            <IconButton className={cx('rp-fav', fav && 'is-on')} icon="star" label={fav ? P.unfavourite(def.title) : P.favourite(def.title)} pressed={fav} variant="secondary" onClick={() => prefs.toggle(def.id)} />
+            <Button
+              variant="primary"
+              icon="file-spreadsheet"
+              loading={exporting}
+              onClick={doExport}
+              disabledReason={!canExportReports(actor) ? L.reports.viewer.cannotExport(actor.role.label) : !out || !model.rows.length ? L.reports.viewer.nothingToExport : undefined}
+            >
+              {P.exportExcel}
+            </Button>
+          </>
+        }
+      />
 
       {def.views.length > 1 && <Tabs label={P.views(def.title)} value={view.id} onChange={(id) => state.set({ view: id })} tabs={def.views.map((v) => ({ id: v.id, label: v.label }))} />}
       <FilterBar state={state} />

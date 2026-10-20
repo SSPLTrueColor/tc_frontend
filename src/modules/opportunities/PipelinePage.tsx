@@ -123,7 +123,7 @@ export function PipelinePage() {
             options={(['kanban', 'list'] as const).map((m) => ({ value: m, label: m === 'kanban' ? T.kanban : T.list }))}
           />
           <div className="view-tools view-tools-primary">
-            <Button icon="plus" onClick={() => setCreating({ mode: 'quick' })} disabledReason={canCreate ? undefined : T.cannotCreate(actor.role.label)}>
+            <Button variant="primary" icon="plus" onClick={() => setCreating({ mode: 'quick' })} disabledReason={canCreate ? undefined : T.cannotCreate(actor.role.label)}>
               {L.opportunities.actions.newOpportunity}
             </Button>
           </div>

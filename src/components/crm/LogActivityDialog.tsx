@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { nowLocal, todayKey } from '../../lib/dates';
+import { addDays, nowLocal, todayKey } from '../../lib/dates';
 import { call, errorMessage } from '../../services/api/client';
 import { logActivity, type ActivityInput } from '../../services/activities';
 import { useActor } from '../../services/hooks';
@@ -43,7 +43,7 @@ export function LogActivityDialog({
   const [type, setType] = useState(defaultType);
   const [subject, setSubject] = useState('');
   const [at, setAt] = useState(nowLocal());
-  const [next, setNext] = useState('');
+  const [next, setNext] = useState(() => (requireNextFollowUp ? addDays(todayKey(), 1) : ''));
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);

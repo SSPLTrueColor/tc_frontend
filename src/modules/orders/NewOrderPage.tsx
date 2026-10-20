@@ -1,3 +1,4 @@
+import { listCrumb } from '../../components/shell/crumbs';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
@@ -198,6 +199,7 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('salesOrders')]}
         title={title}
         description={P.formDescription}
         actions={

@@ -1,3 +1,4 @@
+import { listCrumb } from '../../../components/shell/crumbs';
 import { useParams } from 'react-router-dom';
 import { useServiceQuery } from '../../../hooks/useServiceQuery';
 import { formatDateTime } from '../../../lib/dates';
@@ -53,6 +54,7 @@ export function JobCardPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('tickets')]}
         title={P.title(t.id)}
         description={P.description}
         actions={

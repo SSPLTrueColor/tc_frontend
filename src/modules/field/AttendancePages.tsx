@@ -176,7 +176,7 @@ export function AttendancePage() {
                 {error}
               </p>
             )}
-            <Button variant="primary" size="default" className="field-big-btn" loading={busy} icon={state === 'out' ? 'door-open' : 'check'} onClick={() => act(state === 'out' ? 'in' : 'out')} disabledReason={!d.consent ? P.consentFirst : undefined}>
+            <Button variant={d.consent ? 'primary' : 'secondary'} size="default" className="field-big-btn" loading={busy} icon={state === 'out' ? 'door-open' : 'check'} onClick={() => act(state === 'out' ? 'in' : 'out')} disabledReason={!d.consent ? P.consentFirst : undefined}>
               {state === 'out' ? FA.checkIn : FA.checkOut}
             </Button>
           </div>

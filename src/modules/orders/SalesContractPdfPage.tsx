@@ -1,3 +1,4 @@
+import { listCrumb } from '../../components/shell/crumbs';
 import { useParams } from 'react-router-dom';
 import { organization } from '../../domain/pack';
 import { L } from '../../constants/labels';
@@ -50,6 +51,7 @@ export function SalesContractPdfPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('salesOrders')]}
         title={TITLE}
         description={P.title(String(contract.contractNo))}
         actions={

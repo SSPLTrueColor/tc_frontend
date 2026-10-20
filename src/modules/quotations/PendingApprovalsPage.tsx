@@ -11,12 +11,13 @@ import { can, canReadResource } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterLabel } from '../../services/registry';
 import { ServiceError } from '../../services/types';
-import { Button, IconButton } from '../../components/primitives/Button';
+import { Button } from '../../components/primitives/Button';
+import { Pagination } from '../../components/primitives/Pagination';
 import { EmptyState, ErrorState, NoAccess, Skeleton, StatusChip, Tabs, useToast } from '../../components/primitives/feedback';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
-import { SearchInput, Textarea } from '../../components/primitives/controls';
+import { Checkbox, SearchInput, Textarea } from '../../components/primitives/controls';
 import { Table } from '../../components/primitives/Table';
 
 const P = L.quotations.pending;
@@ -51,6 +52,8 @@ export function PendingApprovalsPage() {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'waiting', dir: -1 });
   const [page, setPage] = useState(0);
   const [deciding, setDeciding] = useState<{ row: PendingApprovalRow; decision: 'approved' | 'rejected' } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState(false);
 
   const all = useMemo(() => q.data ?? [], [q.data]);
   const rows = useMemo(() => {
@@ -69,6 +72,9 @@ export function PendingApprovalsPage() {
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE));
   const current = Math.min(page, pageCount - 1);
   const visible = rows.slice(current * PAGE, current * PAGE + PAGE);
+  const decidable = visible.filter((r) => r.canDecide);
+  const chosen = all.filter((r) => selected.has(r.approval.id) && r.canDecide);
+  const toggleRow = (id: string, on: boolean) => setSelected((cur) => { const n = new Set(cur); if (on) n.add(id); else n.delete(id); return n; });
   const filtered = !!(search || division || level);
   const resetPage = () => setPage(0);
   const sortBtn = (key: SortKey, label: string) => (
@@ -117,6 +123,16 @@ export function PendingApprovalsPage() {
             <SearchInput dense placeholder={P.search} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), resetPage())} />
             <SelectMenu label={P.filterDivision} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setDivision(v), resetPage())} />
             <SelectMenu label={P.filterLevel} value={level} options={[{ value: '', label: P.allLevels }, ...LEVELS.map((l) => ({ value: l, label: l }))]} onChange={(v) => (setLevel(v), resetPage())} />
+            {chosen.length > 0 && (
+              <>
+                <span className="spacer" />
+                <span className="muted small">{P.selectedCount(chosen.length)}</span>
+                <Button onClick={() => setSelected(new Set())}>{P.clearSelection}</Button>
+                <Button variant="primary" onClick={() => setBulk(true)}>
+                  {P.bulkApprove(chosen.length)}
+                </Button>
+              </>
+            )}
           </div>
           <div className="content-surface">
             {rows.length === 0 ? (
@@ -129,6 +145,14 @@ export function PendingApprovalsPage() {
                   <Table>
                     <thead>
                       <tr>
+                        <th scope="col" className="col-select">
+                          <Checkbox
+                            aria-label={P.selectAll}
+                            disabled={!decidable.length}
+                            checked={decidable.length > 0 && decidable.every((r) => selected.has(r.approval.id))}
+                            onChange={(e) => setSelected((cur) => { const n = new Set(cur); decidable.forEach((r) => (e.target.checked ? n.add(r.approval.id) : n.delete(r.approval.id))); return n; })}
+                          />
+                        </th>
                         <th scope="col">{sortBtn('quoteNo', P.colQuotation)}</th>
                         <th scope="col">{P.colCustomer}</th>
                         <th scope="col">{P.colExecutive}</th>
@@ -146,6 +170,9 @@ export function PendingApprovalsPage() {
                     <tbody>
                       {visible.map((r) => (
                         <tr key={r.approval.id}>
+                          <td className="col-select">
+                            {r.canDecide && <Checkbox aria-label={P.selectRow(String(r.quoteNo))} checked={selected.has(r.approval.id)} onChange={(e) => toggleRow(r.approval.id, e.target.checked)} />}
+                          </td>
                           <td>
                             <Link className="rel-link" to={recordPeekPath('tc', 'quotations', r.quoteId)}>
                               {r.quoteNo}
@@ -182,7 +209,7 @@ export function PendingApprovalsPage() {
                           <td>
                             {r.canDecide ? (
                               <div className="qt-pending-actions">
-                                <Button size="compact" variant="primary" onClick={() => setDeciding({ row: r, decision: 'approved' })}>
+                                <Button size="compact" onClick={() => setDeciding({ row: r, decision: 'approved' })}>
                                   {L.quotations.actions.approve}
                                 </Button>
                                 <Button size="compact" onClick={() => setDeciding({ row: r, decision: 'rejected' })}>
@@ -198,20 +225,14 @@ export function PendingApprovalsPage() {
                     </tbody>
                   </Table>
                 
-                <div className="grid-footer">
-                  <span className="grid-footer-range">{P.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)}</span>
-                  <nav className="grid-pages" aria-label={P.pageOf(current + 1, pageCount)}>
-                    <IconButton icon="chevron-left" label={P.prev} disabledReason={current === 0 ? P.firstPage : undefined} onClick={() => setPage(current - 1)} />
-                    <span className="muted small">{P.pageOf(current + 1, pageCount)}</span>
-                    <IconButton icon="chevron-right" label={P.next} disabledReason={current >= pageCount - 1 ? P.lastPage : undefined} onClick={() => setPage(current + 1)} />
-                  </nav>
-                </div>
+                <Pagination page={current} pageSize={PAGE} total={rows.length} noun={P.noun} onPage={setPage} />
               </>
             )}
           </div>
         </>
       )}
       {deciding && <DecideDialog row={deciding.row} decision={deciding.decision} onClose={() => setDeciding(null)} />}
+      {bulk && <BulkApproveDialog rows={chosen} onClose={() => setBulk(false)} onDone={() => setSelected(new Set())} />}
     </div>
   );
 }
@@ -275,6 +296,70 @@ function DecideDialog({ row, decision, onClose }: { row: PendingApprovalRow; dec
         </label>
         <Textarea id="qpa-note" className="textarea" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!error || undefined} />
         {error && <p className="field-error">{error}</p>}
+      </div>
+    </Dialog>
+  );
+}
+
+/** Approve several requests at once with one optional comment; failures are listed, successes are kept. */
+function BulkApproveDialog({ rows, onClose, onDone }: { rows: PendingApprovalRow[]; onClose: () => void; onDone: () => void }) {
+  const actor = useActor();
+  const toast = useToast();
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const total = rows.reduce((n, r) => n + r.grandTotal, 0);
+  const submit = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const r of rows) {
+      try {
+        await quotationsApi.decideApproval(actor, r.approval.id, 'approved', note, r.approval.version);
+        ok++;
+      } catch {
+        failed.push(String(r.quoteNo));
+      }
+    }
+    inFlight.current = false;
+    setBusy(false);
+    toast(failed.length ? P.bulkPartial(ok, failed.join(', ')) : P.bulkDone(ok), failed.length ? 'danger' : 'success');
+    onDone();
+    onClose();
+  };
+  return (
+    <Dialog
+      open
+      onClose={() => !busy && onClose()}
+      size="sm"
+      role="alertdialog"
+      title={P.bulkTitle(rows.length)}
+      description={P.bulkBody(formatMoney(total))}
+      footer={
+        <>
+          <Button onClick={onClose} data-autofocus disabled={busy}>
+            {L.quotations.actions.cancel}
+          </Button>
+          <Button variant="primary" loading={busy} onClick={() => void submit()}>
+            {P.bulkApprove(rows.length)}
+          </Button>
+        </>
+      }
+    >
+      <ul className="plain-list small">
+        {rows.map((r) => (
+          <li key={r.approval.id}>
+            {r.quoteNo} · {r.customerName} · {formatMoney(r.grandTotal)} · {r.discountPct}%
+          </li>
+        ))}
+      </ul>
+      <div className="form-field">
+        <label className="field-label" htmlFor="qpa-bulk-note">
+          {P.comment} <span className="optional">{L.quotations.common.optional}</span>
+        </label>
+        <Textarea id="qpa-bulk-note" className="textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
     </Dialog>
   );

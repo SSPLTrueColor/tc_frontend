@@ -297,7 +297,7 @@ fieldset {
 }
 .btn:disabled {
   background: var(--s-disabled-bg);
-  border-color: var(--s-disabled-bg);
+  border-color: var(--s-border);
   color: var(--s-disabled-text);
 }
 .btn-ghost:disabled {
@@ -1491,6 +1491,8 @@ input[type='radio'] {
   min-width: 0;
 }
 .topbar-title .page-title {
+  flex: 0 0 auto;
+  max-width: 100%;
   font-size: var(--fs-primary);
   font-weight: var(--fw-semibold);
   overflow: hidden;
@@ -1809,10 +1811,63 @@ input[type='radio'] {
   padding: 0 var(--sp-1);
   color: var(--s-text-muted);
 }
-.page-header {
-  margin-bottom: var(--sp-3);
+.page-intro {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  min-height: var(--sp-5);
+}
+.page-intro .page-desc {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--s-text-muted);
+  font-size: var(--fs-supportive);
+  white-space: nowrap;
+}
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.crumb a,
+.crumb-btn {
+  color: var(--s-text-secondary);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.crumb a:hover,
+.crumb-btn:hover {
+  color: var(--s-text);
+  text-decoration: underline;
+}
+@media (max-width: 760px) {
+  .crumbs {
+    display: none;
+  }
+  .page-intro {
+    flex-wrap: wrap;
+  }
+  .page-intro .page-desc {
+    white-space: normal;
+  }
 }
 .breadcrumbs ol {
   display: flex;

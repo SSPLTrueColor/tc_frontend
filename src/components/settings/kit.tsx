@@ -21,14 +21,8 @@ const K = L.settingsKit;
 export function SettingsPage({ title, description, actions, children }: { title: string; description: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <div className="page st-page">
-      <PageHeader title={title} description={description} />
-      <div className="st-col">
-        <header className="st-head">
-          <p className="st-desc">{description}</p>
-          {actions && <div className="st-head-actions">{actions}</div>}
-        </header>
-        {children}
-      </div>
+      <PageHeader title={title} description={description} actions={actions} />
+      <div className="st-col">{children}</div>
     </div>
   );
 }

@@ -79,7 +79,7 @@ export function EngineerCalendarPage() {
                           {P.responseIn(s(masterValue('division', t.divisionId)?.label), resp ? clockText(resp) : S.sla.chips.not_applicable)}
                         </span>
                       </Link>
-                      <Button variant="primary" onClick={() => setAssign(t.id)}>
+                      <Button onClick={() => setAssign(t.id)}>
                         {S.actions.assignEngineer}
                       </Button>
                     </li>

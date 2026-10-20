@@ -51,7 +51,7 @@ export function IntegrationsPage() {
           <SelectMenu id="int-source" label={I.leadSource} value={source} options={LEAD_CHANNELS.map((c) => ({ value: c.key, label: c.label }))} onChange={setSource} />
         </SettingsField>
         <div>
-          <Button variant="primary" loading={busy === 'lead'} onClick={() => run('lead', () => captureLead(actor, source))}>
+          <Button loading={busy === 'lead'} onClick={() => run('lead', () => captureLead(actor, source))}>
             {I.simulateLead}
           </Button>
         </div>
@@ -60,7 +60,6 @@ export function IntegrationsPage() {
         <p className="st-help">{I.erpTip}</p>
         <div>
           <Button
-            variant="primary"
             loading={busy === 'erp'}
             onClick={() =>
               run('erp', async () => {

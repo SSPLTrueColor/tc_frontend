@@ -1,3 +1,5 @@
+import { lastUsedValues } from '../../services/lastUsed';
+import { listCrumb } from '../../components/shell/crumbs';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { addDays, todayKey } from '../../lib/dates';
@@ -35,7 +37,7 @@ export function NewLeadPage() {
   const toast = useToast();
   const res = getResource('leads');
   const access = useMemo(() => fieldAccessMap(actor, res, 'create'), [actor.user.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [values, setValues] = useState<Values>(() => initialValues(res, { divisionId: actor.divisionIds[0], nextFollowUpAt: addDays(todayKey(), 1) }));
+  const [values, setValues] = useState<Values>(() => initialValues(res, { ...lastUsedValues(actor.user.id, 'leads'), divisionId: actor.divisionIds[0], nextFollowUpAt: addDays(todayKey(), 1) }));
   const [companyMode, setCompanyMode] = useState<'existing' | 'new'>('existing');
   const [contactMode, setContactMode] = useState<'existing' | 'new'>('existing');
   const [company, setCompany] = useState<NewCompanyInput>(EMPTY_COMPANY);
@@ -43,7 +45,12 @@ export function NewLeadPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const setValue = (k: string, v: unknown) => setValues((x) => ({ ...x, [k]: v, ...(k === 'customerId' ? { contactId: null } : {}), ...(k === 'divisionId' ? { ownerId: null } : {}) }));
+  // Picking a customer with exactly one contact picks that contact too (one choice fewer).
+  const soleContact = (customerId: unknown) => {
+    const list = (getDb().records.contacts ?? []).filter((c) => c.customerId === customerId);
+    return list.length === 1 ? list[0].id : null;
+  };
+  const setValue = (k: string, v: unknown) => setValues((x) => ({ ...x, [k]: v, ...(k === 'customerId' ? { contactId: soleContact(v) } : {}), ...(k === 'divisionId' ? { ownerId: null } : {}) }));
 
   const partyReady = hasResource('customers') && hasResource('contacts');
   const customers = useMemo(() => (partyReady ? (getDb().records.customers ?? []).filter((c) => canReadRecord(actor, getResource('customers'), c)) : []), [partyReady, actor.user.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -91,6 +98,7 @@ export function NewLeadPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('leads')]}
         title={T.title}
         description={T.description}
         actions={

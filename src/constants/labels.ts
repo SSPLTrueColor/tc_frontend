@@ -345,6 +345,7 @@ const common = {
   },
 
   // ------------------------------------------------------------ Lists: views, filters, columns, grid, pagination, bulk actions
+  nav: { breadcrumb: 'Breadcrumb' },
   table: {
     rows: 'rows',
     search: 'Search',
@@ -355,6 +356,7 @@ const common = {
 
   list: {
     search: 'Search',
+    shortcutHint: (key: string) => `Shortcut: ${key}`,
     searchAria: (plural: string) => `Search ${plural}`,
     count: (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`,
     selected: (n: number) => `${n} selected`,
@@ -2877,6 +2879,16 @@ const quotations = {
     rejectBody: 'The quotation goes back to draft with your comment. The sales executive can change the discount and submit again.',
     comment: 'Comment',
     commentRequired: 'A comment of at least 5 characters is required when rejecting',
+    noun: 'pending approvals',
+    selectAll: 'Select all approvals on this page',
+    selectRow: (q: string) => `Select ${q}`,
+    selectedCount: (n: number) => `${n} selected`,
+    clearSelection: 'Clear',
+    bulkApprove: (n: number) => `Approve ${n} selected`,
+    bulkTitle: (n: number) => `Approve ${n} request(s)?`,
+    bulkBody: (total: string) => `Total value ${total}. Each is approved at your level; the comment is added to every one.`,
+    bulkDone: (n: number) => `${n} request(s) approved`,
+    bulkPartial: (n: number, failed: string) => `${n} approved. Could not approve: ${failed}`,
     approved: (no: string, last: boolean) => (last ? `${no} approved — ready to send` : `${no} approved at your level and sent to the next level`),
     rejected: (no: string) => `${no} rejected and returned to draft`,
   },

@@ -149,7 +149,7 @@ export function RecordInspector({
           {!(drawer && editing) && variant !== 'page' && <QuickComment key={`${resKey}:${recordId}`} actor={actor} resource={resKey} recordId={recordId} />}
           {variant === 'page' && !editing && (
             <footer className="record-page-foot">
-              <Button onClick={onClose}>{C.actions.cancel}</Button>
+              <Button onClick={onClose}>{C.actions.close}</Button>
               <Button icon="pencil" onClick={() => (setTab('details'), setEditing(true))} disabledReason={editReason(resKey, actor, projected.record, projected.canUpdate)}>
                 {C.actions.edit}
               </Button>
@@ -159,7 +159,7 @@ export function RecordInspector({
       )}
       {drawer && !editing && (
         <footer className="dialog-footer">
-          <Button onClick={onClose}>{C.actions.cancel}</Button>
+          <Button onClick={onClose}>{C.actions.close}</Button>
           {projected && (
             <Button variant="primary" icon="pencil" onClick={() => (setTab('details'), setEditing(true))} disabledReason={editReason(resKey, actor, projected.record, projected.canUpdate)}>
               {C.actions.edit}

@@ -37,6 +37,8 @@ export const defaultSettings = (): PersonalSettings => ({
   },
   mfaOptIn: false,
   revokedSessions: [],
+  lastViews: {},
+  lastUsed: {},
 });
 
 export function createDb(now = clockNow()): Db {

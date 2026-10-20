@@ -316,6 +316,7 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
   return (
     <div className="page">
       <PageHeader
+        crumbs={[{ label: form.res.labelPlural, onClick: guard.requestClose }]}
         title={recordId ? L.common.form.editTitle(form.res.label, recordId) : (form.res.form.primaryLabel ?? L.common.form.newTitle(form.res.label))}
         description={L.common.form.fullPageDescription}
         onBack={guard.requestClose}

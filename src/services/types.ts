@@ -174,6 +174,10 @@ export interface PersonalSettings {
   mfaOptIn: boolean;
   /** Simulated signed-in devices the user has signed out. */
   revokedSessions: string[];
+  /** Last list view opened per resource (so a list opens where the user left it). */
+  lastViews: Record<string, string>;
+  /** Last values chosen for required dropdowns when creating a record, per resource (pre-filled next time). */
+  lastUsed: Record<string, Record<string, string>>;
 }
 
 export type NotifEvent = 'approvals' | 'followUps' | 'slaBreach' | 'renewals' | 'payments';

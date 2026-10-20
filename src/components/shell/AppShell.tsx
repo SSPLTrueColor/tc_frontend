@@ -399,7 +399,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
       const res = getResource(rk);
       const views = listViews(actor, rk);
       const base = resourcePath(actor.workspaceId, rk);
-      const current = location.pathname === base ? (new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || views[0]?.id)) : undefined;
+      const current = location.pathname === base ? (new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || settings.lastViews[rk] || views[0]?.id)) : undefined;
       const withIcons = m.navChildIcons?.includes(rk);
       const items: NavEntry[] = views.map((v) => {
         const typeIcon = TYPE_ICON[v.type];
