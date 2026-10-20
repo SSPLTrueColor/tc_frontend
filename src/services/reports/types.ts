@@ -56,9 +56,9 @@ export interface KpiSpec {
 /**
  * The chart follows the business question:
  *   trend → line / area · two measures over time → combo · comparison → bar / hbar · share → donut ·
- *   stages → funnel · two outcomes over time → stacked · target vs actual → bullet · when → heatmap.
+ *   concentration (do a few make most?) → pareto · stages → funnel · two outcomes over time → stacked · target vs actual → bullet · when → heatmap.
  */
-export type ChartType = 'line' | 'area' | 'bar' | 'hbar' | 'donut' | 'funnel' | 'combo' | 'stacked' | 'heatmap' | 'bullet';
+export type ChartType = 'line' | 'area' | 'bar' | 'hbar' | 'donut' | 'funnel' | 'combo' | 'stacked' | 'heatmap' | 'bullet' | 'pareto';
 
 /** One coloured part of a stacked bar: the table column that holds it. */
 export interface ChartSeries {
@@ -81,6 +81,8 @@ export interface ChartSpec {
   limit?: number;
   /** Marks are in a meaningful order (ageing bands, stages): do not re-rank them by value. */
   keepOrder?: boolean;
+  /** Cut the long tail instead of folding it into "Others" (when the tail would dwarf the marks worth naming). */
+  noOthers?: boolean;
   /** The values add up (e.g. downtime hours), so the tail may fold into "Others" even though the unit is not a count or ₹. */
   sumOthers?: boolean;
   /** combo: the second measure, drawn as a line on the right-hand axis. */

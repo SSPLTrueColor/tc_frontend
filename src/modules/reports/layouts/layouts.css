@@ -602,3 +602,67 @@ a.rl-metric:hover span {
 .rl-funnel .rp-funnel-row {
   grid-template-columns: minmax(80px, 22%) minmax(0, 1fr) minmax(56px, auto);
 }
+
+/* ---------- leaderboard picture ---------- */
+.rl-visual {
+  display: grid;
+  gap: var(--sp-2);
+}
+.rl-visual-title {
+  margin: 0;
+  font-size: var(--fs-supportive);
+  font-weight: var(--fw-medium);
+  color: var(--s-text-secondary);
+}
+.rl-visual-body {
+  height: 280px;
+  min-width: 0;
+}
+
+.rl-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-supportive);
+  color: var(--s-text-secondary);
+}
+.rl-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.rl-key-line {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+.rl-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+}
+.rl-status-ring {
+  position: relative;
+  width: 180px;
+  height: 180px;
+}
+.rl-status-centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+.rl-status-centre strong {
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+}
+.rl-status-centre span {
+  font-size: var(--fs-supportive);
+  color: var(--s-text-muted);
+}

@@ -42,7 +42,7 @@ function change(cur: number | null, prev: number | null | undefined, fmt: KpiSpe
   return { delta: Math.round(((cur - prev) / Math.abs(prev)) * 1000) / 10, deltaKind: 'rel' };
 }
 
-const DEFAULT_LIMIT: Record<ChartSpec['type'], number> = { line: 400, area: 400, bar: 12, hbar: 10, donut: 6, funnel: 8, combo: 400, stacked: 24, heatmap: 400, bullet: 12 };
+const DEFAULT_LIMIT: Record<ChartSpec['type'], number> = { line: 400, area: 400, bar: 12, hbar: 10, donut: 6, funnel: 8, combo: 400, stacked: 24, heatmap: 400, bullet: 12, pareto: 10 };
 /** Counts and ₹ add up, so the tail can fold into "Others"; rates and averages cannot. */
 const additive = (fmt: ChartSpec['fmt']) => fmt === 'money' || fmt === 'number';
 
@@ -56,6 +56,13 @@ export function chartFrom(spec: ChartSpec, columns: ReportColumn[], rows: Report
     return { spec, hiddenCount: 0, points: rows.map((r) => { const values = Object.fromEntries(spec.series!.map((s) => [s.key, Number(r[s.key]) || 0])); return { key: r._key, label: labelOf(r), value: Object.values(values).reduce((t, v) => t + v, 0), values }; }) };
   if (spec.type === 'bullet' && spec.target)
     return { spec, hiddenCount: 0, points: rows.filter((r) => finite(Number(r[spec.y]))).map((r) => ({ key: r._key, label: labelOf(r), value: Number(r[spec.y]), target: Number(r[spec.target!]) || 0 })).sort((a, b) => (b.target ? b.value / b.target : 0) - (a.target ? a.value / a.target : 0)).slice(0, spec.limit ?? DEFAULT_LIMIT.bullet) };
+  // Pareto: ranked columns plus the running share of the total, so "do a few make most of it?" reads straight off the line.
+  if (spec.type === 'pareto') {
+    const base = chartFrom({ ...spec, type: 'hbar' }, columns, rows, given);
+    const total = base.points.reduce((t, p) => t + Math.max(0, p.value), 0);
+    let run = 0;
+    return { ...base, spec, points: base.points.map((p) => ({ ...p, value2: total ? (run += Math.max(0, p.value)) / total : null })) };
+  }
   if (spec.type === 'heatmap') return { spec, hiddenCount: 0, points: given ?? [] };
   let pts: ChartPoint[] =
     given ??
@@ -69,7 +76,7 @@ export function chartFrom(spec: ChartSpec, columns: ReportColumn[], rows: Report
   if (spec.type === 'line' || spec.type === 'area') return { spec, points: ordered, hiddenCount: 0 };
   const head = ordered.slice(0, limit - 1);
   const tail = ordered.slice(limit - 1);
-  if (additive(spec.fmt) || spec.sumOthers) {
+  if ((additive(spec.fmt) || spec.sumOthers) && !spec.noOthers) {
     return { spec, points: [...head, { key: '_others', label: L.reports.page.others(tail.length), value: tail.reduce((t, p) => t + p.value, 0), others: true }], hiddenCount: 0 };
   }
   return { spec, points: ordered.slice(0, limit), hiddenCount: ordered.length - limit };

@@ -11,6 +11,7 @@ import type { ReportDef, ReportRow } from '../types';
 const D = L.reports.defs;
 const C = L.reports.cols;
 const R = L.reports.rep;
+const M = L.reports.more;
 
 export const customerReports: ReportDef[] = [
   {
@@ -61,7 +62,7 @@ export const customerReports: ReportDef[] = [
           { label: R.customerSales.kpis.avgOrder, fmt: 'money', value: ratio('value', 'orders') },
           { label: R.customerSales.kpis.pipeline, fmt: 'money', value: sumOf('pipeline'), hint: R.customerSales.pipelineHint },
         ],
-        chart: { type: 'hbar', title: D.customerSales.chart, x: 'customer', y: 'value', fmt: 'money' },
+        chart: { type: 'pareto', title: D.customerSales.chart, x: 'customer', y: 'value', fmt: 'money', fmt2: 'pct', label: M.paretoValue, label2: M.paretoCumulative },
       },
     ],
   },
@@ -120,7 +121,7 @@ export const customerReports: ReportDef[] = [
           { label: C.breakdowns, fmt: 'number', value: sumOf('breakdowns'), better: 'down' },
           { label: D.machineHistory.cols.pmDone, fmt: 'number', value: sumOf('pmDone') },
         ],
-        chart: { type: 'hbar', title: D.machineHistory.chart, x: 'serial', y: 'tickets', fmt: 'number', unit: D.machineHistory.unit },
+        chart: { type: 'hbar', title: D.machineHistory.chart, x: 'serial', y: 'tickets', fmt: 'number', unit: D.machineHistory.unit, noOthers: true },
       },
     ],
   },

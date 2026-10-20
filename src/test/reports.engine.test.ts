@@ -135,7 +135,8 @@ describe('every report: totals, chart and cards come from the same rows', () => 
           const spec = typeof v.chart === 'function' ? v.chart(filters) : v.chart;
           const custom = !!v.compute({ get: () => [], name: () => '' }, filters, { actor: admin(), today: todayKey(), nowMs: Date.now() }).points;
           const yCol = res.columns.find((c) => c.key === spec?.y);
-          if (spec && !custom && yCol?.total === 'sum' && (spec.fmt === 'money' || spec.fmt === 'number') && spec.type !== 'line' && spec.type !== 'area') {
+          if (spec && !custom && yCol?.total === 'sum' && (spec.fmt === 'money' || spec.fmt === 'number') && spec.type !== 'line' && spec.type !== 'area' && !spec.noOthers) {
+            // (a chart that names the top few cuts its long tail on purpose; the table keeps every row)
             const positive = res.rows.reduce((t, x) => t + Math.max(0, Number(x[spec.y]) || 0), 0);
             const charted = res.chart!.points.reduce((t, p) => t + Math.max(0, p.value), 0);
             expect(charted, `${id} chart vs total`).toBeCloseTo(positive, 6);
