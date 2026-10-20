@@ -47,32 +47,49 @@ export function CountBadge({ n, className }: { n: number; className?: string }) 
   );
 }
 
+const P = L.calendar.page;
+/** FullCalendar Dates carry the IST wall clock in their UTC fields; Monday = 0. */
+const weekday = (d: Date) => (d.getUTCDay() + 6) % 7;
+
 /**
- * FullCalendar options that put the day's activity count on every month cell and week / day header,
- * tint busy days, and make the day number / count a link to that day.
+ * FullCalendar options for every calendar: quiet month cells (day number only; the 1st also names the month),
+ * Google-style week / day headers (small weekday over a large date, today in an accent circle) and
+ * agenda date rows (large date, weekday and month, a Today tag). The day number / header links to that day.
  */
 export function dayLoadOptions(counts: DayCounts) {
   const countOf = (d: Date) => counts.get(wall(d, true)) ?? 0;
   return {
     navLinks: true,
     dayCellClassNames: (a: DayCellContentArg) => (a.view.type === 'dayGridMonth' ? [`cal-load-${loadTier(countOf(a.date))}`] : []),
-    // Month cells show just the day number: "+N more" already says when a day is busy; only a packed day (6+) keeps its count.
-    // (Week / Day all-day rows keep FullCalendar's empty cell — the count already sits in the column header.)
     dayCellContent: (a: DayCellContentArg) =>
       a.view.type === 'dayGridMonth' ? (
         <span className="cal-daycell">
-          <span className="cal-daynum">{a.dayNumberText}</span>
-          {loadTier(countOf(a.date)) === 3 && <CountBadge n={countOf(a.date)} />}
+          <span className="cal-daynum">{a.date.getUTCDate() === 1 ? `${P.monthsShort[a.date.getUTCMonth()]} 1` : a.dayNumberText}</span>
         </span>
       ) : undefined,
-    dayHeaderContent: (a: DayHeaderContentArg) =>
-      a.view.type.startsWith('timeGrid') ? (
-        <span className="cal-dayhead">
-          {a.text}
-          <CountBadge n={countOf(a.date)} />
-        </span>
-      ) : (
-        a.text
-      ),
+    dayHeaderContent: (a: DayHeaderContentArg) => {
+      if (a.view.type.startsWith('timeGrid'))
+        return (
+          <span className={cx('cal-dh', a.isToday && 'is-today')} aria-label={`${a.text}${countOf(a.date) ? `, ${D.activities(countOf(a.date))}` : ''}`}>
+            <span className="cal-dh-dow">{(a.view.type === 'timeGridDay' ? P.weekdaysLong : P.weekdaysShort)[weekday(a.date)]}</span>
+            <span className="cal-dh-num">{a.date.getUTCDate()}</span>
+          </span>
+        );
+      if (a.view.type === 'list' || a.view.type === 'agenda')
+        return (
+          <span className={cx('cal-ad', a.isToday && 'is-today')} id={(a as { textId?: string }).textId}>
+            <span className="cal-ad-num">{a.date.getUTCDate()}</span>
+            <span className="cal-ad-text">
+              <span className="cal-ad-dow">{P.weekdaysLong[weekday(a.date)]}</span>
+              <span className="cal-ad-month">
+                {MONTHS[a.date.getUTCMonth()]} {a.date.getUTCFullYear()}
+              </span>
+            </span>
+            {a.isToday && <span className="cal-ad-tag">{P.todayTag}</span>}
+            {countOf(a.date) > 0 && <span className="cal-ad-count">{D.activities(countOf(a.date))}</span>}
+          </span>
+        );
+      return a.text;
+    },
   };
 }

@@ -13,6 +13,9 @@
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  /* 3px of room so a pill's focus / open ring is never clipped by the overflow */
+  padding: 3px;
+  margin: -3px;
 }
 /* In the list toolbar the bar takes all the free room (so it can measure what fits); the spacer after it is not needed. */
 .view-tools-row .nf-bar { flex: 1 1 0%; }
@@ -54,22 +57,28 @@
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 .nf-pill.is-set {
-  border-color: color-mix(in srgb, var(--s-accent) 35%, var(--s-border));
-  background: color-mix(in srgb, var(--s-accent-subtle) 70%, var(--s-panel));
-  color: var(--s-accent-text);
+  border-color: color-mix(in srgb, var(--s-accent) 28%, var(--s-border));
+  background: color-mix(in srgb, var(--s-accent-subtle) 55%, var(--s-panel));
+  color: var(--s-text-secondary);
 }
 .nf-pill:hover { background: var(--s-hover); }
 .nf-pill.is-set:hover { background: var(--s-accent-subtle); }
-.nf-pill.is-open { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-accent) 14%, transparent); }
+/* Open: a crisp accent border and a soft ring — one outline, not two. */
+.nf-pill.is-open,
+.nf-pill.is-set.is-open {
+  border-color: var(--s-accent);
+  background: var(--s-accent-subtle);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-accent) 16%, transparent);
+}
 
 .nf-pill-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   min-width: 0;
   height: 100%;
   margin: 0;
-  padding: 0 4px 0 10px;
+  padding: 0 2px 0 9px;
   border: 0;
   border-radius: 14px 0 0 14px;
   background: transparent;
@@ -93,32 +102,41 @@ button.nf-pill:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-
 .nf-pill.nf-more.is-open { background: var(--s-hover); color: var(--s-text); }
 .nf-pill.nf-more .nf-pill-value { font-weight: var(--fw-medium); }
 .nf-pill-btn svg { flex: none; }
-.nf-pill-field { white-space: nowrap; }
-.nf-pill-op { white-space: nowrap; opacity: 0.8; }
+.nf-pill-btn > svg:first-child { color: var(--s-text-muted); margin-right: 1px; }
+.nf-pill.is-set .nf-pill-btn > svg:first-child { color: var(--s-accent-text); opacity: 0.75; }
+/* "Priority:" quiet, the value strong in the accent colour — reads as field → value. */
+.nf-pill-field { white-space: nowrap; color: var(--s-text-secondary); }
+.nf-pill-op { white-space: nowrap; color: var(--s-text-muted); }
 .nf-pill-value {
   max-width: 180px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: var(--fw-semibold);
+  color: var(--s-accent-text);
 }
-.nf-pill-chev { opacity: 0.6; }
+.nf-pill.nf-more .nf-pill-value { color: inherit; }
+.nf-pill-chev { opacity: 0.55; margin-left: 1px; }
+.nf-pill.is-open .nf-pill-chev { transform: rotate(180deg); }
+.nf-pill-chev { transition: transform 150ms ease; }
 .nf-pill-x {
   display: inline-grid;
   place-items: center;
   flex: none;
   width: 20px;
   height: 20px;
-  margin: 0 4px 0 0;
+  margin: 0 4px 0 2px;
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: inherit;
-  opacity: 0.6;
+  color: var(--s-text-secondary);
+  opacity: 0.7;
   cursor: pointer;
+  transition: background-color 120ms ease, opacity 120ms ease;
 }
-.nf-pill-x:hover { opacity: 1; background: color-mix(in srgb, var(--s-text) 8%, transparent); }
+.nf-pill-x:hover { opacity: 1; color: var(--s-text); background: color-mix(in srgb, var(--s-text) 10%, transparent); }
+.nf-pill-x:focus-visible { outline: none; opacity: 1; box-shadow: 0 0 0 2px var(--s-accent); }
 
 .nf-add {
   display: inline-flex;
@@ -236,5 +254,5 @@ button.nf-pill:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-
 .nf-prefix { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--s-text-muted); font-size: var(--fs-supportive); pointer-events: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .nf-pill { transition: none; }
+  .nf-pill, .nf-pill-chev, .nf-pill-x { transition: none; }
 }

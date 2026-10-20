@@ -26,7 +26,7 @@ import { PageHeader } from '../../components/shell/PageHeader';
 import { Checkbox } from '../../components/primitives/controls';
 import { CalendarHead, CalendarToolbar, PeriodSummary } from '../calendar/CalendarChrome';
 import { MiniMonth } from '../calendar/MiniMonth';
-import { clock12, clockShort, wall, type ViewId } from '../calendar/calendarUtils';
+import { clockShort, wall, type ViewId } from '../calendar/calendarUtils';
 import { countDays, dayLoadOptions } from '../calendar/dayLoad';
 import { todaySummary } from '../calendar/TodayAgenda';
 import { useCalendarShortcuts } from '../calendar/useCalendarShortcuts';
@@ -304,7 +304,7 @@ export function DemoMachineCalendarPage() {
                     slotLabelInterval="01:00"
                     allDayText={T.allDay}
                     eventTimeFormat={clockShort}
-                    slotLabelFormat={clock12}
+                    slotLabelFormat={clockShort}
                     eventMinHeight={22}
                     views={{
                       dayGridMonth: { dayHeaderFormat: { weekday: 'short' }, displayEventEnd: false },

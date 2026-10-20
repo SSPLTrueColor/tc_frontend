@@ -18,7 +18,7 @@ import { calendarService } from '../../services/api/calendar';
 import { perm } from '../../services/authz';
 import { findOverlaps, listCalendarItems, occurrences, validateEvent, type CalItem, type EventType } from '../../services/calendar/events';
 import { useActor } from '../../services/hooks';
-import { activeMasterValues } from '../../services/registry';
+import { activeMasterValues, masterLabel } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
 import { Button } from '../../components/primitives/Button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, useToast } from '../../components/primitives/feedback';
@@ -27,7 +27,7 @@ import { PageHeader } from '../../components/shell/PageHeader';
 import { CalendarFilters, CalendarSidebar } from './CalendarSidebar';
 import { CalendarHead, CalendarToolbar } from './CalendarChrome';
 import { countDays, dayLoadOptions } from './dayLoad';
-import { clock12, clockShort, fullText, hhmm, matches, minutes, toFc, wall, type ViewId } from './calendarUtils';
+import { clockShort, fullText, hhmm, matches, minutes, toFc, wall, type ViewId } from './calendarUtils';
 import { EventDetail, type Detail } from './EventDetail';
 import { EventDialog, type DialogMode } from './EventDialog';
 import { QuickCreate, type Slot } from './QuickCreate';
@@ -332,11 +332,18 @@ export function CalendarPage() {
     const i = arg.event.extendedProps.item as CalItem | undefined;
     if (!i) return undefined;
     const link = i.linkLabel && !i.title.includes(i.linkLabel.split(' · ').pop() ?? '') ? i.linkLabel : '';
-    if (arg.view.type === 'list')
+    const dur = arg.event.allDay || !arg.event.start || !arg.event.end ? 0 : Math.round((arg.event.end.getTime() - arg.event.start.getTime()) / 60_000);
+    if (arg.view.type === 'list' || arg.view.type === 'agenda')
       return (
-        <span className="ev-line">
-          <span className="ev-title">{i.title}</span>
-          {link && <span className="ev-link">{link}</span>}
+        <span className="ev-agenda">
+          <span className="ev-agenda-main">
+            <span className="ev-title">{i.title}</span>
+            {link && <span className="ev-link">{link}</span>}
+          </span>
+          <span className="ev-agenda-side">
+            {dur > 0 && <span className="ev-dur">{C.page.duration(dur)}</span>}
+            <span className="ev-type">{masterLabel('calEventType', i.type)}</span>
+          </span>
         </span>
       );
     if (arg.view.type === 'dayGridMonth')
@@ -346,13 +353,20 @@ export function CalendarPage() {
           <span className="ev-title">{i.title}</span>
         </span>
       );
-    const dur = arg.event.allDay || !arg.event.start || !arg.event.end ? 0 : (arg.event.end.getTime() - arg.event.start.getTime()) / 60_000;
     if (arg.event.allDay) return <span className="ev-line"><span className="ev-title">{i.title}</span></span>;
+    // Short events keep to one line ("Title · 11:30 AM") so nothing is cut mid-line; longer ones stack title, time, related record.
+    if (dur <= 30)
+      return (
+        <span className="ev-line">
+          <span className="ev-title">{i.title}</span>
+          <span className="ev-meta">{arg.timeText.split(' - ')[0]}</span>
+        </span>
+      );
     return (
-      <div className="ev-stack">
+      <div className={cx('ev-stack', dur < 60 && 'is-compact')}>
         <div className="ev-title">{i.title}</div>
-        {dur > 30 && <div className="ev-meta">{arg.timeText}</div>}
-        {dur >= 60 && link && <div className="ev-link">{link}</div>}
+        <div className="ev-meta">{arg.timeText}</div>
+        {dur >= 75 && link && <div className="ev-link">{link}</div>}
       </div>
     );
   };
@@ -494,14 +508,13 @@ export function CalendarPage() {
                   businessHours={{ daysOfWeek: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '18:00' }}
                   slotMinTime="00:00:00"
                   slotMaxTime="24:00:00"
-                  scrollTime="08:00:00"
+                  scrollTime="07:30:00"
                   slotDuration="00:30:00"
                   slotLabelInterval="01:00"
-                  slotEventOverlap={false}
                   eventMaxStack={2}
                   allDayText={C.page.allDay}
                   eventTimeFormat={clockShort}
-                  slotLabelFormat={clock12}
+                  slotLabelFormat={clockShort}
                   eventMinHeight={22}
                   eventShortHeight={30}
                   views={{

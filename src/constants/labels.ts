@@ -7939,6 +7939,12 @@ const calendar = {
     reload: 'Retry',
     typeCount: (n: number) => `${n}`,
     shown: { scheduled: 'Scheduled', completed: 'Completed', cancelled: 'Cancelled' },
+    /** Day headers (Monday first, matching firstDay = 1 and the IST weekday). */
+    weekdaysShort: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    weekdaysLong: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    todayTag: 'Today',
+    duration: (m: number) => (m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`),
   },
 
   /** "Today's agenda" strip above the calendar. */

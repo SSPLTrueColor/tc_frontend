@@ -34,22 +34,31 @@ export const CalendarHead = forwardRef<HTMLInputElement, { info: TodayInfo; coun
   );
 });
 
-/** One row: panel toggle · [primary action] · Today · ‹ › · range title · [today chip · search · filters] · Month / Week / Day / Agenda. */
+/**
+ * Two rows. Top: panel toggle · Today · ‹ › · range title … Month / Week / Day / Agenda · [primary action].
+ * Below: the page's own controls (today summary, search, filters), so nothing is squeezed or cut off.
+ */
 export function CalendarToolbar({ sideOpen, onSide, title, onToday, onPrev, onNext, view, onView, action, children }: { sideOpen: boolean; onSide: () => void; title: string; onToday: () => void; onPrev: () => void; onNext: () => void; view: ViewId; onView: (v: ViewId) => void; action?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="cal-toolbar">
-      <IconButton icon="panel-left" label={sideOpen ? C.page.hidePanel : C.page.showPanel} aria-pressed={sideOpen} onClick={onSide} />
-      {action}
-      <Button onClick={onToday} title={C.page.shortcutHint(C.page.today, 'T')}>
-        {C.page.today}
-      </Button>
-      <IconButton icon="chevron-left" label={C.page.shortcutHint(C.page.previous, '←')} onClick={onPrev} />
-      <IconButton icon="chevron-right" label={C.page.shortcutHint(C.page.next, '→')} onClick={onNext} />
-      <h2 className="cal-title" aria-live="polite">
-        {title}
-      </h2>
-      {children}
-      <SegmentedControl label={C.page.viewGroup} value={view} onChange={onView} options={CAL_VIEWS.map((v) => ({ value: v.id, label: v.label, title: C.page.shortcutHint(v.label, v.key) }))} />
+    <div className="cal-chrome">
+      <div className="cal-toolbar">
+        <IconButton icon="panel-left" label={sideOpen ? C.page.hidePanel : C.page.showPanel} aria-pressed={sideOpen} onClick={onSide} />
+        <Button onClick={onToday} title={C.page.shortcutHint(C.page.today, 'T')}>
+          {C.page.today}
+        </Button>
+        <div className="cal-nav-pair">
+          <IconButton icon="chevron-left" label={C.page.shortcutHint(C.page.previous, '←')} onClick={onPrev} />
+          <IconButton icon="chevron-right" label={C.page.shortcutHint(C.page.next, '→')} onClick={onNext} />
+        </div>
+        <h2 className="cal-title" aria-live="polite">
+          {title}
+        </h2>
+        <div className="cal-toolbar-end">
+          <SegmentedControl label={C.page.viewGroup} value={view} onChange={onView} options={CAL_VIEWS.map((v) => ({ value: v.id, label: v.label, title: C.page.shortcutHint(v.label, v.key) }))} />
+          {action}
+        </div>
+      </div>
+      {children && <div className="cal-subbar">{children}</div>}
     </div>
   );
 }
