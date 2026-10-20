@@ -139,7 +139,7 @@
   background: var(--s-panel);
   border: 1px solid var(--s-border-strong, var(--s-border));
   border-radius: var(--c-radius-panel);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 20%);
+  box-shadow: var(--s-shadow-lg);
   opacity: 0;
   transform: translateY(var(--sp-3));
   pointer-events: none;

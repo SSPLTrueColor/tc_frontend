@@ -90,7 +90,7 @@
 }
 .svc-stars button.is-on {
   background: var(--s-accent);
-  color: #fff;
+  color: var(--s-on-accent);
   border-color: transparent;
 }
 .svc-print {
