@@ -151,7 +151,6 @@ export function ContactPoolPage() {
               : undefined
           }
           emptyText={P.noMatch}
-          selectable={false}
           columns={[
             {
               key: 'name',
