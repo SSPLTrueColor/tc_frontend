@@ -7,13 +7,14 @@ import { perm } from '../../authz';
 import { staffOfUser } from '../../lookups';
 import { getPolicies } from '../../policies';
 import { activityScorecard, amcRenewalRate, attachRate, avgSalesCycleDays, collections, csat, dayOf, firstTimeFix, inRange, isBooked, isOpenOpp, leadConversion, leadResponseHours, mttrHours, orderBacklog, overdueFollowUps, pipeline, pmCompliance, quoteToOrder, repeatRate, slaCompliance, sum, winRate } from '../kpis';
-import { applyFilters, empName, groupBy, label, list, n, reportPath, row, s } from '../helpers';
+import { applyFilters, empName, groupBy, label, list, monthKey, n, reportPath, row, s } from '../helpers';
 import { count, countIf, sum as sumOf, ratio } from '../metrics';
 import type { RecordData } from '../../../metadata/types';
 import type { Metric, ReportDef } from '../types';
 
 const D = L.reports.defs;
 const R = L.reports.rep;
+const M = L.reports.more;
 const K = D.kpiSummary.kpis;
 const KD = D.kpiSummary.definitions;
 const fmt = {
@@ -156,7 +157,7 @@ export const overviewReports: ReportDef[] = [
           { label: R.pipeline.kpis.weighted, fmt: 'money', value: sumOf('weighted'), hint: D.kpiSummary.definitions.weighted },
           { label: R.pipeline.kpis.avgDeal, fmt: 'money', value: ratio('value', 'opportunities') },
         ],
-        chart: { type: 'hbar', title: R.pipeline.chartStage, x: 'stage', y: 'value', fmt: 'money', keepOrder: true },
+        chart: { type: 'funnel', title: M.pipelineStageChart, x: 'stage', y: 'value', fmt: 'money', keepOrder: true, carry: false },
       },
       {
         id: 'owner',
@@ -187,6 +188,53 @@ export const overviewReports: ReportDef[] = [
           { label: R.pipeline.kpis.people, fmt: 'number', value: count },
         ],
         chart: { type: 'hbar', title: R.pipeline.chartOwner, x: 'owner', y: 'weighted', fmt: 'money' },
+      },
+      {
+        id: 'outcomes',
+        label: M.outcomes.view,
+        filters: { date: 'past', division: true, owner: true },
+        dateLabel: M.outcomes.closedDate,
+        compute: (ds, f) => {
+          const closedAt = (o: RecordData) => o.wonAt || o.stageChangedAt || o.updatedAt;
+          const done = applyFilters(ds.get('opportunities'), f, { owner: 'ownerId' }).filter((o) => ['won', 'lost'].includes(s(o.stage)) && inRange(closedAt(o), f.from, f.to));
+          const by = groupBy(done, (o) => monthKey(closedAt(o)));
+          return {
+            columns: [
+              { key: 'month', label: L.reports.cols.month, type: 'month' },
+              { key: 'won', label: M.outcomes.won, type: 'number', total: 'sum' },
+              { key: 'lost', label: M.outcomes.lost, type: 'number', total: 'sum' },
+              { key: 'closed', label: M.outcomes.closed, type: 'number', total: 'sum' },
+              { key: 'winRate', label: M.outcomes.winRate, type: 'pct', total: ratio('won', 'closed') },
+              { key: 'wonValue', label: M.outcomes.wonValue, type: 'money', total: 'sum' },
+              { key: 'lostValue', label: M.outcomes.lostValue, type: 'money', total: 'sum', optional: true },
+            ],
+            rows: [...by.entries()]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([m, os]) => {
+                const won = os.filter((o) => o.stage === 'won');
+                const lost = os.filter((o) => o.stage === 'lost');
+                return row(m, { month: m, won: won.length, lost: lost.length, closed: os.length, winRate: os.length ? won.length / os.length : null, wonValue: sum(won, 'value'), lostValue: sum(lost, 'value') });
+              }),
+          };
+        },
+        kpis: [
+          { label: M.outcomes.won, fmt: 'number', value: sumOf('won') },
+          { label: M.outcomes.lost, fmt: 'number', value: sumOf('lost'), better: 'down' },
+          { label: M.outcomes.winRate, fmt: 'pct', value: ratio('won', 'closed') },
+          { label: M.outcomes.wonValue, fmt: 'money', value: sumOf('wonValue') },
+        ],
+        chart: {
+          type: 'stacked',
+          title: M.outcomes.chart,
+          x: 'month',
+          y: 'closed',
+          fmt: 'number',
+          unit: M.outcomes.unit,
+          series: [
+            { key: 'won', label: M.outcomes.won, tone: 'success' },
+            { key: 'lost', label: M.outcomes.lost, tone: 'danger' },
+          ],
+        },
       },
     ],
   },

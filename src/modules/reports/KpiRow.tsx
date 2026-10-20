@@ -1,4 +1,5 @@
 import { SkeletonLine } from '../../components/primitives/Skeleton';
+import { Sparkline } from '../../components/primitives/Sparkline';
 import { Link } from 'react-router-dom';
 import '../dashboard/dashboard.css';
 import { L } from '../../constants/labels';
@@ -56,6 +57,7 @@ function Card({ k, range }: { k: KpiOut; range: string }) {
         </span>
         <Delta k={k} range={range} />
       </div>
+      {k.spark && <Sparkline data={k.spark} tone={k.better === 'down' ? 'var(--rp-s2)' : 'var(--rp-s1)'} label={K.sparkAria(k.label, k.spark.length)} />}
       <span className="kpi-sub">{k.prev === undefined ? K.snapshot : k.prev === null ? K.noPrevious : K.previous(formatMetric(k.prev, k.fmt, { compact: true }))}</span>
     </>
   );

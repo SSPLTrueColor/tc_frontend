@@ -1,44 +1,5 @@
 /* Reports — report pages and the report catalogue (tokens only; three text sizes only).
-   Chart colours: dataviz reference palette, light and dark selected (slot 1 = --s-chart-1). */
-:root {
-  --rp-s1: #2a78d6;
-  --rp-s2: #eb6834;
-  --rp-s3: #1baf7a;
-  --rp-s4: #eda100;
-  --rp-s5: #e87ba4;
-  --rp-s6: #008300;
-  --rp-s7: #4a3aa7;
-  --rp-s8: #e34948;
-  --rp-others: #9a9aa6;
-  --rp-neg: #e34948;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --rp-s1: #3987e5;
-    --rp-s2: #d95926;
-    --rp-s3: #199e70;
-    --rp-s4: #c98500;
-    --rp-s5: #d55181;
-    --rp-s6: #008300;
-    --rp-s7: #9085e9;
-    --rp-s8: #e66767;
-    --rp-others: #6f6f7c;
-    --rp-neg: #e66767;
-  }
-}
-:root[data-theme='dark'] {
-  --rp-s1: #3987e5;
-  --rp-s2: #d95926;
-  --rp-s3: #199e70;
-  --rp-s4: #c98500;
-  --rp-s5: #d55181;
-  --rp-s6: #008300;
-  --rp-s7: #9085e9;
-  --rp-s8: #e66767;
-  --rp-others: #6f6f7c;
-  --rp-neg: #e66767;
-}
-
+   Chart colours are tokens (--rp-s1…s8, --rp-good, --rp-neg: tokens/tokens.css), checked for 3:1 against the panel in both themes. */
 /* ---------- page frame ---------- */
 .rp-page {
   display: flex;
@@ -625,4 +586,176 @@
   .dash-area-split {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- multi-measure charts ---------- */
+.rp-chart-body.has-key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.rp-plot {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.rp-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--s-text-secondary);
+  font-size: var(--fs-supportive);
+}
+.rp-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.rp-key-mark {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: 2px;
+}
+.rp-key-mark.is-line {
+  height: 3px;
+  width: var(--sp-4);
+  border-radius: 2px;
+}
+
+/* heatmap: weekday rows × hour columns */
+.rp-heat {
+  display: grid;
+  gap: var(--sp-3);
+  align-content: start;
+  overflow-x: auto;
+}
+.rp-heat-grid {
+  display: grid;
+  grid-template-columns: var(--sp-6) repeat(var(--cols), minmax(var(--sp-4), 1fr));
+  gap: 2px;
+  align-items: center;
+  min-width: calc(var(--sp-6) + var(--cols) * var(--sp-4));
+}
+.rp-heat-col,
+.rp-heat-row {
+  color: var(--s-text-muted);
+  font-size: var(--fs-supportive);
+  text-align: center;
+}
+.rp-heat-row {
+  text-align: left;
+}
+.rp-heat-cell {
+  display: block;
+  height: var(--sp-5);
+  border-radius: 3px;
+  background: var(--s-sunken);
+}
+.rp-heat-cell.is-l1 {
+  background: color-mix(in srgb, var(--rp-s1) 25%, var(--s-panel));
+}
+.rp-heat-cell.is-l2 {
+  background: color-mix(in srgb, var(--rp-s1) 50%, var(--s-panel));
+}
+.rp-heat-cell.is-l3 {
+  background: color-mix(in srgb, var(--rp-s1) 75%, var(--s-panel));
+}
+.rp-heat-cell.is-l4 {
+  background: var(--rp-s1);
+}
+.rp-heat-key {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  justify-content: flex-end;
+  color: var(--s-text-muted);
+  font-size: var(--fs-supportive);
+}
+.rp-heat-key .rp-heat-cell {
+  width: var(--sp-4);
+  height: var(--sp-3);
+}
+
+/* bullet: actual bar + target tick */
+.rp-bullets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+.rp-bullet {
+  display: grid;
+  grid-template-columns: minmax(var(--sp-6), 150px) minmax(0, 1fr) 160px 56px;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-1) 0;
+  border-radius: var(--c-radius-control);
+}
+.rp-bullet:focus-visible {
+  outline: 2px solid var(--s-focus);
+  outline-offset: 2px;
+}
+.rp-bullet-track {
+  position: relative;
+  height: var(--sp-4);
+  background: var(--s-sunken);
+  border-radius: 3px;
+}
+.rp-bullet-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--rp-s1);
+}
+.rp-bullet-bar.is-good {
+  background: var(--rp-good);
+}
+.rp-bullet-bar.is-low {
+  background: var(--rp-neg);
+}
+.rp-bullet-target {
+  position: absolute;
+  top: calc(var(--sp-1) * -1);
+  bottom: calc(var(--sp-1) * -1);
+  width: 2px;
+  background: var(--s-text);
+}
+.rp-bullet-text {
+  white-space: nowrap;
+  font-size: var(--fs-supportive);
+}
+.rp-bullet-pct {
+  text-align: right;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-supportive);
+}
+.rp-bullet-pct.is-good {
+  color: var(--s-success);
+}
+.rp-bullet-pct.is-low {
+  color: var(--s-danger);
+}
+
+.rp-insight {
+  margin: 0;
+  color: var(--s-text-secondary);
+  font-size: var(--fs-supportive);
+}
+.rp-mark-link {
+  color: var(--s-text);
+  text-decoration: none;
+}
+.rp-mark-link:hover {
+  color: var(--s-accent-text);
+  text-decoration: underline;
+}
+
+/* A funnel narrows towards the middle: its bars are centred, not left-aligned like ranked bars. */
+.rp-funnel-bar {
+  left: 50%;
+  transform: translateX(-50%);
 }

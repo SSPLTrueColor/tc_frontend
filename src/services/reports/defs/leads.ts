@@ -5,12 +5,15 @@ import { getPolicies } from '../../policies';
 import { dayOf, inRange, isBooked, isOpenOpp, leadResponseHours, ms, sum, winRate } from '../kpis';
 import { applyFilters, empName, groupBy, label, list, monthKey, n, peek, row, s } from '../helpers';
 import { count, countIf, maxOf, mean, ratio, sum as sumOf, weighted } from '../metrics';
+import { periodStartFor } from '../../../domain/modules/field/rules';
+import { achievement, type AchievementRow } from '../../field/field';
 import type { ReportColumn, ReportDef, ReportRow } from '../types';
 
 const D = L.reports.defs;
 const C = L.reports.cols;
 const G = L.reports.groupBy;
 const R = L.reports.rep;
+const M = L.reports.more;
 const OPEN = ['new', 'contacted', 'nurture'];
 const isQualified = (l: Record<string, unknown>) => l.status === 'qualified' || !!l.opportunityId;
 
@@ -61,7 +64,7 @@ export const leadReports: ReportDef[] = [
           { label: D.leadConversion.tiles.conversion, fmt: 'pct', value: ratio('qualified', 'leads'), hint: D.kpiSummary.definitions.leadConversion },
           { label: D.leadConversion.cols.disqualified, fmt: 'number', value: sumOf('disqualified'), better: 'down' },
         ],
-        chart: (f) => (!f.group || f.group === 'month' ? { type: 'line', title: R.leadConversion.chartTrend, x: 'group', y: 'conversion', fmt: 'pct' } : { type: 'hbar', title: R.leadConversion.chartBy(f.group), x: 'group', y: 'conversion', fmt: 'pct' }),
+        chart: (f) => (!f.group || f.group === 'month' ? { type: 'combo', title: M.leadComboTitle, x: 'group', y: 'leads', fmt: 'number', unit: 'leads', y2: 'conversion', fmt2: 'pct', label: M.leadsBars, label2: M.conversionLine } : { type: 'hbar', title: R.leadConversion.chartBy(f.group), x: 'group', y: 'conversion', fmt: 'pct' }),
       },
     ],
   },
@@ -270,6 +273,41 @@ export const leadReports: ReportDef[] = [
           { label: D.execPerformance.cols.activities, fmt: 'number', value: sumOf('activities') },
         ],
         chart: { type: 'hbar', title: D.execPerformance.chart, x: 'owner', y: 'booked', fmt: 'money' },
+      },
+      {
+        id: 'target',
+        label: M.target.view,
+        filters: { division: true },
+        dateLabel: M.target.dateLabel,
+        compute: (_ds, f, ctx) => {
+          // Targets are set per period, so this view always measures the current month (TGT-02).
+          let found: AchievementRow[] = [];
+          try {
+            found = achievement(ctx.actor, 'month', periodStartFor('month', ctx.today));
+          } catch {
+            found = [];
+          }
+          const mine = found.filter((r) => r.target.metric === 'order_value' && r.target.scopeType === 'user' && (!f.division || r.target.divisionId === f.division));
+          return {
+            columns: [
+              { key: 'owner', label: C.salesExecutive },
+              { key: 'target', label: M.target.target, type: 'money', total: 'sum' },
+              { key: 'booked', label: M.target.booked, type: 'money', total: 'sum' },
+              { key: 'pct', label: M.target.pct, type: 'pct', total: ratio('booked', 'target') },
+            ],
+            rows: mine
+              .map((r) => row(String(r.target.employeeId), { owner: _ds.name('employees', r.target.employeeId), target: Number(r.target.targetValue), booked: r.actual, pct: Number(r.target.targetValue) ? r.actual / Number(r.target.targetValue) : null }))
+              .sort((a, b) => n(b.pct) - n(a.pct)),
+          };
+        },
+        kpis: [
+          { label: M.target.target, fmt: 'money', value: sumOf('target'), better: 'none' },
+          { label: M.target.booked, fmt: 'money', value: sumOf('booked') },
+          { label: M.target.pct, fmt: 'pct', value: ratio('booked', 'target') },
+          { label: M.target.onTarget, fmt: 'number', value: countIf((r) => n(r.pct) >= 1) },
+          { label: M.target.below, fmt: 'number', value: countIf((r) => n(r.pct) < 0.7), better: 'down' },
+        ],
+        chart: { type: 'bullet', title: M.target.chart, x: 'owner', y: 'booked', target: 'target', fmt: 'money' },
       },
     ],
   },

@@ -1832,7 +1832,7 @@ input[type='radio'] {
   align-items: center;
   gap: var(--sp-1);
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 1 180px;
   overflow: hidden;
   color: var(--s-text-muted);
   font-size: var(--fs-supportive);
@@ -1842,6 +1842,15 @@ input[type='radio'] {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
+  min-width: 0;
+}
+.crumb > svg {
+  flex: none;
+}
+.crumb a,
+.crumb-btn {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .crumb a,
 .crumb-btn {

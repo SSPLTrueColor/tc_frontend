@@ -359,3 +359,47 @@
   --s-overlay: rgba(0, 0, 0, 0.08);
   --c-rail-text-dim: rgba(255, 255, 255, 0.65);
 }
+
+/* ---------- chart palette (reports + dashboard): each colour >= 3:1 against the panel in its theme ---------- */
+:root {
+  --rp-s1: #2a78d6;
+  --rp-s2: #d4561f;
+  --rp-s3: #0f8a5f;
+  --rp-s4: #a96e00;
+  --rp-s5: #c04a80;
+  --rp-s6: #2e7d32;
+  --rp-s7: #4a3aa7;
+  --rp-s8: #c93c3c;
+  --rp-others: #7b7b88;
+  --rp-neg: #c93c3c;
+  --rp-good: #1a7f4b;
+}
+:root[data-theme='dark'] {
+  --rp-s1: #5aa0f5;
+  --rp-s2: #f08a5d;
+  --rp-s3: #34c38f;
+  --rp-s4: #e0a21f;
+  --rp-s5: #e879a5;
+  --rp-s6: #4cb860;
+  --rp-s7: #a597ff;
+  --rp-s8: #f27c7c;
+  --rp-others: #8a8a98;
+  --rp-neg: #f27c7c;
+  --rp-good: #4cc38a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --rp-s1: #5aa0f5;
+    --rp-s2: #f08a5d;
+    --rp-s3: #34c38f;
+    --rp-s4: #e0a21f;
+    --rp-s5: #e879a5;
+    --rp-s6: #4cb860;
+    --rp-s7: #a597ff;
+    --rp-s8: #f27c7c;
+    --rp-others: #8a8a98;
+    --rp-neg: #f27c7c;
+    --rp-good: #4cc38a;
+  }
+}
+

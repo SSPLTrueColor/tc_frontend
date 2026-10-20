@@ -258,7 +258,7 @@ function ReportPage({ def }: { def: ReportDef }) {
             )}
             <div className={cx('rp-stack', refreshing && 'is-busy')}>
               <KpiRow out={out} label={L.reports.viewer.headlineFigures(def.title)} />
-              {out.chart && <ReportChart chart={out.chart} busy={refreshing} />}
+              {out.chart && <ReportChart chart={out.chart} busy={refreshing} linkFor={(key) => { const r = out.rows.find((x) => x._key === key); const c = out.columns.find((col) => col.link); return r && c ? c.link!(r) : undefined; }} />}
               <ReportTable model={model} title={P.table.details} busy={refreshing} onChangeFilters={focusFilters} />
             </div>
           </div>

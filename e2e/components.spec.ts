@@ -128,3 +128,29 @@ test.describe('component gallery', () => {
     await expect(page.getByText(/of 11 companies/)).toBeVisible();
   });
 });
+
+test.describe('chart palette', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`${theme}: every chart colour reaches 3:1 against the panel (WCAG 1.4.11)`, async ({ page }) => {
+      await openAs(page, 'u_rahul', GALLERY, { theme });
+      const r = await page.evaluate(() => {
+        const cs = getComputedStyle(document.documentElement);
+        const probe = document.createElement('span');
+        document.body.appendChild(probe);
+        const rgb = (v: string) => {
+          probe.style.color = v;
+          return (getComputedStyle(probe).color.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+        };
+        const out: Record<string, number[]> = { panel: rgb(cs.getPropertyValue('--s-panel')) };
+        for (const k of ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 'others', 'neg', 'good']) out[k] = rgb(cs.getPropertyValue(`--rp-${k}`));
+        probe.remove();
+        return out;
+      });
+      const bad = Object.entries(r)
+        .filter(([k]) => k !== 'panel')
+        .map(([k, c]) => ({ k, ratio: (lum(c) > lum(r.panel) ? (lum(c) + 0.05) / (lum(r.panel) + 0.05) : (lum(r.panel) + 0.05) / (lum(c) + 0.05)) }))
+        .filter((x) => x.ratio < 3);
+      expect(bad, `low-contrast chart colours: ${JSON.stringify(bad)}`).toEqual([]);
+    });
+  }
+});

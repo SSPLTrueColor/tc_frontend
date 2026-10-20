@@ -53,8 +53,20 @@ export interface KpiSpec {
   to?: string;
 }
 
-/** trend → line/area · comparison → bar/hbar · share → donut · stages → funnel. */
-export type ChartType = 'line' | 'area' | 'bar' | 'hbar' | 'donut' | 'funnel';
+/**
+ * The chart follows the business question:
+ *   trend → line / area · two measures over time → combo · comparison → bar / hbar · share → donut ·
+ *   stages → funnel · two outcomes over time → stacked · target vs actual → bullet · when → heatmap.
+ */
+export type ChartType = 'line' | 'area' | 'bar' | 'hbar' | 'donut' | 'funnel' | 'combo' | 'stacked' | 'heatmap' | 'bullet';
+
+/** One coloured part of a stacked bar: the table column that holds it. */
+export interface ChartSeries {
+  key: string;
+  label: string;
+  /** Colour meaning: success (good outcome), danger (bad outcome), or the next palette colour. */
+  tone?: 'success' | 'danger';
+}
 
 export interface ChartSpec {
   type: ChartType;
@@ -71,6 +83,19 @@ export interface ChartSpec {
   keepOrder?: boolean;
   /** The values add up (e.g. downtime hours), so the tail may fold into "Others" even though the unit is not a count or ₹. */
   sumOthers?: boolean;
+  /** combo: the second measure, drawn as a line on the right-hand axis. */
+  y2?: string;
+  fmt2?: Fmt;
+  unit2?: string;
+  /** Names for the two measures of a combo chart (legend and tooltip). */
+  label?: string;
+  label2?: string;
+  /** stacked: the table columns stacked on each mark. */
+  series?: ChartSeries[];
+  /** bullet: the table column holding the target each mark is measured against. */
+  target?: string;
+  /** funnel: show "% carried over from the previous stage" (only for real conversion funnels, not snapshots). */
+  carry?: boolean;
 }
 
 export interface ChartPoint {
@@ -79,6 +104,15 @@ export interface ChartPoint {
   value: number;
   /** Folded "Others" mark. */
   others?: boolean;
+  /** combo: the second measure. */
+  value2?: number | null;
+  /** stacked: one value per series key. */
+  values?: Record<string, number>;
+  /** bullet: what the value is measured against. */
+  target?: number;
+  /** heatmap: the cell's row and column ("Mon", "10:00"). */
+  row?: string;
+  col?: string;
 }
 
 /** What a view's `compute` returns: just the table. KPIs, chart and totals are derived from it. */
@@ -131,6 +165,8 @@ export interface ReportDef {
 // ---------------------------------------------------------------- engine output
 
 export interface KpiOut {
+  /** The same figure for each row of a time-based table (month / day): a sparkline. */
+  spark?: number[];
   label: string;
   fmt: Fmt;
   value: number | null;

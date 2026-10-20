@@ -10,6 +10,7 @@ const D = L.reports.defs;
 const C = L.reports.cols;
 const G = L.reports.groupBy;
 const R = L.reports.rep;
+const M = L.reports.more;
 const latest = <T extends Record<string, unknown>>(qs: T[]) => qs.filter((q) => q.isLatest !== false && q.status !== 'superseded');
 const SENT = ['sent', 'negotiation', 'accepted', 'rejected', 'expired'];
 
@@ -64,7 +65,7 @@ export const quotationReports: ReportDef[] = [
           { label: D.quoteToOrder.tile, fmt: 'pct', value: ratio('ordered', 'sent'), hint: D.kpiSummary.definitions.q2o },
           { label: D.quotationValue.cols.avgDiscount, fmt: 'pct', value: weighted('avgDiscount', 'quotes'), better: 'down' },
         ],
-        chart: (f) => (!f.group || f.group === 'month' ? { type: 'area', title: R.quoteValue.chartTrend, x: 'group', y: 'value', fmt: 'money' } : { type: 'hbar', title: R.quoteValue.chartBy, x: 'group', y: 'value', fmt: 'money' }),
+        chart: (f) => (!f.group || f.group === 'month' ? { type: 'combo', title: M.quoteComboTitle, x: 'group', y: 'value', fmt: 'money', y2: 'rate', fmt2: 'pct', label: M.quotedValue, label2: M.quoteRate } : { type: 'hbar', title: R.quoteValue.chartBy, x: 'group', y: 'value', fmt: 'money' }),
       },
     ],
   },

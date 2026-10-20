@@ -9,6 +9,7 @@ import type { ReportDef } from '../types';
 const D = L.reports.defs;
 const C = L.reports.cols;
 const R = L.reports.rep;
+const M = L.reports.more;
 const X = D.attendanceExceptions;
 
 export const fieldReports: ReportDef[] = [
@@ -165,6 +166,40 @@ export const fieldReports: ReportDef[] = [
           { label: D.fieldVisits.cols.demo, fmt: 'number', value: sumOf('demo') },
         ],
         chart: { type: 'hbar', title: D.fieldVisits.chart, x: 'employee', y: 'completed', fmt: 'number', unit: D.fieldVisits.unit },
+      },
+      {
+        id: 'hours',
+        label: M.hours.view,
+        filters: { date: 'past', owner: true },
+        dateLabel: D.fieldVisits.dateLabel,
+        compute: (ds, f) => {
+          // Completed visits by weekday (rows) and hour of check-in (columns): when the field team is out.
+          const done = applyFilters(ds.get('fieldVisits'), f, { date: 'plannedFor', owner: 'employeeId' }).filter((v) => v.status === 'completed' && v.checkInAt);
+          const slot = (v: Record<string, unknown>) => ({ day: (new Date(`${String(v.checkInAt).slice(0, 10)}T00:00:00`).getDay() + 6) % 7, hour: Number(String(v.checkInAt).slice(11, 13)) });
+          const hours = [...new Set(done.map((v) => slot(v).hour))].sort((a, b) => a - b);
+          const span = hours.length ? Array.from({ length: hours[hours.length - 1] - hours[0] + 1 }, (_, i) => hours[0] + i) : [];
+          const key = (h: number) => `h${String(h).padStart(2, '0')}`;
+          const grid = M.hours.days.map((d, di) => {
+            const mine = done.filter((v) => slot(v).day === di);
+            return row(d, { weekday: d, total: mine.length, ...Object.fromEntries(span.map((h) => [key(h), mine.filter((v) => slot(v).hour === h).length])) });
+          });
+          return {
+            columns: [
+              { key: 'weekday', label: M.hours.weekday },
+              ...span.map((h) => ({ key: key(h), label: `${String(h).padStart(2, '0')}:00`, type: 'number' as const, total: 'sum' as const })),
+              { key: 'total', label: M.hours.total, type: 'number', total: 'sum' },
+            ],
+            // The table lists only weekdays that had visits; the chart always shows all seven so gaps are visible.
+            rows: grid.filter((r) => n(r.total) > 0),
+            points: !done.length ? [] : grid.flatMap((r) => span.map((h) => ({ key: `${r._key}-${h}`, label: `${r.weekday} ${String(h).padStart(2, '0')}:00`, value: Number(r[key(h)]), row: String(r.weekday), col: String(h).padStart(2, '0') }))),
+          };
+        },
+        kpis: [
+          { label: M.hours.visits, fmt: 'number', value: sumOf('total') },
+          { label: M.hours.peakDay, fmt: 'number', value: (rows) => Math.max(0, ...rows.map((r) => Number(r.total) || 0)), better: 'none' },
+          { label: M.hours.peakHour, fmt: 'number', value: (rows) => Math.max(0, ...Object.keys(rows[0] ?? {}).filter((k) => /^h\d\d$/.test(k)).map((k) => rows.reduce((t, r) => t + (Number(r[k]) || 0), 0))), better: 'none' },
+        ],
+        chart: { type: 'heatmap', title: M.hours.chart, x: 'weekday', y: 'total', fmt: 'number', unit: D.fieldVisits.unit },
       },
     ],
   },
