@@ -36,7 +36,8 @@ import { confirmDelete } from '../components/primitives/overlay';
 import { relativeTime } from '../lib/dates';
 import { DateText, EmptyValue } from '../components/primitives/display';
 import { ThemePicker } from '../components/shell/ThemePicker';
-import { byTime, SortPicker, type SortDir, usePaged } from '../modules/catalog/kit';
+import { byTime, QuickGuide, SortPicker, type SortDir, usePaged } from '../modules/catalog/kit';
+import { AccessSimple } from '../modules/catalog/AccessSimple';
 
 const A = L.admin;
 const TONES: Tone[] = ['neutral', 'info', 'success', 'warning', 'danger', 'accent'];
@@ -892,7 +893,7 @@ function Registry() {
 
 const ACCESS_TONE: Record<FieldAccess, Tone> = { edit: 'success', view: 'info', mask: 'warning', hide: 'neutral' };
 const ACCESS_VALUES: FieldAccess[] = ['edit', 'view', 'mask', 'hide'];
-type AccessTab = 'edit' | 'matrix' | 'preview';
+type AccessTab = 'simple' | 'edit' | 'matrix' | 'preview';
 
 interface RoleDraft {
   roleId: string;
@@ -908,7 +909,7 @@ export function AccessPage() {
   const X = A.access;
   const resources = allResources();
   const q = useServiceQuery(() => getRoleMatrix(actor), [actor.user.id]);
-  const [tab, setTab] = useState<AccessTab>('edit');
+  const [tab, setTab] = useState<AccessTab>('simple');
   const [roleId, setRoleId] = useState('sales_manager');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<RoleDraft | null>(null);
@@ -972,45 +973,128 @@ export function AccessPage() {
     }
   };
 
+  const actions = (
+    <>
+    {!locked && (
+      <>
+        <Button
+          icon="reset"
+          disabledReason={overrides[role.id] ? undefined : X.resetRole}
+          onClick={() =>
+            confirmDelete({
+              title: X.resetTitle(role.label),
+              message: X.resetMessage,
+              confirmLabel: X.resetRole,
+              onConfirm: async () => {
+                try {
+                  await resetRole(actor, role.id);
+                  setDraft(null);
+                  toast(X.resetDone(role.label));
+                } catch (e) {
+                  toast(errorMessage(e), 'danger');
+                }
+              },
+            })
+          }
+        >
+          {X.resetRole}
+        </Button>
+        <Button onClick={() => setDraft(null)} disabledReason={dirty ? undefined : A.common.noUnsavedChanges}>
+          {A.common.discardChanges}
+        </Button>
+        <Button variant="primary" loading={busy} onClick={save} disabledReason={dirty ? undefined : A.common.noUnsavedChanges}>
+          {X.save}
+        </Button>
+      </>
+    )}
+    </>
+  );
+
   const yes = (b: boolean | string) => (b === true ? '✓' : b === false ? '✗' : A.scopes[b as RowScope]?.short ?? String(b));
   const preview = actorFor(demoUsers.find((u) => u.roleId === role.id)?.id ?? actor.user.id, actor.workspaceId);
   const previewDef = getResource(previewRes);
 
-  return (
-    <div className="page">
-      {header}
-      <InlineAlert tone="warning" title={A.common.simulationTitle}>
-        {X.simulation}
-      </InlineAlert>
-      <div className="toolbar">
-        <label className="field-label" htmlFor="ap-role">
-          {X.role}
-        </label>
-        <SelectMenu
-          id="ap-role"
-          label={X.role}
-          value={role.id}
-          options={roles.map((r) => ({ value: r.id, label: overrides[r.id] ? `${r.label} · ${X.customised}` : r.label }))}
-          onChange={(v) => {
-            setRoleId(v);
-            setDraft(null);
-            setTried(false);
-          }}
-        />
-        <InfoTip text={role.description} label={X.aboutRole} />
-        {overrides[role.id] && <Badge tone="accent">{X.customised}</Badge>}
+  const roleCard = (
+    <section className="panel access-role">
+      <div className="role-chips" role="group" aria-label={X.role}>
+        {roles.map((r) => (
+          <button
+            key={r.id}
+            type="button"
+            className={cx('role-chip', r.id === role.id && 'is-active')}
+            aria-pressed={r.id === role.id}
+            onClick={() => {
+              setRoleId(r.id);
+              setDraft(null);
+              setTried(false);
+            }}
+          >
+            {r.label}
+            {overrides[r.id] ? ' •' : ''}
+          </button>
+        ))}
       </div>
+      <div className="access-role-foot">
+        <div className="access-role-text">
+          <strong>{role.label}</strong> {overrides[role.id] && <Badge tone="accent">{X.customised}</Badge>}
+          <span className="muted small">{role.description}</span>
+        </div>
+        {tab === 'simple' && !locked && (
+          <div className="access-actions">
+            <SelectMenu
+              label={X.simple.copyFrom}
+              value=""
+              options={[{ value: '', label: X.simple.copyPlaceholder }, ...roles.filter((r) => r.id !== role.id).map((r) => ({ value: r.id, label: r.label }))]}
+              onChange={(v) => {
+                const from = roles.find((r) => r.id === v);
+                if (!from) return;
+                setDraft({ ...work, resources: Object.fromEntries(resources.map((r) => [r.key, { ...NO_ACCESS, ...(from.resources[r.key] ?? {}), sensitive_data: work.resources[r.key].sensitive_data }])) });
+                toast(X.simple.copied(from.label), 'info');
+              }}
+            />
+            {actions}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
+  return (
+    <div className="page access-page">
+      {header}
       <Tabs<AccessTab>
         label={X.sectionsLabel}
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: 'edit', label: X.tabs.edit },
-          { id: 'matrix', label: X.tabs.matrix },
-          { id: 'preview', label: X.tabs.preview },
+          { id: 'simple', label: X.simple.tabs.simple },
+          { id: 'edit', label: X.simple.tabs.advanced },
+          { id: 'matrix', label: X.simple.tabs.matrix },
+          { id: 'preview', label: X.simple.tabs.preview },
         ]}
       />
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="cat-stack">
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="access-body">
+        {tab !== 'matrix' && roleCard}
+        {tab === 'simple' && (
+          <>
+            {LOCKED_ROLES.includes(role.id) && <InlineAlert tone="info">{X.adminLocked}</InlineAlert>}
+            <QuickGuide id="access" steps={X.simple.guide} />
+            <AccessSimple
+              resources={resources}
+              perms={work.resources}
+              disabled={locked}
+              summary={X.simple.summary(
+                role.label,
+                resources.filter((r) => work.resources[r.key].read !== 'none').length,
+                resources.filter((r) => work.resources[r.key].update !== 'none').length,
+                resources.filter((r) => work.resources[r.key].delete).length,
+                resources.length,
+              )}
+              onChange={(next) => setDraft({ ...work, resources: next })}
+            />
+          </>
+        )}
+
         {tab === 'edit' && (
           <>
             {LOCKED_ROLES.includes(role.id) && <InlineAlert tone="info">{X.adminLocked}</InlineAlert>}
@@ -1018,38 +1102,7 @@ export function AccessPage() {
               <div className="toolbar">
                 <input type="search" className="input input-compact" placeholder={X.searchRecordTypes} aria-label={X.searchRecordTypes} value={search} onChange={(e) => setSearch(e.target.value)} />
                 <span className="spacer" />
-                {!locked && (
-                  <>
-                    <Button
-                      icon="reset"
-                      disabledReason={overrides[role.id] ? undefined : X.resetRole}
-                      onClick={() =>
-                        confirmDelete({
-                          title: X.resetTitle(role.label),
-                          message: X.resetMessage,
-                          confirmLabel: X.resetRole,
-                          onConfirm: async () => {
-                            try {
-                              await resetRole(actor, role.id);
-                              setDraft(null);
-                              toast(X.resetDone(role.label));
-                            } catch (e) {
-                              toast(errorMessage(e), 'danger');
-                            }
-                          },
-                        })
-                      }
-                    >
-                      {X.resetRole}
-                    </Button>
-                    <Button onClick={() => setDraft(null)} disabledReason={dirty ? undefined : A.common.noUnsavedChanges}>
-                      {A.common.discardChanges}
-                    </Button>
-                    <Button variant="primary" loading={busy} onClick={save} disabledReason={dirty ? undefined : A.common.noUnsavedChanges}>
-                      {X.save}
-                    </Button>
-                  </>
-                )}
+                {actions}
               </div>
               <div className="table-scroll">
                 <table className="mini-table">
@@ -1250,6 +1303,7 @@ export function AccessPage() {
             <p className="muted small">{X.rowScope(A.scopes[preview.role.resources[previewRes]?.read ?? 'none'].long)}</p>
           </section>
         )}
+        <p className="muted small">{X.simulation}</p>
       </div>
     </div>
   );

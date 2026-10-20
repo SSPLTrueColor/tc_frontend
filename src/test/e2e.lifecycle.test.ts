@@ -23,7 +23,7 @@ import { listPriceFor } from '../services/lookups';
 import type { QuoteLine } from '../services/quotations/pricing';
 import * as so from '../services/orders/orders';
 import { generateContract } from '../services/orders/contracts';
-import { allSteps, shareReadinessChecklist, startSignOffOtp, signOffInstallation, runRenewalSweep, addMonths } from '../services/installed/logic';
+import { allSteps, saveHandover, shareReadinessChecklist, startSignOffOtp, signOffInstallation, runRenewalSweep, addMonths } from '../services/installed/logic';
 import { portalIdentify, createTicketFromChannel, assignTicket, submitFeedback, opportunitySpotted, sweepService } from '../services/service/tickets';
 import { myJobs, acceptJob, startTravel, checkIn, saveWork, requestSignOffOtp, checkOut } from '../services/service/jobs';
 import { issueRequisition, recordConsumption } from '../services/spares/requisitions';
@@ -243,6 +243,9 @@ describe('E2E lifecycle — Contact Pool to engineer-spotted lead (BRD §3 / §3
 
   it('7. Generate Sales Order pre-filled from the quotation (SO-01, BR-20, §3.1 row 3)', async () => {
     const q = byId('quotations', S.quoteId)!;
+    // BR-02 / INS-05: a machine order needs a geo-tagged installation site. The pool-converted company has none yet,
+    // so the sales executive adds it once (CUS-02) — it is then reused by the order and the installation job.
+    const site = createRecord(karan(), 'addresses', { customerId: q.customerId, label: 'Main plant', addressType: 'installation', line1: 'Plot 12, Sachin GIDC', city: 'Surat', state: '24', pincode: '394230', lat: 21.0839, lng: 72.8866 }).record;
     const draft = so.draftFromQuotation(karan(), S.quoteId);
     expect(draft.blocker).toBeNull();
     expect(draft.customerId).toBe(q.customerId);
@@ -254,11 +257,11 @@ describe('E2E lifecycle — Contact Pool to engineer-spotted lead (BRD §3 / §3
     // BR-23: finance check needs an overdue amount — simulate the ERP sync result for the customer.
     const cust = byId('customers', q.customerId)!;
     cust.overdue = 45_000;
-    const order = so.createOrder(karan(), { source: 'quotation', sourceId: S.quoteId, lines: draft.lines, customerPoNo: String(q.customerPoNo), customerPoDate: String(q.customerPoDate), poFileName: String(q.poFileName), idempotencyKey: 'e2e-so-1' });
+    const order = so.createOrder(karan(), { source: 'quotation', sourceId: S.quoteId, lines: draft.lines, siteAddressId: site.id, customerPoNo: draft.po?.customerPoNo ?? '', customerPoDate: draft.po?.customerPoDate ?? '', poFileName: draft.po?.poFileName ?? '', idempotencyKey: 'e2e-so-1' });
     S.orderId = order.id;
     let twiceMsg = '';
     try {
-      const twice = so.createOrder(karan(), { source: 'quotation', sourceId: S.quoteId, lines: draft.lines, customerPoNo: String(q.customerPoNo), customerPoDate: String(q.customerPoDate), poFileName: String(q.poFileName), idempotencyKey: 'e2e-so-1' });
+      const twice = so.createOrder(karan(), { source: 'quotation', sourceId: S.quoteId, lines: draft.lines, siteAddressId: site.id, customerPoNo: draft.po?.customerPoNo ?? '', customerPoDate: draft.po?.customerPoDate ?? '', poFileName: draft.po?.poFileName ?? '', idempotencyKey: 'e2e-so-1' });
       expect(twice.id).toBe(order.id);
     } catch (e) {
       twiceMsg = (e as Error).message;
@@ -341,10 +344,10 @@ describe('E2E lifecycle — Contact Pool to engineer-spotted lead (BRD §3 / §3
 
   it('11. Handover, site readiness, install, job card, customer sign-off → machine + warranty + PM (INS-03..07, §3.1 row 6)', async () => {
     let ins = byId('installations', S.installationId)!;
-    // Sales owner fills the handover.
+    // Sales owner fills the handover through the Fill Handover action (INS-04), not a full record edit.
     let handoverBy = 'Sales Executive';
     try {
-      ins = X(() => updateRecord(karan(), 'installations', S.installationId, { hoExpectations: 'Production of 4,000 m/day', hoCommitments: 'Free ICC profiles for 3 fabrics', hoKeyContacts: 'Mr Shah 98250 11122' }, ins.version as number)).record;
+      ins = X(() => saveHandover(karan(), S.installationId, { hoExpectations: 'Production of 4,000 m/day', hoCommitments: 'Free ICC profiles for 3 fabrics', hoKeyContacts: 'Mr Shah 98250 11122' }, ins.version as number));
     } catch (e) {
       handoverBy = 'Coordinator (sales exec blocked)';
       note(false, '11. Handover form', 'INS-04 / BR-26', 'Sales owner can fill the handover form', `Sales Executive blocked: ${(e as Error).message}`, 'installed (permissions on installations)');

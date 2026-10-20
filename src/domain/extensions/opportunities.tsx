@@ -24,6 +24,8 @@ import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { MarkLostDialog } from '../../modules/opportunities/MarkLostDialog';
 import { L } from '../../constants/labels';
 import { ROUTES, toPath } from '../../constants/routes';
+import { recordPeekPath } from '../../lib/routes';
+import { getDb } from '../../services/db';
 import { configureStagnationDays } from '../modules/opportunities';
 
 const T = L.opportunities;
@@ -140,6 +142,8 @@ function OpportunityActions({ actor, res, record }: RecordExtensionProps) {
   const open = OPEN_STAGES.includes(String(record.stage));
   const editable = canUpdateRecord(actor, res, record);
   const accepted = acceptedQuotationFor(record.id);
+  // One order per accepted quotation: once it exists, link to it instead of offering to generate another.
+  const order = accepted ? (getDb().records.salesOrders ?? []).find((o) => o.quotationId === accepted.id && o.status !== 'cancelled') : undefined;
   return (
     <>
       <Button icon="message" onClick={() => setLogging(true)}>
@@ -151,7 +155,11 @@ function OpportunityActions({ actor, res, record }: RecordExtensionProps) {
         </Button>
       )}
       {record.stage === 'won' &&
-        (accepted ? (
+        (order ? (
+          <Link className="btn" to={recordPeekPath('tc', 'salesOrders', order.id)}>
+            <span className="btn-label">{T.actions.openSalesOrder(order.id)}</span>
+          </Link>
+        ) : accepted ? (
           <Link className="btn btn-primary" to={toPath(ROUTES.salesOrderNew, {}, { quotation: accepted.id })}>
             <span className="btn-label">{T.actions.generateSalesOrder}</span>
           </Link>

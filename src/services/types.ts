@@ -214,10 +214,13 @@ export class ServiceError extends Error {
   code: ServiceErrorCode;
   fieldErrors?: Record<string, string>;
   conflicts?: ScheduleConflict[];
-  constructor(code: ServiceErrorCode, message: string, extra?: { fieldErrors?: Record<string, string>; conflicts?: ScheduleConflict[] }) {
+  /** Optional link per field error (e.g. duplicate GSTIN → the existing company). */
+  fieldLinks?: Record<string, { label: string; to: string }>;
+  constructor(code: ServiceErrorCode, message: string, extra?: { fieldErrors?: Record<string, string>; conflicts?: ScheduleConflict[]; fieldLinks?: Record<string, { label: string; to: string }> }) {
     super(message);
     this.code = code;
     this.fieldErrors = extra?.fieldErrors;
+    this.fieldLinks = extra?.fieldLinks;
     this.conflicts = extra?.conflicts;
   }
 }

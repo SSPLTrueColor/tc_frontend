@@ -1,56 +1,21 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
-import { recordPeekPath } from '../../lib/routes';
 import { can } from '../../services/authz';
-import { getOrganisation, type OrgNode } from '../../services/catalog/admin';
+import { getOrganisation } from '../../services/catalog/admin';
 import { useActor } from '../../services/hooks';
-import { masterLabel } from '../../services/registry';
-import { Avatar, Badge, EmptyState, ErrorState, NoAccess, Skeleton } from '../../components/primitives/feedback';
+import { EmptyState, ErrorState, NoAccess, Skeleton, Tabs } from '../../components/primitives/feedback';
+import { OrgChart } from './OrgChart';
 import { EmptyValue } from '../../components/primitives/display';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { PageHeader } from '../../components/shell/PageHeader';
 
 const O = L.admin.organisation;
 
-/** Keeps a node when it or anyone below it matches; matching nodes keep their whole subtree. */
-function filterTree(nodes: OrgNode[], q: string): OrgNode[] {
-  if (!q) return nodes;
-  return nodes.flatMap((n) => {
-    const hit = `${String(n.employee.fullName)} ${String(n.employee.designation ?? '')}`.toLowerCase().includes(q);
-    if (hit) return [n];
-    const reports = filterTree(n.reports, q);
-    return reports.length ? [{ ...n, reports }] : [];
-  });
-}
-
-function Tree({ nodes, ws }: { nodes: OrgNode[]; ws: string }) {
-  return (
-    <ul>
-      {nodes.map((n) => (
-        <li key={n.employee.id}>
-          <span className="cat-node">
-            <Avatar name={String(n.employee.fullName)} size={22} />
-            <Link className="rel-link" to={recordPeekPath(ws, 'employees', n.employee.id)}>
-              {String(n.employee.fullName)}
-            </Link>
-            <span className="muted small">
-              {String(n.employee.designation)} · {masterLabel('role', n.employee.roleId)}
-            </span>
-            {n.reports.length > 0 && <Badge tone="neutral">{n.reports.length}</Badge>}
-          </span>
-          {n.reports.length > 0 && <Tree nodes={n.reports} ws={ws} />}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /** ADM-01 / FR-119: divisions, territories / hubs and the reporting hierarchy that drives visibility and approvals. */
 export function OrganisationPage() {
   const actor = useActor();
-  const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<'chart' | 'lists'>('chart');
   const q = useServiceQuery(() => getOrganisation(actor), [actor.user.id]);
   if (!can(actor, 'org.view')) return <NoAccess what={O.noAccessWhat} />;
   const header = <PageHeader title={L.nav.pages.organisationHierarchy.title} description={O.description} />;
@@ -71,31 +36,19 @@ export function OrganisationPage() {
       </div>
     );
   const { divisions, territories, tree, inactive } = q.data;
-  const shown = filterTree(tree, search.trim().toLowerCase());
   return (
     <div className="page">
       {header}
-      <div className="cat-grid">
-        <section className="panel">
-          <h2 className="panel-title dialog-title-row">
-            {O.hierarchy}
-            <InfoTip text={O.hierarchyTip} label={O.hierarchyTipLabel} />
-          </h2>
-          <div className="toolbar">
-            <input type="search" className="input input-compact" placeholder={O.searchPlaceholder} aria-label={O.searchLabel} value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          {!tree.length ? (
-            <EmptyState icon="users" title={O.noUsers} />
-          ) : shown.length ? (
-            <div className="cat-tree">
-              <Tree nodes={shown} ws={actor.workspaceId} />
-            </div>
+      <Tabs label={O.tabsLabel} value={tab} onChange={setTab} tabs={[{ id: 'chart', label: O.tabChart }, { id: 'lists', label: O.tabLists }]} />
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === 'chart' &&
+          (tree.length ? (
+            <OrgChart tree={tree} ws={actor.workspaceId} divisions={divisions} />
           ) : (
-            <EmptyState icon="search" title={O.noMatch} />
-          )}
-          {inactive.length > 0 && <p className="muted small">{O.inactive(inactive.length)}</p>}
-        </section>
-        <div className="cat-stack">
+            <EmptyState icon="users" title={O.noUsers} />
+          ))}
+        {tab === 'lists' && (
+          <div className="cat-grid">
           <section className="panel">
             <h2 className="panel-title">{O.divisions}</h2>
             <div className="table-scroll">
@@ -147,8 +100,10 @@ export function OrganisationPage() {
               </table>
             </div>
           </section>
-        </div>
+          </div>
+        )}
       </div>
+      {inactive.length > 0 && <p className="muted small">{O.inactive(inactive.length)}</p>}
     </div>
   );
 }

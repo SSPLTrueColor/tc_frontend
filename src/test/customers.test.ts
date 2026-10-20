@@ -13,6 +13,7 @@ import { countLinked, customer360, customer360Overview, customerDocuments } from
 import { getRecordTabs } from '../components/resource/extensions';
 import { getResource } from '../services/registry';
 import { L } from '../constants/labels';
+import { ownedOpenRecords } from '../services/catalog/admin';
 
 const admin = () => actorFor('u_rahul', 'tc');
 const expectValidation = (fn: () => unknown, field: string) => {
@@ -85,6 +86,15 @@ describe('customers module', () => {
     if (doneTask) expect(getDb().records.tasks.find((t) => t.id === doneTask.id)!.assigneeId).toBe(karan);
     expect(getDb().audit.some((a) => a.action === 'ownership.transfer')).toBe(true);
     expect(() => transferOwnership(admin(), karan, karan, 'same person')).toThrow(ServiceError);
+  });
+
+  it('one transfer hands over every open record that blocks deactivation (CUS-10, ADM-08)', () => {
+    const karan = actorFor('u_karan', 'tc').staffId;
+    expect(ownedOpenRecords(karan).length).toBeGreaterThan(0);
+    const keys = previewTransfer(admin(), karan).map((t) => t.resKey);
+    expect(keys).toEqual(expect.arrayContaining(['customers', 'leads', 'opportunities', 'quotations', 'salesOrders']));
+    transferOwnership(admin(), karan, 'E-1008', 'Leaving the company');
+    expect(ownedOpenRecords(karan)).toEqual([]);
   });
 
   it('converts a pool contact to a lead with an inline company when leads exist', () => {

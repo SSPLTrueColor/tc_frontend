@@ -1,4 +1,5 @@
 /** Service module: service ticket / site visit / PM visit / knowledge article hooks, KB approval type, ticket record extensions and the SLA sweep timer. */
+import { canSeeArticle } from '../../services/service/kb';
 import { registerRecordActions, registerRecordBanner, registerRecordTab } from '../../components/resource/extensions';
 import { isSignedIn } from '../../services/session';
 import { byId } from '../../services/lookups';
@@ -63,6 +64,10 @@ registerApprovalType('kb.article', {
     if (art?.status === 'pending') patchRecordIn(ctx, 'knowledgeArticles', art.id, { status: 'draft' }, S.approvals.returned(a.decisionNote ?? ''));
   },
 });
+
+// SRV-16: drafts and pending Knowledge Base articles are readable only by their author, Service Leadership and the
+// System Administrator — also by direct URL, record search and related lists (not just the Knowledge Base page).
+registerResourceHooks('knowledgeArticles', { canRead: (actor, r) => canSeeArticle(actor, r) || actor.role.id === 'admin' });
 
 registerRecordBanner('tickets', TicketBanner);
 registerRecordActions('tickets', TicketActions);

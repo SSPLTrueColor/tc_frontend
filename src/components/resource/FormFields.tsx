@@ -3,7 +3,8 @@
  * Layout (sections/columns) is presentation only; validation and access come
  * from the resource schema + Authorization Service.
  */
-import { useId, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useId, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { FieldAccess, FieldDefinition, LineItemColumn, RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx, formatMoney } from '../../lib/format';
 import type { Actor } from '../../services/authz';
@@ -338,6 +339,7 @@ export function FormField({
   record?: RecordData;
 }) {
   const id = useId();
+  const errorLink = useContext(ErrorLinksContext)[field.key];
   if (access === 'hide' || !isVisible(field, values)) return null;
   const helpId = field.help ? `${id}-help` : undefined;
   const errId = error ? `${id}-err` : undefined;
@@ -390,11 +392,20 @@ export function FormField({
       {error && (
         <p className="field-error" id={errId}>
           <Icon name="alert" size={12} /> {error}
+          {errorLink && (
+            <>
+              {' '}
+              <Link to={errorLink.to}>{errorLink.label}</Link>
+            </>
+          )}
         </p>
       )}
     </div>
   );
 }
+
+/** Optional links under field errors (ServiceError.fieldLinks), provided by the record form. */
+export const ErrorLinksContext = createContext<Record<string, { label: string; to: string }>>({});
 
 export function FormSections({
   res,

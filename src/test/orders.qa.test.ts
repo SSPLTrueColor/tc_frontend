@@ -8,7 +8,8 @@ import { actorFor, type Actor } from '../services/authz';
 import { createDb, getDb, __setDb } from '../services/db';
 import { todayKey, addDays } from '../lib/dates';
 import { userOfStaff } from '../services/lookups';
-import { transitionRecord, updateRecord } from '../services/runtime';
+import { availableTransitions, transitionRecord, updateRecord } from '../services/runtime';
+import { getResource } from '../services/registry';
 import { type Approval, ServiceError } from '../services/types';
 import { canDecide, decideApproval } from '../services/workflow';
 import * as so from '../services/orders/orders';
@@ -240,11 +241,15 @@ describe('Status workflow (Appendix A / REQUIREMENTS §4.2)', () => {
   });
   it('consumables complete straight from Delivered; machines do not', () => {
     const cons = getDb().records.salesOrders.find((x) => x.status === 'delivered' && x.orderKind === 'consumables')!;
-    expect(() => transitionRecord(admin(), 'salesOrders', cons.id, 'installation', cons.version)).toThrow(E.installationMachineOnly);
+    expect(() => transitionRecord(admin(), 'salesOrders', cons.id, 'installation', cons.version)).toThrow(ServiceError);
     transitionRecord(admin(), 'salesOrders', cons.id, 'completed', cons.version);
     expect(order(cons.id).completedAt).toBeTruthy();
     const mach = getDb().records.salesOrders.find((x) => x.status === 'delivered' && x.orderKind === 'machine')!;
-    expect(() => transitionRecord(admin(), 'salesOrders', mach.id, 'completed', mach.version)).toThrow(E.machineCompletesOnSignOff);
+    expect(() => transitionRecord(admin(), 'salesOrders', mach.id, 'completed', mach.version)).toThrow(ServiceError);
+    // only the step valid for the order type is offered
+    const actions = (r: RecordData) => availableTransitions(admin(), getResource('salesOrders'), r).map((t) => t.to);
+    expect(actions(mach)).toEqual(['installation']);
+    expect(actions(getDb().records.salesOrders.find((x) => x.status === 'delivered' && x.orderKind === 'consumables')!)).toEqual(['completed']);
   });
 });
 

@@ -789,6 +789,10 @@ Other statuses: Approval (pending → approved / rejected), Expense claim (draft
 | Q-31 | File size limit | COM-04 requires limits but gives none | 10 MB per file |
 | Q-32 | Date format | The template's design skill (rule 14) shows dates as "16 Oct, 2026"; BRD COM-11 (Must) requires DD-MM-YYYY | DD-MM-YYYY everywhere ("16-10-2026"); tooltip "Fri, 16-10-2026 08:30 AM". One function (`lib/dates.ts`) to change if TC prefers the skill format |
 | Q-33 | Past scheduling | The BRD only forbids past dates for follow-ups (BR-07); the calendar brief asks to block past create/edit "if BRD rules require it" | New calendar events, and edits that move an event, may not start in the past (BR-07 generalised). Editing details or marking a past event completed/cancelled is allowed. Calendar times are Asia/Kolkata wall-clock regardless of the browser zone |
+| Q-34 | Company vs Customer | CUS-01 calls the master record "Company (account) record"; CUS-07 says "Customer 360°" | Owner decision 19-10-2026: master record = **Company / Companies** (`/companies`); its detail page keeps the title **Customer 360° View**; "Customer" stays where the BRD uses it for the buyer on a transaction (GLOSSARY C-02) |
+| Q-35 | Prospect → Active Customer | The BRD does not say when the customer category changes | Automatically on approval of the company's first sales order (audited) |
+| Q-36 | Level-1 discount approver | QUO-06 names "Sales Manager/RM" but not which one | The quotation owner's reporting Sales Manager; when nobody can decide a level it moves up one level, so a requester never approves their own discount |
+| Q-37 | Other BRD gaps found in the stress test | See `docs/QA-REPORT.md` §4 (24 rows: sites ownership, Profiling scope, backdated quotations, SO-03 vs QUO-05 price edits, partial spares issue, SLA % denominator, order backlog, …) | Each row records the assumption the prototype makes |
 
 ---
 

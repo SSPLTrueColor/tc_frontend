@@ -13,7 +13,8 @@ import { isVisible, validateValues } from '../../services/validation';
 import { Button } from '../primitives/Button';
 import { InlineAlert, useToast } from '../primitives/feedback';
 import { Dialog, Drawer } from '../primitives/overlay';
-import { ErrorSummary, FormSections } from './FormFields';
+import { ErrorLinksContext, ErrorSummary, FormSections } from './FormFields';
+import { hooksFor } from '../../services/resourceHooks';
 import { EmptyValue } from '../primitives/display';
 import { applyFormLayout, divisionOf } from '../../services/formLayouts';
 import { L } from '../../constants/labels';
@@ -49,6 +50,9 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
   const [values, setValues] = useState<Values>(() => (loaded ? { ...loaded.record } : initialValues(res, initial)));
   const [baseVersion, setBaseVersion] = useState(loaded?.record.version ?? 0);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errorLinks, setErrorLinks] = useState<Record<string, { label: string; to: string }>>({});
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const warnedFor = useRef<string | null>(null);
   const [message, setMessage] = useState<string | undefined>();
   const [conflicts, setConflicts] = useState<ScheduleConflict[] | null>(null);
   const [versionConflict, setVersionConflict] = useState<string | null>(null);
@@ -95,6 +99,15 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
       focusFirstError();
       return null;
     }
+    // Pre-save warnings (resourceHooks.saveWarnings): shown once; saving again with the same values proceeds.
+    const warn = hooksFor(resKey).saveWarnings?.(actor, values, recordId) ?? [];
+    const valuesKey = JSON.stringify(values);
+    if (warn.length && warnedFor.current !== valuesKey) {
+      warnedFor.current = valuesKey;
+      setWarnings(warn);
+      return null;
+    }
+    setWarnings([]);
     const payload: Values = {};
     scope.forEach((k) => {
       const f = res.fields.find((x) => x.key === k);
@@ -116,6 +129,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
       if (e instanceof ServiceError) {
         if (e.code === 'validation') {
           setErrors(e.fieldErrors ?? {});
+          setErrorLinks(e.fieldLinks ?? {});
           setMessage(e.message);
           focusFirstError();
         } else if (e.code === 'conflict') {
@@ -140,7 +154,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
     setDirty(false);
   };
 
-  return { actor, res, access, values, setValue, setValues, errors, setErrors, message, conflicts, versionConflict, submitting, dirty, submit, reload, loaded, schedulePreview, setDirty };
+  return { actor, res, access, values, setValue, setValues, errors, setErrors, errorLinks, warnings, message, conflicts, versionConflict, submitting, dirty, submit, reload, loaded, schedulePreview, setDirty };
 }
 
 export type RecordFormState = ReturnType<typeof useRecordForm>;
@@ -241,6 +255,17 @@ function FormBody({ form, fieldKeys, sectionIds, children, layout }: { form: Rec
     >
       <VersionConflict form={form} />
       <ErrorSummary errors={form.errors} res={form.res} message={form.message && !form.conflicts ? form.message : undefined} />
+      {form.warnings.length > 0 && (
+        <InlineAlert tone="warning" title={L.common.form.warningsTitle}>
+          <ul>
+            {form.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+          {L.common.form.warningsBody}
+        </InlineAlert>
+      )}
+      <ErrorLinksContext.Provider value={form.errorLinks}>
       <FormSections
         res={res}
         fieldKeys={fieldKeys}
@@ -253,6 +278,7 @@ function FormBody({ form, fieldKeys, sectionIds, children, layout }: { form: Rec
         record={form.loaded?.record}
         layout={layout}
       />
+      </ErrorLinksContext.Provider>
       {children}
     </form>
   );
@@ -297,7 +323,7 @@ function QuickCreateInner({ resKey, onClose, initial, onCreated, onMoreFields }:
       <Dialog
         open
         onClose={guard.requestClose}
-        title={F.newTitle(form.res.label)}
+        title={form.res.form.primaryLabel ?? F.newTitle(form.res.label)}
         description={F.quickCreateDescription}
         footer={
           <>
@@ -308,7 +334,7 @@ function QuickCreateInner({ resKey, onClose, initial, onCreated, onMoreFields }:
             )}
             <Button onClick={guard.requestClose}>{C.actions.cancel}</Button>
             <Button variant="primary" loading={form.submitting} onClick={() => save()}>
-              {C.actions.create}
+              {form.res.form.primaryLabel ?? C.actions.create}
             </Button>
           </>
         }

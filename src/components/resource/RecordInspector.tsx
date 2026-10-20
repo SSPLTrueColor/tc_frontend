@@ -18,7 +18,7 @@ import { ServiceError } from '../../services/types';
 import { Button, IconButton } from '../primitives/Button';
 import { EmptyState, ErrorState, StatusChip, Tabs, useToast } from '../primitives/feedback';
 import { Dialog, Menu, useFocusReturn, useFocusTrap, useLayer } from '../primitives/overlay';
-import { getRecordActions, getRecordBanner, getRecordTabs } from './extensions';
+import { getDefaultRecordTab, getRecordActions, getRecordBanner, getRecordTabs } from './extensions';
 import { LineItemsTable, lineItemsOf } from './LineItems';
 import { FieldValue } from './FieldValue';
 import { ConflictPanel, FormBody, QuickCreateDialog, useRecordForm, useUnsavedGuard } from './RecordForm';
@@ -52,7 +52,7 @@ export function RecordInspector({
   useRevision();
   const actor = useActor();
   const res = getResource(resKey);
-  const [tab, setTab] = useState<Tab>('details');
+  const [tab, setTab] = useState<Tab>(() => getDefaultRecordTab(resKey) ?? 'details');
   const [expanded, setExpanded] = useState(variant === 'panel'); // record drawer opens wide by default (owner rule)
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();

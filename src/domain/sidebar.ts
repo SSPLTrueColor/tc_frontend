@@ -142,9 +142,9 @@ const SIDEBAR: Group[] = [
     icon: 'trophy',
     resources: ['targets'],
     pages: [
-      { id: 'targetVsActual', icon: 'activity' },
-      { id: 'activityScorecard', icon: 'check-square' },
-      { id: 'leaderboards', icon: 'star' },
+      { id: 'targetVsActual', icon: 'activity', capability: 'read:targets' },
+      { id: 'activityScorecard', icon: 'check-square', capability: 'read:targets' },
+      { id: 'leaderboards', icon: 'star', capability: 'read:targets' },
     ],
   },
   {

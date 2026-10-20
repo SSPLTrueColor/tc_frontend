@@ -15,6 +15,7 @@ import { getDb, getRevision } from './db';
 import { getRole, getUser } from './registry';
 import { L } from '../constants/labels';
 import { applyRoleOverrides } from './catalog/roleOverrides';
+import { hooksFor } from './resourceHooks';
 
 export interface Actor {
   user: DemoUser;
@@ -77,7 +78,9 @@ function teamOf(staffId: string, employees: RecordData[]): string[] {
 
 export const perm = (actor: Actor, resource: string): ResourcePermission => actor.role.resources[resource] ?? NONE;
 
-export const can = (actor: Actor, capability: string) => actor.role.capabilities.includes(capability);
+/** Role capability check. `read:<resourceKey>` means "can read that resource" (used by sidebar pages that show a resource's data). */
+export const can = (actor: Actor, capability: string): boolean =>
+  capability.startsWith('read:') ? perm(actor, capability.slice(5)).read !== 'none' : actor.role.capabilities.includes(capability);
 
 export function canReadResource(actor: Actor, resource: string) {
   return perm(actor, resource).read !== 'none';
@@ -113,7 +116,7 @@ function inScope(scope: RowScope, actor: Actor, res: ResourceDefinition, record:
   }
 }
 
-export const canReadRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).read, actor, res, record);
+export const canReadRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).read, actor, res, record) && (hooksFor(res.key).canRead?.(actor, record) ?? true);
 export const canUpdateRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).update, actor, res, record);
 
 export const SCOPE_LABELS: Record<RowScope, string> = L.common.scopes;

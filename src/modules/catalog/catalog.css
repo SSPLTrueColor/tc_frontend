@@ -77,3 +77,324 @@
 .cat-bands {
   max-width: 720px;
 }
+
+/* Organisation chart — pannable / zoomable canvas. */
+.org-howto {
+  margin: 4px 0 8px;
+}
+.org-stage {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+}
+.org-canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: min(70vh, 640px);
+  min-height: 360px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background-color: var(--s-canvas);
+  background-image: radial-gradient(var(--s-border) 1px, transparent 1px);
+  background-size: 20px 20px;
+  border: 1px solid var(--s-border);
+  border-radius: var(--radius-md, 8px);
+}
+.org-canvas:active {
+  cursor: grabbing;
+}
+.org-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.org-lines {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.org-lines path {
+  fill: none;
+  stroke: var(--s-border-strong, var(--s-border));
+  stroke-width: 1.25;
+}
+.org-card {
+  position: absolute;
+  background: var(--s-surface, var(--s-canvas));
+  border: 1px solid var(--s-border);
+  border-top: 3px solid var(--band, var(--s-accent));
+  border-radius: 8px;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+.org-card:hover {
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+}
+.org-card.is-selected {
+  outline: 2px solid var(--s-accent);
+}
+.org-card.is-match {
+  outline: 2px solid var(--s-warning);
+}
+.org-card.is-dim {
+  opacity: 0.35;
+}
+.org-card-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.org-card-text {
+  display: grid;
+  min-width: 0;
+}
+.org-card-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.org-toggle {
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  transform: translateX(-50%);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--s-border);
+  border-radius: 11px;
+  background: var(--s-canvas);
+  color: var(--s-text-secondary);
+  font-size: var(--fs-supportive);
+  cursor: pointer;
+}
+.org-toggle:hover {
+  color: var(--s-accent-text);
+  border-color: var(--s-accent);
+}
+.org-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  gap: 6px;
+}
+.org-minimap {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  background: var(--s-canvas);
+  border: 1px solid var(--s-border);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.org-minimap rect {
+  fill: var(--s-border-strong, var(--s-border));
+}
+.org-minimap rect.is-selected {
+  fill: var(--s-accent);
+}
+.org-minimap .org-minimap-view {
+  fill: none;
+  stroke: var(--s-accent);
+  stroke-width: 1.5;
+}
+.org-detail {
+  width: 300px;
+  flex: none;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.org-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+}
+.org-facts dt {
+  color: var(--s-text-secondary);
+}
+.org-facts dd {
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .org-stage {
+    flex-direction: column;
+  }
+  .org-detail {
+    width: auto;
+  }
+}
+
+/* Quick guide strip */
+.guide {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: var(--s-accent-subtle);
+  border: 1px solid var(--s-border);
+  border-radius: 8px;
+}
+.guide-steps {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.guide-steps li {
+  display: flex;
+  gap: 10px;
+  max-width: 280px;
+}
+.guide-body {
+  display: block;
+}
+.guide-num {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--s-accent);
+  color: var(--s-on-accent, #fff);
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-supportive);
+}
+.guide-link {
+  margin: 0;
+  text-align: right;
+}
+
+/* Roles — simple view */
+.access-page > .tabs {
+  margin-bottom: 12px;
+}
+.access-body {
+  display: grid;
+  gap: 12px;
+}
+.access-body > * {
+  margin: 0;
+}
+.access-role {
+  display: grid;
+  gap: 12px;
+}
+.access-role-foot {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid var(--s-border);
+}
+.access-role-text {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 320px;
+}
+.access-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.role-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.role-chip {
+  padding: 4px 12px;
+  border: 1px solid var(--s-border);
+  border-radius: 16px;
+  background: var(--s-canvas);
+  color: var(--s-text);
+  cursor: pointer;
+}
+.role-chip:hover {
+  border-color: var(--s-accent);
+}
+.role-chip.is-active {
+  background: var(--s-accent-subtle);
+  border-color: var(--s-accent);
+  color: var(--s-accent-text);
+}
+.access-areas {
+  padding: 0;
+}
+.area-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--s-border);
+}
+.area + .area {
+  border-top: 1px solid var(--s-border);
+}
+.area-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 180px 200px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 16px;
+  min-height: 44px;
+}
+.area-sub {
+  background: var(--s-canvas);
+  border-top: 1px dashed var(--s-border);
+  padding-left: 32px;
+}
+.area-name {
+  display: grid;
+  min-width: 0;
+}
+.area-main .area-name {
+  font-weight: 600;
+}
+.area-toggle {
+  justify-self: end;
+  background: none;
+  border: 0;
+  color: var(--s-accent-text);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .area-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .area-name {
+    grid-column: 1 / -1;
+  }
+  .area-toggle {
+    justify-self: start;
+  }
+}

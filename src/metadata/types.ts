@@ -141,6 +141,8 @@ export interface Transition {
   action: string;
   /** Capability required in addition to resource update permission. */
   capability?: string;
+  /** Only offered (and only allowed) when this returns true for the record, e.g. "Start Installation" on machine orders only. */
+  when?: (record: RecordData) => boolean;
   confirm?: string;
 }
 

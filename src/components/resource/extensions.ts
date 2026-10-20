@@ -21,6 +21,12 @@ export function registerRecordActions(resource: string, c: ComponentType<RecordE
 export function registerRecordBanner(resource: string, c: ComponentType<RecordExtensionProps>) {
   recordBanners.set(resource, c);
 }
+/** Tab a record page opens on (e.g. Customer 360° View → Overview); default is Details. */
+const defaultTabs = new Map<string, string>();
+export function registerDefaultRecordTab(resource: string, tabId: string) {
+  defaultTabs.set(resource, tabId);
+}
+export const getDefaultRecordTab = (resource: string) => defaultTabs.get(resource);
 export const getRecordActions = (resource: string) => recordActions.get(resource);
 export const getRecordBanner = (resource: string) => recordBanners.get(resource);
 

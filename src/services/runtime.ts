@@ -338,11 +338,11 @@ export function availableTransitions(actor: Actor, res: ResourceDefinition, reco
   const raw = getDb().records[res.key].find((r) => r.id === record.id);
   const current = String(record[res.lifecycle.field]);
   return res.lifecycle.transitions
-    .filter((t) => t.from.includes(current))
+    .filter((t) => t.from.includes(current) && (!t.when || !raw || t.when(raw)))
     .map((t) => {
       let reason: string | undefined;
       if (!raw || !canUpdateRecord(actor, res, raw)) reason = E.roleCannotUpdate(actor.role.label);
-      else if (t.capability && !can(actor, t.capability)) reason = E.requiresPermission(t.capability);
+      else if (t.capability && !can(actor, t.capability)) reason = E.requiresPermission(actor.role.label);
       else reason = hooksFor(res.key).transitionBlocked?.(actor, raw, t.to);
       return { ...t, disabledReason: reason };
     });
@@ -359,9 +359,11 @@ export function transitionRecord(actor: Actor, resKey: string, id: string, to: s
     if (!canUpdateRecord(actor, res, current)) throw new ServiceError('forbidden', E.cannotChange(res.label.toLowerCase()));
     if (current.version !== expectedVersion) throw new ServiceError('version_conflict', E.changedSinceLoad(res.label, id));
     const from = String(current[lc.field]);
-    const t = lc.transitions.find((x) => x.to === to && x.from.includes(from));
+    const t = lc.transitions.find((x) => x.to === to && x.from.includes(from) && (!x.when || x.when(current)));
     if (!t) throw new ServiceError('invalid_state', E.badTransition(masterLabel(res.fields.find((f) => f.key === lc.field)!.master!, from), masterLabel(res.fields.find((f) => f.key === lc.field)!.master!, to)));
-    if (t.capability && !can(actor, t.capability)) throw new ServiceError('forbidden', E.needsPermission(t.action, t.capability));
+    if (t.capability && !can(actor, t.capability)) throw new ServiceError('forbidden', E.needsPermission(t.action, actor.role.label));
+    const blocked = hooksFor(resKey).transitionBlocked?.(actor, current, to);
+    if (blocked) throw new ServiceError('forbidden', blocked);
     const correlationId = uid('cor');
     const hooks = hooksFor(resKey);
     // `extra` carries values captured with the action (e.g. a lost reason); hooks validate them.

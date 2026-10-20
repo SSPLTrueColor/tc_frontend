@@ -315,7 +315,7 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
   return (
     <div className="page">
       <PageHeader
-        title={recordId ? L.common.form.editTitle(form.res.label, recordId) : L.common.form.newTitle(form.res.label)}
+        title={recordId ? L.common.form.editTitle(form.res.label, recordId) : (form.res.form.primaryLabel ?? L.common.form.newTitle(form.res.label))}
         description={L.common.form.fullPageDescription}
         onBack={guard.requestClose}
       />
@@ -327,7 +327,7 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
           <Button onClick={guard.requestClose}>{C.actions.cancel}</Button>
           <span className="spacer" />
           <Button variant={canIssue ? undefined : 'primary'} loading={form.submitting} onClick={() => void save(false)}>
-            {canIssue ? C.actions.saveDraft : C.actions.save}
+            {canIssue ? C.actions.saveDraft : recordId ? C.actions.save : (form.res.form.primaryLabel ?? C.actions.save)}
           </Button>
           {canIssue && (
             <Button variant="primary" loading={form.submitting} onClick={() => void save(true)}>
