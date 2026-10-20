@@ -273,6 +273,9 @@ function writeStatus(d: Db, actor: Actor, idx: number, lead: RecordData, to: str
   return next;
 }
 
+/** Sanity ceiling for a single deal: ₹1,000 Cr. Catches extra zeros; no machine deal comes close. */
+export const MAX_DEAL_VALUE = 10_000_000_000;
+
 export interface QualifyInput {
   requirement: string;
   budget: number;
@@ -287,11 +290,19 @@ export interface QualifyInput {
 export function validateQualify(q: QualifyInput): Record<string, string> {
   const e: Record<string, string> = {};
   if (!q.requirement?.trim()) e.requirement = E.requirement;
-  if (!(Number(q.budget) > 0)) e.budget = E.budget;
+  const money = (v: unknown, missing: string, positive: string, label: string) => {
+    if (v === '' || v === null || v === undefined || Number.isNaN(Number(v))) return missing;
+    if (!(Number(v) > 0)) return positive;
+    if (Number(v) > MAX_DEAL_VALUE) return E.tooHigh(label);
+    return '';
+  };
+  const budgetErr = money(q.budget, E.budget, E.budgetPositive, 'Budget');
+  if (budgetErr) e.budget = budgetErr;
   if (!q.decisionMaker?.trim()) e.decisionMaker = E.decisionMaker;
   if (!q.timeline) e.timeline = E.timeline;
   if (!q.opportunityName?.trim()) e.opportunityName = E.opportunityName;
-  if (!(Number(q.value) > 0)) e.value = E.value;
+  const valueErr = money(q.value, E.value, E.valuePositive, 'Expected value');
+  if (valueErr) e.value = valueErr;
   if (!q.expectedCloseDate) e.expectedCloseDate = E.expectedCloseDate;
   else if (q.expectedCloseDate < todayKey()) e.expectedCloseDate = E.pastDate;
   return e;

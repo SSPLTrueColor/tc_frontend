@@ -204,7 +204,7 @@ export const contacts: ResourceDefinition = {
   description: LC.descriptions.contacts,
   status: 'published',
   fields: [
-    fk('name', FK.name, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 190, subFields: ['designation'], leadingImage: 'initials' }),
+    fk('name', FK.name, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 190, subFields: ['designation'], leadingImage: 'initials', leadingShape: 'circle' }),
     fk('customerId', FK.customerId, 'relation', { relation: { resource: 'customers' }, capabilities: ALL, width: 210, help: FK.customerIdHelp }),
     fk('designation', FK.designation, 'text', { maxLength: 80, capabilities: ALL, width: 160 }),
     fk('department', FK.department, 'text', { maxLength: 60 }),

@@ -25,7 +25,7 @@ export const employees: ResourceDefinition = {
   description: U.description,
   status: 'published',
   fields: [
-    fe('fullName', U.fields.fullName, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 200, subFields: ['designation'], leadingImage: 'initials' }),
+    fe('fullName', U.fields.fullName, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 200, subFields: ['designation'], leadingImage: 'initials', leadingShape: 'circle' }),
     fe('designation', U.fields.designation, 'text', { required: true, maxLength: 80, capabilities: ALL, width: 240 }),
     fe('roleId', U.fields.roleId, 'master', { master: 'role', required: true, width: 170 }),
     fe('divisionIds', U.fields.divisionIds, 'multimaster', { master: 'division', required: true, width: 200 }),

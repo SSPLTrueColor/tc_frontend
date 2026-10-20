@@ -95,14 +95,21 @@ export function QuoteActions({ actor, record }: Props) {
       </Button>,
     );
   } else if (status === 'approved') {
+    // Send / Accept are optional: the customer PO on the sales order is the acceptance.
     primary.push(
-      <Button key="send" variant="primary" icon="send" onClick={() => setDialog('send')} disabledReason={ro ?? (expired ? T.common.validityEnded : undefined)}>
+      <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={perm(actor, 'salesOrders').create ? (expired ? T.common.validityEnded : undefined) : C.cannotCreateSo(actor.role.label)}>
+        {A.generateSalesOrder}
+      </Button>,
+      <Button key="send" icon="send" onClick={() => setDialog('send')} disabledReason={ro ?? (expired ? T.common.validityEnded : undefined)}>
         {A.sendQuotation}
       </Button>,
     );
   } else if (status === 'sent' || status === 'negotiation') {
     primary.push(
-      <Button key="accept" variant="primary" onClick={() => setDialog('accept')} disabledReason={ro ?? (expired ? T.common.validityEnded : undefined)}>
+      <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={perm(actor, 'salesOrders').create ? (expired ? T.common.validityEnded : undefined) : C.cannotCreateSo(actor.role.label)}>
+        {A.generateSalesOrder}
+      </Button>,
+      <Button key="accept" onClick={() => setDialog('accept')} disabledReason={ro ?? (expired ? T.common.validityEnded : undefined)}>
         {A.markAccepted}
       </Button>,
       <Button key="reject" onClick={() => setDialog('reject')} disabledReason={ro}>
@@ -128,7 +135,7 @@ export function QuoteActions({ actor, record }: Props) {
 
   return (
     <>
-      {origin?.leadId && <Button icon="chevron-right" onClick={() => navigate(recordPeekPath(actor.workspaceId, 'leads', origin.leadId!))}>Open Lead · {origin.leadId}</Button>}
+      {origin?.leadId && <Button icon="chevron-right" className="is-wide" onClick={() => navigate(recordPeekPath(actor.workspaceId, 'leads', origin.leadId!))}>Open Lead · {origin.leadId}</Button>}
       {origin?.directCustomer && <span className="muted small">Existing-customer opportunity</span>}
       {latest && Number(raw.revision) > 0 && status === 'draft' && <StatusChip label="Under Revision" tone="warning" />}
       {primary}
@@ -253,7 +260,10 @@ function SendDialog({ record, onClose }: DProps) {
   const actor = useActor();
   const S = D.send;
   const contact = byId('contacts', record.contactId);
-  const [channel, setChannel] = useState<'email' | 'whatsapp'>(contact?.consentEmail === false && contact?.consentWhatsapp !== false ? 'whatsapp' : 'email');
+  const noEmail = contact?.consentEmail === false;
+  const noWhatsapp = contact?.consentWhatsapp === false;
+  // Default to a channel the contact has consented to; with neither, the only option is "shared offline".
+  const [channel, setChannel] = useState<'email' | 'whatsapp' | 'manual'>(!noEmail ? 'email' : !noWhatsapp ? 'whatsapp' : 'manual');
   const [to, setTo] = useState(String((channel === 'email' ? contact?.email : contact?.whatsapp ?? contact?.mobile) ?? ''));
   const [message, setMessage] = useState(S.defaultMessage(String(contact?.name ?? S.sirMadam), String(record.quoteNo), formatDate(String(record.validUntil)), actor.user.name));
   const { busy, errors, run } = useRun(onClose);
@@ -267,7 +277,7 @@ function SendDialog({ record, onClose }: DProps) {
       footer={
         <>
           <Button onClick={onClose}>{A.cancel}</Button>
-          <Button variant="primary" icon="send" loading={busy} onClick={() => run(() => quotationsApi.send(actor, record.id, record.version, { channel, to, message }), S.done(String(record.quoteNo), channel === 'email' ? S.email : S.whatsapp))}>
+          <Button variant="primary" icon="send" loading={busy} onClick={() => run(() => quotationsApi.send(actor, record.id, record.version, { channel, to, message }), S.done(String(record.quoteNo), channel === 'email' ? S.email : channel === 'whatsapp' ? S.whatsapp : S.manual))}>
             {A.sendQuotation}
           </Button>
         </>
@@ -284,29 +294,36 @@ function SendDialog({ record, onClose }: DProps) {
             label={S.channel}
             value={channel}
             options={[
-              { value: 'email', label: S.email, disabled: contact?.consentEmail === false },
-              { value: 'whatsapp', label: S.whatsapp, disabled: contact?.consentWhatsapp === false },
+              { value: 'email', label: S.email, disabled: noEmail },
+              { value: 'whatsapp', label: S.whatsapp, disabled: noWhatsapp },
+              { value: 'manual', label: S.manual },
             ]}
             onChange={(v) => {
-              setChannel(v as 'email' | 'whatsapp');
+              setChannel(v as 'email' | 'whatsapp' | 'manual');
               setTo(String((v === 'email' ? contact?.email : contact?.whatsapp ?? contact?.mobile) ?? ''));
             }}
           />
         </div>
-        <div className="form-field">
-          <label className="field-label" htmlFor="qsend-to">
-            {channel === 'email' ? S.emailAddress : S.whatsappNumber} <span className="req">*</span>
-          </label>
-          <TextField id="qsend-to" value={to} onChange={(e) => setTo(e.target.value)} aria-invalid={!!errors.to || undefined} />
-          {errors.to && <p className="field-error">{errors.to}</p>}
-        </div>
+        {channel === 'manual' ? (
+          <p className="muted small">{S.manualHelp}</p>
+        ) : (
+          <div className="form-field">
+            <label className="field-label" htmlFor="qsend-to">
+              {channel === 'email' ? S.emailAddress : S.whatsappNumber} <span className="req">*</span>
+            </label>
+            <TextField id="qsend-to" value={to} onChange={(e) => setTo(e.target.value)} aria-invalid={!!errors.to || undefined} />
+            {errors.to && <p className="field-error">{errors.to}</p>}
+          </div>
+        )}
         <div className="form-field span-all">
           <label className="field-label" htmlFor="qsend-msg">
             {S.message}
           </label>
           <Textarea id="qsend-msg" className="textarea" rows={5} maxLength={1500} value={message} onChange={(e) => setMessage(e.target.value)} />
         </div>
-        {contact && (contact.consentEmail === false || contact.consentWhatsapp === false) && (
+        {contact && noEmail && noWhatsapp ? (
+          <p className="muted small span-all">{S.noConsentAny(String(contact.name))}</p>
+        ) : contact && (noEmail || noWhatsapp) && (
           <p className="muted small span-all">
             {S.noConsent(
               String(contact.name),
@@ -319,7 +336,7 @@ function SendDialog({ record, onClose }: DProps) {
   );
 }
 
-function AcceptDialog({ record, onClose }: DProps) {
+export function AcceptDialog({ record, onClose }: DProps) {
   const actor = useActor();
   const X = D.accept;
   const [method, setMethod] = useState<'po' | 'electronic'>('po');
@@ -412,7 +429,7 @@ function AcceptDialog({ record, onClose }: DProps) {
   );
 }
 
-function RejectDialog({ record, onClose }: DProps) {
+export function RejectDialog({ record, onClose }: DProps) {
   const actor = useActor();
   const X = D.reject;
   const [reason, setReason] = useState('');
@@ -545,7 +562,8 @@ export function QuoteBanner({ actor, record }: Props) {
       </InlineAlert>
     );
   if (status === 'accepted') {
-    const canOrder = perm(actor, 'salesOrders').create;
+    const ordered = (getDb().records.salesOrders ?? []).some((o) => o.quotationId === raw.id && o.status !== 'cancelled');
+    const canOrder = perm(actor, 'salesOrders').create && !ordered;
     return (
       <InlineAlert tone="success" title={raw.acceptedAt ? B.acceptedOn(formatDateTime(String(raw.acceptedAt))) : B.accepted}>
         {raw.acceptanceMethod === 'po' ? B.acceptedPo(String(raw.customerPoNo), String(raw.poFileName)) : B.acceptedElectronic(String(raw.acceptedByName))} {canOrder ? B.generateHint : ''}

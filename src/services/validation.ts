@@ -1,6 +1,7 @@
 import type { FieldCondition, FieldDefinition, LineItemColumn, ResourceDefinition } from '../metadata/types';
 import { todayKey } from '../lib/dates';
 import { validateFormat } from '../lib/validators';
+import { formatMoney } from '../lib/format';
 import { getDb } from './db';
 import { activeMasterValues, getMaster } from './registry';
 import { L } from '../constants/labels';
@@ -97,8 +98,10 @@ export function validateField(f: FieldDefinition, v: unknown, values: Record<str
     case 'money': {
       const n = Number(v);
       if (Number.isNaN(n)) return V.number;
-      if (f.min !== undefined && n < f.min) return V.min(f.min);
-      if (f.max !== undefined && n > f.max) return V.max(f.max);
+      // Money limits read as ₹ with Indian grouping (₹10,00,00,00,000), not a bare 10000000000.
+      const show = (x: number) => (f.type === 'money' ? formatMoney(x) : x);
+      if (f.min !== undefined && n < f.min) return V.min(show(f.min));
+      if (f.max !== undefined && n > f.max) return V.max(show(f.max));
       return undefined;
     }
     case 'date':

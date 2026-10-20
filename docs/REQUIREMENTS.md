@@ -85,7 +85,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-042 | QUO-08 | M | Branded PDF per division; attachments; send by email/WhatsApp with sent date logged | `/quotations/:id/pdf`; Send dialog | Simulated (print-to-PDF via browser; send logged to outbox) | Simulated (`/quotations/:id/pdf`, send via outbox with consent check) |
 | FR-043 | QUO-09 | M | Versions R0, R1…; change log; side-by-side compare; only latest active | `/quotations/:id/compare` | Built | Done (revisions, `/quotations/:id/compare`) |
 | FR-044 | QUO-10 | M | Statuses incl. automatic Expired on validity end | Quotation list/detail | Built (expiry checked on load against the simulated clock) | Done (auto-expiry on simulated clock) |
-| FR-045 | QUO-11 | S | Customer acceptance by PO upload or electronic acceptance | Quotation → Mark accepted dialog | Simulated (file name stored, no real upload) | Simulated (PO file metadata or e-acceptance → opportunity Won) |
+| FR-045 | QUO-11 | S | Customer acceptance by PO upload or electronic acceptance | Quotation → Mark accepted dialog, or the customer PO on Generate Sales Order; "Mark as Sent" records a quotation shared outside the CRM | Simulated (file name stored, no real upload) | Simulated (PO file metadata or e-acceptance → opportunity Won) |
 | FR-046 | QUO-12 | S | Landed cost / margin visible only to Management & Accounts | Quotation editor (field-level permission) | Built | Done (landed cost & margin financial-only) |
 | FR-047 | QUO-13 | C | ROI / payback calculator attachable to quotation | Quotation → ROI tab | Built | Done (ROI tab) |
 | FR-048 | QUO-14 | M | Reports: quotation value, pending approvals, quote-to-order, lost with reasons, discount analysis | `/reports/:reportId` | Built | Done (`quotation-value` = value + quote-to-order + average discount; `lost-quotations`; `discount-analysis`; pending approvals stay on `/quotations/pending-approvals`, the same list, so no duplicate report) |
@@ -94,7 +94,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-049 | SO-01 | M | "Generate Sales Order" once opp Won; prefilled from accepted quotation | Opportunity/Quotation action → `/sales-orders/new?quotation=` | Built | Done (`/sales-orders/new?quotation=`, Won + accepted latest quotation only) |
+| FR-049 | SO-01 | M | "Generate Sales Order" once opp Won; prefilled from accepted quotation | Opportunity/Quotation action → `/sales-orders/new?quotation=` | Built | Done (`/sales-orders/new?quotation=`). Owner decision 2026-10-20: also from an Approved / Sent / Under Negotiation latest quotation — the order's customer PO is the acceptance, so creating it marks the quotation Accepted and the opportunity Won (see BR-20) |
 | FR-050 | SO-02 | M | Auto order no., customer PO no./date, PO copy upload (mandatory), linked quotation | Order form | Simulated (upload stores file metadata only) | Simulated (PO no./date/file required; file metadata only) |
 | FR-051 | SO-03 | M | Editable SO; differences vs quotation highlighted; beyond tolerance re-triggers approval | Order form → "Changes vs quotation" panel | Built | Done (changes vs quotation highlighted; tolerance re-triggers approval) |
 | FR-052 | SO-04 | M | Approval by reporting manager + finance check on credit/advance; configurable multi-level matrix | `/approvals` | Built | Done (named reporting-manager approver + Accounts finance check) |
@@ -669,7 +669,7 @@ Other statuses: Approval (pending → approved / rejected), Expense claim (draft
 | BR-17 | Discount approval thresholds (Assumption, configurable per division/product): ≤ 5% none; > 5% to 10% Sales manager; > 10% to 15% Division head; > 15% Management. Highest line discount decides. Reminder to approver after 24 h pending | QUO-06 |
 | BR-18 | Only the latest quotation revision can be sent, accepted or used for an order | QUO-09 |
 | BR-19 | Margin = (net price − landed cost) / net price; field hidden unless role has field permission | QUO-12 |
-| BR-20 | Generate Sales Order enabled only when opportunity = Won and an Accepted quotation exists; consumables repeat orders may be created from a previous order or rate contract without an opportunity (Assumption, see Q-05) | SO-01, CON-02 |
+| BR-20 | Generate Sales Order enabled when the latest quotation is Approved or later (owner decision 2026-10-20: Send / Accept are optional — the order's customer PO accepts the quotation and wins the opportunity); an already-accepted quotation still needs the opportunity Won; consumables repeat orders may be created from a previous order or rate contract without an opportunity (Assumption, see Q-05) | SO-01, CON-02 |
 | BR-21 | Sales order: customer PO number, PO date (≤ today), PO file required | SO-02 |
 | BR-22 | SO changes vs quotation: any line added/removed, or total value changed by more than ±2% (Assumption), or discount increased → back to Pending Approval | SO-03 |
 | BR-23 | SO approval: reporting manager of the owner; then finance check by Accounts if advance < 30% or customer overdue > 0 (Assumption) | SO-04 |

@@ -1,13 +1,17 @@
+import { createElement, Fragment } from 'react';
+import { DealProgress } from '../../components/crm/DealProgress';
 import { injectQuotationLeadLookup } from '../modules/quotationComputed';
 import { byId } from '../../services/lookups';
 /** quotations module: runtime hooks, approval type, record actions/tabs and the expiry/reminder job. */
 import { L } from '../../constants/labels';
-import { registerRecordActions, registerRecordBanner, registerRecordTab } from '../../components/resource/extensions';
+import { registerRecordActions, registerRecordBanner, registerRecordTab, registerStageMoveHandler } from '../../components/resource/extensions';
+import { canUpdateRecord } from '../../services/authz';
+import { nowIso } from '../../lib/clock';
 import { subscribe } from '../../services/db';
 import { registerResourceHooks } from '../../services/resourceHooks';
 import { onDiscountApproved, onDiscountRejected, QUOTE_APPROVAL, quoteBeforeCreate, quoteBeforeUpdate, runQuotationSweep } from '../../services/quotations/workflow';
 import { registerApprovalType } from '../../services/workflow';
-import { ApprovalTab, DocumentsTab, LinesTab, OpportunityQuotesTab, PricingTab, QuoteActions, QuoteBanner, RoiTab, TermsTab, VersionsTab } from '../../modules/quotations/RecordExtensions';
+import { AcceptDialog, RejectDialog, ApprovalTab, DocumentsTab, LinesTab, OpportunityQuotesTab, PricingTab, QuoteActions, QuoteBanner, RoiTab, TermsTab, VersionsTab } from '../../modules/quotations/RecordExtensions';
 
 const T = L.quotations.tabs;
 injectQuotationLeadLookup((id) => byId('opportunities', id)?.leadId ?? null);
@@ -16,6 +20,19 @@ registerResourceHooks('quotations', {
   beforeCreate: quoteBeforeCreate,
   beforeUpdate: quoteBeforeUpdate,
   title: (r) => String(r.quoteNo || r.id),
+  // Mark as Sent (manual): stamp the sent date like Send Quotation does, without a message.
+  beforeTransition: (_ctx, r, to) => {
+    if (to !== 'sent') return;
+    const rec = r as Record<string, unknown>;
+    if (!rec.sentAt) rec.sentAt = nowIso();
+    if (!rec.sentVia) rec.sentVia = L.quotations.lifecycle.sentManually;
+  },
+});
+
+// Accepted / Rejected from the list status chip or the board open the same dialogs as the record actions.
+registerStageMoveHandler('quotations', {
+  targets: ({ actor, res, record }) => (record.isLatest && canUpdateRecord(actor, res, record) && ['sent', 'negotiation'].includes(String(record.status)) ? ['accepted', 'rejected'] : []),
+  Dialog: ({ record, to, onClose }) => createElement(to === 'accepted' ? AcceptDialog : RejectDialog, { record, onClose }),
 });
 
 // FR-040 / BR-17: multi-level discount approval; decisions happen on the Pending Approvals page.
@@ -26,7 +43,8 @@ registerApprovalType(QUOTE_APPROVAL, {
 });
 
 registerRecordActions('quotations', QuoteActions);
-registerRecordBanner('quotations', QuoteBanner);
+// Deal progress (whole quotation → installation cycle + next step) above the status banner.
+registerRecordBanner('quotations', (p) => createElement(Fragment, null, createElement(DealProgress, { resource: 'quotations', record: p.record }), createElement(QuoteBanner, p)));
 // GLOSSARY §1.2 quotation record tabs, in order. "Activity History" is the shared activity tab of the record view.
 registerRecordTab('quotations', { id: 'lines', label: T.lineItems, component: LinesTab });
 registerRecordTab('quotations', { id: 'pricing', label: T.pricing, component: PricingTab });

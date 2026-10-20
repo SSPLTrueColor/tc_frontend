@@ -137,6 +137,8 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof QualifyInput>(k: K, v: QualifyInput[K]) => setQ((x) => ({ ...x, [k]: v }));
   const inFlight = useRef(false);
+  // The timeline only suggests a close date until the user picks one themselves.
+  const closeTouched = useRef(false);
   const submit = async () => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -192,7 +194,7 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
             label={FL.timeline}
             value={q.timeline}
             options={activeMasterValues('purchaseTimeline').map((v) => ({ value: v.key, label: v.label }))}
-            onChange={(v) => setQ((x) => ({ ...x, timeline: v, expectedCloseDate: addDays(todayKey(), TIMELINE_DAYS[v] ?? 60) }))}
+            onChange={(v) => setQ((x) => ({ ...x, timeline: v, expectedCloseDate: closeTouched.current ? x.expectedCloseDate : addDays(todayKey(), TIMELINE_DAYS[v] ?? 60) }))}
           />
         </Field>
         <Field id="q-setup" label={FL.currentSetup}>
@@ -209,7 +211,10 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
           <TextField id="q-value" type="number" min={0} value={q.value || ''} onChange={(e) => set('value', Number(e.target.value))} />
         </Field>
         <Field id="q-close" label={D.convert.expectedCloseDate} required error={errors.expectedCloseDate}>
-          <DatePicker id="q-close" block value={q.expectedCloseDate} onChange={(v) => set('expectedCloseDate', v ?? '')} label={D.convert.expectedCloseDate} />
+          <DatePicker id="q-close" block value={q.expectedCloseDate} onChange={(v) => {
+              closeTouched.current = true;
+              set('expectedCloseDate', v ?? '');
+            }} label={D.convert.expectedCloseDate} />
         </Field>
         {errors.form && (
           <p className="field-error span-all" role="alert">

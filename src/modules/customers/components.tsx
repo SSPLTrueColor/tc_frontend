@@ -1,6 +1,6 @@
 /** Customers & Contacts record actions, banners and the Convert to Lead dialog (registered in domain/extensions/customers.tsx). */
 import { useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { RecordData } from '../../metadata/types';
 import { L } from '../../constants/labels';
 import { ROUTES } from '../../constants/routes';
@@ -112,6 +112,7 @@ export function ContactActions({ actor, record }: RecordExtensionProps) {
 
 export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtensionProps['actor']; contact: RecordData; onClose: () => void }) {
   const toast = useToast();
+  const navigate = useNavigate();
   const V = L.customers.convert;
   const pool = !contact.customerId;
   const divisions = activeMasterValues('division');
@@ -143,7 +144,8 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
     setErrors({});
     try {
       const r = await convertToLead(actor, { contactId: contact.id, ...v });
-      toast(V.done(r.leadId, pool ? r.customerId : undefined));
+      // The toast links straight to the new lead, so the user is not left hunting for it from the Contact Pool.
+      toast(V.done(r.leadId, pool ? r.customerId : undefined), 'success', { label: L.common.actions.open, onClick: () => navigate(recordPeekPath(actor.workspaceId, 'leads', r.leadId)) });
       onClose();
     } catch (e) {
       if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);

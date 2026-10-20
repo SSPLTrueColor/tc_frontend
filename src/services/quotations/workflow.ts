@@ -327,7 +327,8 @@ export function backToDraft(actor: Actor, id: string, version: number) {
 }
 
 export interface SendInput {
-  channel: 'email' | 'whatsapp';
+  /** `manual`: handed over in person / by courier — nothing is messaged, so no DPDP consent is needed. */
+  channel: 'email' | 'whatsapp' | 'manual';
   to: string;
   message: string;
 }
@@ -338,13 +339,19 @@ export function sendQuote(actor: Actor, id: string, version: number, input: Send
     const q = load(actor, d, id, version);
     if (!['approved', 'sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', E.onlyApprovedSend);
     if (String(q.validUntil) < todayKey()) throw new ServiceError('invalid_state', E.expiredSend);
+    const ctx: HookContext = { d, actor, correlationId: uid('cor') };
+    if (input.channel === 'manual') {
+      const via = L.quotations.dialogs.send.manual;
+      patchRecordIn(ctx, 'quotations', id, { status: q.status === 'approved' ? 'sent' : q.status, sentAt: nowIso(), sentVia: via }, A.sentBy(via, L.quotations.dialogs.send.manualTo));
+      logActivityIn(ctx, q, 'meeting', A.sentActivity(String(q.quoteNo), via), input.message.trim());
+      return;
+    }
     const to = input.to.trim();
     const err = input.channel === 'email' ? validateEmail(to) : validateMobile(to);
     if (err) throw new ServiceError('validation', err, { fieldErrors: { to: err } });
     const contact = byId('contacts', q.contactId, d.records);
     if (contact && input.channel === 'email' && contact.consentEmail === false) throw new ServiceError('forbidden', E.noEmailConsent(String(contact.name)));
     if (contact && input.channel === 'whatsapp' && contact.consentWhatsapp === false) throw new ServiceError('forbidden', E.noWhatsappConsent(String(contact.name)));
-    const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     queueMessage(ctx, {
       channel: input.channel,
       to,
@@ -398,7 +405,8 @@ export function acceptQuote(actor: Actor, id: string, version: number, input: Ac
     patchRecordIn(ctx, 'quotations', id, patch, input.method === 'po' ? A.acceptedPo(String(input.poNo)) : A.acceptedElectronic(String(input.acceptedByName)));
     const opp = byId('opportunities', q.opportunityId, d.records);
     if (opp && !['won', 'lost'].includes(String(opp.stage))) {
-      patchRecordIn(ctx, 'opportunities', String(opp.id), { stage: 'won', wonAt: nowIso(), probability: 100 }, A.oppWon(String(q.quoteNo)));
+      // The won deal is worth what the customer accepted, not the early estimate (pipeline / won reports read this value).
+      patchRecordIn(ctx, 'opportunities', String(opp.id), { stage: 'won', wonAt: nowIso(), probability: 100, value: Number(q.grandTotal) || Number(opp.value) || 0 }, A.oppWon(String(q.quoteNo)));
     } else if (opp?.stage === 'lost') {
       appendAudit(d, actor, { action: 'warning', resource: 'opportunities', recordId: String(opp.id), summary: A.oppLostWarning(String(q.quoteNo)), correlationId: ctx.correlationId });
     }

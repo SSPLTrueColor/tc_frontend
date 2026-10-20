@@ -107,8 +107,8 @@ export function useStageMove(res: ResourceDefinition, actor: Actor) {
     };
     if (t.confirm)
       confirmAction({
-        title: t.confirm,
-        message: "",
+        title: `${t.action}?`,
+        message: t.confirm,
         tone: "primary",
         confirmLabel: L.common.actions.confirm,
         onConfirm: go,
@@ -248,8 +248,8 @@ export function MoveStageButton({
     };
     if (t.confirm)
       confirmAction({
-        title: t.confirm,
-        message: "",
+        title: `${t.action}?`,
+        message: t.confirm,
         tone: "primary",
         confirmLabel: L.common.actions.confirm,
         onConfirm: go,
