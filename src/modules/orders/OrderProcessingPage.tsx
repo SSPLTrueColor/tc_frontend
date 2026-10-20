@@ -18,6 +18,8 @@ import { DatePicker } from '../../components/primitives/DatePicker';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
+import { Icon } from '../../components/primitives/Icon';
+import { KpiStrip, SortTh, TableCard, TableFooter } from '../../components/resource/ListCard';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { chip } from './OrderTabs';
 
@@ -130,24 +132,15 @@ export function OrderProcessingPage() {
     }
   };
 
-  const sortBtn = (key: SortKey, label: string) => (
-    <button type="button" className="th-btn" onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }))} aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}>
-      <span className="th-label">{label}</span>
-      <span aria-hidden="true">{sort.key === key ? (sort.dir === 1 ? '↑' : '↓') : '↕'}</span>
-    </button>
+  const sortTh = (key: SortKey, label: string) => (
+    <SortTh label={label} active={sort.key === key} dir={sort.dir} onSort={() => setSort((x) => ({ key, dir: x.key === key ? (x.dir === 1 ? -1 : 1) : 1 }))} />
   );
-  const stat = (label: string, n: number, onClick: () => void) => (
-    <button type="button" className="stat" onClick={onClick}>
-      <span className="stat-label">{label}</span>
-      <span className="stat-value">{n}</span>
-      <span className="stat-sub">{P.orders(n)}</span>
-    </button>
-  );
+  const kpi = (key: string, label: string, n: number, active: boolean, onClick: () => void) => ({ key, label, value: n, sub: P.orders(n), active, onClick });
   const err = (k: string) => errors[k] && <p className="field-error">{errors[k]}</p>;
   const set = (p: Partial<ProcessingInput>) => draft && setDraft({ ...draft, ...p });
 
   return (
-    <div className="page">
+    <div className="page orders-page">
       <PageHeader title={L.nav.pages.orderProcessing.title} description={P.description} />
       {!canProcess && <InlineAlert tone="info">{P.viewOnly}</InlineAlert>}
       {data.error ? (
@@ -158,14 +151,25 @@ export function OrderProcessingPage() {
         <Skeleton rows={8} />
       ) : (
         <>
-          <section className="stats" aria-label={P.stats}>
-            {stat(P.inProcessing, all.filter((r) => r.order.status === 'processing').length, () => reset(() => (setStatus('processing'), setEtaOnly(false), setCustoms(''))))}
-            {stat(P.etaOverdue, all.filter((r) => r.etaPassed).length, () => reset(() => (setStatus(''), setEtaOnly(true), setCustoms(''))))}
-            {stat(P.customsPending, all.filter((r) => ['pending', 'filed'].includes(String(r.order.customsStatus))).length, () => reset(() => (setStatus(''), setEtaOnly(false), setCustoms('pending'))))}
-            {stat(P.readyForDispatch, all.filter((r) => r.order.status === 'ready_for_dispatch').length, () => reset(() => (setStatus('ready_for_dispatch'), setEtaOnly(false), setCustoms(''))))}
-          </section>
-          <div className="toolbar">
-            <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchAria} value={search} onChange={(e) => reset(() => setSearch(e.target.value))} />
+          <KpiStrip
+            label={P.stats}
+            items={[
+              kpi('processing', P.inProcessing, all.filter((r) => r.order.status === 'processing').length, status === 'processing', () => reset(() => (setStatus('processing'), setEtaOnly(false), setCustoms('')))),
+              kpi('eta', P.etaOverdue, all.filter((r) => r.etaPassed).length, etaOnly, () => reset(() => (setStatus(''), setEtaOnly(true), setCustoms('')))),
+              kpi('customs', P.customsPending, all.filter((r) => ['pending', 'filed'].includes(String(r.order.customsStatus))).length, customs === 'pending', () => reset(() => (setStatus(''), setEtaOnly(false), setCustoms('pending')))),
+              kpi('ready', P.readyForDispatch, all.filter((r) => r.order.status === 'ready_for_dispatch').length, status === 'ready_for_dispatch', () => reset(() => (setStatus('ready_for_dispatch'), setEtaOnly(false), setCustoms('')))),
+            ]}
+          />
+          <TableCard
+            title={P.tableTitle}
+            tools={
+              <>
+<div className="search-field">
+              <span className="search-icon" aria-hidden="true">
+                <Icon name="search" size={14} />
+              </span>
+              <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchAria} value={search} onChange={(e) => reset(() => setSearch(e.target.value))} />
+            </div>
             <SelectMenu label={P.statusFilter} value={status} options={[{ value: '', label: P.allStatuses }, ...SO_PROCESSING_STATUSES.map((k) => ({ value: k, label: statusText(k) }))]} onChange={(v) => reset(() => setStatus(v))} />
             <SelectMenu label={P.customsFilter} value={customs} options={[{ value: '', label: P.allCustoms }, ...CUSTOMS_STATUSES.map((k) => ({ value: k, label: masterValue('customsStatus', k)?.label ?? k }))]} onChange={(v) => reset(() => setCustoms(v))} />
             <SelectMenu label={P.typeFilter} value={kind} options={[{ value: '', label: P.allTypes }, ...activeMasterValues('orderKind').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => reset(() => setKind(v))} />
@@ -173,27 +177,27 @@ export function OrderProcessingPage() {
             <label className="orders-check">
               <input type="checkbox" checked={etaOnly} onChange={(e) => reset(() => setEtaOnly(e.target.checked))} /> {P.onlyOverdueEta}
             </label>
-          </div>
-          <div className="content-surface">
+              </>
+            }
+          >
             {rows.length === 0 ? (
               <EmptyState icon="sliders" title={filtered ? P.emptyFiltered : P.empty}>
                 {P.emptyBody}
               </EmptyState>
             ) : (
               <>
-                <div className="table-scroll">
-                  <table className="mini-table orders-processing">
+                <div className="rp-scroll">
+                  <table className="rp-table orders-processing">
                     <thead>
                       <tr>
                         <th scope="col">{F.orderNo}</th>
-                        <th scope="col">{sortBtn('customer', F.customerId)}</th>
+                        {sortTh('customer', F.customerId)}
                         <th scope="col">{F.productId}</th>
                         <th scope="col">{F.status}</th>
                         <th scope="col">{F.poToPrincipalNo}</th>
-                        <th scope="col">{sortBtn('shipmentEta', F.shipmentEta)}</th>
+                        {sortTh('shipmentEta', F.shipmentEta)}
                         <th scope="col">{F.customsStatus}</th>
-                        <th scope="col">{F.machineReady}</th>
-                        <th scope="col">{F.pdiDone}</th>
+                        <th scope="col">{P.readiness}</th>
                         <th scope="col">{O.table.actions}</th>
                       </tr>
                     </thead>
@@ -210,9 +214,9 @@ export function OrderProcessingPage() {
                                 {masterValue('orderKind', o.orderKind)?.label} · {formatDate(String(o.orderDate))}
                               </div>
                             </td>
-                            <td>{customerNameOf(o.customerId)}</td>
-                            <td>{o.productId ? recordTitle('products', o.productId, actor) : <EmptyValue />}</td>
-                            <td>{chip('soStatus', o.status)}</td>
+                            <td className="orders-clamp" data-tooltip={customerNameOf(o.customerId)}>{customerNameOf(o.customerId)}</td>
+                            <td className="orders-clamp" data-tooltip={o.productId ? recordTitle('products', o.productId, actor) : undefined}>{o.productId ? recordTitle('products', o.productId, actor) : <EmptyValue />}</td>
+                            <td className="nowrap">{chip('soStatus', o.status)}</td>
                             {isEditing ? (
                               <>
                                 <td>
@@ -230,11 +234,13 @@ export function OrderProcessingPage() {
                                   {err('customsStatus')}
                                 </td>
                                 <td>
-                                  <input type="checkbox" aria-label={F.machineReady} checked={draft.machineReady} onChange={(e) => set({ machineReady: e.target.checked, pdiDone: e.target.checked ? draft.pdiDone : false })} />
+                                  <label className="orders-check">
+                                    <input type="checkbox" checked={draft.machineReady} onChange={(e) => set({ machineReady: e.target.checked, pdiDone: e.target.checked ? draft.pdiDone : false })} /> {F.machineReady}
+                                  </label>
                                   {err('machineReady')}
-                                </td>
-                                <td>
-                                  <input type="checkbox" aria-label={F.pdiDone} checked={draft.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} />
+                                  <label className="orders-check">
+                                    <input type="checkbox" checked={draft.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} /> {F.pdiDone}
+                                  </label>
                                   {err('pdiDone')}
                                 </td>
                                 <td className="nowrap">
@@ -256,24 +262,26 @@ export function OrderProcessingPage() {
                                   {o.shipmentEta ? <DateText value={String(o.shipmentEta)} /> : <EmptyValue />}
                                   {etaPassed && <div className="small text-danger">{P.etaPassed}</div>}
                                 </td>
-                                <td>{chip('customsStatus', o.customsStatus)}</td>
-                                <td>{o.machineReady ? O.common.yes : O.common.no}</td>
-                                <td>{o.pdiDone ? O.common.yes : O.common.no}</td>
+                                <td className="nowrap">{chip('customsStatus', o.customsStatus)}</td>
+                                <td className="nowrap">
+                                  <div className="small">
+                                    {P.machineShort}: {o.machineReady ? O.common.yes : <span className="muted">{O.common.no}</span>}
+                                  </div>
+                                  <div className="small">
+                                    {P.pdiShort}: {o.pdiDone ? O.common.yes : <span className="muted">{O.common.no}</span>}
+                                  </div>
+                                </td>
                                 <td className="nowrap">
                                   {canEdit ? (
-                                    <>
+                                    <div className="orders-actions">
                                       <IconButton icon="pencil" label={P.editRow(String(o.orderNo))} onClick={() => startEdit(o)} disabledReason={editing && editing !== o.id ? P.finishOther : undefined} />
                                       {['confirmed', 'payment_received'].includes(String(o.status)) && (
-                                        <Button size="compact" loading={busy === o.id} onClick={() => advance(o, 'processing')}>
-                                          {O.transitions.startProcessing}
-                                        </Button>
+                                        <IconButton icon="play" label={O.transitions.startProcessing} disabled={busy === o.id} onClick={() => advance(o, 'processing')} />
                                       )}
                                       {o.status === 'processing' && (
-                                        <Button size="compact" loading={busy === o.id} onClick={() => advance(o, 'ready_for_dispatch')}>
-                                          {O.transitions.readyForDispatch}
-                                        </Button>
+                                        <IconButton icon="truck" label={O.transitions.readyForDispatch} disabled={busy === o.id} onClick={() => advance(o, 'ready_for_dispatch')} />
                                       )}
-                                    </>
+                                    </div>
                                   ) : (
                                     <Link className="link small" to={recordPeekPath(actor.workspaceId, 'salesOrders', o.id)}>
                                       {O.actions.open}
@@ -288,17 +296,10 @@ export function OrderProcessingPage() {
                     </tbody>
                   </table>
                 </div>
-                <div className="grid-footer">
-                  <span className="grid-footer-range">{P.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)}</span>
-                  <nav className="grid-pages" aria-label={O.pager.nav}>
-                    <IconButton icon="chevron-left" label={O.pager.prev} disabledReason={current === 0 ? O.pager.first : undefined} onClick={() => setPage(current - 1)} />
-                    <span className="muted small">{O.pager.page(current + 1, pageCount)}</span>
-                    <IconButton icon="chevron-right" label={O.pager.next} disabledReason={current >= pageCount - 1 ? O.pager.last : undefined} onClick={() => setPage(current + 1)} />
-                  </nav>
-                </div>
+                <TableFooter range={P.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)} page={current} pageCount={pageCount} onPage={setPage} labels={{ nav: O.pager.nav, prev: O.pager.prev, next: O.pager.next, first: O.pager.first, last: O.pager.last, page: O.pager.page }} />
               </>
             )}
-          </div>
+          </TableCard>
         </>
       )}
     </div>

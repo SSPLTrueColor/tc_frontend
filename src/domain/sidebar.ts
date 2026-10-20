@@ -168,6 +168,10 @@ const SIDEBAR: Group[] = [
     icon: 'settings',
     resources: ['employees', 'products', 'priceLists', 'priceListItems', 'termsTemplates', 'assignmentRules', 'leadScoringRules', 'notificationTemplates'],
     pages: [
+      { id: 'profile', icon: 'palette' },
+      { id: 'notificationPreferences', icon: 'bell' },
+      { id: 'security', icon: 'lock' },
+      { id: 'dataProtection', icon: 'shield' },
       { id: 'organisationHierarchy', icon: 'building', capability: 'org.view' },
       { id: 'rolesPermissions', icon: 'shield', capability: 'access.view' },
       { id: 'masters', icon: 'blocks', capability: 'config.publish' },

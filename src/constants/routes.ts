@@ -160,6 +160,10 @@ export const ROUTES = {
   report: '/reports/:reportId',
 
   // Administration (4.14)
+  profile: '/admin/profile',
+  notificationPreferences: '/admin/notification-preferences',
+  security: '/admin/security',
+  dataProtection: '/admin/data-protection',
   organisationHierarchy: '/admin/organisation-hierarchy',
   rolesPermissions: '/admin/roles-permissions',
   masters: '/admin/masters',

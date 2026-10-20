@@ -234,7 +234,21 @@ Ticket record tabs: Details, SLA Tracking (SRV-09), Site Visits (SRV-06), Remote
 | Weekly Activity Scorecard | TGT-03 | Weekly scorecard | `/scorecard` → `/activity-scorecard` | ✏️ |
 | Leaderboards & Recognition | TGT-04 | Leaderboard | `/leaderboard` → `/leaderboards` | ✏️ |
 
-**14 · Reports (4.13)** — one report page per BRD "Reports" requirement
+**14 · Reports (4.13)** — one report page per BRD "Reports" requirement; reports that answer the same question are views (tabs) of one report
+
+| Report (category) | Views | BRD ref |
+|---|---|---|
+| Business Scorecard · Pipeline & Forecast · CRM Adoption (KPIs) | — · By stage / By salesperson · — | Appendix C, OPP-07, NFR-23 |
+| Customer-wise Sales · Machine History · Dormant Customers (Customers) | — | CUS-12 |
+| Lead Conversion % · Lead Speed · Lost and Disqualified Leads · Sales Executive Performance · Referral Report (Leads) | Lead Speed: Open lead ageing / First response / Pending follow-ups | LEAD-14, LEAD-12 |
+| Quotation Value & Conversion · Lost Quotations · Discount Analysis (Quotations) | — | QUO-14 |
+| Order Value & Sales Performance · Order Backlog & Delays · Payments & Overdue Ageing (Sales Orders) | Backlog: Backlog / Waiting for approval / Delayed dispatches | SO-11 |
+| Installed Base by Model · Warranty & AMC · Machines Without Contract (Installed Base) | Warranty & AMC: Warranty expiry / AMC renewals due / Contract status | IB-07 |
+| Open Tickets · SLA Compliance · Service Quality · Machine Reliability · PM Compliance (Service) | Service Quality: By engineer / By month · Machine Reliability: Downtime / MTBF / Repeat complaints | SRV-17 |
+| Attendance · Field Visits (Field Force) | Attendance: Daily / By employee / Exceptions | ATT-10 |
+
+Older report ids (for example `kpi-summary`, `csat`, `attendance-daily`) redirect to the view that replaced them.
+
 
 | Page | BRD ref | App today | Route today → proposed | |
 |---|---|---|---|---|

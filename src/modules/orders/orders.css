@@ -56,7 +56,7 @@
   padding-top: var(--sp-6, 32px);
 }
 .orders-processing td {
-  vertical-align: top;
+  vertical-align: middle;
 }
 .orders-processing .input,
 .orders-processing .date-picker {
@@ -79,4 +79,66 @@
     box-shadow: none;
     max-width: none;
   }
+}
+
+.orders-clamp {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orders-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 68px;
+}
+
+/* Report-style cards on the list pages: same spacing as Reports. */
+.orders-page .rp-kpis {
+  margin-bottom: 12px;
+}
+.orders-page .rp-tablecard {
+  padding: 0;
+}
+.orders-page .rp-table th,
+.orders-page .rp-table td {
+  padding: 8px 8px;
+}
+.orders-page .rp-table thead th {
+  white-space: normal;
+  vertical-align: bottom;
+}
+.orders-page .rp-table .th-btn {
+  white-space: nowrap;
+}
+.orders-page .rp-scroll {
+  max-height: none;
+}
+.orders-page .orders-clamp {
+  max-width: 120px;
+}
+/* Row actions stay in view when the table scrolls sideways. */
+.orders-processing th:last-child,
+.orders-processing td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--s-panel);
+  box-shadow: -8px 0 8px -8px color-mix(in srgb, var(--s-text) 18%, transparent);
+}
+.orders-processing thead th:last-child {
+  z-index: 3;
+}
+.orders-processing tbody tr:hover td:last-child {
+  background: var(--s-hover);
+}
+.orders-processing .orders-clamp {
+  max-width: 108px;
+}
+.orders-page .orders-clamp {
+  max-width: 150px;
+}
+.orders-processing .orders-clamp {
+  max-width: 108px;
 }

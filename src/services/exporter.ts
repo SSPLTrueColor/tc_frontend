@@ -52,3 +52,13 @@ export function downloadText(filename: string, text: string, type = 'text/csv') 
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export function downloadBytes(filename: string, bytes: Uint8Array, type: string) {
+  const blob = new Blob([bytes as BlobPart], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

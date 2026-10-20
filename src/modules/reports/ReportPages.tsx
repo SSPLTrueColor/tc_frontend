@@ -1,39 +1,76 @@
-import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { ROUTES } from '../../constants/routes';
-import { addDays, todayKey } from '../../lib/dates';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
+import { todayKey, relativeTime } from '../../lib/dates';
+import { XLSX_MIME } from '../../lib/xlsx';
 import { call, errorMessage } from '../../services/api/client';
 import { canExportReports, exportReport, listReports, runReport } from '../../services/api/reports';
-import { downloadText } from '../../services/exporter';
+import { downloadBytes } from '../../services/exporter';
 import { useActor } from '../../services/hooks';
-import { activeMasterValues } from '../../services/registry';
-import { queryRecords } from '../../services/runtime';
-import { getReport, REPORT_GROUPS } from '../../services/reports/catalog';
+import { getReport, LEGACY_REPORTS, REPORT_GROUPS } from '../../services/reports/catalog';
+import { formatReportDate } from '../../services/reports/format';
 import { reportPath } from '../../services/reports/helpers';
-import type { ReportDef, ReportFilters } from '../../services/reports/types';
-import { Button } from '../../components/primitives/Button';
-import { DateRangePicker } from '../../components/primitives/DateRangePicker';
-import { Badge, EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
-import { InfoTip } from '../../components/primitives/InfoTip';
-import { SelectMenu } from '../../components/primitives/SelectMenu';
+import { presetsFor } from '../../services/reports/periods';
+import type { ReportDef, ReportOutput } from '../../services/reports/types';
+import { Button, IconButton } from '../../components/primitives/Button';
+import { Icon } from '../../components/primitives/Icon';
+import { EmptyState, ErrorState, NoAccess, Skeleton, Tabs, useToast } from '../../components/primitives/feedback';
 import { PageHeader } from '../../components/shell/PageHeader';
-import { KpiTiles, RankBars, ReportTable } from './components';
+import { cx } from '../../lib/format';
+import { FilterBar } from './FilterBar';
+import { KpiRow, KpiRowSkeleton } from './KpiRow';
+import { ChartSkeleton, ReportChart } from './ReportChart';
+import { ReportTable, TableSkeleton, useTableModel } from './ReportTable';
+import { useReportPrefs } from './usePrefs';
+import { useReportState } from './useReportState';
 
-/** /reports and /reports/<group>: data-driven catalogue of the reports this role can open. */
+const P = L.reports.page;
+
+// ---------------------------------------------------------------- landing
+
+function ReportCard({ def, viewedAt, favourite, onToggle, compact }: { def: ReportDef; viewedAt?: number; favourite: boolean; onToggle: () => void; compact?: boolean }) {
+  return (
+    <li className={cx('rp-card', compact && 'is-compact')}>
+      <span className="rp-card-icon" aria-hidden="true">
+        <Icon name={def.icon} size={18} />
+      </span>
+      <div className="rp-card-body">
+        <Link to={reportPath(def.id)} className="rp-card-title">
+          {def.title}
+        </Link>
+        <span className="rp-card-desc">{def.description}</span>
+        <span className="rp-card-meta muted">{viewedAt ? P.viewed(relativeTime(new Date(viewedAt).toISOString())) : P.notOpened}</span>
+      </div>
+      <IconButton className={cx('rp-fav', favourite && 'is-on')} icon="star" label={favourite ? P.unfavourite(def.title) : P.favourite(def.title)} pressed={favourite} onClick={onToggle} />
+    </li>
+  );
+}
+
+/** /reports and /reports/<category>: reports as calm cards grouped by category, with favourites and recently viewed on top. */
 export function ReportsCatalogPage({ group }: { group?: string }) {
   const actor = useActor();
+  const prefs = useReportPrefs();
   const [q, setQ] = useState('');
-  const query = useServiceQuery(() => listReports(actor).map((r) => ({ id: r.id, title: r.title, group: r.group, fr: r.fr, description: r.description })), [actor.user.id]);
+  const query = useServiceQuery(() => listReports(actor).map((r) => r.id), [actor.user.id]);
+  const allowed = new Set(query.data ?? []);
   const groups = REPORT_GROUPS.filter((g) => !group || g.id === group);
-  const title = group ? REPORT_GROUPS.find((g) => g.id === group)?.label ?? group : L.nav.pages.reports.title;
+  const title = group ? groups[0]?.label ?? group : L.nav.pages.reports.title;
   const needle = q.trim().toLowerCase();
+  const viewedAt = new Map(prefs.recent.map((r) => [r.id, r.at]));
+  const defs = (query.data ?? []).map((id) => getReport(id)).filter((d): d is ReportDef => !!d);
+  const matches = (d: ReportDef) => !needle || `${d.title} ${d.description}`.toLowerCase().includes(needle);
+  const shown = groups.map((g) => ({ g, items: defs.filter((d) => d.group === g.id && matches(d)) })).filter((x) => x.items.length);
+  const favs = defs.filter((d) => prefs.favourites.includes(d.id));
+  const recents = prefs.recent.map((r) => getReport(r.id)).filter((d): d is ReportDef => !!d && allowed.has(d.id)).slice(0, 4);
+  const card = (d: ReportDef, compact?: boolean) => <ReportCard key={d.id} def={d} compact={compact} viewedAt={viewedAt.get(d.id)} favourite={prefs.favourites.includes(d.id)} onToggle={() => prefs.toggle(d.id)} />;
+
   return (
-    <div className="page">
+    <div className="page rp-page">
       <PageHeader title={title} description={L.reports.catalog.description} />
-      <div className="rep-toolbar">
-        <input type="search" className="input input-compact" placeholder={L.reports.catalog.search} aria-label={L.reports.catalog.search} value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="rp-landbar">
+        <input type="search" className="input input-compact rp-search" placeholder={L.reports.catalog.search} aria-label={L.reports.catalog.search} value={q} onChange={(e) => setQ(e.target.value)} />
         {group && (
           <Link to={ROUTES.reports} className="link small">
             {L.reports.catalog.allReports}
@@ -46,91 +83,121 @@ export function ReportsCatalogPage({ group }: { group?: string }) {
         </ErrorState>
       ) : !query.data ? (
         <Skeleton rows={8} />
+      ) : !defs.length ? (
+        <EmptyState icon="bar-chart" title={L.reports.catalog.noReportsTitle}>
+          {L.reports.catalog.noReportsBody}
+        </EmptyState>
       ) : (
-        (() => {
-          const visible = query.data.filter((r) => !needle || `${r.title} ${r.description} ${r.fr.join(' ')}`.toLowerCase().includes(needle));
-          const shown = groups.map((g) => ({ g, items: visible.filter((r) => r.group === g.id) })).filter((x) => x.items.length);
-          if (!shown.length) return <EmptyState icon="search" title={needle ? L.reports.catalog.noMatchTitle : L.reports.catalog.noReportsTitle}>{needle ? L.reports.catalog.noMatchBody : L.reports.catalog.noReportsBody}</EmptyState>;
-          return (
-            <div className="rep-groups">
-              {shown.map(({ g, items }) => (
-                <section key={g.id} className="panel">
-                  <div className="panel-head">
-                    <h2 className="panel-title">{g.label}</h2>
-                    <span className="muted small">{items.length}</span>
-                  </div>
-                  {items.map((r) => (
-                    <Link key={r.id} to={reportPath(r.id)} className="rep-card">
-                      <span className="rep-card-title">{r.title}</span>
-                      <span className="muted small">{r.description}</span>
-                      <span className="rep-frs">
-                        {r.fr.map((f) => (
-                          <Badge key={f} tone="neutral">
-                            {f}
-                          </Badge>
-                        ))}
-                      </span>
-                    </Link>
-                  ))}
+        <>
+          {!needle && !group && (favs.length > 0 || recents.length > 0) && (
+            <div className="rp-quick">
+              {favs.length > 0 && (
+                <section aria-label={P.favourites}>
+                  <h2 className="rp-section-title">
+                    <Icon name="star" size={14} /> {P.favourites}
+                  </h2>
+                  <ul className="rp-cards is-quick">{favs.map((d) => card(d, true))}</ul>
                 </section>
-              ))}
+              )}
+              {recents.length > 0 && (
+                <section aria-label={P.recent}>
+                  <h2 className="rp-section-title">
+                    <Icon name="clock" size={14} /> {P.recent}
+                  </h2>
+                  <ul className="rp-cards is-quick">{recents.map((d) => card(d, true))}</ul>
+                </section>
+              )}
             </div>
-          );
-        })()
+          )}
+          {!shown.length ? (
+            <EmptyState icon="search" title={L.reports.catalog.noMatchTitle} action={<Button onClick={() => setQ('')}>{P.clearSearch}</Button>}>
+              {L.reports.catalog.noMatchBody}
+            </EmptyState>
+          ) : (
+            shown.map(({ g, items }) => (
+              <section key={g.id} className="rp-category" aria-label={g.label}>
+                <h2 className="rp-section-title">
+                  <Icon name={g.icon} size={14} />
+                  {group ? g.label : <Link to={reportPath(g.id)}>{g.label}</Link>}
+                  <span className="muted rp-count">{items.length}</span>
+                </h2>
+                <ul className="rp-cards">{items.map((d) => card(d))}</ul>
+              </section>
+            ))
+          )}
+        </>
       )}
     </div>
   );
 }
 
-const defaultRange = (def: ReportDef) => {
-  const today = todayKey();
-  if (def.filters.date === 'future') return { from: today, to: addDays(today, 90) };
-  if (def.filters.date === 'past') return { from: addDays(today, -180), to: today };
-  return {};
-};
+// ---------------------------------------------------------------- report page
 
-/** /reports/:reportId — or a group id, which shows that group's catalogue. */
+/** /reports/:reportId — or a category id (that category's cards), or an older report id (redirected). */
 export function ReportRoute() {
   const { reportId = '' } = useParams();
+  const loc = useLocation();
   if (REPORT_GROUPS.some((g) => g.id === reportId)) return <ReportsCatalogPage group={reportId} />;
-  return <ReportViewer key={reportId} reportId={reportId} />;
+  const moved = LEGACY_REPORTS[reportId];
+  if (moved) {
+    const sp = new URLSearchParams(loc.search);
+    if (moved.view) sp.set('view', moved.view);
+    return <Navigate to={`${reportPath(moved.id)}${[...sp].length ? `?${sp}` : ''}`} replace />;
+  }
+  return <OpenReport key={reportId} reportId={reportId} />;
 }
 
-function ReportViewer({ reportId }: { reportId: string }) {
+/** A report that does not exist, or that this role cannot read, is "no access" — never an empty page. */
+function OpenReport({ reportId }: { reportId: string }) {
+  const actor = useActor();
+  const def = getReport(reportId);
+  if (!def || !listReports(actor).some((r) => r.id === def.id)) return <NoAccess what={def?.title ?? L.reports.viewer.noAccess} />;
+  return <ReportPage def={def} />;
+}
+
+function ReportPage({ def }: { def: ReportDef }) {
   const actor = useActor();
   const toast = useToast();
-  const def = getReport(reportId);
-  const [params, setParams] = useSearchParams();
-  const range = def ? defaultRange(def) : {};
-  const filters: ReportFilters = {
-    from: params.get('from') ?? range.from,
-    to: params.get('to') ?? range.to,
-    division: params.get('division') ?? undefined,
-    owner: params.get('owner') ?? undefined,
-    group: params.get('group') ?? def?.groupOptions?.[0]?.value,
-  };
-  const [search, setSearch] = useState('');
-  const [exporting, setExporting] = useState(false);
-  const set = (patch: Record<string, string | undefined>) => {
-    const next = new URLSearchParams(params);
-    Object.entries(patch).forEach(([k, v]) => (v ? next.set(k, v) : next.delete(k)));
-    setParams(next, { replace: true });
-  };
-  const result = useServiceQuery(() => runReport(actor, reportId, filters), [reportId, actor.user.id, filters.from, filters.to, filters.division, filters.owner, filters.group]);
-  const people = useServiceQuery(() => queryRecords(actor, 'employees', { sort: [{ field: 'fullName', dir: 'asc' }] }).rows.filter((e) => e.status !== 'inactive').map((e) => ({ value: e.id, label: String(e.fullName) })), [actor.user.id]);
-  useEffect(() => setSearch(''), [reportId]);
+  const prefs = useReportPrefs();
+  const reportId = def.id;
+  const today = todayKey();
+  const state = useReportState(def, actor.user.id, today);
+  const { view, filters } = state;
 
-  if (!def) return <NoAccess what={L.reports.viewer.noAccess} />;
-  const allowed = listReports(actor).some((r) => r.id === def.id);
-  if (!allowed) return <NoAccess what={def.title} />;
+  const result = useServiceQuery(() => runReport(actor, reportId, view.id, filters), [reportId, view.id, actor.user.id, filters.from, filters.to, filters.division, filters.owner, filters.group]);
+
+  // Keep showing the previous figures (dimmed) while a changed filter reloads, so the page does not jump.
+  const last = useRef<{ key: string; data: ReportOutput } | null>(null);
+  if (result.data) last.current = { key: `${reportId}|${view.id}`, data: result.data };
+  const stale = !result.data && last.current?.key === `${reportId}|${view.id}` ? last.current.data : undefined;
+  const out = result.data ?? stale;
+  const refreshing = !result.data && !!stale && !result.error;
+
+  const model = useTableModel(out?.columns ?? [], out?.rows ?? [], `${reportId}|${view.id}`);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    prefs.touch(reportId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportId]);
+
+  const fav = prefs.favourites.includes(def.id);
+  const kind = view.filters.date;
+  const presetLabel = kind ? presetsFor(kind, today).find((p) => p.id === state.preset)?.label : undefined;
+  const filterLines = [
+    ...(kind ? [P.excel.period(view.dateLabel ?? P.filters.period, state.preset === 'custom' || !presetLabel ? '' : presetLabel, filters.from ? formatReportDate(filters.from) : '…', filters.to ? formatReportDate(filters.to) : '…')] : []),
+    ...(filters.division ? [P.excel.line(P.filters.division, filters.division)] : []),
+    ...(filters.owner ? [P.excel.line(P.filters.user, filters.owner)] : []),
+    ...(model.search.trim() ? [P.excel.line(P.table.search, model.search.trim())] : []),
+  ];
 
   const doExport = async () => {
-    if (!result.data) return;
+    if (!out) return;
     setExporting(true);
     try {
-      const csv = await call(() => exportReport(actor, def.id, result.data!, filters));
-      downloadText(`${def.id}-${todayKey()}.csv`, csv);
-      toast(L.reports.viewer.exported(result.data.rows.length));
+      const bytes = await call(() => exportReport(actor, def.id, { viewLabel: def.views.length > 1 ? view.label : def.title, columns: model.visible, rows: model.rows, filterLines, generatedAt: formatReportDate(today) }));
+      downloadBytes(`${def.id}${def.views.length > 1 ? `-${view.id}` : ''}-${today}.xlsx`, bytes, XLSX_MIME);
+      toast(L.reports.viewer.exported(model.rows.length));
     } catch (e) {
       toast(errorMessage(e), 'danger');
     } finally {
@@ -138,67 +205,63 @@ function ReportViewer({ reportId }: { reportId: string }) {
     }
   };
 
+  const loading = !out && !result.error;
+  const focusFilters = () => {
+    const first = document.querySelector<HTMLElement>('.rp-filters button, .rp-filters input');
+    first?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    first?.focus();
+  };
+
   return (
-    <div className="page">
-      <PageHeader
-        title={def.title}
-        description={L.reports.viewer.covers(def.description, def.fr.join(', '))}
-        actions={
-          <>
-            <Link to={reportPath(def.group)} className="btn btn-secondary">
-              <span className="btn-label">{L.reports.viewer.moreReports(REPORT_GROUPS.find((g) => g.id === def.group)?.label ?? '')}</span>
-            </Link>
-            <Button icon="download" loading={exporting} onClick={doExport} disabledReason={!canExportReports(actor) ? L.reports.viewer.cannotExport(actor.role.label) : !result.data?.rows.length ? L.reports.viewer.nothingToExport : undefined}>
-              {L.reports.viewer.exportCsv}
-            </Button>
-          </>
-        }
-      />
-      <div className="rep-toolbar" role="group" aria-label={L.reports.viewer.filters}>
-        {def.filters.date && (
-          <>
-            <span className="muted small">{def.dateLabel ?? L.reports.viewer.date}</span>
-            <span className="rep-date">
-              <DateRangePicker label={def.dateLabel ?? L.reports.viewer.dateRange} value={{ from: filters.from, to: filters.to }} onChange={(v) => set({ from: v.from, to: v.to })} />
-            </span>
-          </>
-        )}
-        {def.filters.division && (
-          <SelectMenu label={L.reports.viewer.division} value={filters.division ?? ''} options={[{ value: '', label: L.reports.viewer.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => set({ division: v || undefined })} />
-        )}
-        {def.filters.owner && (
-          <SelectMenu label={L.reports.viewer.user} searchable value={filters.owner ?? ''} options={[{ value: '', label: L.reports.viewer.everyone }, ...(people.data ?? [])]} onChange={(v) => set({ owner: v || undefined })} />
-        )}
-        {def.groupOptions && <SelectMenu label={L.reports.viewer.groupBy} value={filters.group ?? ''} options={def.groupOptions} onChange={(v) => set({ group: v })} />}
-        <input type="search" className="input input-compact" placeholder={L.reports.viewer.searchRows} aria-label={L.reports.viewer.searchRows} value={search} onChange={(e) => setSearch(e.target.value)} />
-        <InfoTip text={L.reports.viewer.scopeInfo} label={L.reports.viewer.scopeInfoLabel} />
+    <div className="page rp-page">
+      <PageHeader title={def.title} description={def.description} />
+      <div className="rp-head">
+        <p className="rp-desc">{def.description}</p>
+        <div className="rp-actions">
+          <Link to={reportPath(def.group)} className="btn btn-ghost" data-tooltip={P.moreInCategory}>
+            <Icon name="chevron-left" />
+            <span className="btn-label">{REPORT_GROUPS.find((g) => g.id === def.group)?.label}</span>
+          </Link>
+          <IconButton className={cx('rp-fav', fav && 'is-on')} icon="star" label={fav ? P.unfavourite(def.title) : P.favourite(def.title)} pressed={fav} variant="secondary" onClick={() => prefs.toggle(def.id)} />
+          <Button
+            icon="file-spreadsheet"
+            loading={exporting}
+            onClick={doExport}
+            disabledReason={!canExportReports(actor) ? L.reports.viewer.cannotExport(actor.role.label) : !out || !model.rows.length ? L.reports.viewer.nothingToExport : undefined}
+          >
+            {P.exportExcel}
+          </Button>
+        </div>
       </div>
-      {result.error ? (
+
+      {def.views.length > 1 && <Tabs label={P.views(def.title)} value={view.id} onChange={(id) => state.set({ view: id })} tabs={def.views.map((v) => ({ id: v.id, label: v.label }))} />}
+      <FilterBar state={state} />
+
+      {result.error && !out ? (
         <ErrorState title={L.reports.viewer.runError} onRetry={result.retry}>
           {result.error}
         </ErrorState>
-      ) : !result.data ? (
-        <Skeleton rows={10} />
+      ) : loading ? (
+        <div className="rp-body" aria-busy="true">
+          <KpiRowSkeleton n={view.kpis.length} />
+          {view.chart && <ChartSkeleton />}
+          <TableSkeleton />
+        </div>
       ) : (
-        <>
-          {result.data.kpis && <KpiTiles tiles={result.data.kpis} label={L.reports.viewer.headlineFigures(def.title)} />}
-          {result.data.rows.length === 0 ? (
-            <EmptyState icon="search" title={L.reports.viewer.emptyTitle}>
-              {L.reports.viewer.emptyBody}
-            </EmptyState>
-          ) : (
-            <div className={result.data.chart ? 'dash-grid' : undefined}>
-              {result.data.chart && (
-                <section className="panel">
-                  <RankBars {...result.data.chart} />
-                </section>
-              )}
-              <section className="panel" style={result.data.chart ? { gridColumn: '1 / -1' } : undefined}>
-                <ReportTable columns={result.data.columns} rows={result.data.rows} search={search} caption={def.title} />
-              </section>
+        out && (
+          <div className="rp-body" role="region" aria-label={def.title} id={`panel-${view.id}`} aria-labelledby={def.views.length > 1 ? `tab-${view.id}` : undefined}>
+            {result.error && (
+              <ErrorState title={L.reports.viewer.runError} onRetry={result.retry}>
+                {result.error}
+              </ErrorState>
+            )}
+            <div className={cx('rp-stack', refreshing && 'is-busy')}>
+              <KpiRow out={out} label={L.reports.viewer.headlineFigures(def.title)} />
+              {out.chart && <ReportChart chart={out.chart} busy={refreshing} />}
+              <ReportTable model={model} title={P.table.details} busy={refreshing} onChangeFilters={focusFilters} />
             </div>
-          )}
-        </>
+          </div>
+        )
       )}
     </div>
   );

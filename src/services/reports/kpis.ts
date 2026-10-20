@@ -117,25 +117,39 @@ export const isResolvedTicket = (t: RecordData) => RESOLVED.includes(s(t.status)
 export const isOpenTicket = (t: RecordData) => !RESOLVED.includes(s(t.status));
 
 /** SLA compliance %: resolved tickets that met both response and resolution targets ÷ resolved tickets. */
-export function slaCompliance(tickets: Rows) {
+export function slaCounts(tickets: Rows) {
   const resolved = tickets.filter(isResolvedTicket);
   const met = resolved.filter((t) => {
     const respOk = !s(t.responseDueAt) || (s(t.respondedAt) && ms(t.respondedAt) <= ms(t.responseDueAt));
     const resOk = !s(t.resolutionDueAt) || ms(t.resolvedAt) <= ms(t.resolutionDueAt);
     return respOk && resOk && !t.slaBreached;
   });
-  return ratio(met.length, resolved.length);
+  return { met: met.length, resolved: resolved.length };
+}
+export function slaCompliance(tickets: Rows) {
+  const c = slaCounts(tickets);
+  return ratio(c.met, c.resolved);
 }
 
 /** MTTR: average hours from ticket creation to resolution, excluding customer-pause time. */
 export const mttrHours = (tickets: Rows) => avg(tickets.filter(isResolvedTicket).map((t) => hoursBetween(t.reportedAt || t.createdAt, t.resolvedAt) - n(t.pausedMinutes) / 60).filter((h) => h >= 0));
 
 /** First-time fix rate: site-visit tickets resolved with exactly one visit and never re-opened ÷ resolved site-visit tickets. */
-export function firstTimeFix(tickets: Rows, visits: Rows) {
+export function fixCounts(tickets: Rows, visits: Rows) {
   const count = new Map<string, number>();
   visits.forEach((v) => count.set(s(v.ticketId), (count.get(s(v.ticketId)) ?? 0) + 1));
   const site = tickets.filter((t) => isResolvedTicket(t) && (count.get(t.id) ?? 0) > 0);
-  return ratio(site.filter((t) => count.get(t.id) === 1 && !n(t.reopenCount)).length, site.length);
+  return { fixed: site.filter((t) => count.get(t.id) === 1 && !n(t.reopenCount)).length, site: site.length };
+}
+export function firstTimeFix(tickets: Rows, visits: Rows) {
+  const c = fixCounts(tickets, visits);
+  return ratio(c.fixed, c.site);
+}
+
+/** PM visits due by today and how many were done on time. */
+export function pmCounts(pm: Rows, today: string) {
+  const due = pm.filter((v) => dayOf(v.dueDate) <= today);
+  return { due: due.length, onTime: due.filter((v) => v.status === 'done' && (!s(v.completedAt) || dayOf(v.completedAt) <= dayOf(v.dueDate))).length };
 }
 
 /** Repeat complaint %: tickets flagged as a repeat (same machine + category in the window) ÷ tickets. */
@@ -143,8 +157,8 @@ export const repeatRate = (tickets: Rows) => ratio(tickets.filter((t) => !!s(t.r
 
 /** PM compliance %: preventive visits done on or before the due date ÷ visits due by today. */
 export function pmCompliance(pm: Rows, today: string) {
-  const due = pm.filter((v) => dayOf(v.dueDate) <= today);
-  return ratio(due.filter((v) => v.status === 'done' && (!s(v.completedAt) || dayOf(v.completedAt) <= dayOf(v.dueDate))).length, due.length);
+  const c = pmCounts(pm, today);
+  return ratio(c.onTime, c.due);
 }
 
 /** AMC renewal %: contracts renewed ÷ contracts that came up for renewal (renewed + lost + expired). */

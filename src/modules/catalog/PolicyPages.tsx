@@ -3,7 +3,7 @@
  * Workflows & Approval Matrices (ADM-04), SLA Matrix (SRV-04, SRV-09) and Configurable Rules (ADM-04, ADM-09).
  * Each page edits only its own keys (services/catalog/policyRules.ts); same validation, save, toast and audit.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { errorMessage } from '../../services/api/client';
@@ -15,12 +15,10 @@ import { getPolicies, type Policies } from '../../services/policies';
 import { activeMasterValues } from '../../services/registry';
 import type { ApprovalLevel } from '../../services/types';
 import { Button, IconButton } from '../../components/primitives/Button';
-import { ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
-import { InfoTip } from '../../components/primitives/InfoTip';
+import { ErrorState, NoAccess, useToast } from '../../components/primitives/feedback';
 import { MultiSelectMenu } from '../../components/primitives/MultiSelectMenu';
-import { confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { DangerZone, SaveBar, SettingsField, SettingsPage, SettingsSection, SettingsSkeleton } from '../../components/settings/kit';
 
 const P = L.admin.policies;
 const F = P.fields;
@@ -36,35 +34,35 @@ const LEVELS: ApprovalLevel[] = [
 
 const TITLES: Record<PolicyGroup, string> = { workflows: L.nav.pages.workflows.title, sla: L.nav.pages.slaMatrix.title, rules: L.nav.pages.configurableRules.title };
 
+/** Errors show once the field has been left (blur) or after a save attempt. */
+const ShowAllErrors = createContext(false);
+
 function Num({ id, label, value, onChange, unit, error, help, step = 1 }: { id: string; label: string; value: number; onChange: (n: number) => void; unit?: string; error?: string; help?: string; step?: number }) {
+  const all = useContext(ShowAllErrors);
+  const [blurred, setBlurred] = useState(false);
+  const shownError = blurred || all ? error : undefined;
   return (
-    <div className="form-field">
-      <span className="field-label-row">
-        <label className="field-label" htmlFor={id}>
-          {label}
-        </label>
-        {help && <InfoTip text={help} label={L.admin.common.about(label)} />}
-      </span>
+    <SettingsField label={label} htmlFor={id} help={help} error={shownError}>
       <div className={unit ? 'input-affix has-end' : undefined}>
-        <input id={id} className="input" type="number" step={step} inputMode="decimal" value={Number.isFinite(value) ? value : ''} onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))} aria-invalid={!!error || undefined} />
+        <input
+          id={id}
+          className="input"
+          type="number"
+          step={step}
+          inputMode="decimal"
+          value={Number.isFinite(value) ? value : ''}
+          onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))}
+          onBlur={() => setBlurred(true)}
+          aria-invalid={!!shownError || undefined}
+          aria-describedby={shownError ? `${id}-err` : undefined}
+        />
         {unit && <span className="affix affix-end">{unit}</span>}
       </div>
-      {error && <p className="field-error">{error}</p>}
-    </div>
+    </SettingsField>
   );
 }
 
-function Section({ title, help, children, wide }: { title: string; help: string; children: ReactNode; wide?: boolean }) {
-  return (
-    <section className={wide ? 'panel cat-wide' : 'panel'}>
-      <h2 className="panel-title dialog-title-row">
-        {title}
-        <InfoTip text={help} label={L.admin.common.about(title)} />
-      </h2>
-      {children}
-    </section>
-  );
-}
+const Section = SettingsSection;
 
 const num = (v: string) => (v === '' ? NaN : Number(v));
 
@@ -91,30 +89,28 @@ function PolicyPage({ group, children }: { group: PolicyGroup; children: (props:
     }
   }, [q.data, draft]);
 
+  const description = L.settingsKit.desc[group];
   if (!can(actor, 'config.publish')) return <NoAccess what={P.noAccessWhat[group]} />;
-  const header = <PageHeader title={TITLES[group]} description={P.descriptions[group]} />;
   if (q.error)
     return (
-      <div className="page">
-        {header}
+      <SettingsPage title={TITLES[group]} description={description}>
         <ErrorState title={P.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
-      </div>
+      </SettingsPage>
     );
   if (!q.data || !draft)
     return (
-      <div className="page">
-        {header}
-        <Skeleton rows={10} />
-      </div>
+      <SettingsPage title={TITLES[group]} description={description}>
+        <SettingsSkeleton sections={3} />
+      </SettingsPage>
     );
 
   const p = draft;
   const keys = POLICY_GROUPS[group];
   const set = (patch: Partial<Policies>) => setDraft({ ...p, ...patch });
   const errors = validatePolicyGroup(p, group);
-  const shown = (k: string) => (tried ? errors[k] : undefined);
+  const shown = (k: string) => errors[k];
   const changed = keys.filter((k) => JSON.stringify(p[k]) !== JSON.stringify(q.data![k]));
   const dirty = changed.length > 0;
   const errorCount = Object.keys(errors).length;
@@ -140,52 +136,40 @@ function PolicyPage({ group, children }: { group: PolicyGroup; children: (props:
   };
 
   return (
-    <div className="page">
-      {header}
-      {tried && errorCount > 0 && (
-        <InlineAlert tone="danger" title={P.attentionTitle}>
-          {P.attentionBody(errorCount)}
-        </InlineAlert>
-      )}
-      <div className="cat-grid">{children({ p, set, shown, renewalText, setRenewalText })}</div>
-      <div className="cat-sticky-actions">
-        <Button
-          icon="reset"
-          onClick={() =>
-            confirmDelete({
-              title: P.restoreTitle,
-              message: P.restoreMessage,
-              confirmLabel: L.admin.common.restoreDefaults,
-              onConfirm: async () => {
-                try {
-                  await resetPolicies(actor, group);
-                  setDraft(null);
-                  setTried(false);
-                  toast(P.restored);
-                } catch (e) {
-                  toast(errorMessage(e), 'danger');
-                }
-              },
-            })
-          }
-        >
-          {L.admin.common.restoreDefaults}
-        </Button>
-        <Button
-          onClick={() => {
-            setDraft(structuredClone(q.data!));
-            setRenewalText(q.data!.renewalReminderDays.join(', '));
+    <SettingsPage title={TITLES[group]} description={description}>
+      <ShowAllErrors.Provider value={tried}>{children({ p, set, shown, renewalText, setRenewalText })}</ShowAllErrors.Provider>
+      <SaveBar
+        dirty={dirty}
+        busy={busy}
+        errorCount={tried ? errorCount : 0}
+        saveLabel={P.save}
+        onSave={save}
+        onCancel={() => {
+          setDraft(structuredClone(q.data!));
+          setRenewalText(q.data!.renewalReminderDays.join(', '));
+          setTried(false);
+        }}
+      />
+      <DangerZone
+        title={P.restoreTitle}
+        description={P.restoreMessage}
+        actionLabel={L.admin.common.restoreDefaults}
+        confirmWord={L.settingsKit.resetWord}
+        confirmTitle={P.restoreTitle}
+        confirmBody={P.restoreMessage}
+        onConfirm={async () => {
+          try {
+            await resetPolicies(actor, group);
+            setDraft(null);
             setTried(false);
-          }}
-          disabledReason={dirty ? undefined : L.admin.common.noUnsavedChanges}
-        >
-          {L.admin.common.discardChanges}
-        </Button>
-        <Button variant="primary" loading={busy} onClick={save} disabledReason={dirty ? undefined : L.admin.common.noUnsavedChanges}>
-          {P.save}
-        </Button>
-      </div>
-    </div>
+            toast(P.restored);
+          } catch (e) {
+            toast(errorMessage(e), 'danger');
+            throw e;
+          }
+        }}
+      />
+    </SettingsPage>
   );
 }
 
@@ -273,40 +257,48 @@ export function SlaMatrixPage() {
       {({ p, set, shown }) => (
         <>
           <Section wide title={P.sections.slaMatrix} help={P.sections.slaMatrixHelp}>
-            <div className="table-scroll">
-              <table className="mini-table cat-sla">
-                <thead>
-                  <tr>
-                    <th scope="col">{F.priority}</th>
-                    {COVERAGE_KEYS.map((cv) => (
-                      <th key={cv} scope="col">
-                        {F.slaHeader(P.coverages[cv])}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {PRIORITY_KEYS.map((pr) => (
-                    <tr key={pr}>
-                      <th scope="row">{P.priorities[pr]}</th>
-                      {COVERAGE_KEYS.map((cv) => {
-                        const s = p.sla[pr]?.[cv] ?? { response: NaN, arrival: NaN, resolution: NaN };
-                        const upd = (k: 'response' | 'arrival' | 'resolution', v: number) => set({ sla: { ...p.sla, [pr]: { ...p.sla[pr], [cv]: { ...s, [k]: v } } } });
-                        return (
-                          <td key={cv}>
-                            <span className="row-gap">
+            <div className="st-sla-list">
+              {PRIORITY_KEYS.map((pr) => (
+                <div key={pr} className="st-sla-block">
+                  <h3 className="st-subtitle">{P.priorities[pr]}</h3>
+                  <div className="table-scroll">
+                    <table className="mini-table st-sla">
+                      <thead>
+                        <tr>
+                          <th scope="col">{F.coverage}</th>
+                          {(['response', 'arrival', 'resolution'] as const).map((k) => (
+                            <th key={k} scope="col">
+                              {F.slaColumns[k]}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {COVERAGE_KEYS.map((cv) => {
+                          const s = p.sla[pr]?.[cv] ?? { response: NaN, arrival: NaN, resolution: NaN };
+                          const upd = (k: 'response' | 'arrival' | 'resolution', v: number) => set({ sla: { ...p.sla, [pr]: { ...p.sla[pr], [cv]: { ...s, [k]: v } } } });
+                          const err = shown(`sla.${pr}.${cv}`);
+                          return (
+                            <tr key={cv}>
+                              <th scope="row">{P.coverages[cv]}</th>
                               {(['response', 'arrival', 'resolution'] as const).map((k) => (
-                                <input key={k} className="input input-compact" type="number" aria-label={F.slaCell(P.priorities[pr], P.coverages[cv], F.slaKinds[k])} value={Number.isFinite(s[k]) ? s[k] : ''} onChange={(e) => upd(k, num(e.target.value))} aria-invalid={!!shown(`sla.${pr}.${cv}`) || undefined} />
+                                <td key={k}>
+                                  <input className="input" type="number" aria-label={F.slaCell(P.priorities[pr], P.coverages[cv], F.slaKinds[k])} value={Number.isFinite(s[k]) ? s[k] : ''} onChange={(e) => upd(k, num(e.target.value))} aria-invalid={!!err || undefined} />
+                                </td>
                               ))}
-                            </span>
-                            {shown(`sla.${pr}.${cv}`) && <p className="field-error">{shown(`sla.${pr}.${cv}`)}</p>}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                              {err && (
+                                <td className="field-error st-sla-err" colSpan={3}>
+                                  {err}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
             </div>
           </Section>
           <Section wide title={P.sections.escalation} help={P.sections.escalationHelp}>

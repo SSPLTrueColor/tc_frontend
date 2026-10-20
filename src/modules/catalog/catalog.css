@@ -83,16 +83,16 @@
   margin: 4px 0 8px;
 }
 .org-stage {
-  display: flex;
-  gap: 16px;
-  align-items: stretch;
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
 }
 .org-canvas {
   position: relative;
   flex: 1;
   min-width: 0;
-  height: min(70vh, 640px);
-  min-height: 360px;
+  height: clamp(300px, 46vh, 460px);
+  min-height: 300px;
   overflow: hidden;
   cursor: grab;
   touch-action: none;
@@ -212,10 +212,8 @@
   stroke-width: 1.5;
 }
 .org-detail {
-  width: 300px;
-  flex: none;
   display: grid;
-  gap: 12px;
+  gap: var(--sp-4);
   align-content: start;
 }
 .org-facts {
@@ -230,31 +228,22 @@
 .org-facts dd {
   margin: 0;
 }
-@media (max-width: 900px) {
-  .org-stage {
-    flex-direction: column;
-  }
-  .org-detail {
-    width: auto;
-  }
-}
 
 /* Quick guide strip */
 .guide {
   display: flex;
-  gap: 16px;
+  gap: var(--sp-4);
   align-items: flex-start;
   justify-content: space-between;
-  flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: var(--sp-4);
   background: var(--s-accent-subtle);
   border: 1px solid var(--s-border);
-  border-radius: 8px;
+  border-radius: var(--c-radius-panel);
 }
 .guide-steps {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-4);
   flex: 1;
   margin: 0;
   padding: 0;
@@ -262,16 +251,15 @@
 }
 .guide-steps li {
   display: flex;
-  gap: 10px;
-  max-width: 280px;
+  gap: var(--sp-3);
 }
 .guide-body {
   display: block;
 }
 .guide-num {
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--s-accent);
   color: var(--s-on-accent, #fff);

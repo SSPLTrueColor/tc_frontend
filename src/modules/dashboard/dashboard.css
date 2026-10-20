@@ -381,3 +381,22 @@ a.kpi-card:focus-visible {
     margin-left: 0;
   }
 }
+
+/* KPI card used as a filter button (lists such as Payment Schedule, Order Processing). */
+button.kpi-card.is-action {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+button.kpi-card.is-action:hover {
+  background: var(--s-hover);
+}
+button.kpi-card.is-action:focus-visible {
+  outline: 2px solid var(--s-focus);
+  outline-offset: 2px;
+}
+button.kpi-card.is-action.is-active {
+  border-color: var(--s-accent);
+  box-shadow: inset 0 0 0 1px var(--s-accent);
+}

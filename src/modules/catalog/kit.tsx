@@ -110,9 +110,7 @@ export function QuickGuide({ id, steps }: { id: string; steps: readonly { title:
           </li>
         ))}
       </ol>
-      <button type="button" className="rel-link small" onClick={() => set(true)}>
-        {G.hide}
-      </button>
+      <IconButton icon="x" label={G.hide} onClick={() => set(true)} />
     </section>
   );
 }

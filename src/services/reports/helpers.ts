@@ -7,6 +7,8 @@ import { masterLabel } from '../registry';
 import { dayOf, inRange } from './kpis';
 import type { Dataset, ReportFilters, ReportRow } from './types';
 
+/** A report row: `_key` is its stable id for React keys and chart marks. */
+export const row = (key: string, o: Record<string, unknown>): ReportRow => ({ _key: key, ...o });
 export const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 export const n = (v: unknown) => (typeof v === 'number' ? v : Number(v) || 0);
 

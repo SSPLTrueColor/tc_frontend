@@ -1,0 +1,13 @@
+import { chromium } from '@playwright/test';
+import { openAs } from './helpers';
+const [, , user, path, out, width = '1440', theme = 'dark'] = process.argv;
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: Number(width), height: 900 } });
+const errors: string[] = [];
+page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+page.on('pageerror', (e) => errors.push(String(e)));
+await openAs(page, user, path, { theme: theme as 'light' | 'dark' });
+await page.waitForTimeout(800);
+await page.screenshot({ path: out, fullPage: false });
+console.log('errors:', errors.length ? errors : 'none');
+await browser.close();

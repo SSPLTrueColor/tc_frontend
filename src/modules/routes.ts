@@ -12,5 +12,6 @@ import { routes as spares } from './spares/routes';
 import { routes as field } from './field/routes';
 import { routes as reports } from './reports/routes';
 import { routes as calendar } from './calendar/routes';
+import { routes as settings } from './settings/routes';
 
-export const moduleRoutes: AppRoute[] = [...catalog, ...customers, ...leads, ...opportunities, ...quotations, ...orders, ...installed, ...service, ...spares, ...field, ...reports, ...calendar];
+export const moduleRoutes: AppRoute[] = [...catalog, ...customers, ...leads, ...opportunities, ...quotations, ...orders, ...installed, ...service, ...spares, ...field, ...reports, ...calendar, ...settings];

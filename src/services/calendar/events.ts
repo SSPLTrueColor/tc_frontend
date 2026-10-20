@@ -43,6 +43,7 @@ export interface CalItem {
   location?: string;
   notes?: string;
   seriesId?: string;
+  reminder: 'none' | '15m' | '1h' | '1d';
   version: number;
   /** Actor may move, edit and delete it here. */
   editable: boolean;
@@ -55,6 +56,17 @@ const fromMinutes = (m: number) => new Date(m * 60_000).toISOString().slice(0, 1
 export const splitExdates = (v: unknown) => s(v).split(',').map((x) => x.trim()).filter(Boolean);
 
 // ---------------------------------------------------------------- validation (used by hooks and the dialog)
+
+/** Undo and series splits restore times that may already be in the past; they run with the past rule suspended. */
+let pastCheckSuspended = 0;
+export function withoutPastCheck<T>(fn: () => T): T {
+  pastCheckSuspended++;
+  try {
+    return fn();
+  } finally {
+    pastCheckSuspended--;
+  }
+}
 
 export interface EventDraft {
   title?: unknown;
@@ -71,19 +83,21 @@ export interface EventDraft {
  * the past (assumption generalising BR-07 "follow-up dates cannot be in the past"; see REQUIREMENTS Q-33).
  */
 export function validateEvent(v: EventDraft, opts: { checkPast: boolean }): Record<string, string> {
+  const checkPast = opts.checkPast && pastCheckSuspended === 0;
   const V = L.calendar.validation;
   const e: Record<string, string> = {};
   const start = s(v.start);
   const end = s(v.end);
   const allDay = !!v.allDay;
   if (!s(v.title).trim()) e.title = V.titleRequired;
+  else if (s(v.title).length > 120) e.title = V.titleTooLong;
   if (!start) e.start = V.startRequired;
   if (!end) e.end = V.endRequired;
   if (start && end) {
     if (allDay ? end.slice(0, 10) < start.slice(0, 10) : end <= start) e.end = allDay ? V.endDateAfter : V.endTimeAfter;
     if (!allDay && (isDate(start) || isDate(end))) e.start = V.pickTimes;
   }
-  if (opts.checkPast && start && s(v.status || 'scheduled') === 'scheduled') {
+  if (checkPast && start && s(v.status || 'scheduled') === 'scheduled') {
     const nowWall = istNow().slice(0, 16);
     if (allDay ? start.slice(0, 10) < nowWall.slice(0, 10) : start < nowWall) e.start = V.noPast;
   }
@@ -139,6 +153,7 @@ function ownItem(actor: Actor, r: RecordData): CalItem {
     location: s(r.location) || undefined,
     notes: s(r.notes) || undefined,
     seriesId: s(r.seriesId) || undefined,
+    reminder: (s(r.reminder) || 'none') as CalItem['reminder'],
     version: r.version,
     editable: !!raw && canUpdateRecord(actor, getResource('calendarEvents'), raw),
   };
@@ -156,7 +171,7 @@ const safeRows = (actor: Actor, resKey: string, where?: Record<string, unknown>)
 /** Task type → calendar event type (GLOSSARY C-15). */
 const TASK_TYPE: Record<string, EventType> = { call: 'follow_up', follow_up: 'follow_up', meeting: 'meeting', visit: 'field_visit', demo: 'demo', other: 'internal' };
 const DV = L.calendar.derived;
-const item = (x: Omit<CalItem, 'attendeeIds' | 'recurrence' | 'exdates' | 'editable' | 'version'>): CalItem => ({ ...x, attendeeIds: [], recurrence: 'none', exdates: [], editable: false, version: 0 });
+const item = (x: Omit<CalItem, 'attendeeIds' | 'recurrence' | 'exdates' | 'editable' | 'version' | 'reminder'>): CalItem => ({ ...x, attendeeIds: [], recurrence: 'none', exdates: [], reminder: 'none', editable: false, version: 0 });
 
 /** Everything the actor may see on the calendar (scope-filtered by each module's own permissions). */
 export function listCalendarItems(actor: Actor): CalItem[] {
@@ -256,6 +271,53 @@ export function updateOccurrence(actor: Actor, id: string, occurrenceStart: stri
     throw e;
   }
   return single;
+}
+
+const SERIES_FIELDS = ['title', 'eventType', 'allDay', 'assigneeId', 'attendeeIds', 'linkResource', 'linkId', 'linkLabel', 'customerId', 'location', 'notes', 'status', 'reminder', 'recurrence'] as const;
+
+/**
+ * "This and following events": the series ends the day before the picked occurrence and a new series
+ * (same details + the change) starts at it. The new series is created first so a failed save leaves
+ * the original untouched. Editing the first occurrence is the same as editing the whole series.
+ */
+export function updateFollowing(actor: Actor, id: string, occurrenceStart: string, patch: EventInput, version: number) {
+  const r = getRecord(actor, 'calendarEvents', id).record;
+  if (occurrenceStart.slice(0, 10) <= s(r.start).slice(0, 10)) return updateRecord(actor, 'calendarEvents', id, { ...patch, exdates: s(r.exdates) }, version).record;
+  const carried: EventInput = {};
+  SERIES_FIELDS.forEach((k) => (carried[k] = r[k]));
+  const timeChanged = (['start', 'end', 'allDay'] as const).some((k) => k in patch && patch[k] !== undefined);
+  const keepExdates = splitExdates(r.exdates).filter((x) => x >= occurrenceStart);
+  const run = () => createRecord(actor, 'calendarEvents', { ...carried, ...patch, recurrenceUntil: 'recurrenceUntil' in patch ? patch.recurrenceUntil : r.recurrenceUntil, exdates: keepExdates.join(','), seriesId: s(r.seriesId) || id }).record;
+  const next = timeChanged ? run() : withoutPastCheck(run);
+  try {
+    updateRecord(actor, 'calendarEvents', id, { recurrenceUntil: addDays(occurrenceStart.slice(0, 10), -1), exdates: splitExdates(r.exdates).filter((x) => x < occurrenceStart).join(',') }, version);
+  } catch (e) {
+    deleteRecord(actor, 'calendarEvents', next.id);
+    throw e;
+  }
+  return next;
+}
+
+/** "This and following" delete: end the series the day before the picked occurrence (the first one deletes it all). */
+export function deleteFollowing(actor: Actor, id: string, occurrenceStart: string, version: number) {
+  const r = getRecord(actor, 'calendarEvents', id).record;
+  if (occurrenceStart.slice(0, 10) <= s(r.start).slice(0, 10)) return deleteEvent(actor, id);
+  const raw = getDb().records.calendarEvents.find((x) => x.id === id);
+  if (!raw || !canUpdateRecord(actor, getResource('calendarEvents'), raw)) throw new ServiceError('forbidden', L.calendar.validation.deleteForbidden);
+  updateRecord(actor, 'calendarEvents', id, { recurrenceUntil: addDays(occurrenceStart.slice(0, 10), -1) }, version);
+}
+
+/** Undo of a drag / resize: put the saved fields back (the version is read fresh, so it never conflicts with itself). */
+export function restoreEvent(actor: Actor, id: string, fields: EventInput) {
+  const r = getRecord(actor, 'calendarEvents', id).record;
+  return withoutPastCheck(() => updateRecord(actor, 'calendarEvents', id, fields, r.version).record);
+}
+
+/** Undo of "this event only": drop the single copy and bring the occurrence back on the series. */
+export function undoOccurrence(actor: Actor, seriesId: string, singleId: string, occurrenceStart: string) {
+  const r = getRecord(actor, 'calendarEvents', seriesId).record;
+  deleteEvent(actor, singleId);
+  return updateRecord(actor, 'calendarEvents', seriesId, { exdates: splitExdates(r.exdates).filter((x) => x !== occurrenceStart).join(',') }, r.version).record;
 }
 
 /** "This event only" delete: skip the occurrence on the series. */

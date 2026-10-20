@@ -3,7 +3,7 @@ import type { RecordData } from '../metadata/types';
 import type { SeedContext } from './context';
 
 /** Bump when this module's seed or record shapes change (invalidates stored demo data). */
-export const rev = 3; // 3: event types renamed per GLOSSARY C-15 (field_visit, service_visit)
+export const rev = 4; // 4: 60+ events incl. 22-event day, 6 overlapping, midnight crossing; reminder field
 
 type Draft = {
   title: string;
@@ -21,16 +21,18 @@ type Draft = {
   link?: 'customer' | 'lead' | 'opportunity' | 'ticket';
   location?: string;
   notes?: string;
+  reminder?: '15m' | '1h' | '1d';
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
+/** End of a timed event as { day offset, "HH:mm" }; an event that crosses midnight ends on the next day. */
 const addMin = (hhmm: string, m: number) => {
   const t = +hhmm.slice(0, 2) * 60 + +hhmm.slice(3, 5) + m;
-  return `${pad(Math.floor(t / 60) % 24)}:${pad(t % 60)}`;
+  return { days: Math.floor(t / 1440), at: `${pad(Math.floor(t / 60) % 24)}:${pad(t % 60)}` };
 };
 
 /**
- * 50 demo events from last month to next month (IST wall clock): recurring team rituals,
+ * 70+ demo events from last month to next month (IST wall clock): recurring team rituals,
  * customer meetings and demos, overlapping bookings, multi-day exhibitions and training,
  * holidays, past (completed) and today's events — linked to seeded customers, leads and opportunities.
  */
@@ -109,13 +111,44 @@ export function seed(ctx: SeedContext): void {
     drafts.push({ title: rnd.pick(titles[k.eventType]), eventType: k.eventType, day, at: rnd.pick(hours), minutes: k.eventType === 'service_visit' ? 120 : k.eventType === 'demo' ? 90 : rnd.pick([30, 45, 60]), user: rnd.pick(owners[k.eventType]), link: k.link, location: k.eventType === 'follow_up' ? 'Phone' : 'Customer site' });
   }
 
+  // Edge cases for the stress test: a 22-event day, 6 bookings at the same time, an event crossing
+  // midnight, a very long title, a multi-day event across the month end, and next-month work.
+  const busy = ['Dealer call', 'Quote review', 'Sample dispatch check', 'Collections call', 'Training slot', 'Warehouse sync', 'Customer onboarding', 'Price list review', 'Service handover', 'Site photos review', 'RIP profile check'];
+  for (let i = 0; i < 22; i++) {
+    drafts.push({ title: `${busy[i % busy.length]} ${i + 1}`, eventType: (['meeting', 'follow_up', 'internal', 'demo', 'field_visit', 'service_visit'] as const)[i % 6], day: 6, at: `${pad(8 + Math.floor(i / 2))}:${i % 2 ? '30' : '00'}`, minutes: 30, user: [R, K, S, SN, PR][i % 5] });
+  }
+  ['Print-head audit — Unit 1', 'Print-head audit — Unit 2', 'Colour calibration', 'Operator training batch A', 'Spare-parts count', 'Customer escalation call'].forEach((t, i) =>
+    drafts.push({ title: t, eventType: (['service_visit', 'service_visit', 'internal', 'internal', 'internal', 'follow_up'] as const)[i], day: 7, at: '14:00', minutes: 60, user: R, location: 'Surat plant' }),
+  );
+  drafts.push({ title: 'Night-shift press trial', eventType: 'service_visit', day: 3, at: '22:00', minutes: 240, user: RV, location: 'Surat plant', notes: 'Runs past midnight into the next morning.' });
+  drafts.push({
+    title: 'Annual dealer conference and new product launch — regional agenda with textile, packaging and signage tracks',
+    eventType: 'meeting',
+    day: 12,
+    at: '10:00',
+    minutes: 180,
+    user: V,
+    location: 'Taj Lands End, Bandra Reclamation, Mumbai, Maharashtra 400050 (Ballroom A and the adjoining exhibition foyer)',
+    notes: 'Opening keynote, product walkthroughs, dealer awards and panel discussions. '.repeat(8),
+  });
+  const monthEnd = Math.round((Date.UTC(+today.slice(0, 4), +today.slice(5, 7), 1) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000) - 2;
+  drafts.push({ title: 'Annual stock take — all warehouses', eventType: 'internal', day: monthEnd, days: 5, user: SN, location: 'Bhiwandi and Surat warehouses' });
+  drafts.push({ title: 'Texprocess follow-up campaign', eventType: 'follow_up', day: 41, days: 3, user: K });
+  [['Quarterly business review', 'meeting', '11:00', V], ['Machine demo — digital textile line', 'demo', '14:30', PR], ['PM visit — Tirupur cluster', 'service_visit', '10:00', AJ], ['Customer visit — Coimbatore', 'field_visit', '09:30', R], ['Pipeline review', 'meeting', '16:00', S]].forEach(([t, k, at, u], i) =>
+    drafts.push({ title: t, eventType: k as Draft['eventType'], day: 36 + i * 4, at, minutes: 60, user: u, reminder: i % 2 ? '1h' : '15m' }),
+  );
+  drafts.forEach((d) => {
+    if (!d.reminder && d.at && d.eventType !== 'internal' && d.day > 0 && d.day !== 6) d.reminder = '15m';
+  });
+
   const rows: RecordData[] = [];
   const nowWall = `${today}T${pad(ctx.now.getHours())}:${pad(ctx.now.getMinutes())}`;
   drafts.forEach((d, i) => {
     const date = addDays(today, d.day);
     const allDay = !d.at;
     const start = allDay ? date : `${date}T${d.at}`;
-    const end = allDay ? addDays(date, (d.days ?? 1) - 1) : `${date}T${addMin(d.at!, d.minutes ?? 60)}`;
+    const endAt = allDay ? null : addMin(d.at!, d.minutes ?? 60);
+    const end = allDay ? addDays(date, (d.days ?? 1) - 1) : `${addDays(date, endAt!.days)}T${endAt!.at}`;
     const linkRec = d.link === 'customer' ? pick(customers, i * 3) : d.link === 'lead' ? pick(leads, i * 5) : d.link === 'opportunity' ? pick(opps, i * 7) : d.link === 'ticket' ? pick(tickets, i * 11) : undefined;
     const linkResource = linkRec ? ({ customer: 'customers', lead: 'leads', opportunity: 'opportunities', ticket: 'tickets' } as const)[d.link!] : null;
     const customerId = linkRec ? (linkResource === 'customers' ? linkRec.id : (linkRec.customerId as string | undefined)) : undefined;
@@ -141,6 +174,7 @@ export function seed(ctx: SeedContext): void {
       status: past && !d.recurrence ? (rnd.chance(0.85) ? 'completed' : 'cancelled') : 'scheduled',
       notes: d.notes ?? null,
       exdates: '',
+      reminder: d.reminder ?? 'none',
       seriesId: null,
     });
   });

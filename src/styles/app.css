@@ -1001,6 +1001,18 @@ input[type='radio'] {
 .toast span {
   flex: 1;
 }
+.toast-action {
+  border: 0;
+  background: transparent;
+  color: var(--s-accent-text);
+  font-weight: var(--fw-semibold);
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.toast-action:hover {
+  background: var(--s-hover);
+}
 .toast-close {
   border: 0;
   background: transparent;

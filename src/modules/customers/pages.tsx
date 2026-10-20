@@ -42,6 +42,7 @@ import { confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { SettingsPage } from '../../components/settings/kit';
 import { ConvertDialog, convertBlockedReason } from './components';
 
 const A = L.customers.actions;
@@ -259,8 +260,7 @@ export function DuplicatesPage() {
   const customers = getDb().records.customers ?? [];
   const contacts = getDb().records.contacts ?? [];
   return (
-    <div className="page">
-      <PageHeader title={PAGES.duplicateMerge.title} description={D.description} />
+    <SettingsPage title={PAGES.duplicateMerge.title} description={D.short}>
       <div className="content-surface">
         {q.error ? (
           <ErrorState title={D.loadError} onRetry={q.retry}>
@@ -358,7 +358,7 @@ export function DuplicatesPage() {
           </div>
         )}
       </div>
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -401,8 +401,7 @@ export function TransferPage() {
       },
     });
   return (
-    <div className="page">
-      <PageHeader title={PAGES.ownershipTransfer.title} description={X.description} />
+    <SettingsPage title={PAGES.ownershipTransfer.title} description={X.short}>
       <section className="panel">
         <div className="form-grid cols-2">
           <div className="form-field">
@@ -460,7 +459,7 @@ export function TransferPage() {
           </>
         )}
       </section>
-    </div>
+    </SettingsPage>
   );
 }
 

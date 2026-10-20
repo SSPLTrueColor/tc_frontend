@@ -148,16 +148,18 @@ interface Toast {
   id: number;
   tone: 'success' | 'danger' | 'info';
   message: string;
+  /** Optional inline action (e.g. Undo, Retry); the toast stays a little longer so it can be used. */
+  action?: { label: string; onClick: () => void };
 }
-const ToastCtx = createContext<(message: string, tone?: Toast['tone']) => void>(() => {});
+const ToastCtx = createContext<(message: string, tone?: Toast['tone'], action?: Toast['action']) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((message: string, tone: Toast['tone'] = 'success') => {
+  const push = useCallback((message: string, tone: Toast['tone'] = 'success', action?: Toast['action']) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t.slice(-3), { id, tone, message }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
+    setToasts((t) => [...t.slice(-3), { id, tone, message, action }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), action ? 8000 : 4500);
   }, []);
   return (
     <ToastCtx.Provider value={push}>
@@ -168,6 +170,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div key={t.id} className={cx('toast', `tone-${t.tone}`)}>
               <Icon name={t.tone === 'danger' ? 'alert' : t.tone === 'info' ? 'info' : 'check'} />
               <span>{t.message}</span>
+              {t.action && (
+                <button
+                  type="button"
+                  className="toast-action"
+                  onClick={() => {
+                    setToasts((x) => x.filter((y) => y.id !== t.id));
+                    t.action?.onClick();
+                  }}
+                >
+                  {t.action.label}
+                </button>
+              )}
               <button type="button" className="toast-close" aria-label={L.common.states.dismiss} onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}>
                 <Icon name="x" size={14} />
               </button>

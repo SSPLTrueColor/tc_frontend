@@ -85,7 +85,7 @@ export function OrgChart({ tree, ws, divisions }: { tree: OrgNode[]; ws: string;
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
     const s = new Set<string>();
     const walk = (n: OrgNode, d: number) => {
-      if (d >= 2 && n.reports.length) s.add(idOf(n));
+      if (d >= 1 && n.reports.length) s.add(idOf(n));
       n.reports.forEach((r) => walk(r, d + 1));
     };
     tree.forEach((n) => walk(n, 0));
@@ -124,6 +124,18 @@ export function OrgChart({ tree, ws, divisions }: { tree: OrgNode[]; ws: string;
     setView({ k, x: (el.clientWidth - bounds.w * k) / 2, y: pad });
   }, [bounds]);
 
+  /** Opening view: readable size, centred on the largest team (the whole chart is one click away with "Fit"). */
+  const home = useCallback(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const roots = laid.filter((l) => l.depth === 0);
+    const focal = roots.reduce((a, b) => (b.team > a.team ? b : a), roots[0]);
+    const fitK = Math.min((el.clientWidth - 64) / bounds.w, (el.clientHeight - 64) / bounds.h);
+    const k = Math.min(1, Math.max(0.7, fitK));
+    const cxw = bounds.w * k <= el.clientWidth ? bounds.w / 2 : focal ? focal.x + NODE_W / 2 : bounds.w / 2;
+    setView({ k, x: el.clientWidth / 2 - cxw * k, y: 32 });
+  }, [bounds, laid]);
+
   const focusOn = useCallback((id: string) => {
     const el = boxRef.current;
     const l = byId.get(id);
@@ -135,10 +147,10 @@ export function OrgChart({ tree, ws, divisions }: { tree: OrgNode[]; ws: string;
   const fitted = useRef(false);
   useEffect(() => {
     if (!fitted.current && boxRef.current?.clientWidth) {
-      fit();
+      home();
       fitted.current = true;
     }
-  }, [fit]);
+  }, [home]);
 
   // Searching opens the branches that lead to matches and jumps to the first one.
   const firstMatch = [...matches][0];
