@@ -144,6 +144,8 @@ export function DashboardPage() {
       <div className="dash2-grid">
         <TrendCard trend={d.trend} />
         <ShareCard share={d.share} />
+        {d.stagePipe && <PipeCard pipe={d.stagePipe} className="span-8" />}
+        {d.winLoss && <ShareCard share={d.winLoss} />}
         <PipeCard pipe={d.pipe} />
         <BoardCard board={d.board} />
         <AgendaCard items={d.agenda} onComplete={complete} />

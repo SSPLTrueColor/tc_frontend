@@ -2,7 +2,7 @@ import { SkeletonLine } from '../../components/primitives/Skeleton';
 import { Sparkline } from '../../components/primitives/Sparkline';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Pie, PieChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, Pie, PieChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { L } from '../../constants/labels';
 import { ROUTES } from '../../constants/routes';
 import { formatDate, relativeTime } from '../../lib/dates';
@@ -229,11 +229,11 @@ export function TrendCard({ trend }: { trend: Trend }) {
 
 // ---------------------------------------------------------------- share (donut)
 
-export function ShareCard({ share }: { share: Share }) {
+export function ShareCard({ share, className = 'span-4' }: { share: Share; className?: string }) {
   const nav = useNavigate();
   const total = share.slices.reduce((t, x) => t + x.value, 0);
   return (
-    <Card title={share.title} info={share.info} className="dash-share span-4">
+    <Card title={share.title} info={share.info} className={`dash-share ${className}`}>
       {!total ? (
         <EmptyState icon="empty" title={EM.shareTitle}>
           {EM.shareBody}
@@ -248,8 +248,8 @@ export function ShareCard({ share }: { share: Share }) {
               </PieChart>
             </ResponsiveContainer>
             <div className="dash-donut-center" aria-hidden="true">
-              <strong>{formatNumber(total)}</strong>
-              <span>{share.totalLabel}</span>
+              <strong>{share.center?.value ?? formatNumber(total)}</strong>
+              <span>{share.center?.label ?? share.totalLabel}</span>
             </div>
           </div>
           <ul className="share-legend">
@@ -270,79 +270,55 @@ export function ShareCard({ share }: { share: Share }) {
   );
 }
 
-// ---------------------------------------------------------------- funnel (horizontal bars)
+// ---------------------------------------------------------------- funnel
 
-export function PipeCard({ pipe }: { pipe: Pipe }) {
+/**
+ * Stage funnel: one centred band per stage, each tapering into the next. When every stage is smaller than the
+ * one before (a conversion funnel) band width ∝ value, so drop-off reads at a glance; otherwise (e.g. ₹ per
+ * current stage) bands narrow by a fixed step in stage order and the value is read from the label.
+ * Label left, value + step % right (ink colours; the band carries the stage colour). Click a band to open its list.
+ */
+export function PipeCard({ pipe, className = 'span-6' }: { pipe: Pipe; className?: string }) {
   const nav = useNavigate();
   const total = pipe.steps.reduce((t, x) => t + x.value, 0);
-  const data = pipe.steps.map((x) => ({ ...x, fill: colorOf(x.tone) }));
+  const max = Math.max(...pipe.steps.map((x) => x.value), 0);
   const fmtVal = (v: number) => (pipe.money ? compactInr(v) : formatNumber(v));
+  const n = pipe.steps.length;
+  const narrowing = pipe.steps.every((x, i) => i === 0 || x.value <= pipe.steps[i - 1].value);
+  const STEP = n > 1 ? 50 / n : 0;
+  const widthAt = (i: number) => (narrowing ? (max ? Math.max(6, (pipe.steps[i].value / max) * 100) : 0) : 100 - i * STEP);
+  const tip = (x: Pipe['steps'][number]) =>
+    [x.label, `${pipe.unit}: ${pipe.money ? formatMoney(x.value) : formatNumber(x.value)}`, x.amount !== undefined ? `${CD.value}: ${formatMoney(x.amount)}` : '', x.conv != null ? `${CD.fromPrevious}: ${Math.round(x.conv * 100)}%` : '']
+      .filter(Boolean)
+      .join(' · ');
   return (
-    <Card title={pipe.title} info={pipe.info} to={pipe.to} linkLabel={CD.openList} className="dash-pipe span-6">
+    <Card title={pipe.title} info={pipe.info} to={pipe.to} linkLabel={CD.openList} className={`dash-pipe ${className}`}>
       {!total ? (
         <EmptyState icon="bar-chart" title={EM.pipeTitle}>
           {EM.pipeBody}
         </EmptyState>
       ) : (
-        <div className="dash-chart" role="img" aria-label={`${pipe.title}: ${pipe.steps.map((x) => `${x.label} ${fmtVal(x.value)}`).join(', ')}`}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} layout="vertical" margin={{ top: 4, right: 96, left: 0, bottom: 4 }} barCategoryGap={8}>
-              <CartesianGrid horizontal={false} stroke="var(--s-chart-grid)" />
-              <XAxis type="number" hide />
-              <YAxis type="category" dataKey="label" width={118} tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: 'var(--s-text-secondary)' }} />
-              <Tooltip
-                cursor={{ fill: 'var(--s-hover)' }}
-                content={({ active, payload }: { active?: boolean; payload?: readonly unknown[] }) => {
-                  if (!active || !payload?.length) return null;
-                  const step = (payload[0] as { payload: (typeof data)[number] }).payload;
-                  return (
-                    <div className="dc-tip">
-                      <div className="dc-tip-head">{step.label}</div>
-                      <div className="dc-tip-row">
-                        <span>{pipe.unit}</span>
-                        <strong>{pipe.money ? formatMoney(step.value) : formatNumber(step.value)}</strong>
-                      </div>
-                      {step.amount !== undefined && (
-                        <div className="dc-tip-row">
-                          <span>{CD.value}</span>
-                          <strong>{formatMoney(step.amount)}</strong>
-                        </div>
-                      )}
-                      {step.conv != null && (
-                        <div className="dc-tip-row">
-                          <span>{CD.fromPrevious}</span>
-                          <strong>{Math.round(step.conv * 100)}%</strong>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }}
-              />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false} onClick={(d: unknown) => go(nav, d)} style={{ cursor: 'pointer' }}>
-                <LabelList
-                  dataKey="value"
-                  position="right"
-                  content={(p: { x?: number | string; y?: number | string; width?: number | string; height?: number | string; index?: number }) => {
-                    const step = data[p.index ?? 0];
-                    if (!step) return null;
-                    const x = Number(p.x) + Number(p.width) + 8;
-                    const y = Number(p.y) + Number(p.height) / 2;
-                    return (
-                      <text x={x} y={y} dominantBaseline="central" fontSize={12} fill="var(--s-text)">
-                        <tspan fontWeight={600}>{fmtVal(step.value)}</tspan>
-                        {step.conv != null && (
-                          <tspan dx={6} fill="var(--s-text-muted)">
-                            {Math.round(step.conv * 100)}%
-                          </tspan>
-                        )}
-                      </text>
-                    );
-                  }}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <ol className="dash-funnel" aria-label={`${pipe.title}: ${pipe.steps.map((x) => `${x.label} ${fmtVal(x.value)}`).join(', ')}`}>
+          {pipe.steps.map((x, i) => {
+            const top = widthAt(i);
+            const bottom = i < n - 1 ? Math.min(top, widthAt(i + 1)) : narrowing ? top * 0.8 : top - STEP;
+            const clip = `polygon(${50 - top / 2}% 0, ${50 + top / 2}% 0, ${50 + bottom / 2}% 100%, ${50 - bottom / 2}% 100%)`;
+            return (
+              <li key={x.key}>
+                <button type="button" className="dash-funnel-row" data-tooltip={tip(x)} onClick={() => go(nav, x)} disabled={!x.to}>
+                  <span className="dash-funnel-label">{x.label}</span>
+                  <span className="dash-funnel-track">
+                    <span className="dash-funnel-band" style={{ clipPath: clip, background: colorOf(x.tone) }} />
+                  </span>
+                  <span className="dash-funnel-value">
+                    <strong>{fmtVal(x.value)}</strong>
+                    {x.conv != null && <span className="muted">{Math.round(x.conv * 100)}%</span>}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
       )}
     </Card>
   );
