@@ -250,3 +250,23 @@ describe('QA: shared runtime hooks requested by module owners', () => {
     expect(gstSplit(DEFAULT_POLICIES.companyGstState, 0.05, 5).cgst).toBe(0);
   });
 });
+
+describe('QA: transition guards (Transition.when, resourceHooks.transitionBlocked)', () => {
+  beforeEach(() => __setDb(createDb(new Date('2026-10-19T10:00:00'))));
+
+  it('hides a step whose `when` fails and disables one a hook blocks, and the service enforces both', async () => {
+    const { getResource } = await import('../services/registry');
+    const { availableTransitions, transitionRecord } = await import('../services/runtime');
+    const { registerResourceHooks } = await import('../services/resourceHooks');
+    const res = getResource('tasks');
+    const start = res.lifecycle!.transitions.find((t) => t.to === 'in_progress')!;
+    const task = getDb().records.tasks.find((t) => t.status === 'todo')!;
+    start.when = (r) => r.id !== task.id;
+    expect(availableTransitions(admin(), res, task).some((t) => t.to === 'in_progress')).toBe(false);
+    expect(() => transitionRecord(admin(), 'tasks', task.id, 'in_progress', task.version)).toThrow();
+    delete start.when;
+    registerResourceHooks('tasks', { transitionBlocked: (_a, r, to) => (to === 'done' && r.id === task.id ? 'Finish the checklist first' : undefined) });
+    expect(availableTransitions(admin(), res, task).find((t) => t.to === 'done')!.disabledReason).toBe('Finish the checklist first');
+    expect(() => transitionRecord(admin(), 'tasks', task.id, 'done', task.version)).toThrow(/checklist/);
+  });
+});

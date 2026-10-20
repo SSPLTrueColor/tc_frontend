@@ -87,3 +87,21 @@ describe('QA: global search (COM-06) and editable scopes (ADM-02) end to end', (
     expect(queryRecords(actorFor('u_karan', 'tc'), 'leads').rows.length).toBe(before);
   });
 });
+
+describe('record-level read rules (resource canRead hooks)', () => {
+  beforeEach(() => __setDb(createDb(new Date('2026-10-19T10:00:00'))));
+
+  it('a Knowledge Base draft is readable by its author and Service Leadership, not by other engineers (SRV-16)', async () => {
+    await import('../domain/extensions/index');
+    const { getDb } = await import('../services/db');
+    const engineers = ['u_ravi', 'u_ajay', 'u_lakshmi', 'u_farhan', 'u_ganesh'].map((u) => actorFor(u, 'tc'));
+    const res = getResource('knowledgeArticles');
+    const draft = getDb().records.knowledgeArticles.find((a) => a.status !== 'published' && engineers.some((e) => e.staffId === a.authorId));
+    expect(draft).toBeTruthy();
+    const author = engineers.find((e) => e.staffId === draft!.authorId)!;
+    const other = engineers.find((e) => e.staffId !== draft!.authorId && canReadRecord(e, res, { ...draft!, status: 'published' }))!;
+    expect(canReadRecord(author, res, draft!)).toBe(true);
+    expect(canReadRecord(actorFor('u_manoj', 'tc'), res, draft!)).toBe(true);
+    expect(canReadRecord(other, res, draft!)).toBe(false);
+  });
+});

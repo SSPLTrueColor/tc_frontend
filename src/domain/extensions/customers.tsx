@@ -15,7 +15,7 @@ import type { HookContext } from '../../services/resourceHooks';
 import { registerResourceHooks } from '../../services/resourceHooks';
 import { ServiceError } from '../../services/types';
 import { exactContactMatches, exactCustomerMatches } from '../../services/customers/duplicates';
-import { getRecordTabs, registerRecordActions, registerRecordBanner, registerRecordTab } from '../../components/resource/extensions';
+import { getRecordTabs, registerDefaultRecordTab, registerRecordActions, registerRecordBanner, registerRecordTab } from '../../components/resource/extensions';
 import { L } from '../../constants/labels';
 import { ContactActions, ContactBanner, CustomerActions, CustomerBanner, SiteActions } from '../../modules/customers/components';
 import {
@@ -192,3 +192,6 @@ function orderCustomer360Tabs() {
   [...getRecordTabs('customers')].sort((a, b) => rank(a.id) - rank(b.id)).forEach((t) => registerRecordTab('customers', { ...t, label: TAB_LABELS[t.id] ?? t.label }));
 }
 orderCustomer360Tabs();
+
+// Customer 360° View (CUS-07) opens on its Overview tab, not the generic Details tab.
+registerDefaultRecordTab('customers', 'c360-overview');

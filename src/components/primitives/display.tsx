@@ -2,10 +2,11 @@
 import { formatDate, formatWeekdayFull } from '../../lib/dates';
 import { L } from '../../constants/labels';
 
-/** The ONE way to show a missing value: small icon + italic "N/A" in light muted text. */
-export function EmptyValue({ label = L.common.states.notAvailable }: { label?: string }) {
+/** The ONE way to show a missing value: italic muted "N/A" by default, or the caller's wording (e.g. "Not recorded", "On time") when given. */
+export function EmptyValue({ label }: { label?: string }) {
+  if (label) return <span className="empty-value">{label}</span>;
   return (
-    <span className="empty-value" aria-label={label}>
+    <span className="empty-value" aria-label={L.common.states.notAvailable}>
       <span aria-hidden="true">N/A</span>
     </span>
   );

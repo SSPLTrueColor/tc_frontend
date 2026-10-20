@@ -24,15 +24,22 @@ export interface OwnedOpen {
   count: number;
 }
 
+/** Resources whose open records block a deactivation (owner field, not personal history). */
+export const handoverResources = () => appPack.resources.filter((def) => def.ownerField && def.key !== 'employees' && !PERSONAL.has(def.key)).map((def) => getResource(def.key));
+
+/** Is this record still open (not in its lifecycle's terminal states or a shared "finished" status)? */
+export function isOpenRecord(resKey: string, r: RecordData): boolean {
+  const res = getResource(resKey);
+  const terminal = new Set([...(res.lifecycle?.terminal ?? []), ...(CLOSED_FOR[res.key] ?? [])]);
+  const statusKey = res.lifecycle?.field ?? (res.fields.some((f) => f.key === 'status') ? 'status' : undefined);
+  return !statusKey || (!terminal.has(String(r[statusKey])) && !CLOSED.has(String(r[statusKey])));
+}
+
 /** Open records a user owns in every resource with an owner field (generic — new modules count automatically). */
 export function ownedOpenRecords(staffId: string, store = getDb().records): OwnedOpen[] {
   const out: OwnedOpen[] = [];
-  for (const def of appPack.resources) {
-    if (!def.ownerField || def.key === 'employees' || PERSONAL.has(def.key)) continue;
-    const res = getResource(def.key);
-    const terminal = new Set([...(res.lifecycle?.terminal ?? []), ...(CLOSED_FOR[res.key] ?? [])]);
-    const statusKey = res.lifecycle?.field ?? (res.fields.some((f) => f.key === 'status') ? 'status' : undefined);
-    const count = (store[res.key] ?? []).filter((r) => r[res.ownerField!] === staffId && (!statusKey || (!terminal.has(String(r[statusKey])) && !CLOSED.has(String(r[statusKey]))))).length;
+  for (const res of handoverResources()) {
+    const count = (store[res.key] ?? []).filter((r) => r[res.ownerField!] === staffId && isOpenRecord(res.key, r)).length;
     if (count) out.push({ resource: res.key, label: res.labelPlural, count });
   }
   return out;

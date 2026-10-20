@@ -7039,6 +7039,12 @@ td.is-editable:hover > .cell {
   align-items: stretch;
   max-width: none;
 }
+/* Tablet / phone: one column (the side cards stack under the record), see the earlier rule at 1100px. */
+@media (max-width: 1100px) {
+  .record-page-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .fp-main,
 .record-page-layout > .inspector-page {
   min-height: 0;
@@ -7127,10 +7133,15 @@ td.is-editable:hover > .cell {
   justify-content: center;
   min-width: 0;
 }
+.rs-actions .inspector-actions > .btn {
+  height: auto;
+  min-height: var(--control-h, 32px);
+}
+/* Long action names ("Convert to Opportunity") wrap instead of being cut off. */
 .rs-actions .inspector-actions > .btn span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
 }
 .rs-actions .inspector-actions > .icon-btn {
   justify-self: start;

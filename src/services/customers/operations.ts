@@ -18,6 +18,7 @@ import { userOfStaff } from '../lookups';
 import { ServiceError } from '../types';
 import { L } from '../../constants/labels';
 import { findDuplicateGroups } from './duplicates';
+import { handoverResources, isOpenRecord } from '../catalog/admin';
 
 export const isRegistered = (resKey: string) => allResources().some((r) => r.key === resKey);
 
@@ -98,12 +99,24 @@ interface TransferTarget {
   label: string;
   open: (r: RecordData) => boolean;
 }
-const TARGETS: TransferTarget[] = [
+const CORE_TARGETS: TransferTarget[] = [
   { resKey: 'customers', field: 'ownerId', label: L.customers.transfer.targets.customers, open: () => true },
   { resKey: 'contacts', field: 'ownerId', label: L.customers.transfer.targets.contacts, open: () => true },
   { resKey: 'leads', field: 'ownerId', label: L.customers.transfer.targets.leads, open: (r) => OPEN_LEAD.includes(String(r.status)) },
   { resKey: 'opportunities', field: 'ownerId', label: L.customers.transfer.targets.opportunities, open: (r) => OPEN_OPP.includes(String(r.stage)) },
   { resKey: 'tasks', field: 'assigneeId', label: L.customers.transfer.targets.tasks, open: (r) => OPEN_TASK.includes(String(r.status)) },
+];
+
+/**
+ * Everything a leaver must hand over (CUS-10 / ADM-08): the core sales records above plus every other open record
+ * that would block deactivation (quotations, sales orders, payment schedule, AMC / CMC contracts, open service tickets,
+ * rate contracts, sample dispatches …) — the same list Users › Deactivate checks, so one transfer clears it.
+ */
+const targets = (): TransferTarget[] => [
+  ...CORE_TARGETS,
+  ...handoverResources()
+    .filter((res) => !CORE_TARGETS.some((t) => t.resKey === res.key))
+    .map((res) => ({ resKey: res.key, field: res.ownerField!, label: res.labelPlural, open: (r: RecordData) => isOpenRecord(res.key, r) })),
 ];
 
 export function canTransfer(actor: Actor) {
@@ -114,7 +127,7 @@ export function canTransfer(actor: Actor) {
 export function previewTransfer(actor: Actor, fromStaffId: string) {
   if (!canTransfer(actor)) throw new ServiceError('forbidden', L.customers.messages.noTransfer);
   const d = getDb();
-  return TARGETS.filter((t) => isRegistered(t.resKey)).map((t) => {
+  return targets().filter((t) => isRegistered(t.resKey)).map((t) => {
     const res = getResource(t.resKey);
     const rows = (d.records[t.resKey] ?? []).filter((r) => r.workspaceId === actor.workspaceId && r[t.field] === fromStaffId && t.open(r) && canReadRecord(actor, res, r));
     return { resKey: t.resKey, label: t.label, count: rows.length };
@@ -131,7 +144,7 @@ export function transferOwnership(actor: Actor, fromStaffId: string, toStaffId: 
     if (!to || to.status === 'inactive') throw new ServiceError('validation', L.customers.messages.inactiveOwner, { fieldErrors: { to: L.customers.messages.inactiveOwnerField } });
     const ctx = { d, actor, correlationId: uid('cor') };
     const moved: Record<string, number> = {};
-    for (const t of TARGETS) {
+    for (const t of targets()) {
       if (!isRegistered(t.resKey)) continue;
       const res = getResource(t.resKey);
       const ids = (d.records[t.resKey] ?? []).filter((r) => r.workspaceId === actor.workspaceId && r[t.field] === fromStaffId && t.open(r) && canReadRecord(actor, res, r)).map((r) => r.id);

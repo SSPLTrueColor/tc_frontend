@@ -143,8 +143,9 @@ const salesOrders: ResourceDefinition = {
     transitions: [
       { from: ['confirmed', 'payment_received'], to: 'processing', action: O.transitions.startProcessing, capability: 'orders.process' },
       { from: ['processing'], to: 'ready_for_dispatch', action: O.transitions.readyForDispatch, capability: 'orders.process' },
-      { from: ['delivered'], to: 'installation', action: O.transitions.startInstallation, capability: 'orders.installation' },
-      { from: ['delivered'], to: 'completed', action: O.transitions.completeOrder, capability: 'orders.complete.consumables' },
+      // Machines go Delivered → Installation (completed on sign-off); consumables complete straight from Delivered.
+      { from: ['delivered'], to: 'installation', action: O.transitions.startInstallation, capability: 'orders.installation', when: (r) => r.orderKind === 'machine' },
+      { from: ['delivered'], to: 'completed', action: O.transitions.completeOrder, capability: 'orders.complete.consumables', when: (r) => r.orderKind !== 'machine' },
       { from: ['installation'], to: 'completed', action: O.transitions.markCompleted, capability: 'orders.complete', confirm: O.transitions.markCompletedConfirm },
     ],
   },
