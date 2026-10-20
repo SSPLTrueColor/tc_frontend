@@ -1,4 +1,11 @@
 /* Quotations module — editor grid, tabs, compare and the A4 print document. Tokens only. */
+/* Editor uses the full page width on one 4-column rhythm: header fields, freight/insurance and totals share the same columns. */
+.qt-editor.full-form {
+  max-width: none;
+}
+.qt-editor > .form-grid:not(.cols-2) {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .qt-section {
   margin-top: var(--sp-4);
 }
@@ -49,10 +56,11 @@
 }
 @media (max-width: 1100px) {
   .qt-line-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .qt-span-2, .qt-span-3 { grid-column: 1 / -1; }
+  .qt-span-3 { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
   .qt-line-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qt-span-2 { grid-column: 1 / -1; }
 }
 /* Read-only values (Customer, Division, List price, Net) sit in a box the same height as the inputs beside them. */
 .qt-editor .qt-readonly-box {
@@ -79,13 +87,18 @@
 }
 .qt-bottom {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-  gap: var(--sp-5);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-4);
   align-items: start;
   margin-top: var(--sp-4);
 }
-.qt-extras {
-  gap: var(--sp-3);
+/* Freight + Insurance sit under header columns 1–2, totals under column 4 */
+.qt-bottom > .qt-extras {
+  grid-column: span 2;
+  gap: var(--sp-3) var(--sp-4);
+}
+.qt-bottom > .qt-totals {
+  grid-column: 4;
 }
 .qt-extras > p.muted {
   margin: 0;
@@ -124,10 +137,15 @@
 .qt-lines .col-n {
   width: 28px;
 }
+
+/* Editor breakpoints (after the base rules so they win) */
+@media (max-width: 1100px) {
+  .qt-editor > .form-grid:not(.cols-2) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qt-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qt-bottom > .qt-extras, .qt-bottom > .qt-totals { grid-column: 1 / -1; }
+}
 @media (max-width: 760px) {
-  .qt-bottom {
-    grid-template-columns: 1fr;
-  }
+  .qt-editor > .form-grid:not(.cols-2) { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---- printable A4 document */
