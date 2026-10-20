@@ -1,5 +1,6 @@
 import { L } from '../../constants/labels';
 import { formatTime } from '../../lib/dates';
+import { cx } from '../../lib/format';
 import { occurrences, type CalItem } from '../../services/calendar/events';
 
 const T = L.calendar.today;
@@ -24,7 +25,7 @@ export function todaySummary(items: CalItem[], nowWall: string): TodayInfo {
 export function TodayAgenda({ info, onOpen, countText }: { info: TodayInfo; onOpen: () => void; countText?: string }) {
   return (
     <button type="button" className="cal-today-strip" onClick={onOpen} aria-label={T.open}>
-      <span className="cal-today-badge">{T.heading}</span>
+      <span className={cx('cal-today-dot', info.count === 0 && 'is-idle')} aria-hidden="true" />
       <span className="cal-today-count">{countText ?? T.count(info.count)}</span>
       {info.next ? <span className="cal-today-next">{T.next(info.next.when, info.next.title)}</span> : info.over ? <span className="cal-today-next">{T.allDone}</span> : null}
     </button>

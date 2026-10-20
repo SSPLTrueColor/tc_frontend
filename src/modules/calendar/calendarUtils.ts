@@ -13,7 +13,7 @@ export const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0'
 
 /** Template time format "02:30 PM" (FullCalendar hands over IST wall-clock parts). */
 export const clock12 = (a: { date: { hour: number; minute: number } }) => `${String(a.date.hour % 12 || 12).padStart(2, '0')}:${String(a.date.minute).padStart(2, '0')} ${a.date.hour < 12 ? 'AM' : 'PM'}`;
-/** Compact time for event chips: "11 AM", "2:30 PM". */
+/** Compact time for event chips and time-grid hour labels: "11 AM", "2:30 PM". */
 export const clockShort = (a: { date: { hour: number; minute: number } }) => `${a.date.hour % 12 || 12}${a.date.minute ? `:${String(a.date.minute).padStart(2, '0')}` : ''} ${a.date.hour < 12 ? 'AM' : 'PM'}`;
 
 export function toFc(i: CalItem): EventInput {
