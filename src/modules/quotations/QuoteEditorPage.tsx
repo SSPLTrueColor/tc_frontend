@@ -227,7 +227,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
   const title = existing ? E.titleEditNo(String(existing.quoteNo)) : E.titleNew;
   return (
     <div className="page">
-      <PageHeader title={title} description={E.description} />
+      <PageHeader title={title} />
       <div className="full-form panel qt-editor">
         {!!data.quote?.record.rejectNote && <InlineAlert tone="warning" title={T.banner.returnedToDraft}>{String(data.quote.record.rejectNote)}</InlineAlert>}
         <h2 className="panel-title">{T.sections.quotations.header}</h2>
