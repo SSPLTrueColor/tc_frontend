@@ -6107,11 +6107,12 @@ html:root[data-palette][data-theme='dark'] {
   align-items: center;
   height: 22px;
   padding: 0 var(--sp-2);
-  border: 1px solid color-mix(in srgb, var(--s-accent) 28%, transparent);
+  border: 0;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--s-accent) 4%, var(--s-panel));
-  color: var(--s-accent-text);
+  background: var(--chip-accent-bg);
+  color: var(--chip-accent-fg);
   font-size: var(--fs-supportive);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
   max-width: 100%;
   overflow: hidden;
@@ -6122,24 +6123,15 @@ html:root[data-palette][data-theme='dark'] {
   gap: var(--sp-1);
   height: 22px;
   padding: 0 var(--sp-2) 0 var(--sp-2);
-  border: 1px solid var(--s-border);
+  border: 0;
   border-radius: 6px;
-  background: var(--s-panel);
-  color: var(--s-text);
-  font-weight: 400;
-}
-.tag.assoc-chip::before {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--s-text) 18%, var(--s-panel));
-  box-shadow: inset 0 0 0 2px var(--s-panel), 0 0 0 1px color-mix(in srgb, var(--s-text) 18%, var(--s-panel));
-  flex: none;
+  background: var(--chip-neutral-bg);
+  color: var(--chip-neutral-fg);
+  font-weight: var(--fw-medium);
 }
 .overflow-chips--accent .tag.assoc-chip {
-  border-color: color-mix(in srgb, var(--s-accent) 28%, transparent);
-  color: var(--s-accent-text);
+  background: var(--chip-accent-bg);
+  color: var(--chip-accent-fg);
 }
 
 /* ---------- Light trailing icons (👁 reveal, 🔒, copy) — Actions column unchanged ---------- */
@@ -6267,18 +6259,18 @@ input[type='checkbox']:not([role='switch']):focus-visible {
   outline-offset: 1px;
 }
 
-/* ---------- Meaningful value chips: outlined, coloured by the value's own meaning (tone) ---------- */
+/* ---------- Meaningful value chips: the same filled pill as a status chip, coloured by the value's own meaning (tone) ---------- */
 .ref-chip {
-  border-color: color-mix(in srgb, var(--ref-fg) 30%, transparent);
-  background: color-mix(in srgb, var(--ref-fg) 6%, var(--s-panel));
-  color: var(--ref-fg);
+  border: 0;
+  background: var(--ref-bg, var(--chip-accent-bg));
+  color: var(--ref-fg, var(--chip-accent-fg));
 }
-.ref-chip.tone-neutral { --ref-fg: var(--chip-neutral-fg); }
-.ref-chip.tone-info { --ref-fg: var(--chip-info-fg); }
-.ref-chip.tone-success { --ref-fg: var(--chip-success-fg); }
-.ref-chip.tone-warning { --ref-fg: var(--chip-warning-fg); }
-.ref-chip.tone-danger { --ref-fg: var(--chip-danger-fg); }
-.ref-chip.tone-accent { --ref-fg: var(--chip-accent-fg); }
+.ref-chip.tone-neutral { --ref-fg: var(--chip-neutral-fg); --ref-bg: var(--chip-neutral-bg); }
+.ref-chip.tone-info { --ref-fg: var(--chip-info-fg); --ref-bg: var(--chip-info-bg); }
+.ref-chip.tone-success { --ref-fg: var(--chip-success-fg); --ref-bg: var(--chip-success-bg); }
+.ref-chip.tone-warning { --ref-fg: var(--chip-warning-fg); --ref-bg: var(--chip-warning-bg); }
+.ref-chip.tone-danger { --ref-fg: var(--chip-danger-fg); --ref-bg: var(--chip-danger-bg); }
+.ref-chip.tone-accent { --ref-fg: var(--chip-accent-fg); --ref-bg: var(--chip-accent-bg); }
 
 /* ---------- Hyperlinks are always BLUE: --c-link (tokens/tokens.css) ---------- */
 .rel-link,
@@ -7047,9 +7039,9 @@ td.is-editable:hover > .cell {
   content: ' ⌄';
   color: var(--s-text-muted);
 }
-/* the open editor keeps exactly the chip's colours (outlined chips stay outlined) */
+/* the open editor keeps exactly the chip's colours: filled, no border */
 .inline-editor.is-pill .select-menu-trigger {
-  border: 1px solid color-mix(in srgb, var(--tone-fg) 28%, transparent);
+  border: 0;
 }
 
 /* ---------- Full pages use the whole width; each column scrolls on its own ---------- */
@@ -7141,16 +7133,11 @@ td.is-editable:hover > .cell {
 .inline-editor.is-pill.tone-warning { --ref-fg: var(--chip-warning-fg); --pill-bg: var(--chip-warning-bg); }
 .inline-editor.is-pill.tone-danger { --ref-fg: var(--chip-danger-fg); --pill-bg: var(--chip-danger-bg); }
 .inline-editor.is-pill.tone-accent { --ref-fg: var(--chip-accent-fg); --pill-bg: var(--chip-accent-bg); }
-/* outlined value chips (type, payer…) */
+/* every choice value (status or type) is the same filled chip */
 .inline-editor.is-pill .select-menu-trigger {
   color: var(--ref-fg);
-  background: color-mix(in srgb, var(--ref-fg) 6%, var(--s-panel));
-  border: 1px solid color-mix(in srgb, var(--ref-fg) 30%, transparent);
-}
-/* filled status chips */
-.inline-editor.is-pill.is-status .select-menu-trigger {
-  background: var(--pill-bg);
-  border-color: transparent;
+  background: var(--pill-bg, var(--chip-accent-bg));
+  border: 0;
 }
 /* relations / dates: same rounded pill shape, neutral */
 .inline-editor.is-pill-plain .select-menu-trigger,
