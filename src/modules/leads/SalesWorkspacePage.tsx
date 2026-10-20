@@ -24,8 +24,8 @@ export function SalesWorkspacePage() {
   if (!canReadResource(actor, 'leads') && !canReadResource(actor, 'opportunities')) return <NoAccess what="Sales" />;
   const rows = query.data ?? [];
   const open = (r: Row) => navigate(recordPagePath(actor.workspaceId, r.resource, r.record.id));
-  return <ListPage title="Leads & Opportunities" kpis={<SalesWorkspaceTabs actor={actor} active="all">{perm(actor, 'leads').create && <Button icon="plus" onClick={() => navigate('/leads/new')}>New Lead</Button>}</SalesWorkspaceTabs>}>
-    <DataTable<Row> label="Leads and opportunities" noun="sales records" rows={rows.filter((r) => (!stage || r.stage?.label === stage) && (!owner || r.owner === owner))}
+  return <ListPage title="Leads & Opportunities" tabs={<SalesWorkspaceTabs actor={actor} active="all" />}>
+    <DataTable<Row> actions={perm(actor, 'leads').create && <Button icon="plus" onClick={() => navigate('/leads/new')}>New Lead</Button>} label="Leads and opportunities" noun="sales records" rows={rows.filter((r) => (!stage || r.stage?.label === stage) && (!owner || r.owner === owner))}
       rowKey={(r) => r.key} loading={query.loading} error={query.error} onRetry={query.retry} selectable={false}
       search={(r) => `${r.record.id} ${r.name} ${r.customer} ${r.owner} ${r.stage?.label ?? ''}`}
       initialSort={{ key: 'name', dir: 'asc' }} onRowClick={open}

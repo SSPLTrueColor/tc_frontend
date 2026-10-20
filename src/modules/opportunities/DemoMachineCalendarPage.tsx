@@ -256,8 +256,9 @@ export function DemoMachineCalendarPage() {
             </div>
           )}
           <section className="cal-main panel" aria-label={T.calendar}>
-            <CalendarHead ref={searchRef} info={todayInfo} countText={T.todayCount(todayInfo.count)} onToday={() => go('today')} search={search} onSearch={setSearch} searchLabel={T.searchLabel} placeholder={T.searchPlaceholder} />
-            <CalendarToolbar sideOpen={sideOpen} onSide={() => setSideOpen((o) => !o)} title={title} onToday={() => go('today')} onPrev={() => go('prev')} onNext={() => go('next')} view={view} onView={changeView} action={!sideOpen && bookButton} />
+            <CalendarToolbar sideOpen={sideOpen} onSide={() => setSideOpen((o) => !o)} title={title} onToday={() => go('today')} onPrev={() => go('prev')} onNext={() => go('next')} view={view} onView={changeView} action={!sideOpen && bookButton}>
+              <CalendarHead ref={searchRef} info={todayInfo} countText={T.todayCount(todayInfo.count)} onToday={() => go('today')} search={search} onSearch={setSearch} searchLabel={T.searchLabel} placeholder={T.searchPlaceholder} />
+            </CalendarToolbar>
             <div className="tc-cal" data-view={view}>
               {!query.data ? (
                 <Skeleton rows={10} />
@@ -290,7 +291,7 @@ export function DemoMachineCalendarPage() {
                       const mid = new Date((d.start.getTime() + d.end.getTime()) / 2);
                       setCursor(d.view.type === 'dayGridMonth' || d.view.type === 'agenda' ? (wall(d.view.currentStart, true) <= today && today < wall(d.view.currentEnd, true) ? today : wall(d.view.currentStart, true)) : wall(mid, true));
                     }}
-                    dayMaxEvents={2}
+                    dayMaxEvents
                     fixedWeekCount={false}
                     moreLinkText={(n) => T.more(n)}
                     moreLinkClick="popover"

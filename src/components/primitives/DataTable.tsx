@@ -3,7 +3,7 @@
  * and the same loading / error / empty / no-match states everywhere. Resource lists use DataGrid (views, bulk actions).
  * Use `Table` for small static tables that need no sorting or paging.
  */
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { L } from '../../constants/labels';
 import { cx } from '../../lib/format';
 import { Button, IconButton } from './Button';
@@ -13,6 +13,7 @@ import { csvCell, downloadText } from '../../services/exporter';
 import { EmptyState, ErrorState, Skeleton } from './feedback';
 import { Icon } from './Icon';
 import { Pagination } from './Pagination';
+import { FilterPanelButton } from './FilterPanel';
 
 const T = L.common.table;
 
@@ -32,6 +33,13 @@ export interface Column<R> {
 }
 /** `ListPage` turns this on so every DataTable inside it fills the page (full width, footer pinned to the bottom). */
 export const FillContext = createContext(false);
+
+/**
+ * Page buttons handed down by ListPage ("Import", "Add Manually" …). The first DataTable on the page claims them and
+ * draws them in its filter bar, so the page needs no separate button row; until a table mounts (loading / error /
+ * empty screens) the page header keeps showing them.
+ */
+export const ListActionsContext = createContext<{ actions?: ReactNode; owner: string | null; claim: (id: string) => () => void } | null>(null);
 /** Page-controlled row selection (bulk actions): the page owns the set, decides which rows can be picked and supplies the toolbar actions. */
 export interface DataTableSelection<R> {
   keys: Set<string>;
@@ -58,6 +66,10 @@ export interface DataTableProps<R> {
   search?: (r: R) => string;
   /** Search term to start with (deep links). */
   initialSearch?: string;
+  /** Placed before the search box (e.g. a workspace switcher), so the page needs no extra row above the table. */
+  leading?: ReactNode;
+  /** Buttons at the far end of the filter bar, after the column and filter buttons (e.g. "New Lead"). */
+  actions?: ReactNode;
   /** Filter dropdowns, placed right after the search box (the same order on every list). */
   filters?: ReactNode;
   /** How many filters are applied; with a search term it shows "Clear filters". */
@@ -102,6 +114,8 @@ export function DataTable<R>({
   pageSize = 25,
   search,
   initialSearch = '',
+  leading,
+  actions,
   filters,
   activeFilters = 0,
   onClearFilters,
@@ -118,6 +132,12 @@ export function DataTable<R>({
   fill: fillProp,
 }: DataTableProps<R>) {
   const inFillPage = useContext(FillContext);
+  const listActions = useContext(ListActionsContext);
+  const tableId = useId();
+  const claim = listActions?.claim;
+  const wantsPageActions = !actions && !!listActions?.actions;
+  useLayoutEffect(() => (wantsPageActions && claim ? claim(tableId) : undefined), [wantsPageActions, claim, tableId]);
+  const toolbarActions = actions || (listActions?.owner === tableId ? listActions.actions : null);
   const fill = fillProp ?? inFillPage;
   const [q, setQ] = useState(initialSearch);
   const [sort, setSort] = useState<SortState | null>(initialSort ?? null);
@@ -128,9 +148,7 @@ export function DataTable<R>({
   const selected = selection ? selection.keys : ownSelected;
   const setSelected = (f: (s: Set<string>) => Set<string>) => (selection ? selection.onChange(f(selection.keys)) : setOwnSelected(f));
   const selectable = !!selection || selectableProp;
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [colsOpen, setColsOpen] = useState(false);
-  const filtersRef = useRef<HTMLButtonElement>(null);
   const colsRef = useRef<HTMLButtonElement>(null);
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -165,36 +183,25 @@ export function DataTable<R>({
     downloadText(`${label.toLowerCase().replace(/\W+/g, '-')}.csv`, lines.join('\n'));
   };
 
-  const toolbar = (search || tools || filters || summary) && (
+  const toolbar = (search || tools || filters || summary || leading || toolbarActions) && (
     <div className="toolbar list-filterbar">
+      {leading}
       {search && (
-        <SearchInput
-          placeholder={T.search}
-          aria-label={T.searchAria(label)}
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(0);
-          }}
-        />
-      )}
-      {filters && (
-        <>
-          <Button
-            ref={filtersRef}
-            icon="sliders"
-            iconRight={filtersOpen ? 'chevron-up' : 'chevron-down'}
-            aria-expanded={filtersOpen}
-            aria-haspopup="dialog"
-            onClick={() => setFiltersOpen((o) => !o)}
-          >
-            {CK.filters}
-            {activeFilters > 0 && <span className="btn-dot" aria-hidden="true" />}
-          </Button>
-          <Popover open={filtersOpen} onClose={() => setFiltersOpen(false)} anchor={filtersRef} label={CK.filters} width={360} className="filter-pop" align="start">
-            <div className="dt-filters">{filters}</div>
-          </Popover>
-        </>
+        <div className="search-field">
+          <span className="search-icon" aria-hidden="true">
+            <Icon name="search" size={14} />
+          </span>
+          <SearchInput
+            dense
+            placeholder={T.search}
+            aria-label={T.searchAria(label)}
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(0);
+            }}
+          />
+        </div>
       )}
       {tools}
       {dirty && (onClearFilters || q) && (
@@ -210,6 +217,7 @@ export function DataTable<R>({
           {T.clearFilters}
         </button>
       )}
+      <span className="spacer" />
       {selection && selected.size > 0 ? (
         <span className="toolbar-count">{selection.actions}</span>
       ) : selected.size > 0 ? (
@@ -226,6 +234,14 @@ export function DataTable<R>({
       ) : (
         summary && <span className="toolbar-count muted">{summary}</span>
       )}
+      {toolbarActions}
+      {/* Filters: same funnel button + panel as the main lists, then Columns as the last button */}
+      {filters && (
+        <FilterPanelButton active={activeFilters} onClear={onClearFilters}>
+          {filters}
+        </FilterPanelButton>
+      )}
+      {/* Columns: always the last button, at the right edge (same as the main lists) */}
       {dataCols.length > 1 && (
         <>
           <IconButton
@@ -235,7 +251,7 @@ export function DataTable<R>({
             aria-expanded={colsOpen}
             aria-haspopup="dialog"
             pressed={colsOpen}
-            className="tools-icon-btn"
+            className={cx('tools-icon-btn', colsOpen && 'is-open')}
             onClick={() => setColsOpen((o) => !o)}
           />
           <Popover open={colsOpen} onClose={() => setColsOpen(false)} anchor={colsRef} label={CK.columns} width={280} align="end">

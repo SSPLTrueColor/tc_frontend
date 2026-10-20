@@ -1,5 +1,8 @@
 import { L } from '../../constants/labels';
+import { useRef, useState } from 'react';
 import { Button } from '../../components/primitives/Button';
+import { Popover } from '../../components/primitives/overlay';
+import { cx } from '../../lib/format';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { activeMasterValues, masterLabel } from '../../services/registry';
 import type { EventType } from '../../services/calendar/events';
@@ -37,7 +40,36 @@ const toggle = <T,>(set: Set<T>, v: T, on: boolean) => {
   return n;
 };
 
-/** Left panel: Create, mini month, "My calendars" (event-type colour legend + filter), people and status filters. */
+type FilterProps = Pick<SidebarProps, 'types' | 'onTypes' | 'statuses' | 'onStatuses' | 'withModules' | 'onWithModules' | 'person' | 'people' | 'onPerson'>;
+
+/** How many filters differ from the default view (all types, scheduled + completed, everyone, own events only). */
+export function activeFilterCount(p: FilterProps) {
+  const allTypes = activeMasterValues('calEventType').every((t) => p.types.has(t.key as EventType));
+  const defaultStatus = p.statuses.size === 2 && p.statuses.has('scheduled') && p.statuses.has('completed');
+  return Number(!allTypes) + Number(!defaultStatus) + Number(p.person !== 'all') + Number(p.withModules);
+}
+
+/** Toolbar "Filters" button (used while the side panel is hidden): the same sections in a popover. */
+export function CalendarFilters(p: FilterProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  const n = activeFilterCount(p);
+  return (
+    <>
+      <Button ref={ref} icon="filter" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog" aria-label={C.page.filters} title={C.page.filtersShort} className={cx('cal-filter-btn', n > 0 && 'is-active')}>
+        {C.page.filtersShort}
+        {n > 0 && <span className="cal-filter-count">{n}</span>}
+      </Button>
+      <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label={C.page.filters} width={300} align="end">
+        <div className="cal-filter-pop">
+          <FilterSections {...p} />
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+/** Left panel: Create, mini month, month summary, then the filters. */
 export function CalendarSidebar(p: SidebarProps) {
   return (
     <aside className="cal-side-inner" aria-label={C.page.filters}>
@@ -46,6 +78,15 @@ export function CalendarSidebar(p: SidebarProps) {
       </Button>
       <MiniMonth selected={p.cursor} today={p.today} counts={p.counts} onPick={p.onPick} />
       <PeriodSummary counts={p.counts} month={p.cursor.slice(0, 7)} onPick={p.onPick} />
+      <FilterSections {...p} />
+    </aside>
+  );
+}
+
+/** "My calendars" (event-type colour legend + filter), people and status filters. */
+function FilterSections(p: FilterProps) {
+  return (
+    <>
       <section className="cal-filter">
         <h3 className="cal-filter-title">{C.page.myCalendars}</h3>
         <ul className="cal-legend">
@@ -83,6 +124,6 @@ export function CalendarSidebar(p: SidebarProps) {
           </li>
         </ul>
       </section>
-    </aside>
+    </>
   );
 }

@@ -4,23 +4,22 @@ import { listCrumb } from '../components/shell/crumbs';
 import { Pagination } from '../components/primitives/Pagination';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import type { ColumnState, FilterCondition, FilterGroup, RecordData, ViewDefinition } from '../metadata/types';
+import type { ColumnState, FilterGroup, RecordData, ViewDefinition } from '../metadata/types';
 import { cx } from '../lib/format';
 import { recordNewPath, recordPagePath, resourceKeyFromParams, resourcePath } from '../lib/routes';
-import { formatDate, todayKey } from '../lib/dates';
+import { todayKey } from '../lib/dates';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { canReadRecord, perm } from '../services/authz';
 import { getDb } from '../services/db';
 import { downloadText, exportCsv } from '../services/exporter';
-import { cloneGroup, decodeFilter, encodeFilter, OPERATOR_LABELS, VALUELESS } from '../services/filter';
+import { cloneGroup, decodeFilter, encodeFilter } from '../services/filter';
 import { useActor, useRevision } from '../services/hooks';
-import { getResource, masterLabel } from '../services/registry';
-import { availableTransitions, displayText, queryRecords, transitionRecord } from '../services/runtime';
+import { getResource } from '../services/registry';
+import { availableTransitions, queryRecords, transitionRecord } from '../services/runtime';
 import { getSettings, pushRecent, updateSettings } from '../services/settings';
 import { ServiceError } from '../services/types';
 import { listViews, unavailableViewFields } from '../services/views';
 import { Button } from '../components/primitives/Button';
-import { Icon } from '../components/primitives/Icon';
 // (kept for the commented-out "All of" chip line) import { FadeScroller } from '../components/primitives/FadeScroller';
 import { EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../components/primitives/feedback';
 import { Menu, type MenuItem } from '../components/primitives/overlay';
@@ -29,7 +28,8 @@ import { CalendarView } from '../components/resource/CalendarView';
 import { DataGrid } from '../components/resource/DataGrid';
 import { FormDrawer, QuickCreateDialog, WizardDialog } from '../components/resource/RecordForm';
 import { RecordInspector } from '../components/resource/RecordInspector';
-import { ColumnManager, FilterButton, ViewBar } from '../components/resource/ViewControls';
+import { ColumnManager, ViewBar } from '../components/resource/ViewControls';
+import { FilterBar, FilterButton } from '../components/resource/NotionFilters';
 import { PageHeader } from '../components/shell/PageHeader';
 import { L } from '../constants/labels';
 import { SearchInput } from '../components/primitives/controls';
@@ -175,15 +175,17 @@ export function ResourcePage() {
     return sets[0].filter((t) => sets.every((s) => s.some((x) => x.to === t.to)));
   })();
 
+  const isSales = ['leads', 'opportunities'].includes(resource);
   const exportReason = perm(actor, resource).export ? undefined : LS.cannotExport(actor.role.label, res.labelPlural.toLowerCase());
 
   return (
     <div className={cx('page page-resource', `page-res-${res.key}`, peek && 'has-inspector')}>
       <div className="page-main">
-        <PageHeader title={['leads', 'opportunities'].includes(resource) ? 'Leads & Opportunities' : res.labelPlural} description={res.description} />
-        {['leads', 'opportunities'].includes(resource) && <SalesWorkspaceTabs actor={actor} active={resource} />}
+        <PageHeader title={isSales ? 'Leads & Opportunities' : res.labelPlural} description={res.description} />
+        {/* Sales pages: the page switcher is the top level; this page's saved views then read as sub-views (pills) */}
+        {isSales && <SalesWorkspaceTabs actor={actor} active={resource} />}
         {/* Line 1: saved views as underline tabs (+) … Export · primary action — one full-width line under it */}
-        <div className="view-toolbar view-tabs-row">
+        <div className={cx('view-toolbar view-tabs-row', isSales && 'is-subviews')}>
           <ViewBar
             res={res}
             views={views}
@@ -227,6 +229,8 @@ export function ResourcePage() {
               ))}
             </div>
           )}
+          {/* Filter pills sit inline after the search (no extra row); they wrap only when there are many */}
+          <FilterBar res={res} actor={actor} filter={working.filter} onChange={setFilter} />
           <span className="spacer" />
           {!isPaged && !selected.size && (
             <span className="toolbar-count muted" aria-live="polite">
@@ -278,6 +282,8 @@ export function ResourcePage() {
               </div>
             </>
           )}
+          {/* Filters, then Columns — always the last button at the right edge, same order on every list */}
+          <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
           {view.type === 'table' && (
             <ColumnManager
               res={res}
@@ -291,18 +297,8 @@ export function ResourcePage() {
               onReset={() => setWorking((w) => ({ ...w, columns: fromView(view).columns, groupBy: view.groupBy, density: view.density, rowLines: view.rowLines ?? 1 }))}
             />
           )}
-          {/* Filters: funnel icon at the far end of the toolbar */}
-          <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
         </div>
         {staleView && <InlineAlert tone="warning">{LS.staleView(view.name)}</InlineAlert>}
-        {view.type === 'board' && working.filter.children.length > 0 && (
-          <div className="board-filter-summary">
-            <FilterChips res={res} filter={working.filter} onChange={setFilter} actor={actor} />
-            <Button variant="ghost" size="compact" onClick={() => setFilter({ ...working.filter, children: [] })}>
-              {C.actions.clearAll}
-            </Button>
-          </div>
-        )}
         {unavailable.length > 0 && <InlineAlert tone="info">{LS.ignoredConditions}</InlineAlert>}
         <div className={cx('content-surface', isPaged && result.total > 0 && 'is-table')}>
           {queryError ? (
@@ -408,48 +404,6 @@ function IconSearch() {
         <path d="m20 20-3.5-3.5" />
       </svg>
     </span>
-  );
-}
-
-export function FilterChips({ res, filter, onChange, actor }: { res: ReturnType<typeof getResource>; filter: FilterGroup; onChange: (g: FilterGroup) => void; actor: ReturnType<typeof useActor> }) {
-  const conds = filter.children.filter((c): c is FilterCondition => c.kind === 'condition');
-  const groups = filter.children.length - conds.length;
-  if (!filter.children.length) return null;
-  const opText = (c: FilterCondition) => {
-    const f = res.fields.find((x) => x.key === c.field);
-    const isDate = f && (f.type === 'date' || f.type === 'datetime');
-    if (isDate && c.operator === 'gte') return LS.from;
-    if (isDate && c.operator === 'lte') return LS.until;
-    return OPERATOR_LABELS[c.operator];
-  };
-  const valueText = (c: FilterCondition): string => {
-    if (VALUELESS.includes(c.operator) || c.value === undefined || c.value === '') return '';
-    const f = res.fields.find((x) => x.key === c.field);
-    if (!f) return String(c.value);
-    if (Array.isArray(c.value)) return c.value.map((v) => valueText({ ...c, operator: 'eq', value: v })).join(', ');
-    if (f.type === 'master' || f.type === 'multimaster') return masterLabel(f.master!, c.value);
-    if (f.type === 'date' || f.type === 'datetime') return formatDate(String(c.value));
-    return displayText(f, c.value, actor);
-  };
-  return (
-    <div className="filter-chips" aria-label={LS.activeFilters}>
-      <span className="filter-chips-label">
-        <Icon name="filter" size={14} />
-        {LS.activeFilters}
-        {conds.length + groups > 1 && <span className="muted"> · {filter.join === 'and' ? LS.allOfJoin : LS.anyOfJoin}</span>}
-      </span>
-      {conds.map((c) => (
-        <span key={c.id} className="filter-chip">
-          <span>
-            {res.fields.find((f) => f.key === c.field)?.label ?? c.field} {opText(c)} {valueText(c)}
-          </span>
-          <button type="button" aria-label={LS.removeFilter} onClick={() => onChange({ ...filter, children: filter.children.filter((x) => x.id !== c.id) })}>
-            ×
-          </button>
-        </span>
-      ))}
-      {groups > 0 && <span className="filter-chip">{LS.nestedGroups(groups)}</span>}
-    </div>
   );
 }
 

@@ -23,6 +23,9 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+/** Open popovers in the order they opened (a dropdown inside a panel comes after the panel). */
+const openPopovers: RefObject<HTMLDivElement | null>[] = [];
+
 export function useLayer(open: boolean, onClose: () => void) {
   const id = useId();
   const closeRef = useRef(onClose);
@@ -344,18 +347,32 @@ export function Popover({
     };
   }, [open, place, width]);
 
+  // Keep the latest onClose in a ref: callers usually pass an inline arrow, and re-registering on every render would
+  // move this popover to the end of `openPopovers` — then a click inside a child popover (opened from this one)
+  // would count as "outside" and close the parent mid-edit.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
+    openPopovers.push(ref);
+    const onClose = () => closeRef.current();
     const down = (e: MouseEvent) => {
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchor.current?.contains(t)) return;
-      // Ignore clicks inside nested portals (e.g. a popover opened from this popover).
-      if ((t as HTMLElement).closest?.('.popover') && !ref.current?.contains(t)) return;
+      // Ignore clicks inside a popover opened *after* this one (e.g. a dropdown opened from this panel).
+      // A click in the parent panel or in a sibling dropdown is "outside", so only one dropdown stays open.
+      const host = (t as HTMLElement).closest?.('.popover');
+      const mine = openPopovers.indexOf(ref);
+      if (host && openPopovers.findIndex((r) => r.current === host) > mine) return;
       onClose();
     };
     document.addEventListener('mousedown', down);
-    return () => document.removeEventListener('mousedown', down);
-  }, [open, onClose, anchor]);
+    return () => {
+      document.removeEventListener('mousedown', down);
+      const i = openPopovers.indexOf(ref);
+      if (i >= 0) openPopovers.splice(i, 1);
+    };
+  }, [open, anchor]);
 
   useEffect(() => {
     if (open && ref.current) {

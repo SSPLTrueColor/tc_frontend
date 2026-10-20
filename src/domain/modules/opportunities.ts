@@ -158,17 +158,6 @@ export const opportunities: ResourceDefinition = {
   },
   views: views([
     {
-      id: 'v_opp_pipeline',
-      resource: 'opportunities',
-      name: V.kanban,
-      type: 'board',
-      boardField: 'stage',
-      // No filter by default: Won / Lost columns stay visible so cards can be dragged there.
-      filter: group('and'),
-      sort: [{ field: 'expectedCloseDate', dir: 'asc' }],
-      columns: cols('customerId', 'value', 'expectedCloseDate', 'ownerId'),
-    },
-    {
       id: 'v_opp_open',
       resource: 'opportunities',
       name: V.open,

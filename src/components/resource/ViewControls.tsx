@@ -5,18 +5,15 @@ import { type Actor, fieldAccess, queryableField } from '../../services/authz';
 import { activeMasterValues } from '../../services/registry';
 import { canCreateScope, canManageView, deleteView, isSystemView, moveView, saveView } from '../../services/views';
 import { getSettings, updateSettings } from '../../services/settings';
-import { cloneGroup, newCondition, newGroup, OPERATOR_LABELS, operatorsFor, VALUELESS, countConditions, systemDateFields } from '../../services/filter';
+import { newCondition, newGroup, OPERATOR_LABELS, operatorsFor, VALUELESS, systemDateFields } from '../../services/filter';
 import { Button, IconButton } from '../primitives/Button';
 import { Icon } from '../primitives/Icon';
 import { useToast } from '../primitives/feedback';
 import { confirmDelete, Menu, Popover } from '../primitives/overlay';
 import { relationOptions } from './FormFields';
 import { SelectMenu } from '../primitives/SelectMenu';
-import { MultiSelectMenu } from '../primitives/MultiSelectMenu';
 import { DatePicker } from '../primitives/DatePicker';
-import { DateRangePicker } from '../primitives/DateRangePicker';
 import { InfoTip } from '../primitives/InfoTip';
-import { fieldIcon } from './fieldIcon';
 import { ServiceError } from '../../services/types';
 import { L } from '../../constants/labels';
 import { Checkbox, SegmentedControl, TextField } from '../primitives/controls';
@@ -346,221 +343,13 @@ function SaveViewDialog({
   );
 }
 
-// ---------------------------------------------------------------- Filter builder
+// ---------------------------------------------------------------- Filter builder (advanced editor; the pill bar lives in NotionFilters)
 
-/** Fields offered in the quick (form-style) filter panel: status first, then choice fields, then dates. */
-function quickFields(res: ResourceDefinition, actor: Actor) {
-  const ok = (f: FieldDefinition) => f.capabilities.filter && queryableField(actor, res, f);
-  const statusKey = res.lifecycle?.field ?? (res.fields.some((f) => f.key === 'status' && f.type === 'master') ? 'status' : undefined);
-  const status = res.fields.find((f) => f.key === statusKey && ok(f));
-  const choices = res.fields.filter((f) => f !== status && ok(f) && (f.type === 'master' || f.type === 'relation' || f.type === 'boolean')).slice(0, 6);
-  const dates = res.fields.filter((f) => ok(f) && (f.type === 'date' || f.type === 'datetime')).slice(0, 2);
-  return { status, choices, dates };
-}
-
-const QUICK_OPS = ['eq', 'in', 'gte', 'lte'];
-/** The quick panel can edit a filter when it is a flat AND list (nested groups / OR need the advanced editor). */
-const quickCompatible = (g: FilterGroup) => g.children.every((c) => c.kind === 'condition') && (g.join === 'and' || g.children.length <= 1);
-
-/** "A is x OR A is y" on one field is the same as "A is any of [x, y]" — convert so the quick panel can show it. */
-function normalizeForQuick(g: FilterGroup): FilterGroup {
-  const conds = g.children;
-  if (g.join === 'or' && conds.length > 1 && conds.every((c) => c.kind === 'condition' && c.operator === 'eq') && new Set(conds.map((c) => (c as FilterCondition).field)).size === 1) {
-    const field = (conds[0] as FilterCondition).field;
-    return { ...g, join: 'and', children: [newCondition(field, 'in', conds.map((c) => (c as FilterCondition).value))] };
-  }
-  return g;
-}
-
-export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDefinition; actor: Actor; filter: FilterGroup; onChange: (g: FilterGroup) => void }) {
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<'quick' | 'advanced'>('quick');
-  const [draft, setDraft] = useState<FilterGroup>(filter);
-  const ref = useRef<HTMLButtonElement>(null);
-  const n = countConditions(filter);
-  const { status, choices, dates } = quickFields(res, actor);
-
-  const openPanel = () => {
-    const copy = normalizeForQuick(cloneGroup(filter));
-    setDraft({ ...copy, join: quickCompatible(copy) ? 'and' : copy.join });
-    setMode(quickCompatible(copy) ? 'quick' : 'advanced');
-    setOpen(true);
-  };
-  const close = () => setOpen(false);
-
-  // --- quick-form helpers operating on the draft's top-level conditions
-  const conds = draft.children.filter((c): c is FilterCondition => c.kind === 'condition');
-  const eqOf = (key: string) => conds.find((c) => c.field === key && c.operator === 'eq')?.value;
-  const valuesOf = (key: string): string[] => {
-    const c = conds.find((x) => x.field === key && (x.operator === 'eq' || x.operator === 'in'));
-    if (!c) return [];
-    return c.operator === 'in' ? ((c.value as unknown[]) ?? []).map(String) : [String(c.value)];
-  };
-  const rangeOf = (key: string) => ({
-    from: conds.find((c) => c.field === key && c.operator === 'gte')?.value as string | undefined,
-    to: conds.find((c) => c.field === key && c.operator === 'lte')?.value as string | undefined,
-  });
-  const replace = (key: string, ops: string[], add: FilterCondition[]) =>
-    setDraft((d) => ({ ...d, join: 'and', children: [...d.children.filter((c) => !(c.kind === 'condition' && c.field === key && ops.includes(c.operator))), ...add] }));
-  const setEq = (key: string, v: unknown) => replace(key, ['eq', 'in'], v === '' || v === undefined ? [] : [newCondition(key, 'eq', v)]);
-  const setIn = (key: string, vs: string[]) => replace(key, ['eq', 'in'], !vs.length ? [] : vs.length === 1 ? [newCondition(key, 'eq', vs[0])] : [newCondition(key, 'in', vs)]);
-  const setRange = (key: string, r: { from?: string; to?: string }) =>
-    replace(key, ['gte', 'lte'], [...(r.from ? [newCondition(key, 'gte', r.from)] : []), ...(r.to ? [newCondition(key, 'lte', r.to)] : [])]);
-  const managed = new Set([status?.key, ...choices.map((f) => f.key), ...dates.map((f) => f.key)]);
-  const extraConds = conds.filter((c) => !(managed.has(c.field) && QUICK_OPS.includes(c.operator)));
-
-  const statusValues = status ? activeMasterValues(status.master!) : [];
-  const optionsFor = (f: FieldDefinition) =>
-    f.type === 'boolean'
-      ? [
-          { value: 'true', label: C.actions.yes },
-          { value: 'false', label: C.actions.no },
-        ]
-      : f.type === 'master'
-        ? activeMasterValues(f.master!).map((o) => ({ value: o.key, label: o.label }))
-        : relationOptions(actor, { ...f, relation: { ...f.relation!, filterBy: undefined } }, {}).map((o) => ({ value: o.id, label: o.label }));
-
-  return (
-    <>
-      <Button
-        ref={ref}
-        icon="filter"
-        title={n ? LS.filtersActive(n) : LS.filters}
-        onClick={() => (open ? close() : openPanel())}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-label={n ? LS.filtersActive(n) : LS.filters}
-        className={cx('filter-btn', 'is-icon-only', open && 'is-open', n > 0 && 'is-active')}
-      >
-        {n > 0 && <span className="filter-count" aria-hidden="true">{n}</span>}
-      </Button>
-      <Popover open={open} onClose={close} anchor={ref} label={LS.filters} width={mode === 'quick' ? 440 : 480} className="filter-pop" align="end">
-        {mode === 'quick' ? (
-          <div className="qf qf-rows">
-            {/* Owner reference: "Create view"-style property list — icon + label on the left, control on the right */}
-            <div className="qf-title">
-              <Icon name="filter" size={16} />
-              <strong>{LS.filter}</strong>
-            </div>
-            {status && (
-              <div className="qf-field">
-                <span className="qf-label" id="qf-status">
-                  <Icon name={fieldIcon(status)} size={16} className="qf-icon" />
-                  {status.label}
-                </span>
-                <MultiSelectMenu block label={status.label} emptyLabel={LS.allOf(status.label.toLowerCase())} values={valuesOf(status.key)} options={statusValues.map((o) => ({ value: o.key, label: o.label }))} onChange={(vs) => setIn(status.key, vs)} />
-              </div>
-            )}
-            {choices.map((f) => (
-              <div key={f.key} className="qf-field">
-                <span className="qf-label">
-                  <Icon name={fieldIcon(f)} size={16} className="qf-icon" />
-                  {f.label}
-                </span>
-                {f.type === 'boolean' ? (
-                  <SelectMenu
-                    block
-                    label={f.label}
-                    value={eqOf(f.key) === undefined ? '' : String(eqOf(f.key))}
-                    options={[{ value: '', label: LS.all }, ...optionsFor(f)]}
-                    onChange={(v) => setEq(f.key, v === '' ? '' : v === 'true')}
-                  />
-                ) : (
-                  <MultiSelectMenu block label={f.label} emptyLabel={LS.all} values={valuesOf(f.key)} options={optionsFor(f)} onChange={(vs) => setIn(f.key, vs)} />
-                )}
-              </div>
-            ))}
-            {dates.map((f) => (
-              <div key={f.key} className="qf-field">
-                <span className="qf-label">
-                  <Icon name={fieldIcon(f)} size={16} className="qf-icon" />
-                  {f.label}
-                </span>
-                <DateRangePicker label={f.label} value={rangeOf(f.key)} onChange={(r) => setRange(f.key, r)} />
-              </div>
-            ))}
-            {/* Conditions box: extra conditions on any field, combined with AND */}
-            <span className="qf-sub">{LS.conditions}</span>
-            <div className="qf-conds">
-              <div className="qf-match">
-                <span className="muted">{LS.matchRowsBy}</span>
-                <span className="qf-and">{LS.and}</span>
-                <button type="button" className="link qf-advanced" onClick={() => setMode('advanced')}>
-                  {V.useOrGroups}
-                </button>
-              </div>
-              {extraConds.length === 0 && <p className="muted qf-empty">{LS.noFiltersYet}</p>}
-              {extraConds.map((c) => (
-                <ConditionRow
-                  key={c.id}
-                  res={res}
-                  actor={actor}
-                  cond={c}
-                  fields={filterableFields(res, actor)}
-                  onChange={(x) => setDraft((d) => ({ ...d, children: d.children.map((y) => (y.id === c.id ? x : y)) }))}
-                  onRemove={() => setDraft((d) => ({ ...d, children: d.children.filter((y) => y.id !== c.id) }))}
-                />
-              ))}
-              <Button
-                variant="ghost"
-                icon="plus"
-                className="qf-addfilter"
-                onClick={() => {
-                  const f = filterableFields(res, actor).find((x) => !managed.has(x.key)) ?? filterableFields(res, actor)[0];
-                  if (f) setDraft((d) => ({ ...d, join: 'and', children: [...d.children, newCondition(f.key, operatorsFor(f)[0])] }));
-                }}
-              >
-                {V.addFilter}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="qf-adv">
-            <div className="pop-head">
-              <strong>{LS.advanced}</strong>
-              {quickCompatible(draft) && (
-                <button type="button" className="link" onClick={() => setMode('quick')}>
-                  {V.simpleFilters}
-                </button>
-              )}
-            </div>
-            <GroupEditor res={res} actor={actor} group={draft} onChange={setDraft} depth={0} />
-          </div>
-        )}
-        <div className="qf-foot">
-          <Button
-            variant="ghost"
-            className="qf-clear"
-            onClick={() => {
-              onChange(newGroup('and'));
-              close();
-            }}
-          >
-            {C.actions.clearAll}
-          </Button>
-          <Button variant="ghost" onClick={close}>
-            {C.actions.cancel}
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              onChange(draft);
-              close();
-            }}
-          >
-            {V.apply}
-          </Button>
-        </div>
-      </Popover>
-    </>
-  );
-}
-
-function filterableFields(res: ResourceDefinition, actor: Actor) {
+export function filterableFields(res: ResourceDefinition, actor: Actor) {
   return [...res.fields.filter((f) => f.capabilities.filter && queryableField(actor, res, f)), ...systemDateFields().filter((f) => !res.fields.some((x) => x.key === f.key))];
 }
 
-function GroupEditor({ res, actor, group, onChange, depth, onRemove }: { res: ResourceDefinition; actor: Actor; group: FilterGroup; onChange: (g: FilterGroup) => void; depth: number; onRemove?: () => void }) {
+export function GroupEditor({ res, actor, group, onChange, depth, onRemove }: { res: ResourceDefinition; actor: Actor; group: FilterGroup; onChange: (g: FilterGroup) => void; depth: number; onRemove?: () => void }) {
   const fields = filterableFields(res, actor);
   const update = (id: string, child: FilterCondition | FilterGroup | null) =>
     onChange({ ...group, children: child ? group.children.map((c) => (c.id === id ? child : c)) : group.children.filter((c) => c.id !== id) });

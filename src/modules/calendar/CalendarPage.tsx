@@ -24,7 +24,7 @@ import { Button } from '../../components/primitives/Button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, useToast } from '../../components/primitives/feedback';
 import { confirmDelete, Dialog, Popover } from '../../components/primitives/overlay';
 import { PageHeader } from '../../components/shell/PageHeader';
-import { CalendarSidebar } from './CalendarSidebar';
+import { CalendarFilters, CalendarSidebar } from './CalendarSidebar';
 import { CalendarHead, CalendarToolbar } from './CalendarChrome';
 import { countDays, dayLoadOptions } from './dayLoad';
 import { clock12, clockShort, fullText, hhmm, matches, minutes, toFc, wall, type ViewId } from './calendarUtils';
@@ -49,6 +49,13 @@ interface QuickState {
   x: number;
   y: number;
 }
+
+/** Month chips: compact Google-style start time — "9am", "9:15am" (FullCalendar Dates carry the IST wall clock in UTC fields). */
+const monthTime = (d: Date) => {
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
+};
 
 const nextHour = (nowWall: string) => {
   const h = Math.min(22, +nowWall.slice(11, 13) + 1);
@@ -90,7 +97,8 @@ export function CalendarPage() {
   const [person, setPerson] = useState<string>('all');
   const [withModules, setWithModules] = useState(false);
   const [search, setSearch] = useState('');
-  const [sideOpen, setSideOpen] = useState(() => !phone && window.innerWidth >= 1180);
+  // The side panel (mini month + filters) only opens by default on wide screens; otherwise the grid gets the width.
+  const [sideOpen, setSideOpen] = useState(() => !phone && window.innerWidth >= 1600);
   const [dialog, setDialog] = useState<DialogMode | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -334,6 +342,7 @@ export function CalendarPage() {
     if (arg.view.type === 'dayGridMonth')
       return (
         <span className="ev-line">
+          {!arg.event.allDay && arg.event.start && <span className="ev-time">{monthTime(arg.event.start)}</span>}
           <span className="ev-title">{i.title}</span>
         </span>
       );
@@ -397,7 +406,6 @@ export function CalendarPage() {
         )}
 
         <section className="cal-main panel" aria-label={C.page.region}>
-          <CalendarHead ref={searchRef} info={todayInfo} onToday={() => go('today')} search={search} onSearch={setSearch} />
           <CalendarToolbar
             sideOpen={sideOpen}
             onSide={() => setSideOpen((o) => !o)}
@@ -408,9 +416,28 @@ export function CalendarPage() {
             view={view}
             onView={changeView}
             action={
-              !sideOpen && <Button icon="plus" aria-label={C.page.createEvent} variant="primary" onClick={(e) => createFromCursor(e.currentTarget)} disabledReason={canCreate ? undefined : C.page.cannotCreate(actor.role.label)} title={C.page.shortcutHint(C.page.createEvent, 'C')} />
+              !sideOpen && (
+                <Button icon="plus" variant="primary" onClick={(e) => createFromCursor(e.currentTarget)} disabledReason={canCreate ? undefined : C.page.cannotCreate(actor.role.label)} title={C.page.shortcutHint(C.page.createEvent, 'C')}>
+                  {C.page.create}
+                </Button>
+              )
             }
-          />
+          >
+            <CalendarHead ref={searchRef} info={todayInfo} onToday={() => go('today')} search={search} onSearch={setSearch} />
+            {!sideOpen && (
+              <CalendarFilters
+                types={types}
+                onTypes={setTypes}
+                statuses={statuses}
+                onStatuses={setStatuses}
+                withModules={withModules}
+                onWithModules={setWithModules}
+                person={person}
+                people={people}
+                onPerson={setPerson}
+              />
+            )}
+          </CalendarToolbar>
           {query.error && query.data && (
             <InlineAlert tone="danger" title={C.page.loadError}>
               {query.error}{' '}
@@ -458,7 +485,7 @@ export function CalendarPage() {
                     setView('timeGridDay');
                     api()?.changeView('timeGridDay', d);
                   }}
-                  dayMaxEvents={2}
+                  dayMaxEvents
                   eventOrder="rank,start,-duration,allDay,title"
                   fixedWeekCount={false}
                   moreLinkText={(n) => C.page.more(n)}

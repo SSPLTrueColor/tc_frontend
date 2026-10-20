@@ -1,7 +1,7 @@
 /** Typed filter AST evaluation — shared by grid, saved views, board, calendar, exports and work queues. */
 import type { FilterCondition, FilterGroup, FilterOperator, FieldDefinition } from '../metadata/types';
 import { L } from '../constants/labels';
-import { addDays, toLocalDateTime, todayKey } from '../lib/dates';
+import { addDays, startOfWeek, toLocalDateTime, todayKey } from '../lib/dates';
 import { uid } from '../lib/ids';
 
 /** System timestamps every record carries (not declared per resource) as filterable date-time fields. */
@@ -21,6 +21,7 @@ export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   gte: 'at least',
   lte: 'at most',
   in: 'is any of',
+  nin: 'is none of',
   empty: 'is empty',
   notEmpty: 'is not empty',
   today: 'is today',
@@ -28,9 +29,11 @@ export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   last30: 'is in last 30 days',
   past: 'is before today',
   future: 'is after today',
+  thisWeek: 'is this week',
+  thisMonth: 'is this month',
 };
 
-export const VALUELESS: FilterOperator[] = ['empty', 'notEmpty', 'today', 'next7', 'last30', 'past', 'future'];
+export const VALUELESS: FilterOperator[] = ['empty', 'notEmpty', 'today', 'next7', 'last30', 'past', 'future', 'thisWeek', 'thisMonth'];
 
 export function operatorsFor(f: FieldDefinition): FilterOperator[] {
   switch (f.type) {
@@ -40,7 +43,7 @@ export function operatorsFor(f: FieldDefinition): FilterOperator[] {
       return ['eq', 'neq', 'gt', 'lt', 'gte', 'lte', 'empty', 'notEmpty'];
     case 'date':
     case 'datetime':
-      return ['today', 'next7', 'last30', 'past', 'future', 'gte', 'lte', 'empty', 'notEmpty'];
+      return ['today', 'thisWeek', 'thisMonth', 'next7', 'last30', 'past', 'future', 'gte', 'lte', 'empty', 'notEmpty'];
     case 'master':
     case 'relation':
       return ['eq', 'neq', 'empty', 'notEmpty'];
@@ -79,6 +82,12 @@ export function evalFilterCondition(c: FilterCondition, value: unknown, display?
       return !!day && day < today;
     case 'future':
       return !!day && day > today;
+    case 'thisWeek': {
+      const start = startOfWeek(today);
+      return !!day && day >= start && day <= addDays(start, 6);
+    }
+    case 'thisMonth':
+      return !!day && day.slice(0, 7) === today.slice(0, 7);
     case 'eq':
       return typeof value === 'number' ? value === Number(c.value) : typeof value === 'boolean' ? value === (c.value === true || c.value === 'true') : s === String(c.value ?? '');
     case 'neq':
@@ -98,6 +107,8 @@ export function evalFilterCondition(c: FilterCondition, value: unknown, display?
       return typeof value === 'number' ? value <= Number(c.value) : local.slice(0, String(c.value).length) <= String(c.value);
     case 'in':
       return Array.isArray(c.value) && c.value.includes(value);
+    case 'nin':
+      return Array.isArray(c.value) && !c.value.includes(value);
   }
 }
 

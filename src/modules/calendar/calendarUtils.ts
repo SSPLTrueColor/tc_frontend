@@ -22,7 +22,8 @@ export function toFc(i: CalItem): EventInput {
     title: i.title,
     allDay: i.allDay,
     editable: i.editable && i.status !== 'cancelled',
-    classNames: [`ev-${i.type}`, `is-${i.status}`, i.editable ? 'is-editable' : 'is-readonly'],
+    classNames: [`ev-${i.type}`, `is-${i.status}`, i.editable ? 'is-editable' : 'is-readonly', // all-day or across midnight → drawn as a bar in the month grid
+      ...(i.allDay || i.start.slice(0, 10) !== i.end.slice(0, 10) ? ['is-bar'] : [])],
     extendedProps: { item: i, rank: i.source !== 'event' ? 1 : i.recurrence === 'daily' ? 2 : 0 },
   };
   if (i.recurrence === 'none') return { ...base, start: i.start, end: i.allDay ? addDays(i.end, 1) : i.end };

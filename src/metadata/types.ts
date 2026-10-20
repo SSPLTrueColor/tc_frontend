@@ -192,13 +192,16 @@ export type FilterOperator =
   | 'gte'
   | 'lte'
   | 'in'
+  | 'nin'
   | 'empty'
   | 'notEmpty'
   | 'today'
   | 'next7'
   | 'last30'
   | 'past'
-  | 'future';
+  | 'future'
+  | 'thisWeek'
+  | 'thisMonth';
 
 export interface FilterCondition {
   kind: 'condition';

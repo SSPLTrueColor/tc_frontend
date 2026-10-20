@@ -105,9 +105,6 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                 </li>
               )}
             </ul>
-            <footer className="board-col-foot muted">
-              {items.length} {items.length === 1 ? res.label.toLowerCase() : res.labelPlural.toLowerCase()}
-            </footer>
           </section>
         );
       })}
