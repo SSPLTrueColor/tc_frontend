@@ -94,12 +94,7 @@ export function DemoMachineCalendarPage() {
 
   const header = <PageHeader title={L.nav.pages.demoMachineCalendar.title} description={T.description} />;
   if (!readable)
-    return (
-      <div className="page">
-        {header}
-        <NoAccess what={L.opportunities.messages.noAccessDemoMachines} />
-      </div>
-    );
+    return <NoAccess what={L.opportunities.messages.noAccessDemoMachines} />;
   if (query.error)
     return (
       <div className="page">

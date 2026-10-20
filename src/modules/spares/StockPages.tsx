@@ -88,9 +88,10 @@ export function MainStoreStockPage() {
               search={(r) => `${r.partNo} ${r.description} ${r.categoryLabel}`}
               initialSort={{ key: 'part', dir: 'asc' }}
               emptyText={P.noRowsBody}
-              tools={
+              activeFilters={(category ? 1 : 0) + (state !== 'all' ? 1 : 0)}
+              onClearFilters={() => (setCategory(''), setState('all'))}
+              filters={
                 <>
-                  <span className="spacer" />
                   <SelectMenu label={P.filterCategory} value={category} options={[{ value: '', label: P.allCategories }, ...q.data.categories]} onChange={setCategory} />
                   <SelectMenu
                     label={P.filterState}
@@ -214,10 +215,9 @@ export function EngineerStockPage() {
                 rowKey={(r) => r.partId}
                 search={(r) => `${r.partNo} ${r.description}`}
                 initialSort={{ key: 'inHand', dir: 'desc' }}
+                filters={picker}
                 tools={
                   <>
-                    <span className="spacer" />
-                    {picker}
                     <LinkButton to={resourcePath(actor.workspaceId, 'requisitions', { view: 'v_req_all' })}>{P.openRequisitions}</LinkButton>
                   </>
                 }
@@ -236,12 +236,7 @@ export function EngineerStockPage() {
             rowKey={(r) => r.engineerId}
             search={(r) => r.engineerName}
             initialSort={{ key: 'inHand', dir: 'desc' }}
-            tools={
-              <>
-                <span className="spacer" />
-                {picker}
-              </>
-            }
+            filters={picker}
             columns={engineerCols}
           />
         )}

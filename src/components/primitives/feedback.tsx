@@ -1,3 +1,5 @@
+import { PageHeader } from '../shell/PageHeader';
+import { pageTitleForPath } from '../../lib/pageTitle';
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -71,14 +73,19 @@ export function ErrorState({ title = L.common.states.somethingWrong, children, o
   );
 }
 
+/** A page the role cannot open: still a normal page (title in the top bar), then the reason. */
 export function NoAccess({ what }: { what: string }) {
+  const { pathname } = useLocation();
   return (
-    <div className="state">
-      <span className="state-icon">
-        <Icon name="lock" size={20} />
-      </span>
-      <p className="state-title">{L.common.states.noAccess(what)}</p>
-      <p className="state-text">{L.common.states.noAccessBody}</p>
+    <div className="page">
+      <PageHeader title={pageTitleForPath(pathname) ?? L.common.states.noAccessTitle} />
+      <div className="state">
+        <span className="state-icon">
+          <Icon name="lock" size={20} />
+        </span>
+        <p className="state-title">{L.common.states.noAccess(what)}</p>
+        <p className="state-text">{L.common.states.noAccessBody}</p>
+      </div>
     </div>
   );
 }

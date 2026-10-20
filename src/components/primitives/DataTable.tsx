@@ -37,7 +37,15 @@ export interface DataTableProps<R> {
   pageSize?: number;
   /** Provide to show a search box; return the text a row is searched by. */
   search?: (r: R) => string;
-  /** Filters / summary on the toolbar line after the search box. */
+  /** Filter dropdowns, placed right after the search box (the same order on every list). */
+  filters?: ReactNode;
+  /** How many filters are applied; with a search term it shows "Clear filters". */
+  activeFilters?: number;
+  /** Reset the page's filters (the search box is cleared too). */
+  onClearFilters?: () => void;
+  /** Short count / total shown at the right end of the filter bar ("12 orders · ₹4.2 L"). */
+  summary?: ReactNode;
+  /** @deprecated use `filters` + `summary`; kept for pages not yet moved. */
   tools?: ReactNode;
   loading?: boolean;
   error?: string | null;
@@ -49,7 +57,7 @@ export interface DataTableProps<R> {
   emptyText?: string;
 }
 
-export function DataTable<R>({ rows, columns, rowKey, label, noun = T.rows, initialSort, pageSize = 25, search, tools, loading, error, onRetry, empty, onRowClick, emptyText }: DataTableProps<R>) {
+export function DataTable<R>({ rows, columns, rowKey, label, noun = T.rows, initialSort, pageSize = 25, search, filters, activeFilters = 0, onClearFilters, summary, tools, loading, error, onRetry, empty, onRowClick, emptyText }: DataTableProps<R>) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<SortState | null>(initialSort ?? null);
   const [page, setPage] = useState(0);
@@ -73,8 +81,9 @@ export function DataTable<R>({ rows, columns, rowKey, label, noun = T.rows, init
   const p = Math.min(page, pages - 1);
   const shown = filtered.slice(p * size, (p + 1) * size);
 
-  const toolbar = (search || tools) && (
-    <div className="toolbar">
+  const dirty = !!q.trim() || activeFilters > 0;
+  const toolbar = (search || tools || filters || summary) && (
+    <div className="toolbar list-filterbar">
       {search && (
         <SearchInput
           placeholder={T.search}
@@ -86,7 +95,22 @@ export function DataTable<R>({ rows, columns, rowKey, label, noun = T.rows, init
           }}
         />
       )}
+      {filters}
       {tools}
+      {dirty && (onClearFilters || q) && (
+        <button
+          type="button"
+          className="link small"
+          onClick={() => {
+            setQ('');
+            setPage(0);
+            onClearFilters?.();
+          }}
+        >
+          {T.clearFilters}
+        </button>
+      )}
+      {summary && <span className="toolbar-count muted">{summary}</span>}
     </div>
   );
   if (error)

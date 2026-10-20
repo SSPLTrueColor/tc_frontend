@@ -125,12 +125,7 @@ export function ResourcePage() {
   const query = useServiceQuery(() => queryRecords(actor, resource, { filter: working.filter, search, sort: working.sort }), [resource, actor.user.id, working.filter, search, working.sort]);
 
   if (perm(actor, resource).read === 'none') {
-    return (
-      <div className="page">
-        <PageHeader title={res.labelPlural} crumbs={[{ label: res.labelPlural }]} />
-        <NoAccess what={res.labelPlural} />
-      </div>
-    );
+    return <NoAccess what={res.labelPlural} />;
   }
 
   const isPaged = view.type === 'table';
@@ -327,7 +322,7 @@ export function ResourcePage() {
             </ErrorState>
           ) : firstLoad ? (
             <Skeleton rows={8} />
-          ) : view.type === 'board' ? (
+          ) : view.type === 'board' && result.total > 0 ? (
             <BoardView res={res} actor={actor} rows={result.rows} boardField={view.boardField ?? res.lifecycle!.field} cardFields={working.columns.filter((c) => !c.hidden).map((c) => c.key)} onOpen={open} activeId={peek} />
           ) : view.type === 'calendar' && res.calendar ? (
             <CalendarView

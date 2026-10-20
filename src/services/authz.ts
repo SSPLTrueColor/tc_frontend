@@ -85,8 +85,13 @@ function teamOf(staffId: string, employees: RecordData[]): string[] {
 export const perm = (actor: Actor, resource: string): ResourcePermission => actor.role.resources[resource] ?? NONE;
 
 /** Role capability check. `read:<resourceKey>` means "can read that resource" (used by sidebar pages that show a resource's data). */
-export const can = (actor: Actor, capability: string): boolean =>
-  capability.startsWith('read:') ? perm(actor, capability.slice(5)).read !== 'none' : actor.role.capabilities.includes(capability);
+export const can = (actor: Actor, capability: string): boolean => {
+  // "a+b" = every one of them (a sidebar page that needs two things).
+  if (capability.includes('+')) return capability.split('+').every((c) => can(actor, c));
+  if (capability.startsWith('read:')) return perm(actor, capability.slice(5)).read !== 'none';
+  if (capability.startsWith('create:')) return perm(actor, capability.slice(7)).create;
+  return actor.role.capabilities.includes(capability);
+};
 
 export function canReadResource(actor: Actor, resource: string) {
   return perm(actor, resource).read !== 'none';

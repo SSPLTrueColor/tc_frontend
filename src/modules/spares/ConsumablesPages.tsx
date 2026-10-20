@@ -65,10 +65,11 @@ export function RepeatOrdersPage() {
             search={(r) => `${r.orderNo} ${r.customerName} ${r.products}`}
             initialSort={{ key: 'date', dir: 'desc' }}
             emptyText={P.noRowsBody}
-            tools={
+            summary={P.summary(rows.length, new Set(rows.map((r) => r.customerId)).size)}
+            activeFilters={(customer ? 1 : 0) + (price !== 'all' ? 1 : 0) + (show !== 'latest' ? 1 : 0)}
+            onClearFilters={() => (setCustomer(''), setPrice('all'), setShow('latest'))}
+            filters={
               <>
-                <span className="muted small">{P.summary(rows.length, new Set(rows.map((r) => r.customerId)).size)}</span>
-                <span className="spacer" />
                 <SelectMenu label={P.customer} searchable value={customer} options={[{ value: '', label: P.allCustomers }, ...customers]} onChange={setCustomer} />
                 <SelectMenu label={P.priceFilter} value={price} options={[{ value: 'all', label: P.priceOptions.all }, { value: 'contract', label: P.priceOptions.contract }, { value: 'list', label: P.priceOptions.list }]} onChange={setPrice} />
                 <SelectMenu label={L.consumables.common.show} value={show} options={[{ value: 'latest', label: P.showOptions.latest }, { value: 'all', label: P.showOptions.all }]} onChange={setShow} />
@@ -157,10 +158,11 @@ export function DealerOrdersPage() {
             search={(r) => `${r.id} ${r.dealerName} ${r.endCustomer} ${r.endCustomerCity} ${r.productName} ${r.invoiceNo}`}
             initialSort={{ key: 'date', dir: 'desc' }}
             emptyText={P.noRowsBody}
-            tools={
+            summary={P.summary(rows.length, formatMoney(total))}
+            activeFilters={(dealer ? 1 : 0) + (status ? 1 : 0)}
+            onClearFilters={() => (setDealer(''), setStatus(''))}
+            filters={
               <>
-                <span className="muted small">{P.summary(rows.length, formatMoney(total))}</span>
-                <span className="spacer" />
                 <SelectMenu label={P.dealer} searchable value={dealer} options={[{ value: '', label: P.allDealers }, ...data.dealers]} onChange={setDealer} />
                 <SelectMenu label={P.status} value={status} options={[{ value: '', label: P.allStatuses }, ...activeMasterValues('dealerOrderStatus').map((v) => ({ value: v.key, label: v.label }))]} onChange={setStatus} />
               </>

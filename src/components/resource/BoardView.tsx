@@ -6,7 +6,7 @@ import { type Actor, fieldAccessMap } from '../../services/authz';
 import { activeMasterValues, getMaster } from '../../services/registry';
 import { availableTransitions, recordTitle, transitionRecord } from '../../services/runtime';
 import { ServiceError } from '../../services/types';
-import { IconButton } from '../primitives/Button';
+import { Button, IconButton } from '../primitives/Button';
 import { StatusChip, useToast } from '../primitives/feedback';
 import { Menu } from '../primitives/overlay';
 import { FieldValue, photoOf } from './FieldValue';
@@ -15,12 +15,16 @@ import { ImageTile } from '../primitives/People';
 import { L } from '../../constants/labels';
 
 /** Board: columns are lifecycle states; moves go through the same guarded transition API. */
+/** Cards drawn per column before "Show more": a board with thousands of records stays fast. */
+const CARDS_PER_COLUMN = 40;
+
 export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, activeId }: { res: ResourceDefinition; actor: Actor; rows: RecordData[]; boardField: string; cardFields: string[]; onOpen: (id: string) => void; activeId?: string }) {
   const field = res.fields.find((f) => f.key === boardField)!;
   const values = getMaster(field.master!).values.filter((v) => v.active).sort((a, b) => a.order - b.order);
   const access = fieldAccessMap(actor, res);
   const toast = useToast();
   const [dragId, setDragId] = useState<string | null>(null);
+  const [cap, setCap] = useState<Record<string, number>>({});
   const [over, setOver] = useState<string | null>(null);
   const [menu, setMenu] = useState<RecordData | null>(null);
   const anchor = useRef<HTMLElement | null>(null);
@@ -79,7 +83,7 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
               <span className="muted">{items.length}</span>
             </header>
             <ul className="board-cards">
-              {items.map((r) => (
+              {items.slice(0, cap[col.key] ?? CARDS_PER_COLUMN).map((r) => (
                 <li
                   key={r.id}
                   className={cx('board-card', activeId === r.id && 'is-active')}
@@ -125,6 +129,11 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                 </li>
               ))}
               {!items.length && <li className="board-empty muted">{L.common.list.nothingHere}</li>}
+              {items.length > (cap[col.key] ?? CARDS_PER_COLUMN) && (
+                <li className="board-more">
+                  <Button onClick={() => setCap((c) => ({ ...c, [col.key]: (c[col.key] ?? CARDS_PER_COLUMN) + CARDS_PER_COLUMN }))}>{L.common.list.showMore(Math.min(CARDS_PER_COLUMN, items.length - (cap[col.key] ?? CARDS_PER_COLUMN)))}</Button>
+                </li>
+              )}
             </ul>
             <footer className="board-col-foot muted">
               {items.length} {items.length === 1 ? res.label.toLowerCase() : res.labelPlural.toLowerCase()}

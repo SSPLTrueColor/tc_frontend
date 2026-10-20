@@ -79,17 +79,16 @@ export function MinimumLevelAlertsPage() {
             rowKey={(r) => r.id}
             search={(r) => `${r.partNo} ${r.description}`}
             initialSort={{ key: 'short', dir: 'desc' }}
-            tools={
+            summary={
               <>
-                <span className="muted small">
-                  {P.summary(q.data.below.length, q.data.totalParts)}
-                  {q.data.lastSync ? P.lastSyncPrefix : ''}
-                  {q.data.lastSync && <DateText value={q.data.lastSync} />}
-                </span>
-                <span className="spacer" />
-                <SelectMenu label={L.spares.common.show} value={critOnly} options={[{ value: 'all', label: P.critOptions.all }, { value: 'critical', label: P.critOptions.critical }]} onChange={setCritOnly} />
+                {P.summary(q.data.below.length, q.data.totalParts)}
+                {q.data.lastSync ? P.lastSyncPrefix : ''}
+                {q.data.lastSync && <DateText value={q.data.lastSync} />}
               </>
             }
+            activeFilters={critOnly === 'all' ? 0 : 1}
+            onClearFilters={() => setCritOnly('all')}
+            filters={<SelectMenu label={L.spares.common.show} value={critOnly} options={[{ value: 'all', label: P.critOptions.all }, { value: 'critical', label: P.critOptions.critical }]} onChange={setCritOnly} />}
             columns={[
               { key: 'part', label: P.cols.part, sort: (r) => r.partNo, render: (r) => <Link to={recordPeekPath(actor.workspaceId, 'spareParts', r.id)}>{r.partNo}</Link> },
               { key: 'desc', label: P.cols.description, sort: (r) => r.description, render: (r) => r.description },
@@ -141,13 +140,10 @@ export function LeakageListPage() {
                 rowKey={(r) => r.customerId}
                 search={(r) => `${r.customerName} ${r.models}`}
                 initialSort={{ key: 'since', dir: 'desc' }}
-                tools={
-                  <>
-                    <span className="muted small">{P.summary(q.data.rows.length, q.data.machineCustomers)}</span>
-                    <span className="spacer" />
-                    <SelectMenu label={L.consumables.common.show} value={kind} options={[{ value: 'all', label: P.kindOptions.all }, { value: 'never', label: P.kindOptions.never }, { value: 'lapsed', label: P.kindOptions.lapsed }]} onChange={setKind} />
-                  </>
-                }
+                summary={P.summary(q.data.rows.length, q.data.machineCustomers)}
+                activeFilters={kind === 'all' ? 0 : 1}
+                onClearFilters={() => setKind('all')}
+                filters={<SelectMenu label={L.consumables.common.show} value={kind} options={[{ value: 'all', label: P.kindOptions.all }, { value: 'never', label: P.kindOptions.never }, { value: 'lapsed', label: P.kindOptions.lapsed }]} onChange={setKind} />}
                 columns={[
                   { key: 'cust', label: P.cols.customer, sort: (r) => r.customerName, render: (r) => <Link to={recordPeekPath(actor.workspaceId, 'customers', r.customerId)}>{r.customerName}</Link> },
                   { key: 'mach', label: P.cols.machines, num: true, sort: (r) => r.machines, render: (r) => r.machines },
@@ -214,10 +210,10 @@ export function ReorderPredictionPage() {
                 rowKey={(r) => r.customerId}
                 search={(r) => r.customerName}
                 initialSort={{ key: 'due', dir: 'asc' }}
-                tools={
-                  <>
-                    <span className="muted small">{P.summary(counts.missed ?? 0, counts.due ?? 0, counts.upcoming ?? 0)}</span>
-                    <span className="spacer" />
+                summary={P.summary(counts.missed ?? 0, counts.due ?? 0, counts.upcoming ?? 0)}
+                activeFilters={state === 'open' ? 0 : 1}
+                onClearFilters={() => setState('open')}
+                filters={
                     <SelectMenu
                       label={L.consumables.common.show}
                       value={state}
@@ -230,7 +226,6 @@ export function ReorderPredictionPage() {
                       ]}
                       onChange={setState}
                     />
-                  </>
                 }
                 columns={[
                   { key: 'cust', label: P.cols.customer, sort: (r) => r.customerName, render: (r) => <Link to={recordPeekPath(actor.workspaceId, 'customers', r.customerId)}>{r.customerName}</Link> },

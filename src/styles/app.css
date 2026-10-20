@@ -7615,3 +7615,16 @@ td.is-editable:hover > .cell {
 .login-foot {
   text-align: center;
 }
+
+/* Standard list filter bar (DataTable): search · filters · clear ………… summary */
+.list-filterbar {
+  margin-top: 0;
+}
+.list-filterbar .search-field,
+.list-filterbar > .input {
+  flex: 0 1 280px;
+}
+.list-filterbar .toolbar-count {
+  margin-left: auto;
+  white-space: nowrap;
+}

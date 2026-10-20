@@ -42,8 +42,8 @@ const SIDEBAR: Group[] = [
     icon: 'building',
     resources: ['customers', 'contacts', 'addresses'],
     pages: [
-      { id: 'contactPool', icon: 'users' },
-      { id: 'contactPoolImport', icon: 'arrow-up' },
+      { id: 'contactPool', icon: 'users', capability: 'read:contacts' },
+      { id: 'contactPoolImport', icon: 'arrow-up', capability: 'create:contacts' },
     ],
   },
   {
@@ -51,9 +51,9 @@ const SIDEBAR: Group[] = [
     icon: 'target',
     resources: ['leads'],
     pages: [
-      { id: 'notAttendedLeads', icon: 'alert' },
+      { id: 'notAttendedLeads', icon: 'alert', capability: 'read:leads' },
       { id: 'followUps', icon: 'calendar-clock' },
-      { id: 'importLeads', icon: 'download' },
+      { id: 'importLeads', icon: 'download', capability: 'leads.import+create:leads' },
     ],
   },
   {
@@ -61,24 +61,24 @@ const SIDEBAR: Group[] = [
     icon: 'handshake',
     resources: ['opportunities', 'demos', 'sampleRequests', 'demoMachines'],
     pages: [
-      { id: 'pipeline', icon: 'board' },
-      { id: 'salesForecast', icon: 'activity' },
-      { id: 'demoMachineCalendar', icon: 'calendar-days' },
+      { id: 'pipeline', icon: 'board', capability: 'read:opportunities' },
+      { id: 'salesForecast', icon: 'activity', capability: 'read:opportunities' },
+      { id: 'demoMachineCalendar', icon: 'calendar-days', capability: 'read:demoMachines' },
     ],
   },
   {
     id: 'quotations',
     icon: 'file-text',
     resources: ['quotations'],
-    pages: [{ id: 'quotationPendingApprovals', icon: 'check-square' }],
+    pages: [{ id: 'quotationPendingApprovals', icon: 'check-square', capability: 'read:quotations' }],
   },
   {
     id: 'orders',
     icon: 'shopping-cart',
     resources: ['salesOrders', 'salesContracts'],
     pages: [
-      { id: 'paymentSchedule', icon: 'calendar-clock' },
-      { id: 'orderProcessing', icon: 'sliders' },
+      { id: 'paymentSchedule', icon: 'calendar-clock', capability: 'read:paymentMilestones' },
+      { id: 'orderProcessing', icon: 'sliders', capability: 'read:salesOrders' },
     ],
   },
   {
@@ -91,7 +91,7 @@ const SIDEBAR: Group[] = [
     id: 'installed',
     icon: 'printer',
     resources: ['machines', 'warranties', 'amcContracts', 'machineComponents', 'machineReadings', 'machineMoves'],
-    pages: [{ id: 'renewalPipeline', icon: 'reset' }],
+    pages: [{ id: 'renewalPipeline', icon: 'reset', capability: 'read:amcContracts' }],
   },
   {
     id: 'service',

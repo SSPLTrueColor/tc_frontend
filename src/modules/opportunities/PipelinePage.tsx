@@ -89,12 +89,7 @@ export function PipelinePage() {
   );
 
   if (!readable)
-    return (
-      <div className="page">
-        <PageHeader title={L.nav.pages.pipeline.title} />
-        <NoAccess what={L.opportunities.messages.noAccessPipeline} />
-      </div>
-    );
+    return <NoAccess what={L.opportunities.messages.noAccessPipeline} />;
 
   const rows = query.data ?? [];
   const totals = pipelineTotals(rows);

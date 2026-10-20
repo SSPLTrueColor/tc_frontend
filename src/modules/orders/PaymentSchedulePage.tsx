@@ -15,24 +15,21 @@ import { queryRecords, recordTitle } from '../../services/runtime';
 import { getPolicies } from '../../services/policies';
 import { Button } from '../../components/primitives/Button';
 import { DateText } from '../../components/primitives/display';
-import { EmptyState, ErrorState, NoAccess, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
+import { ErrorState, NoAccess, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { Icon } from '../../components/primitives/Icon';
 import { PageHeader } from '../../components/shell/PageHeader';
-import { KpiStrip, SortTh, TableCard, TableFooter } from '../../components/resource/ListCard';
+import { KpiStrip } from '../../components/resource/ListCard';
+import { DataTable } from '../../components/primitives/DataTable';
 import { ReceiptDialog } from './OrderTabs';
-import { SearchInput } from '../../components/primitives/controls';
 
 const O = L.orders;
 const P = O.pages.paymentSchedule;
 const FM = O.fields.paymentMilestones;
 
 type Range = 'overdue' | 'week' | 'month' | 'open' | 'received' | 'all';
-type SortKey = 'dueDate' | 'outstanding' | 'customer';
 const RANGES: Range[] = ['open', 'overdue', 'week', 'month', 'received', 'all'];
 /** Saved views of the paymentMilestones resource (sidebar links) open the matching range here. */
 const VIEW_RANGE: Record<string, Range> = { v_pm_open: 'open', v_pm_overdue: 'overdue', v_pm_all: 'all' };
-const PAGE = 25;
 
 const outstandingOf = (m: RecordData) => Math.max(0, Number(m.amount) - (Number(m.receivedAmount) || 0));
 const statusOf = (m: RecordData, today: string) => (m.status !== 'received' && String(m.dueDate) < today ? 'overdue' : String(m.status));
@@ -47,11 +44,8 @@ export function PaymentSchedulePage() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const range: Range = (RANGES as string[]).includes(params.get('range') ?? '') ? (params.get('range') as Range) : VIEW_RANGE[params.get('view') ?? ''] ?? 'open';
-  const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
   const [division, setDivision] = useState('');
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'dueDate', dir: 1 });
-  const [page, setPage] = useState(0);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const today = todayKey();
@@ -69,12 +63,10 @@ export function PaymentSchedulePage() {
     next.delete('view');
     next.set('range', r);
     setParams(next, { replace: true });
-    setPage(0);
   };
 
   const rows = useMemo(() => {
     const all = data.data ?? [];
-    const needle = q.trim().toLowerCase();
     const inRange = (m: RecordData) => {
       const due = String(m.dueDate);
       const open = m.status !== 'received';
@@ -90,12 +82,10 @@ export function PaymentSchedulePage() {
       (m) =>
         inRange(m) &&
         (!status || statusOf(m, today) === status) &&
-        (!division || m.divisionId === division) &&
-        (!needle || `${customerNameOf(m.customerId)} ${recordTitle('salesOrders', m.salesOrderId, actor)} ${m.label}`.toLowerCase().includes(needle)),
+        (!division || m.divisionId === division),
     );
-    const val = (m: RecordData): string | number => (sort.key === 'outstanding' ? outstandingOf(m) : sort.key === 'customer' ? customerNameOf(m.customerId) : String(m.dueDate));
-    return [...list].sort((a, b) => (val(a) < val(b) ? -sort.dir : val(a) > val(b) ? sort.dir : 0));
-  }, [data.data, range, q, status, division, sort, today]); // eslint-disable-line react-hooks/exhaustive-deps
+    return list;
+  }, [data.data, range, status, division, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!allowed) return <NoAccess what={P.noAccess} />;
 
@@ -105,13 +95,6 @@ export function PaymentSchedulePage() {
   const overdue = open.filter((m) => String(m.dueDate) < today);
   const week = open.filter((m) => String(m.dueDate) >= today && String(m.dueDate) <= addDays(today, 7));
   const received = all.filter((m) => Number(m.receivedAmount) > 0);
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE));
-  const current = Math.min(page, pageCount - 1);
-  const visible = rows.slice(current * PAGE, current * PAGE + PAGE);
-  const filtered = !!(q || status || division);
-  const sortTh = (key: SortKey, label: string, num?: boolean) => (
-    <SortTh label={label} num={num} active={sort.key === key} dir={sort.dir} onSort={() => setSort((x) => ({ key, dir: x.key === key ? (x.dir === 1 ? -1 : 1) : 1 }))} />
-  );
   const kpi = (r: Range, label: string, value: number, count: number) => ({ key: r, label, value: formatMoney(value), sub: P.milestones(count), active: range === r, onClick: () => setRange(r) });
 
   return (
@@ -161,87 +144,75 @@ export function PaymentSchedulePage() {
               ),
             ]}
           />
-          <TableCard
-            title={P.tableTitle}
-            tools={
-              <>
-<div className="search-field">
-              <span className="search-icon" aria-hidden="true">
-                <Icon name="search" size={14} />
-              </span>
-              <SearchInput dense placeholder={P.search} aria-label={P.searchAria} value={q} onChange={(e) => (setQ(e.target.value), setPage(0))} />
-            </div>
-            <SelectMenu<Range> label={P.range} value={range} options={RANGES.map((r) => ({ value: r, label: P.ranges[r] }))} onChange={setRange} />
-            <SelectMenu label={P.statusFilter} value={status} options={[{ value: '', label: P.allStatuses }, ...activeMasterValues('milestoneStatus').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setStatus(v), setPage(0))} />
-            <SelectMenu label={P.divisionFilter} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setDivision(v), setPage(0))} />
-              </>
-            }
-          >
-            {rows.length ? (
-              <>
-                <div className="rp-scroll">
-                  <table className="rp-table">
-                    <thead>
-                      <tr>
-                        {sortTh('dueDate', FM.dueDate)}
-                        {sortTh('customer', FM.customerId)}
-                        <th scope="col">{FM.salesOrderId}</th>
-                        <th scope="col">{FM.label}</th>
-                        <th scope="col" className="num">
-                          {FM.amount}
-                        </th>
-                        {sortTh('outstanding', FM.outstanding, true)}
-                        <th scope="col">{FM.status}</th>
-                        <th scope="col">{FM.ownerId}</th>
-                        <th scope="col">
-                          <span className="sr-only">{O.table.actions}</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visible.map((m) => {
-                        const st = masterValue('milestoneStatus', statusOf(m, today));
-                        return (
-                          <tr key={m.id}>
-                            <td className="nowrap">
-                              <DateText value={String(m.dueDate)} />
-                            </td>
-                            <td className="orders-clamp" data-tooltip={customerNameOf(m.customerId)}>{customerNameOf(m.customerId)}</td>
-                            <td className="nowrap">
-                              <Link className="rel-link" to={recordPeekPath(actor.workspaceId, 'salesOrders', String(m.salesOrderId))}>
-                                {recordTitle('salesOrders', m.salesOrderId, actor)}
-                              </Link>
-                            </td>
-                            <td className="orders-clamp">
-                              <Link className="rel-link" to={recordPagePath(actor.workspaceId, 'paymentMilestones', m.id)}>
-                                {String(m.label)}
-                              </Link>
-                            </td>
-                            <td className="num">{formatMoney(Number(m.amount))}</td>
-                            <td className="num">{formatMoney(outstandingOf(m))}</td>
-                            <td className="nowrap">{st && <StatusChip label={st.label} tone={st.tone} />}</td>
-                            <td className="orders-clamp" data-tooltip={recordTitle('employees', m.ownerId, actor)}>{recordTitle('employees', m.ownerId, actor)}</td>
-                            <td className="nowrap">
-                              {can(actor, 'orders.receipts') && m.status !== 'received' && (
-                                <Button size="compact" onClick={() => setReceipt(m.id)}>
-                                  {O.actions.recordReceipt}
-                                </Button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <TableFooter range={P.range_(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)} page={current} pageCount={pageCount} onPage={setPage} labels={{ nav: O.pager.nav, prev: O.pager.prev, next: O.pager.next, first: O.pager.first, last: O.pager.last, page: O.pager.page }} />
-              </>
-            ) : (
-              <EmptyState icon="check" title={filtered ? P.emptyFiltered : range === 'overdue' ? P.emptyOverdue : P.empty}>
-                {P.emptyBody}
-              </EmptyState>
-            )}
-          </TableCard>
+          <div className="content-surface">
+            <DataTable
+              label={P.tableTitle}
+              rows={rows}
+              rowKey={(m) => m.id}
+              noun={P.noun}
+              initialSort={{ key: 'dueDate', dir: 'asc' }}
+              search={(m) => `${customerNameOf(m.customerId)} ${recordTitle('salesOrders', m.salesOrderId, actor)} ${m.label}`}
+              activeFilters={(range !== 'open' ? 1 : 0) + (status ? 1 : 0) + (division ? 1 : 0)}
+              onClearFilters={() => (setRange('open'), setStatus(''), setDivision(''))}
+              summary={P.milestones(rows.length)}
+              filters={
+                <>
+                  <SelectMenu<Range> label={P.range} value={range} options={RANGES.map((r) => ({ value: r, label: P.ranges[r] }))} onChange={setRange} />
+                  <SelectMenu label={P.statusFilter} value={status} options={[{ value: '', label: P.allStatuses }, ...activeMasterValues('milestoneStatus').map((v) => ({ value: v.key, label: v.label }))]} onChange={setStatus} />
+                  <SelectMenu label={P.divisionFilter} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={setDivision} />
+                </>
+              }
+              empty={all.length ? undefined : { icon: 'check', title: P.empty, body: P.emptyBody }}
+              emptyText={range === 'overdue' ? P.emptyOverdue : P.emptyFiltered}
+              columns={[
+                { key: 'dueDate', label: FM.dueDate, className: 'nowrap', sort: (m) => String(m.dueDate), render: (m) => <DateText value={String(m.dueDate)} /> },
+                { key: 'customer', label: FM.customerId, sort: (m) => customerNameOf(m.customerId), render: (m) => <span className="orders-clamp" data-tooltip={customerNameOf(m.customerId)}>{customerNameOf(m.customerId)}</span> },
+                {
+                  key: 'order',
+                  label: FM.salesOrderId,
+                  className: 'nowrap',
+                  render: (m) => (
+                    <Link className="rel-link" to={recordPeekPath(actor.workspaceId, 'salesOrders', String(m.salesOrderId))}>
+                      {recordTitle('salesOrders', m.salesOrderId, actor)}
+                    </Link>
+                  ),
+                },
+                {
+                  key: 'label',
+                  label: FM.label,
+                  render: (m) => (
+                    <Link className="rel-link" to={recordPagePath(actor.workspaceId, 'paymentMilestones', m.id)}>
+                      {String(m.label)}
+                    </Link>
+                  ),
+                },
+                { key: 'amount', label: FM.amount, num: true, sort: (m) => Number(m.amount), render: (m) => formatMoney(Number(m.amount)) },
+                { key: 'outstanding', label: FM.outstanding, num: true, sort: (m) => outstandingOf(m), render: (m) => formatMoney(outstandingOf(m)) },
+                {
+                  key: 'status',
+                  label: FM.status,
+                  className: 'nowrap',
+                  sort: (m) => statusOf(m, today),
+                  render: (m) => {
+                    const st = masterValue('milestoneStatus', statusOf(m, today));
+                    return st ? <StatusChip label={st.label} tone={st.tone} /> : null;
+                  },
+                },
+                { key: 'owner', label: FM.ownerId, sort: (m) => recordTitle('employees', m.ownerId, actor), render: (m) => <span className="orders-clamp">{recordTitle('employees', m.ownerId, actor)}</span> },
+                {
+                  key: 'act',
+                  label: O.table.actions,
+                  className: 'nowrap',
+                  render: (m) =>
+                    can(actor, 'orders.receipts') && m.status !== 'received' ? (
+                      <Button size="compact" onClick={() => setReceipt(m.id)}>
+                        {O.actions.recordReceipt}
+                      </Button>
+                    ) : null,
+                },
+              ]}
+            />
+          </div>
         </>
       )}
       {receipt && <ReceiptDialog milestone={(data.data ?? []).find((m) => m.id === receipt)!} onClose={() => setReceipt(null)} />}
