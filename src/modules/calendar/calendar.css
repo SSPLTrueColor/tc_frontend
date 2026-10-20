@@ -52,7 +52,8 @@
   gap: var(--sp-3);
   align-items: stretch;
   /* One scroll area (the grid itself): fills the window, never shorter than a usable month. */
-  height: max(600px, calc(100dvh - 168px));
+  /* window − top bar − page top padding − page bottom padding (−1px for the top bar's border) */
+  height: max(600px, calc(100dvh - var(--c-header-h) - var(--sp-3) - var(--sp-2) - 1px));
 }
 .cal-layout.is-side-closed {
   grid-template-columns: minmax(0, 1fr);
@@ -698,16 +699,16 @@
   gap: var(--sp-2);
 }
 /* Month chips: a colour dot and the title, no fill, no edge. Multi-day bars keep a soft fill. */
-.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end {
+.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end:not(.is-bar) {
   background: transparent;
   border: 0;
 }
-.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end:hover {
+.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end:not(.is-bar):hover {
   background: var(--s-hover);
   box-shadow: none;
   filter: none;
 }
-.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end .ev-line::before {
+.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end:not(.is-bar) .ev-line::before {
   content: '';
   flex: none;
   align-self: center;
@@ -753,3 +754,104 @@
 .cal-summary-row.is-link:hover strong {
   text-decoration: underline;
 }
+
+/* ---------------------------------------------------------------- one-row toolbar: navigation · today chip · search · filters · views */
+.cal-main > .cal-toolbar { flex-wrap: nowrap; gap: 6px; row-gap: var(--sp-2); }
+@media (max-width: 760px) {
+  .cal-main > .cal-toolbar { flex-wrap: wrap; }
+}
+.cal-toolbar .cal-title { font-size: 18px; margin: 0 var(--sp-1); flex: none; overflow: visible; }
+.cal-toolbar .segmented .seg-btn { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+.cal-toolbar .cal-head {
+  flex: 0 1 auto;
+  margin-left: auto !important;
+  min-width: 0;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 0;
+}
+.cal-toolbar .cal-today-strip {
+  flex: 0 1 auto;
+  gap: var(--sp-2);
+  height: var(--c-control-h-compact);
+  padding: 0 var(--sp-3) 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--s-accent-subtle) 60%, var(--s-panel));
+  border-color: color-mix(in srgb, var(--s-accent) 22%, var(--s-border));
+}
+.cal-toolbar .cal-today-badge { padding: 2px var(--sp-2); }
+.cal-toolbar .cal-today-count { font-weight: var(--fw-medium); }
+.cal-toolbar .cal-today-next { max-width: 280px; }
+.cal-toolbar .cal-search { flex: 0 1 220px; min-width: 96px; }
+.cal-filter-btn { position: relative; }
+.cal-filter-btn.is-active { border-color: color-mix(in srgb, var(--s-accent) 45%, var(--s-border)); color: var(--s-accent-text); }
+.cal-filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--s-accent);
+  color: var(--s-on-accent);
+  font-size: 11px;
+}
+.cal-filter-pop { display: grid; gap: var(--sp-4); padding: var(--sp-4); max-height: min(70vh, 560px); overflow-y: auto; }
+@media (max-width: 1520px) {
+  .cal-toolbar .cal-today-next { display: none; }
+  .cal-toolbar .cal-search { flex-basis: 160px; min-width: 120px; }
+  .cal-filter-btn .btn-label { font-size: 0; }
+  .cal-filter-btn .btn-label .cal-filter-count { font-size: 11px; margin-left: 0; }
+  .cal-filter-btn { padding: 0 var(--sp-2); }
+}
+@media (max-width: 1300px) {
+  .cal-toolbar .cal-today-strip { display: none; }
+}
+
+/* ---------------------------------------------------------------- month grid: calm cells, readable chips */
+.tc-cal[data-view='dayGridMonth'] .fc .fc-col-header-cell-cushion {
+  padding: var(--sp-2) var(--sp-2);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--s-text-muted);
+}
+.tc-cal[data-view='dayGridMonth'] .fc .fc-col-header-cell { text-align: left; background: var(--s-panel); }
+.tc-cal[data-view='dayGridMonth'] .fc .fc-day-sat .fc-daygrid-day-frame,
+.tc-cal[data-view='dayGridMonth'] .fc .fc-day-sun .fc-daygrid-day-frame { background: color-mix(in srgb, var(--s-sunken) 55%, transparent); }
+.tc-cal[data-view='dayGridMonth'] .fc .fc-day-other .fc-daygrid-day-frame { background: color-mix(in srgb, var(--s-sunken) 80%, transparent); }
+.tc-cal[data-view='dayGridMonth'] .fc .fc-day-today .fc-daygrid-day-frame { background: color-mix(in srgb, var(--s-accent) 5%, var(--s-panel)); box-shadow: inset 0 2px 0 var(--s-accent); }
+.tc-cal[data-view='dayGridMonth'] .cal-daynum { min-width: 26px; height: 26px; font-weight: var(--fw-medium); }
+.tc-cal[data-view='dayGridMonth'] .fc .fc-daygrid-day-number:hover .cal-daynum { background: var(--s-hover); }
+.tc-cal[data-view='dayGridMonth'] .fc .fc-day-today .fc-daygrid-day-number:hover .cal-daynum { background: var(--s-accent-hover, var(--s-accent)); }
+.tc-cal[data-view='dayGridMonth'] .fc-daygrid-event-harness { margin-top: 2px; }
+.tc-cal[data-view='dayGridMonth'] .fc-daygrid-event { margin: 0 2px; }
+.tc-cal[data-view='dayGridMonth'] .fc-daygrid-event .fc-event-main { padding: 2px 6px; }
+.tc-cal[data-view='dayGridMonth'] .ev-line { gap: 5px; align-items: center; }
+.tc-cal[data-view='dayGridMonth'] .ev-time {
+  flex: none;
+  font-size: 11px;
+  color: var(--s-text-muted);
+}
+.tc-cal[data-view='dayGridMonth'] .fc-event:not(.is-past) .ev-title { font-weight: var(--fw-medium); }
+/* All-day and multi-day: a solid, tinted bar in the type colour that spans its days (never loose text over other cells). */
+.tc-cal[data-view='dayGridMonth'] .fc-daygrid-event.is-bar {
+  background: var(--ev-bg-now, var(--ev-bg));
+  border: 0;
+  border-left: 3px solid var(--ev-solid-now, var(--ev-solid));
+  border-radius: 4px;
+}
+.tc-cal[data-view='dayGridMonth'] .fc-daygrid-event.is-bar:not(.fc-event-start) { border-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.tc-cal[data-view='dayGridMonth'] .fc-daygrid-event.is-bar:not(.fc-event-end) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.tc-cal[data-view='dayGridMonth'] .fc-daygrid-event.is-bar .ev-title { color: var(--s-text); }
+.tc-cal[data-view='dayGridMonth'] .fc .fc-daygrid-more-link {
+  margin: 2px 4px 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  color: var(--s-text-secondary);
+}
+.tc-cal[data-view='dayGridMonth'] .fc .fc-daygrid-more-link:hover { background: var(--s-hover); color: var(--s-text); }

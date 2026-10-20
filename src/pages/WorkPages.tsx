@@ -12,12 +12,16 @@ import { getResource, getUser } from '../services/registry';
 import { queryRecords, transitionRecord } from '../services/runtime';
 import { ServiceError } from '../services/types';
 import { approvalTypeLabel, canDecide, levelHolders, listApprovals, withdrawApproval } from '../services/workflow';
-import { Button } from '../components/primitives/Button';
-import { EmptyState, ErrorState, NoAccess, Skeleton, StatusChip, Tabs, useToast } from '../components/primitives/feedback';
+import { Button, IconButton } from '../components/primitives/Button';
+import { Icon } from '../components/primitives/Icon';
+import { Avatar, ErrorState, NoAccess, StatusChip, useToast } from '../components/primitives/feedback';
 import { ConflictPanel, FormBody, useRecordForm, useUnsavedGuard } from '../components/resource/RecordForm';
 import { PageHeader } from '../components/shell/PageHeader';
-import { InfoTip } from '../components/primitives/InfoTip';
+import { ListPage } from '../components/shell/ListPage';
+import { DataTable, type Column } from '../components/primitives/DataTable';
+import { SelectMenu } from '../components/primitives/SelectMenu';
 import { L } from '../constants/labels';
+import type { Tone } from '../metadata/types';
 import { DecisionDialog } from '../components/crm/ApprovalDecision';
 
 const C = L.common;
@@ -27,6 +31,29 @@ const I = L.common.inbox;
 
 type InboxTab = 'notifications' | 'approvals' | 'tasks';
 
+const KIND_ICON: Record<string, { icon: string; tone: Tone }> = {
+  assignment: { icon: 'user-check', tone: 'accent' },
+  mention: { icon: 'message', tone: 'info' },
+  approval_request: { icon: 'shield-check', tone: 'warning' },
+  approval_decision: { icon: 'thumbs-up', tone: 'success' },
+  reminder: { icon: 'clock', tone: 'info' },
+  escalation: { icon: 'alert', tone: 'danger' },
+  exception: { icon: 'ban', tone: 'danger' },
+  info: { icon: 'info', tone: 'neutral' },
+  system: { icon: 'settings', tone: 'neutral' },
+};
+
+const APPROVAL_TONE: Record<string, Tone> = { pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'neutral' };
+
+/** "Not attended lead: LD-1 · North Star …" → a short bold heading + the detail underneath. */
+function splitTitle(title: string): { head: string; rest: string } {
+  const i = title.indexOf(': ');
+  if (i > 0 && i < 60) return { head: title.slice(0, i), rest: title.slice(i + 2) };
+  const j = title.indexOf(' — ');
+  if (j > 0 && j < 80) return { head: title.slice(0, j), rest: title.slice(j + 3) };
+  return { head: title, rest: '' };
+}
+
 export function InboxPage() {
   useRevision();
   const actor = useActor();
@@ -34,6 +61,12 @@ export function InboxPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const tab = (params.get('tab') as InboxTab) || 'notifications';
+  // Filters (per tab; all live in the page so the table's filter panel can show and clear them)
+  const [kind, setKind] = useState('');
+  const [readState, setReadState] = useState('');
+  const [apStatus, setApStatus] = useState('');
+  const [apType, setApType] = useState('');
+  const [dueWhen, setDueWhen] = useState('');
   const inbox = useServiceQuery(
     () => ({
       notifications: listNotifications(actor),
@@ -44,169 +77,333 @@ export function InboxPage() {
   );
   const [deciding, setDeciding] = useState<{ id: string; decision: 'approved' | 'rejected' } | null>(null);
   const { notifications = [], approvals = [], tasks = [] } = inbox.data ?? {};
+  type N = (typeof notifications)[number];
+  type A = (typeof approvals)[number];
+  type Tk = (typeof tasks)[number];
+
+  const today = todayKey();
+  const unreadCount = notifications.filter((n) => !n.readAt).length;
+  const pendingCount = approvals.filter((a) => a.status === 'pending').length;
+  const dueOf = (t: Tk) => {
+    const d = String(t.dueDate);
+    return d < today ? 'overdue' : d === today ? 'today' : 'upcoming';
+  };
+
+  const openNotification = (n: N) => {
+    markNotification(actor, n.id, true);
+    if (!n.link) return;
+    const link = n.link;
+    if ('page' in link) {
+      if (link.page === 'inbox') setParams({ tab: 'approvals' });
+      else navigate(`/${link.page}`);
+    } else navigate(recordPeekPath(actor.workspaceId, link.resource, link.recordId));
+  };
+  const completeTask = (t: Tk) => {
+    try {
+      transitionRecord(actor, 'tasks', t.id, 'done', t.version);
+      toast(C.toasts.completed(t.id));
+    } catch (e) {
+      toast(e instanceof ServiceError ? e.message : C.toasts.failed, 'danger');
+    }
+  };
+  const withdraw = (a: A) => {
+    try {
+      withdrawApproval(actor, a.id);
+      toast(C.toasts.withdrawn(a.id));
+    } catch (e) {
+      toast(e instanceof ServiceError ? e.message : C.toasts.failed, 'danger');
+    }
+  };
+
+  const tabs: { id: InboxTab; label: string; icon: string; count: number }[] = [
+    { id: 'notifications', label: I.tabs.notifications, icon: 'bell', count: unreadCount },
+    { id: 'approvals', label: I.tabs.approvals, icon: 'shield-check', count: pendingCount },
+    { id: 'tasks', label: I.tabs.tasks, icon: 'check-square', count: tasks.length },
+  ];
+  // Same look as the saved-view tabs on the other list pages
+  const tabBar = (
+    <nav className="page-nav" role="tablist" aria-label={I.sections}>
+      {tabs.map((t) => (
+        <div key={t.id} className={cx('view-tab', tab === t.id && 'is-active')}>
+          <button type="button" role="tab" id={`tab-${t.id}`} aria-selected={tab === t.id} className="view-tab-btn" onClick={() => setParams({ tab: t.id })}>
+            <Icon name={t.icon} size={14} />
+            <span>{t.label}</span>
+            {inbox.data && <span className="page-nav-count">{t.count}</span>}
+          </button>
+        </div>
+      ))}
+    </nav>
+  );
+
+  const kindOptions = [...new Set(notifications.map((n) => n.kind))].map((k) => ({ value: k, label: C.notifications.kinds[k] ?? k }));
+  const notifRows = notifications
+    .filter((n) => (!kind || n.kind === kind) && (!readState || (readState === 'unread' ? !n.readAt : !!n.readAt)))
+    .sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+  const notifColumns: Column<N>[] = [
+    {
+      key: 'title',
+      label: I.cols.title,
+      sort: (n) => n.title,
+      render: (n) => {
+        const { head, rest } = splitTitle(n.title);
+        return (
+          <span className={cx('nt-cell', !n.readAt && 'is-unread')} title={n.title}>
+            <span className="nt-dot" aria-label={n.readAt ? undefined : I.unread} />
+            <span className="nt-cell-text">
+              <span className="nt-head">{head}</span>
+              {rest && <span className="nt-rest">{rest}</span>}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      key: 'kind',
+      label: I.cols.type,
+      sort: (n) => C.notifications.kinds[n.kind] ?? n.kind,
+      render: (n) => {
+        const meta = KIND_ICON[n.kind] ?? KIND_ICON.info;
+        return <StatusChip label={C.notifications.kinds[n.kind] ?? n.kind} tone={meta.tone} />;
+      },
+    },
+    {
+      key: 'record',
+      label: I.cols.record,
+      sort: (n) => (n.link ? ('page' in n.link ? n.link.page : n.link.recordId) : ''),
+      render: (n) => (!n.link ? <span className="muted">—</span> : 'page' in n.link ? I.page(n.link.page) : <span className="mono">{n.link.recordId}</span>),
+    },
+    { key: 'received', label: I.cols.received, sort: (n) => n.createdAt, icon: 'f-date', render: (n) => <span title={formatDate(n.createdAt.slice(0, 10))}>{relativeTime(n.createdAt)}</span> },
+    {
+      key: 'act',
+      label: I.cols.actions,
+      render: (n) => (
+        <span className="row-actions" onClick={(e) => e.stopPropagation()}>
+          {n.link && <IconButton icon="eye" label={C.actions.open} onClick={() => openNotification(n)} />}
+          <IconButton icon={n.readAt ? 'f-email' : 'check'} label={n.readAt ? C.notifications.markUnread : C.notifications.markRead} onClick={() => markNotification(actor, n.id, !n.readAt)} />
+          <IconButton
+            icon="clock"
+            label={C.notifications.snoozeAria}
+            onClick={() => {
+              snoozeNotification(actor, n.id, 4);
+              toast(I.snoozed);
+            }}
+          />
+        </span>
+      ),
+    },
+  ];
+
+  const typeOptions = [...new Set(approvals.map((a) => a.type))].map((t) => ({ value: t, label: approvalTypeLabel(t) }));
+  const apRows = approvals.filter((a) => (!apStatus || a.status === apStatus) && (!apType || a.type === apType));
+  const apColumns: Column<A>[] = [
+    { key: 'id', label: I.cols.id, sort: (a) => a.id, render: (a) => <span className="mono">{a.id}</span> },
+    {
+      key: 'request',
+      label: I.cols.request,
+      sort: (a) => a.summary,
+      render: (a) => (
+        <span className="nt-cell-text ap-request" title={a.reason ? `${a.summary} — “${a.reason}”` : a.summary}>
+          <Link to={recordPeekPath(actor.workspaceId, a.resource, a.recordId)} className="nt-head rel-link" onClick={(e) => e.stopPropagation()}>
+            {a.summary}
+          </Link>
+          {a.reason && <span className="nt-rest">“{a.reason}”</span>}
+        </span>
+      ),
+    },
+    { key: 'type', label: I.cols.type, sort: (a) => approvalTypeLabel(a.type), render: (a) => approvalTypeLabel(a.type) },
+    {
+      key: 'by',
+      label: I.cols.requestedBy,
+      sort: (a) => getUser(a.requestedBy)?.name ?? a.requestedBy,
+      icon: 'f-person',
+      render: (a) => {
+        const name = getUser(a.requestedBy)?.name ?? a.requestedBy;
+        return (
+          <span className="person-inline">
+            <Avatar name={name} size={22} />
+            {name}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'level',
+      label: I.cols.level,
+      sort: (a) => a.currentLevel,
+      render: (a) => {
+        const level = a.levels[a.currentLevel];
+        if (a.status !== 'pending' || !level) return a.decidedBy ? <span className="muted">{getUser(a.decidedBy)?.name ?? a.decidedBy}</span> : <span className="muted">—</span>;
+        return <span title={levelHolders(level.capability).join(' / ')}>{`${I.levelOf(a.currentLevel + 1, a.levels.length)} · ${level.label}`}</span>;
+      },
+    },
+    { key: 'status', label: I.cols.status, sort: (a) => a.status, render: (a) => <StatusChip label={I.status[a.status] ?? a.status} tone={APPROVAL_TONE[a.status] ?? 'neutral'} /> },
+    { key: 'requested', label: I.cols.requested, sort: (a) => a.requestedAt, icon: 'f-date', render: (a) => relativeTime(a.requestedAt) },
+    {
+      key: 'act',
+      label: I.cols.actions,
+      render: (a) => (
+        <span className="row-actions" onClick={(e) => e.stopPropagation()}>
+          {canDecide(actor, a) && (
+            <>
+              <Button variant="primary" icon="check" onClick={() => setDeciding({ id: a.id, decision: 'approved' })}>
+                {C.actions.approve}
+              </Button>
+              <Button icon="x" onClick={() => setDeciding({ id: a.id, decision: 'rejected' })}>
+                {C.actions.reject}
+              </Button>
+            </>
+          )}
+          {a.status === 'pending' && a.requestedBy === actor.user.id && (
+            <Button variant="ghost" icon="undo" onClick={() => withdraw(a)}>
+              {C.actions.withdraw}
+            </Button>
+          )}
+        </span>
+      ),
+    },
+  ];
+
+  const taskRows = tasks.filter((t) => !dueWhen || dueOf(t) === dueWhen);
+  const taskColumns: Column<Tk>[] = [
+    { key: 'id', label: I.cols.id, sort: (t) => t.id, render: (t) => <span className="mono">{t.id}</span> },
+    {
+      key: 'title',
+      label: I.cols.task,
+      sort: (t) => String(t.title),
+      render: (t) => (
+        <Link to={recordPeekPath(actor.workspaceId, 'tasks', t.id)} className="nt-head rel-link" onClick={(e) => e.stopPropagation()}>
+          {String(t.title)}
+        </Link>
+      ),
+    },
+    { key: 'related', label: I.cols.related, sort: (t) => String(t.relatedLabel ?? ''), render: (t) => (t.relatedLabel ? String(t.relatedLabel) : <span className="muted">—</span>) },
+    {
+      key: 'due',
+      label: I.cols.due,
+      sort: (t) => String(t.dueDate),
+      icon: 'f-date',
+      render: (t) => {
+        const w = dueOf(t);
+        return (
+          <span className="task-due-cell">
+            {formatDate(String(t.dueDate))}
+            {w !== 'upcoming' && <StatusChip label={w === 'overdue' ? I.overdue : I.dueToday} tone={w === 'overdue' ? 'danger' : 'warning'} />}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'act',
+      label: I.cols.actions,
+      render: (t) => (
+        <span className="row-actions" onClick={(e) => e.stopPropagation()}>
+          <Button icon="check" onClick={() => completeTask(t)}>
+            {C.actions.completeTask}
+          </Button>
+        </span>
+      ),
+    },
+  ];
+
+  const common = { loading: !inbox.data && !inbox.error, error: inbox.error, onRetry: inbox.retry };
 
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.notifications.title} description={I.description} />
-      <Tabs<InboxTab>
-        label={I.sections}
-        value={tab}
-        onChange={(t) => setParams({ tab: t })}
-        tabs={[
-          { id: 'notifications', label: I.tabs.notifications, count: notifications.filter((n) => !n.readAt).length },
-          { id: 'approvals', label: I.tabs.approvals, count: approvals.filter((a) => a.status === 'pending').length },
-          { id: 'tasks', label: I.tabs.tasks, count: tasks.length },
-        ]}
-      />
-      <div className="content-surface inbox" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {inbox.error && (
-          <ErrorState title={I.loadError} onRetry={inbox.retry}>
-            {inbox.error}
-          </ErrorState>
-        )}
-        {!inbox.data && !inbox.error && <Skeleton rows={6} />}
-        {inbox.data && tab === 'notifications' && (
-          <>
-            <div className="toolbar">
-              <InfoTip text={I.markReadAbout} label={C.notifications.aboutLabel} />
-              <span className="spacer" />
-              <Button onClick={() => markAllRead(actor)}>{C.notifications.markAllRead}</Button>
-            </div>
-            {notifications.length ? (
-              <ul className="inbox-list">
-                {notifications.map((n) => (
-                  <li key={n.id} className={cx('inbox-item', !n.readAt && 'is-unread')}>
-                    {!n.readAt && <span className="unread-dot" aria-label={C.notifications.unread} />}
-                    <div className="inbox-main">
-                      <span className="inbox-title">{n.title}</span>
-                      <span className="muted small">
-                        {C.notifications.kinds[n.kind] ?? n.kind.replace(/_/g, ' ')} · {relativeTime(n.createdAt)}
-                      </span>
-                    </div>
-                    {n.link && (
-                      <Button
-                        onClick={() => {
-                          markNotification(actor, n.id, true);
-                          const link = n.link!;
-                          if ('page' in link) {
-                            if (link.page === 'inbox') setParams({ tab: 'approvals' });
-                            else navigate(`/${link.page}`);
-                          }
-                          else navigate(recordPeekPath(actor.workspaceId, link.resource, link.recordId));
-                        }}
-                      >
-                        {C.actions.open}
-                      </Button>
-                    )}
-                    <Button variant="ghost" onClick={() => markNotification(actor, n.id, !n.readAt)}>
-                      {n.readAt ? C.notifications.markUnread : C.notifications.markRead}
-                    </Button>
-                    <Button variant="ghost" onClick={() => snoozeNotification(actor, n.id, 4)}>
-                      {C.notifications.snooze}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState icon="bell" title={I.noNotifications} />
-            )}
-          </>
-        )}
-        {inbox.data && tab === 'approvals' && (
-          <>
-            {approvals.length ? (
-              <ul className="inbox-list">
-                {approvals.map((a) => {
-                  const mine = canDecide(actor, a);
-                  const level = a.levels[a.currentLevel];
-                  return (
-                    <li key={a.id} className="inbox-item approval">
-                      <div className="inbox-main">
-                        <span className="inbox-title">
-                          {a.id} · {approvalTypeLabel(a.type)} ·{' '}
-                          <Link to={recordPeekPath(actor.workspaceId, a.resource, a.recordId)} className="rel-link">
-                            {a.summary}
-                          </Link>
-                        </span>
-                        {a.reason && <span className="small">“{a.reason}”</span>}
-                        <span className="muted small">
-                          {I.requestedBy(getUser(a.requestedBy)?.name ?? a.requestedBy, relativeTime(a.requestedAt))}
-                          {a.status === 'pending' && level && I.level(a.currentLevel + 1, a.levels.length, level.label, levelHolders(level.capability).join(' / '))}
-                          {a.decidedBy && I.decidedBy(I.status[a.status] ?? a.status, getUser(a.decidedBy)?.name ?? a.decidedBy, a.decisionNote || undefined)}
-                        </span>
-                      </div>
-                      <StatusChip label={I.status[a.status] ?? a.status} tone={a.status === 'pending' ? 'warning' : a.status === 'approved' ? 'success' : a.status === 'rejected' ? 'danger' : 'neutral'} />
-                      {mine && (
-                        <>
-                          <Button variant="primary" onClick={() => setDeciding({ id: a.id, decision: 'approved' })}>
-                            {C.actions.approve}
-                          </Button>
-                          <Button onClick={() => setDeciding({ id: a.id, decision: 'rejected' })}>{C.actions.reject}</Button>
-                        </>
-                      )}
-                      {a.status === 'pending' && a.requestedBy === actor.user.id && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => {
-                            try {
-                              withdrawApproval(actor, a.id);
-                              toast(C.toasts.withdrawn(a.id));
-                            } catch (e) {
-                              toast(e instanceof ServiceError ? e.message : C.toasts.failed, 'danger');
-                            }
-                          }}
-                        >
-                          {C.actions.withdraw}
-                        </Button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <EmptyState icon="check" title={I.noApprovals}>
-                {I.noApprovalsBody}
-              </EmptyState>
-            )}
-          </>
-        )}
-        {inbox.data && tab === 'tasks' && (
-          <>
-            {tasks.length ? (
-              <ul className="inbox-list">
-                {tasks.map((t) => (
-                  <li key={t.id} className="inbox-item">
-                    <div className="inbox-main">
-                      <Link to={recordPeekPath(actor.workspaceId, 'tasks', t.id)} className="inbox-title rel-link">
-                        {t.title as string}
-                      </Link>
-                      <span className={cx('small', String(t.dueDate) < todayKey() ? 'text-danger' : 'muted')}>
-                        {I.due(formatDate(String(t.dueDate)), t.relatedLabel ? String(t.relatedLabel) : undefined)}
-                      </span>
-                    </div>
-                    <Button
-                      onClick={() => {
-                        try {
-                          transitionRecord(actor, 'tasks', t.id, 'done', t.version);
-                          toast(C.toasts.completed(t.id));
-                        } catch (e) {
-                          toast(e instanceof ServiceError ? e.message : C.toasts.failed, 'danger');
-                        }
-                      }}
-                    >
-                      {C.actions.completeTask}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState icon="check-square" title={I.noTasks} />
-            )}
-          </>
-        )}
-      </div>
+    <ListPage
+      key={tab}
+      title={L.nav.pages.notifications.title}
+      tabs={tabBar}
+      actions={
+        tab === 'notifications' ? (
+          <Button
+            icon="check"
+            disabledReason={unreadCount ? undefined : C.notifications.nothingUnread}
+            onClick={() => {
+              markAllRead(actor);
+              toast(I.markedAllRead);
+            }}
+          >
+            {C.notifications.markAllRead}
+          </Button>
+        ) : undefined
+      }
+    >
+      {tab === 'notifications' && (
+        <DataTable<N>
+          {...common}
+          label={I.tabs.notifications}
+          noun={I.nouns.notifications}
+          rows={notifRows}
+          columns={notifColumns}
+          rowKey={(n) => n.id}
+          search={(n) => `${n.title} ${C.notifications.kinds[n.kind] ?? n.kind}`}
+          onRowClick={openNotification}
+          activeFilters={Number(!!kind) + Number(!!readState)}
+          onClearFilters={() => {
+            setKind('');
+            setReadState('');
+          }}
+          filters={
+            <>
+              <SelectMenu label={I.cols.type} value={kind} onChange={setKind} options={[{ value: '', label: I.allTypes }, ...kindOptions]} />
+              <SelectMenu
+                label={I.readState}
+                value={readState}
+                onChange={setReadState}
+                options={[
+                  { value: '', label: I.allStates },
+                  { value: 'unread', label: I.unread },
+                  { value: 'read', label: I.read },
+                ]}
+              />
+            </>
+          }
+          empty={{ icon: 'bell', title: I.noNotifications, body: C.notifications.allCaughtUp }}
+        />
+      )}
+      {tab === 'approvals' && (
+        <DataTable<A>
+          {...common}
+          label={I.tabs.approvals}
+          noun={I.nouns.approvals}
+          rows={apRows}
+          columns={apColumns}
+          rowKey={(a) => a.id}
+          search={(a) => `${a.id} ${a.summary} ${approvalTypeLabel(a.type)} ${getUser(a.requestedBy)?.name ?? ''} ${a.reason ?? ''}`}
+          initialSort={{ key: 'requested', dir: 'desc' }}
+          onRowClick={(a) => navigate(recordPeekPath(actor.workspaceId, a.resource, a.recordId))}
+          activeFilters={Number(!!apStatus) + Number(!!apType)}
+          onClearFilters={() => {
+            setApStatus('');
+            setApType('');
+          }}
+          filters={
+            <>
+              <SelectMenu label={I.cols.status} value={apStatus} onChange={setApStatus} options={[{ value: '', label: I.allStatuses }, ...Object.entries(I.status).map(([value, label]) => ({ value, label }))]} />
+              <SelectMenu label={I.cols.type} value={apType} onChange={setApType} options={[{ value: '', label: I.allTypes }, ...typeOptions]} />
+            </>
+          }
+          empty={{ icon: 'check', title: I.noApprovals, body: I.noApprovalsBody }}
+        />
+      )}
+      {tab === 'tasks' && (
+        <DataTable<Tk>
+          {...common}
+          label={I.tabs.tasks}
+          noun={I.nouns.tasks}
+          rows={taskRows}
+          columns={taskColumns}
+          rowKey={(t) => t.id}
+          search={(t) => `${t.id} ${String(t.title)} ${String(t.relatedLabel ?? '')}`}
+          initialSort={{ key: 'due', dir: 'asc' }}
+          onRowClick={(t) => navigate(recordPeekPath(actor.workspaceId, 'tasks', t.id))}
+          activeFilters={Number(!!dueWhen)}
+          onClearFilters={() => setDueWhen('')}
+          filters={<SelectMenu label={I.cols.due} value={dueWhen} onChange={setDueWhen} options={[{ value: '', label: I.allDue }, ...Object.entries(I.dueFilter).map(([value, label]) => ({ value, label }))]} />}
+          empty={{ icon: 'check-square', title: I.noTasks, body: I.noTasksBody }}
+        />
+      )}
       {deciding && <DecisionDialog approvalId={deciding.id} decision={deciding.decision} onClose={() => setDeciding(null)} />}
-    </div>
+    </ListPage>
   );
 }
 

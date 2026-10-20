@@ -20,10 +20,10 @@ export interface Crumb {
 /**
  * Page header — the same on every page:
  *   top bar:  breadcrumb › Title       (breadcrumb only on detail and nested pages; the title never scrolls away)
- *   page:     one-line description ………… actions (right)
+ *   page:     actions (right) — page descriptions are not shown
  * Put at most ONE primary (filled) button in `actions`; everything else is secondary, ghost, or in a ⋯ menu.
  */
-export function PageHeader({ title, description, crumbs, actions, onBack }: { title: string; description?: string; crumbs?: Crumb[]; actions?: ReactNode; onBack?: () => void }) {
+export function PageHeader({ title, crumbs, actions, onBack }: { title: string; description?: string; crumbs?: Crumb[]; actions?: ReactNode; onBack?: () => void }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => setSlot(document.getElementById(TOPBAR_TITLE_SLOT)), []);
   useEffect(() => {
@@ -61,15 +61,10 @@ export function PageHeader({ title, description, crumbs, actions, onBack }: { ti
           </>,
           slot,
         )}
-      {(description || actions) && (
+      {/* Page descriptions are no longer shown under the title; `description` is kept so callers still compile. */}
+      {actions && (
         <div className="page-intro">
-          {description ? (
-            <p className="page-desc" data-tooltip={description}>
-              {description}
-            </p>
-          ) : (
-            <span />
-          )}
+          <span />
           {actions && <div className="page-actions">{actions}</div>}
         </div>
       )}

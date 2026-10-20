@@ -1,6 +1,6 @@
 import { SalesWorkspaceTabs } from '../leads/SalesWorkspaceTabs';
 import { Pagination } from '../../components/primitives/Pagination';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { ColumnState, RecordData } from '../../metadata/types';
 import { L } from '../../constants/labels';
@@ -25,6 +25,7 @@ import { PageHeader } from '../../components/shell/PageHeader';
 import { moneyShort } from './format';
 import { SearchInput } from '../../components/primitives/controls';
 import { SegmentedControl } from '../../components/primitives/controls';
+import { FilterPanelButton } from '../../components/primitives/FilterPanel';
 
 const T = L.opportunities.pages.pipeline;
 const PAGE_SIZES = [25, 50, 100];
@@ -102,6 +103,13 @@ export function PipelinePage() {
   const canCreate = perm(actor, 'opportunities').create;
   const masterOptions = (master: string, all: string) => [{ value: '', label: all }, ...activeMasterValues(master).map((v) => ({ value: v.key, label: v.label }))];
 
+  const activeFilters = FILTER_KEYS.filter((k) => params.get(k)).length;
+  const clearFilters = () => update({ page: undefined, ...Object.fromEntries(FILTER_KEYS.map((k) => [k, undefined])) });
+  const clearAll = () => {
+    setSearchText('');
+    update({ q: undefined, page: undefined, ...Object.fromEntries(FILTER_KEYS.map((k) => [k, undefined])) });
+  };
+
   const rowMenu = (r: RecordData) => [
     { id: 'open', label: L.opportunities.actions.openInInspector, icon: 'eye', onSelect: () => open(r.id) },
     { id: 'page', label: L.opportunities.actions.openFullPage, icon: 'layout-dashboard', onSelect: () => navigate(recordPagePath(actor.workspaceId, 'opportunities', r.id)) },
@@ -112,58 +120,67 @@ export function PipelinePage() {
       <div className="page-main">
         <PageHeader title="Leads & Opportunities" description={T.description} />
         <SalesWorkspaceTabs actor={actor} active="pipeline" />
-        <div className="view-toolbar view-tabs-row">
+        <div className="view-toolbar view-tabs-row is-subviews pipeline-bar">
           <SegmentedControl
             label={T.layout}
             value={mode}
             onChange={(next) => update({ mode: next === 'list' ? 'list' : undefined, page: undefined })}
             options={(['kanban', 'list'] as const).map((m) => ({ value: m, label: m === 'kanban' ? T.kanban : T.list }))}
           />
-          <div className="view-tools view-tools-primary">
-            <Button variant="primary" icon="plus" onClick={() => setCreating({ mode: 'quick' })} disabledReason={canCreate ? undefined : T.cannotCreate(actor.role.label)}>
-              {L.opportunities.actions.newOpportunity}
-            </Button>
-          </div>
-        </div>
-        <div className="toolbar">
+          {/* One row: layout · search · clear ……… count · Filters · New (all six filters live in the panel) */}
           <div className="search-field">
             <span className="search-icon" aria-hidden="true">
               <Icon name="search" size={14} />
             </span>
             <SearchInput dense placeholder={T.search} aria-label={T.searchLabel} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
-          <SelectMenu label={T.division} value={params.get('division') ?? ''} options={masterOptions('division', T.allDivisions)} onChange={(v) => update({ division: v, page: undefined })} />
-          <SelectMenu label={T.owner} value={params.get('owner') ?? ''} searchable options={[{ value: '', label: T.allOwners }, ...ownerOptions]} onChange={(v) => update({ owner: v, page: undefined })} />
-          <SelectMenu
-            label={T.stage}
-            value={params.get('stage') ?? ''}
-            options={[{ value: '', label: T.openStages }, { value: 'all', label: T.allStages }, ...activeMasterValues('oppStage').map((v) => ({ value: v.key, label: v.label }))]}
-            onChange={(v) => update({ stage: v, page: undefined })}
-          />
-          <SelectMenu label={T.territory} value={params.get('territory') ?? ''} searchable options={masterOptions('territory', T.allTerritories)} onChange={(v) => update({ territory: v, page: undefined })} />
-          <SelectMenu label={T.productType} value={params.get('type') ?? ''} options={masterOptions('productType', T.allProductTypes)} onChange={(v) => update({ type: v, page: undefined })} />
-          <SelectMenu
-            label={T.closeMonth}
-            value={params.get('month') ?? ''}
-            options={[{ value: '', label: T.anyMonth }, ...(facets.data?.closeMonths ?? []).map((m) => ({ value: m, label: periodLabel(m, 'month') }))]}
-            onChange={(v) => update({ month: v, page: undefined })}
-          />
           {filtered && (
-            <Button
-              onClick={() => {
-                setSearchText('');
-                update({ q: undefined, page: undefined, ...Object.fromEntries(FILTER_KEYS.map((k) => [k, undefined])) });
-              }}
-            >
+            <button type="button" className="link small" onClick={clearAll}>
               {L.opportunities.actions.clearFilters}
-            </Button>
+            </button>
           )}
+          <span className="spacer" />
           <span className="toolbar-count muted" aria-live="polite">
             {T.count(rows.length)}
           </span>
+          <FilterPanelButton active={activeFilters} onClear={clearFilters}>
+            <FilterField label={T.division}>
+              <SelectMenu label={T.division} value={params.get('division') ?? ''} options={masterOptions('division', T.allDivisions)} onChange={(v) => update({ division: v, page: undefined })} />
+            </FilterField>
+            <FilterField label={T.owner}>
+              <SelectMenu label={T.owner} value={params.get('owner') ?? ''} searchable options={[{ value: '', label: T.allOwners }, ...ownerOptions]} onChange={(v) => update({ owner: v, page: undefined })} />
+            </FilterField>
+            <FilterField label={T.stage}>
+              <SelectMenu
+                label={T.stage}
+                value={params.get('stage') ?? ''}
+                options={[{ value: '', label: T.openStages }, { value: 'all', label: T.allStages }, ...activeMasterValues('oppStage').map((v) => ({ value: v.key, label: v.label }))]}
+                onChange={(v) => update({ stage: v, page: undefined })}
+              />
+            </FilterField>
+            <FilterField label={T.territory}>
+              <SelectMenu label={T.territory} value={params.get('territory') ?? ''} searchable options={masterOptions('territory', T.allTerritories)} onChange={(v) => update({ territory: v, page: undefined })} />
+            </FilterField>
+            <FilterField label={T.productType}>
+              <SelectMenu label={T.productType} value={params.get('type') ?? ''} options={masterOptions('productType', T.allProductTypes)} onChange={(v) => update({ type: v, page: undefined })} />
+            </FilterField>
+            <FilterField label={T.closeMonth}>
+              <SelectMenu
+                label={T.closeMonth}
+                value={params.get('month') ?? ''}
+                options={[{ value: '', label: T.anyMonth }, ...(facets.data?.closeMonths ?? []).map((m) => ({ value: m, label: periodLabel(m, 'month') }))]}
+                onChange={(v) => update({ month: v, page: undefined })}
+              />
+            </FilterField>
+          </FilterPanelButton>
+          <div className="view-tools view-tools-primary">
+            <Button variant="primary" icon="plus" onClick={() => setCreating({ mode: 'quick' })} disabledReason={canCreate ? undefined : T.cannotCreate(actor.role.label)}>
+              {L.opportunities.actions.newOpportunity}
+            </Button>
+          </div>
         </div>
         {query.data && (
-          <section className="stats" aria-label={L.nav.pages.pipeline.title}>
+          <section className="stats stats-compact" aria-label={L.nav.pages.pipeline.title}>
             <div className="stat">
               <span className="stat-label">{T.statOpen}</span>
               <span className="stat-value">{totals.open}</span>
@@ -195,12 +212,7 @@ export function PipelinePage() {
               title={filtered ? T.noMatchTitle : T.emptyTitle}
               action={
                 filtered ? (
-                  <Button
-                    onClick={() => {
-                      setSearchText('');
-                      update({ q: undefined, page: undefined, ...Object.fromEntries(FILTER_KEYS.map((k) => [k, undefined])) });
-                    }}
-                  >
+                  <Button onClick={clearAll}>
                     {L.opportunities.actions.clearFilters}
                   </Button>
                 ) : undefined
@@ -255,4 +267,16 @@ export function PipelinePage() {
 export function Pager({ page, pageSize, total, onPage, onSize, range = T.range }: { page: number; pageCount?: number; pageSize: number; total: number; onPage: (p: number) => void; onSize: (n: number) => void; range?: (from: number, to: number, total: number) => string }) {
   const noun = range(1, 2, 3).replace(/^1–2 of 3\s*/, '');
   return <Pagination page={page} pageSize={pageSize} total={total} noun={noun} onPage={onPage} onSize={onSize} sizes={PAGE_SIZES} />;
+}
+
+/** One labelled filter inside the filter panel (label above a full-width control, like the main lists' panel). */
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="qf-field">
+      <span className="qf-label">
+        <span className="qf-label-text">{label}</span>
+      </span>
+      {children}
+    </div>
+  );
 }

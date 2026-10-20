@@ -1,5 +1,5 @@
 import { getCardActions } from './extensions';
-import { Fragment, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import type { ColumnState, FieldAccess, FieldDefinition, RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx } from '../../lib/format';
 import { PHONE, useMedia } from '../../lib/useMedia';
@@ -75,7 +75,9 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
   const ordered = [...visible.filter((c) => c.pinned), ...visible.filter((c) => !c.pinned)];
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [editing, setEditing] = useState<{ id: string; key: string } | null>(null);
+  // Row edit mode: clicking any editable cell turns every editable cell of that row into an input / dropdown;
+  // `focus` is the cell that was clicked (it gets focus / opens its dropdown).
+  const [editing, setEditing] = useState<{ id: string; focus: string } | null>(null);
   // In-place edits are staged per row: nothing is saved until the row's ✓ (Apply) is clicked; ✕ discards them.
   const [drafts, setDrafts] = useState<Record<string, Record<string, unknown>>>({});
   useUnsavedGuard(Object.keys(drafts).length > 0);
@@ -92,15 +94,17 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
       else delete next[r.id];
       return next;
     });
-  const discard = (id: string) =>
+  const discard = (id: string) => {
+    setEditing((e) => (e?.id === id ? null : e));
     setDrafts((d) => {
       const next = { ...d };
       delete next[id];
       return next;
     });
+  };
   const apply = (r: RecordData) => {
     const patch = drafts[r.id];
-    if (!patch) return;
+    if (!patch) return setEditing(null);
     try {
       const raw = getDb().records[res.key].find((x) => x.id === r.id);
       updateRecord(actor, res.key, r.id, patch, raw?.version ?? r.version);
@@ -112,6 +116,17 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
       toast(first ? `${colLabel(res, first)}: ${fe![first]}` : e instanceof ServiceError ? e.message : C.toasts.saveFailed, 'danger');
     }
   };
+  // Clicking anywhere outside the row being edited leaves edit mode (staged edits stay until ✓ / ✕).
+  useEffect(() => {
+    if (!editing) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t?.closest || t.closest(`tr[data-edit-row="${editing.id}"]`) || t.closest('.popover')) return;
+      setEditing(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [editing]);
   const [menu, setMenu] = useState<{ row: RecordData } | null>(null);
   const menuAnchor = useRef<HTMLElement | null>(null);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
@@ -141,7 +156,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
   // columns in proportion to their width (Actions/checkbox keep their fixed size).
   const baseW = (c: ColumnState) => c.width ?? fieldWidth(res, c.key);
   // Room for a module row action, or for the "Edited" tag while a row has staged edits.
-  const actionsW = ACTIONS_W + Math.max(CardActions ? CARD_ACTION_W : 0, Object.keys(drafts).length ? 52 : 0);
+  const actionsW = ACTIONS_W + Math.max(CardActions ? CARD_ACTION_W : 0, Object.keys(drafts).length || editing ? 52 : 0);
   const fixedW = 40 + (masterDetail ? 32 : 0) + actionsW;
   const dataW = ordered.reduce((sum, c) => sum + baseW(c), 0);
   const scale = wrapW && dataW ? Math.max(1, (wrapW - fixedW) / dataW) : 1;
@@ -355,17 +370,26 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                   const rowCanEdit = !!raw && canUpdateRecord(actor, res, raw);
                   const draft = drafts[r.id];
                   const shown = draft ? { ...r, ...draft } : r;
+                  const rowEditing = editing?.id === r.id;
                   return (
                     <Fragment key={r.id}>
                       <tr
                         data-row
                         tabIndex={0}
-                        className={cx(selected.has(r.id) && 'is-selected', activeId === r.id && 'is-active', draft && 'is-dirty')}
+                        className={cx(selected.has(r.id) && 'is-selected', activeId === r.id && 'is-active', draft && 'is-dirty', rowEditing && 'is-row-editing')}
+                        data-edit-row={rowEditing ? r.id : undefined}
                         aria-selected={selected.has(r.id)}
-                        onKeyDown={(e) => onRowKey(e, r)}
+                        onKeyDown={(e) => {
+                          if (!rowEditing) return onRowKey(e, r);
+                          if (e.defaultPrevented) return;
+                          const t = e.target as HTMLElement;
+                          if (e.key === 'Escape') setEditing(null);
+                          // Enter in a text / number input applies the whole row
+                          else if (e.key === 'Enter' && t.tagName === 'INPUT' && !t.closest('.popover')) apply(r);
+                        }}
                         // selecting / copying text in a row must not open the record
                         onClick={(e) => {
-                          if (isDragClick(e)) return;
+                          if (isDragClick(e) || rowEditing) return;
                           onOpen(r.id);
                         }}
                       >
@@ -390,10 +414,10 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         {ordered.map((c) => {
                           const f = res.fields.find((x) => x.key === c.key);
                           const w = colW(c);
-                          const isEditing = editing?.id === r.id && editing.key === c.key;
                           const isStatus = !!res.lifecycle && c.key === res.lifecycle.field;
                           const dirtyCell = !!draft && c.key in draft;
                           const inline = !!f && !isStatus && rowCanEdit && access[c.key] === 'edit' && INLINE_TYPES.has(f.type) && !f.visibleWhen && !f.relation?.filterBy;
+                          const isEditing = rowEditing && inline;
                           return (
                             <td
                               key={c.key}
@@ -405,13 +429,14 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                                   e.stopPropagation();
                                   return;
                                 }
+                                if (rowEditing) e.stopPropagation();
                                 if (!inline || isEditing) return;
                                 e.stopPropagation();
-                                setEditing({ id: r.id, key: c.key });
+                                setEditing({ id: r.id, focus: c.key });
                               }}
                             >
                               {isEditing && f ? (
-                                <InlineEditor actor={actor} field={f} record={shown} onStage={(v) => stage(r, f.key, v)} onDone={() => setEditing(null)} />
+                                <InlineEditor actor={actor} field={f} record={shown} autoFocus={editing?.focus === c.key} onChange={(v) => stage(r, f.key, v)} />
                               ) : c.key === 'id' ? (
                                 <IdCell id={r.id} onOpen={() => onOpen(r.id)} />
                               ) : isStatus ? (
@@ -428,7 +453,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                                       aria-label={LS.editField(f.label)}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setEditing({ id: r.id, key: c.key });
+                                        setEditing({ id: r.id, focus: c.key });
                                       }}
                                     >
                                       <Icon name={f && ['master', 'relation', 'date'].includes(f.type) ? 'chevron-down' : 'pencil'} size={14} />
@@ -441,9 +466,9 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         })}
                         <td className="col-actions sticky-right" style={{ width: actionsW, minWidth: actionsW, maxWidth: actionsW }} onClick={(e) => e.stopPropagation()}>
                           <span className="row-actions">
-                            {draft ? (
+                            {draft || rowEditing ? (
                               <>
-                                <span className="row-edited-tag">{LS.edited}</span>
+                                {draft && <span className="row-edited-tag">{LS.edited}</span>}
                                 <IconButton icon="check" className="row-apply" label={LS.applyRow(r.id)} onClick={() => apply(r)} />
                                 <IconButton icon="x" label={LS.discardRow(r.id)} onClick={() => discard(r.id)} />
                               </>
@@ -574,54 +599,26 @@ function LineItemsSummary({ res, record, title }: { res: ResourceDefinition; rec
   );
 }
 
-/** In-place cell editor: commits into the row's staged draft (never saves); the row's ✓ applies all its edits. */
-function InlineEditor({ actor, field, record, onStage, onDone }: { actor: Actor; field: FieldDefinition; record: RecordData; onStage: (v: unknown) => void; onDone: () => void }) {
-  const [value, setValue] = useState<unknown>(record[field.key]);
-  const done = useRef(false);
-  const save = (v: unknown = value) => {
-    if (done.current) return;
-    done.current = true;
-    if (JSON.stringify(v ?? null) !== JSON.stringify(record[field.key] ?? null)) onStage(v);
-    onDone();
-  };
-  // One click: the cell click opened the editor — open its dropdown / calendar (or focus the input) right away
+/** In-place cell editor (row edit mode): every change goes straight into the row's staged draft (never saves); the row's ✓ applies all its edits. */
+function InlineEditor({ actor, field, record, autoFocus, onChange }: { actor: Actor; field: FieldDefinition; record: RecordData; autoFocus: boolean; onChange: (v: unknown) => void }) {
+  const value = record[field.key];
+  // The clicked cell opens its dropdown / calendar (or focuses its input) right away; the rest of the row just shows editors.
   const boxRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
+    if (!autoFocus) return;
     const el = boxRef.current;
     const trigger = el?.querySelector<HTMLElement>('.select-menu-trigger, .date-trigger');
     if (trigger) trigger.click();
     else el?.querySelector<HTMLInputElement>('input')?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
     <div
       ref={boxRef}
       className={cx('inline-editor', field.type === 'master' && `is-pill tone-${masterValue(field.master!, value)?.tone ?? 'neutral'}`, field.type === 'master' && ['status', 'priority', 'urgency'].includes(field.key) && 'is-status', (field.type === 'relation' || field.type === 'date') && 'is-pill-plain')}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === 'Escape') onDone();
-        if (e.key === 'Enter') save();
-      }}
-      onBlur={(e) => {
-        const to = e.relatedTarget as Element | null;
-        // Focus moving into the dropdown's floating list is not "leaving" the editor.
-        if (e.currentTarget.contains(to) || to?.closest?.('.popover')) return;
-        save();
-      }}
     >
-      <FieldInput
-        field={field}
-        value={value}
-        onChange={(v) => {
-          setValue(v);
-          // Picking from a dropdown commits immediately.
-          if (field.type === 'master' || field.type === 'relation') save(v);
-        }}
-        values={{ ...record, [field.key]: value }}
-        actor={actor}
-        id={`inline-${record.id}-${field.key}`}
-        compact
-      />
+      <FieldInput field={field} value={value} onChange={onChange} values={record} actor={actor} id={`inline-${record.id}-${field.key}`} compact />
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Pagination, PAGE_SIZES } from '../../components/primitives/Pagination';
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { L } from '../../constants/labels';
-import { Button } from '../../components/primitives/Button';
+import { Button, IconButton } from '../../components/primitives/Button';
 import { EmptyState } from '../../components/primitives/feedback';
 import { EmptyValue } from '../../components/primitives/display';
 import { Icon } from '../../components/primitives/Icon';
@@ -136,9 +136,8 @@ function ColumnsMenu({ model }: { model: TableModel }) {
   const shown = new Set(model.visible.map((c) => c.key));
   return (
     <>
-      <Button ref={anchor} icon="columns" iconRight={open ? 'chevron-up' : 'chevron-down'} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {T.columns}
-      </Button>
+      {/* Same icon-only Columns button as every list toolbar (always the last tool) */}
+      <IconButton ref={anchor} icon="columns" label={T.columns} aria-haspopup="dialog" aria-expanded={open} pressed={open} className={cx('tools-icon-btn', open && 'is-open')} onClick={() => setOpen((o) => !o)} />
       <Popover open={open} onClose={() => setOpen(false)} anchor={anchor} label={T.columns} width={260} align="end">
         <ul className="rp-colmenu">
           {model.columns.map((c) => (

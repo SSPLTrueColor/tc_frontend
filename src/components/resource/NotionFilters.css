@@ -1,0 +1,240 @@
+/*
+ * Notion-style filters — pill bar under the list toolbar · property list · per-filter editor.
+ * Kept next to NotionFilters.tsx (imported by it) so the bar never renders unstyled.
+ */
+
+/* ---------- bar: one line of pills, overflow folds into "+N more" ---------- */
+.nf-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+/* In the list toolbar the bar takes all the free room (so it can measure what fits); the spacer after it is not needed. */
+.view-tools-row .nf-bar { flex: 1 1 0%; }
+.view-tools-row .nf-bar + .spacer { flex: 0 0 0; min-width: 0; }
+/* With pills showing, the search box keeps its size instead of growing into their room (phones wrap instead). */
+@media (min-width: 761px) {
+  .view-tools-row:has(> .nf-bar) > .search-field { flex: 0 1 220px; min-width: 140px; }
+}
+/* hidden copies used only to measure pill widths */
+.nf-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 4px;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  height: 0;
+  overflow: visible;
+}
+
+.nf-pill {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  max-width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--s-border);
+  border-radius: 14px;
+  background: var(--s-panel);
+  color: var(--s-text-secondary);
+  font: inherit;
+  font-size: var(--fs-supportive);
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.nf-pill.is-set {
+  border-color: color-mix(in srgb, var(--s-accent) 35%, var(--s-border));
+  background: color-mix(in srgb, var(--s-accent-subtle) 70%, var(--s-panel));
+  color: var(--s-accent-text);
+}
+.nf-pill:hover { background: var(--s-hover); }
+.nf-pill.is-set:hover { background: var(--s-accent-subtle); }
+.nf-pill.is-open { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-accent) 14%, transparent); }
+
+.nf-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 4px 0 10px;
+  border: 0;
+  border-radius: 14px 0 0 14px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+/* pills that are a single button ("+N more", "N advanced rules") */
+button.nf-pill.nf-pill-btn,
+span.nf-pill.nf-pill-btn { padding: 0 10px; border-radius: 14px; }
+.nf-pill-btn:focus-visible { outline: none; }
+.nf-pill:has(> .nf-pill-btn:focus-visible),
+button.nf-pill:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-accent) 22%, transparent); }
+/* "+N more" is a container, not a filter: neutral pill, the count in a small badge-like weight */
+.nf-pill.nf-more {
+  border-color: var(--s-border);
+  background: var(--s-panel);
+  color: var(--s-text-secondary);
+}
+.nf-pill.nf-more:hover,
+.nf-pill.nf-more.is-open { background: var(--s-hover); color: var(--s-text); }
+.nf-pill.nf-more .nf-pill-value { font-weight: var(--fw-medium); }
+.nf-pill-btn svg { flex: none; }
+.nf-pill-field { white-space: nowrap; }
+.nf-pill-op { white-space: nowrap; opacity: 0.8; }
+.nf-pill-value {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-semibold);
+}
+.nf-pill-chev { opacity: 0.6; }
+.nf-pill-x {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0 4px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.nf-pill-x:hover { opacity: 1; background: color-mix(in srgb, var(--s-text) 8%, transparent); }
+
+.nf-add {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px dashed var(--s-border-strong);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--s-text-secondary);
+  font: inherit;
+  font-size: var(--fs-supportive);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nf-add:hover,
+.nf-add.is-open { color: var(--s-text); background: var(--s-hover); border-style: solid; }
+.nf-add:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-accent) 22%, transparent); }
+
+/* Clear all: quiet text button at the end of the bar */
+.nf-clear {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--s-text-secondary);
+  font: inherit;
+  font-size: var(--fs-supportive);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nf-clear:hover { color: var(--s-danger); background: var(--s-danger-bg); }
+.nf-clear:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-accent) 22%, transparent); }
+
+/* "+N more" list */
+.nf-more-list { display: flex; flex-wrap: wrap; gap: 6px; padding: var(--sp-3); }
+
+/* ---------- popovers: property list · editor ---------- */
+.nf-pop { padding: 0; }
+.nf-picker,
+.nf-edit { display: flex; flex-direction: column; }
+.nf-search { padding: var(--sp-2); border-bottom: 1px solid var(--s-border); }
+.nf-search .input { width: 100%; }
+.nf-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.nf-list > li { margin: 0; padding: 0; list-style: none; }
+.nf-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 30px;
+  margin: 0;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--s-text);
+  font: inherit;
+  font-size: var(--fs-supportive);
+  text-align: left;
+  cursor: pointer;
+}
+.nf-item svg { flex: none; color: var(--s-text-secondary); }
+.nf-item:hover,
+.nf-item.is-hi { background: var(--s-hover); }
+.nf-item:focus-visible { outline: 2px solid var(--s-focus); outline-offset: -2px; }
+.nf-empty { padding: var(--sp-3) var(--sp-2); font-size: var(--fs-supportive); color: var(--s-text-muted); text-align: center; }
+.nf-picker-foot { padding: 4px; border-top: 1px solid var(--s-border); }
+.nf-picker-foot .nf-item { color: var(--s-text-secondary); }
+
+.nf-edit-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--s-border);
+}
+.nf-edit-field { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-supportive); font-weight: var(--fw-semibold); white-space: nowrap; }
+.nf-edit-field svg { color: var(--s-text-secondary); }
+.nf-edit-head .select-menu-trigger { height: 26px; min-width: 0; border-color: transparent; background: var(--s-sunken); }
+.nf-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nf-option.is-on .nf-option-label { font-weight: var(--fw-medium); }
+.nf-check {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--s-border-strong);
+  background: var(--s-panel);
+}
+.nf-check.is-box { border-radius: 4px; }
+.nf-check.is-radio { border-radius: 50%; }
+.nf-option.is-on .nf-check { border-color: var(--s-accent); background: var(--s-accent); }
+.nf-option.is-on .nf-check svg { color: var(--s-on-accent); }
+.nf-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--tone-fg); }
+.nf-date-list { max-height: none; }
+.nf-value { padding: var(--sp-2) var(--sp-3) var(--sp-3); border-top: 1px solid var(--s-border); }
+.nf-edit-head + .nf-value { border-top: 0; }
+.nf-input { position: relative; display: block; }
+.nf-input .input { width: 100%; }
+.nf-input:has(.nf-prefix) .input { padding-left: 22px; }
+.nf-prefix { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--s-text-muted); font-size: var(--fs-supportive); pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nf-pill { transition: none; }
+}

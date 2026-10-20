@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { resourcePath } from '../../lib/routes';
 import { errorMessage } from '../../services/api/client';
@@ -8,10 +8,11 @@ import { downloadText } from '../../services/exporter';
 import { useActor } from '../../services/hooks';
 import { importTemplateCsv, parseCsv, previewImport, scanVisitingCard, toImportRows, type ImportRow } from '../../services/leads/rules';
 import { Button } from '../../components/primitives/Button';
-import { EmptyState, InlineAlert, NoAccess, useToast } from '../../components/primitives/feedback';
-import { ListPage } from '../../components/shell/ListPage';
+import { InlineAlert, NoAccess, StatusChip, useToast } from '../../components/primitives/feedback';
+import { PageHeader } from '../../components/shell/PageHeader';
+import { Icon } from '../../components/primitives/Icon';
+import { cx } from '../../lib/format';
 import { DataTable, type Column } from '../../components/primitives/DataTable';
-import { Menu } from '../../components/primitives/overlay';
 import { L } from '../../constants/labels';
 import { TextField, Textarea } from '../../components/primitives/controls';
 import { FileInput } from '../../components/primitives/controls';
@@ -30,6 +31,8 @@ export function ImportLeadsPage() {
   const [fileError, setFileError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [pasted, setPasted] = useState('');
+  const [dragging, setDragging] = useState(false);
 
   if (!can(actor, 'leads.import') || !perm(actor, 'leads').create) return <NoAccess what={T.noAccess} />;
 
@@ -98,19 +101,16 @@ export function ImportLeadsPage() {
     }
   };
 
+  const skipped = preview.length - valid;
+  const onFile = (f: File | undefined) => {
+    if (!f) return;
+    if (f.size > 2 * 1024 * 1024) return setFileError(T.fileTooLarge);
+    f.text().then(load);
+  };
+
   return (
-    <ListPage
-      title={L.nav.pages.importLeads.title}
-      description={T.description}
-      actions={
-        <>
-          <AddRowsMenu onTemplate={() => downloadText(T.templateFile, importTemplateCsv())} onCsv={() => fileRef.current?.click()} onCard={() => (setRows((r) => [...r, scanVisitingCard()]), toast(T.cardRead, 'info'))} />
-          <Button variant="primary" loading={busy} disabledReason={!valid ? T.noValid : !eventName.trim() ? T.enterEvent : undefined} onClick={doImport}>
-            {A.importCount(valid)}
-          </Button>
-        </>
-      }
-    >
+    <div className="page imp-page">
+      <PageHeader title={L.nav.pages.importLeads.title} description={T.description} />
       <FileInput
         ref={fileRef}
         accept=".csv,text/csv"
@@ -118,84 +118,164 @@ export function ImportLeadsPage() {
         onChange={(e) => {
           const f = e.target.files?.[0];
           e.target.value = '';
-          if (!f) return;
-          if (f.size > 2 * 1024 * 1024) return setFileError(T.fileTooLarge);
-          f.text().then(load);
+          onFile(f);
         }}
       />
-      {fileError && (
-        <InlineAlert tone="danger" title={T.fileErrorTitle}>
-          {fileError}
-        </InlineAlert>
-      )}
-      <div className="form-grid imp-form">
-        <div className="form-field">
+
+      <ImportStep n={1} title={T.steps.event} hint={T.stepHints.event} done={!!eventName.trim()}>
+        <div className="form-field imp-event">
           <label className="field-label" htmlFor="imp-event">
             {T.eventName} <span className="req">*</span>
           </label>
-          <TextField id="imp-event" maxLength={80} placeholder={T.eventPlaceholder} value={eventName} onChange={(e) => setEventName(e.target.value)} />
+          <TextField id="imp-event" maxLength={80} placeholder={T.eventPlaceholder} value={eventName} onChange={(e) => setEventName(e.target.value)} aria-describedby="imp-event-help" />
+          <p className="field-help" id="imp-event-help">
+            {T.eventHelp}
+          </p>
         </div>
-        <div className="form-field">
-          <label className="field-label" htmlFor="imp-paste">
-            {T.paste}
-          </label>
-          <Textarea id="imp-paste" className="textarea" rows={2} placeholder={T.pastePlaceholder} onBlur={(e) => e.target.value.trim() && load(e.target.value)} />
+      </ImportStep>
+
+      <ImportStep n={2} title={T.steps.add} hint={T.stepHints.add} done={rows.length > 0}>
+        {fileError && (
+          <InlineAlert tone="danger" title={T.fileErrorTitle}>
+            {fileError}
+          </InlineAlert>
+        )}
+        <div className="imp-methods">
+          <div
+            className={cx('imp-method imp-drop', dragging && 'is-dragging')}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              onFile(e.dataTransfer.files?.[0]);
+            }}
+          >
+            <span className="imp-method-icon tone-accent" aria-hidden="true">
+              <Icon name="file-spreadsheet" size={20} />
+            </span>
+            <strong className="imp-method-title">{T.upload.title}</strong>
+            <p className="imp-method-hint">
+              {dragging ? (
+                T.upload.dragging
+              ) : (
+                <>
+                  {T.upload.drop} {T.upload.or}{' '}
+                  <button type="button" className="link" onClick={() => fileRef.current?.click()}>
+                    {T.upload.browse}
+                  </button>
+                </>
+              )}
+            </p>
+            <span className="imp-method-foot muted">{T.upload.hint}</span>
+          </div>
+
+          <div className="imp-method">
+            <span className="imp-method-icon tone-info" aria-hidden="true">
+              <Icon name="clipboard-list" size={20} />
+            </span>
+            <strong className="imp-method-title">{T.pasteCard.title}</strong>
+            <Textarea id="imp-paste" className="textarea imp-paste" rows={3} aria-label={T.paste} placeholder={T.pastePlaceholder} value={pasted} onChange={(e) => setPasted(e.target.value)} />
+            <Button
+              icon="plus"
+              disabledReason={pasted.trim() ? undefined : T.pasteCard.hint}
+              onClick={() => {
+                load(pasted);
+                setPasted('');
+              }}
+            >
+              {T.pasteCard.add}
+            </Button>
+          </div>
+
+          <div className="imp-method">
+            <span className="imp-method-icon tone-success" aria-hidden="true">
+              <Icon name="id-card" size={20} />
+            </span>
+            <strong className="imp-method-title">{T.scan.title}</strong>
+            <p className="imp-method-hint">{T.scan.hint}</p>
+            <Button icon="id-card" onClick={() => (setRows((r) => [...r, scanVisitingCard()]), toast(T.cardRead, 'info'))}>
+              {T.scan.action}
+            </Button>
+          </div>
         </div>
-      </div>
+        <p className="imp-template muted">
+          {T.templateHint}{' '}
+          <button type="button" className="link" onClick={() => downloadText(T.templateFile, importTemplateCsv())}>
+            <Icon name="download" size={13} /> {A.downloadTemplate}
+          </button>
+        </p>
+      </ImportStep>
+
+      <ImportStep
+        n={3}
+        title={T.steps.review}
+        hint={T.stepHints.review}
+        done={false}
+        aside={
+          preview.length > 0 && (
+            <span className="imp-stats">
+              <StatusChip label={T.statRows(preview.length)} tone="neutral" />
+              <StatusChip label={T.statReady(valid)} tone="success" />
+              {skipped > 0 && <StatusChip label={T.statErrors(skipped)} tone="danger" />}
+              <Button variant="ghost" icon="trash" onClick={() => setRows([])}>
+                {A.clear}
+              </Button>
+            </span>
+          )
+        }
+      >
+        {preview.length ? (
+          <div className="imp-table">
+            <DataTable label={T.tableLabel} noun={T.noun} rows={data} rowKey={(r) => String(r.idx)} columns={columns} selectable={false} initialSort={{ key: 'line', dir: 'asc' }} />
+          </div>
+        ) : (
+          <div className="imp-review-empty">
+            <Icon name="table" size={18} />
+            {T.reviewEmpty}
+          </div>
+        )}
+      </ImportStep>
+
       {error && (
         <p className="field-error" role="alert">
           {error}
         </p>
       )}
-      {preview.length ? (
-        <DataTable
-          label={T.tableLabel}
-          noun={T.noun}
-          rows={data}
-          rowKey={(r) => String(r.idx)}
-          columns={columns}
-          selectable={false}
-          initialSort={{ key: 'line', dir: 'asc' }}
-          summary={
-            <>
-              {T.summary(preview.length, valid, preview.length - valid)} ·{' '}
-              <button type="button" className="link small" onClick={() => setRows([])}>
-                {A.clear}
-              </button>
-            </>
-          }
-        />
-      ) : (
-        <div className="content-surface">
-          <EmptyState icon="download" title={T.emptyTitle}>
-            {T.emptyBody}
-          </EmptyState>
-        </div>
-      )}
-    </ListPage>
+
+      <div className="imp-footer">
+        <span className={cx('imp-footer-text', valid > 0 && 'is-ready')}>{T.footer(valid, skipped)}</span>
+        <Button variant="ghost" onClick={() => navigate(resourcePath(actor.workspaceId, 'leads'))}>
+          {L.common.actions.cancel}
+        </Button>
+        <Button variant="primary" icon="download" loading={busy} disabledReason={!valid ? T.noValid : !eventName.trim() ? T.enterEvent : undefined} onClick={doImport}>
+          {A.importCount(valid)}
+        </Button>
+      </div>
+    </div>
   );
 }
 
-/** Three ways to add rows in one menu, so the header carries a single primary button. */
-function AddRowsMenu({ onTemplate, onCsv, onCard }: { onTemplate: () => void; onCsv: () => void; onCard: () => void }) {
-  const ref = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
+/** One numbered step: circle + title + hint on the left of the header, optional tools on the right, content below. */
+function ImportStep({ n, title, hint, done, aside, children }: { n: number; title: string; hint: string; done: boolean; aside?: ReactNode; children: ReactNode }) {
   return (
-    <>
-      <Button ref={ref} icon="plus" iconRight="chevron-down" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        {T.addRows}
-      </Button>
-      <Menu
-        open={open}
-        onClose={() => setOpen(false)}
-        anchor={ref}
-        label={T.addRowsLabel}
-        items={[
-          { id: 'csv', label: A.chooseCsv, icon: 'arrow-up', onSelect: onCsv },
-          { id: 'card', label: A.scanCard, icon: 'id-card', onSelect: onCard },
-          { id: 'tpl', label: A.downloadTemplate, icon: 'download', onSelect: onTemplate, separatorBefore: true },
-        ]}
-      />
-    </>
+    <section className="panel imp-step" aria-labelledby={`imp-step-${n}`}>
+      <header className="imp-step-head">
+        <span className={cx('imp-step-num', done && 'is-done')} aria-hidden="true">
+          {done ? <Icon name="check" size={14} /> : n}
+        </span>
+        <div className="imp-step-text">
+          <h2 className="imp-step-title" id={`imp-step-${n}`}>
+            {title}
+          </h2>
+          <p className="imp-step-hint">{hint}</p>
+        </div>
+        {aside}
+      </header>
+      {children}
+    </section>
   );
 }

@@ -56,12 +56,15 @@ export function dayLoadOptions(counts: DayCounts) {
   return {
     navLinks: true,
     dayCellClassNames: (a: DayCellContentArg) => (a.view.type === 'dayGridMonth' ? [`cal-load-${loadTier(countOf(a.date))}`] : []),
-    dayCellContent: (a: DayCellContentArg) => (
-      <span className="cal-daycell">
-        <span className="cal-daynum">{a.dayNumberText}</span>
-        <CountBadge n={countOf(a.date)} />
-      </span>
-    ),
+    // Month cells show just the day number: "+N more" already says when a day is busy; only a packed day (6+) keeps its count.
+    // (Week / Day all-day rows keep FullCalendar's empty cell — the count already sits in the column header.)
+    dayCellContent: (a: DayCellContentArg) =>
+      a.view.type === 'dayGridMonth' ? (
+        <span className="cal-daycell">
+          <span className="cal-daynum">{a.dayNumberText}</span>
+          {loadTier(countOf(a.date)) === 3 && <CountBadge n={countOf(a.date)} />}
+        </span>
+      ) : undefined,
     dayHeaderContent: (a: DayHeaderContentArg) =>
       a.view.type.startsWith('timeGrid') ? (
         <span className="cal-dayhead">
