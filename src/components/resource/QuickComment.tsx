@@ -8,6 +8,7 @@ import { Button, IconButton } from '../primitives/Button';
 import { useToast } from '../primitives/feedback';
 import { Popover } from '../primitives/overlay';
 import { L } from '../../constants/labels';
+import { Textarea } from '../primitives/controls';
 
 /**
  * The ONE persistent Quick Comment composer, rendered once at the bottom of the
@@ -71,7 +72,8 @@ export function QuickComment({ actor, resource, recordId }: { actor: Actor; reso
       <label htmlFor={`qc-${recordId}`} className="sr-only">
         Quick comment on {recordId}
       </label>
-      <textarea
+      <Textarea
+        bare
         ref={areaRef}
         id={`qc-${recordId}`}
         className={expanded ? 'qc-input is-expanded' : 'qc-input'}

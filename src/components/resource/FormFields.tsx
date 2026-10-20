@@ -3,7 +3,7 @@
  * Layout (sections/columns) is presentation only; validation and access come
  * from the resource schema + Authorization Service.
  */
-import { createContext, useContext, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { FieldAccess, FieldDefinition, LineItemColumn, RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx, formatMoney } from '../../lib/format';
@@ -22,8 +22,10 @@ import { fieldIcon } from './fieldIcon';
 import { Button, IconButton } from '../primitives/Button';
 import { Menu, type MenuItem } from '../primitives/overlay';
 import { Icon } from '../primitives/Icon';
+import { Table } from '../primitives/Table';
 import { FieldValue } from './FieldValue';
 import { L } from '../../constants/labels';
+import { FileButton, Switch, TextField, Textarea } from '../primitives/controls';
 
 type Values = Record<string, unknown>;
 
@@ -70,13 +72,13 @@ export function FieldInput({
   };
   switch (field.type) {
     case 'longtext':
-      return <textarea {...common} className={cx('input textarea')} rows={3} maxLength={field.maxLength} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />;
+      return <Textarea {...common} className="textarea" rows={3} maxLength={field.maxLength} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />;
     case 'number':
     case 'money':
       return (
         <div className={cx('input-affix', field.type === 'money' && 'has-start', field.unit && 'has-end')}>
           {field.type === 'money' && <span className="affix affix-start">₹</span>}
-          <input
+          <TextField
             {...common}
             type="number"
             inputMode="decimal"
@@ -95,11 +97,7 @@ export function FieldInput({
       return <DatePicker id={id} block withTime label={field.label} value={(value as string) || ''} onChange={onChange} invalid={invalid} describedBy={describedBy} clearable={!isRequired(field, values)} />;
     case 'boolean':
       return (
-        <label className="switch">
-          <input id={id} type="checkbox" role="switch" checked={!!value} onChange={(e) => onChange(e.target.checked)} aria-describedby={describedBy} />
-          <span className="switch-track" aria-hidden="true" />
-          <span>{value ? L.common.actions.yes : L.common.actions.no}</span>
-        </label>
+        <Switch id={id} checked={!!value} onChange={onChange} label={field.label} describedBy={describedBy} text={value ? L.common.actions.yes : L.common.actions.no} />
       );
     case 'master': {
       const parent = field.masterParentField ? values[field.masterParentField] : undefined;
@@ -153,25 +151,8 @@ export function FieldInput({
       );
     case 'image':
       return <ImageInput id={id} label={field.label} value={(value as string | null) ?? null} onChange={onChange} describedBy={describedBy} />;
-    case 'relation': {
-      const opts = relationOptions(actor, field, values);
-      const dependent = field.relation?.filterBy && !values[field.relation.filterBy.fromField];
-      return (
-        <SelectMenu
-          icon={fieldIcon(field)}
-          id={id}
-          block
-          label={field.label}
-          value={String(value ?? '')}
-          invalid={invalid}
-          describedBy={describedBy}
-          disabled={!!dependent || !opts.length}
-          placeholder={dependent ? L.common.form.chooseRelatedFirst : opts.length ? L.common.form.select : L.common.form.noOptions}
-          options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
-          onChange={(v) => onChange(v || null)}
-        />
-      );
-    }
+    case 'relation':
+      return <RelationSelect actor={actor} field={field} values={values} id={id} value={value} invalid={invalid} describedBy={describedBy} onChange={onChange} />;
     case 'lineitems':
       return <LineItemsEditor field={field} value={(value as Values[]) ?? []} onChange={onChange} id={id} />;
     case 'email':
@@ -182,7 +163,7 @@ export function FieldInput({
           <span className="affix affix-start">
             <Icon name={field.type === 'phone' ? 'f-phone' : 'f-email'} size={14} />
           </span>
-          <input
+          <TextField
             {...common}
             type={field.type === 'email' ? 'email' : 'tel'}
             autoComplete="off"
@@ -195,7 +176,7 @@ export function FieldInput({
       );
     default:
       return (
-        <input
+        <TextField
           {...common}
           type="text"
           autoComplete="off"
@@ -222,8 +203,7 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
   };
   return (
     <div className="line-items" id={id}>
-      <div className="table-scroll">
-        <table className="li-table">
+      <Table className="li-table">
           <thead>
             <tr>
               {cols.map((c) => (
@@ -281,8 +261,7 @@ function LineItemsEditor({ field, value, onChange, id }: { field: FieldDefinitio
               <td />
             </tr>
           </tfoot>
-        </table>
-      </div>
+      </Table>
     </div>
   );
 }
@@ -295,8 +274,8 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
   }
   if (col.type === 'number' || col.type === 'money') {
     return (
-      <input
-        className="input input-compact li-num"
+      <TextField
+        dense className="li-num"
         type="number"
         aria-label={label}
         min={col.min}
@@ -306,7 +285,7 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
       />
     );
   }
-  return <input className="input input-compact" aria-label={label} placeholder={col.key === 'description' ? L.common.form.optionalDescription : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+  return <TextField dense aria-label={label} placeholder={col.key === 'description' ? L.common.form.optionalDescription : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
 }
 
 function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
@@ -441,7 +420,7 @@ export function FormSections({
     return (
       <div className="form-canvas">
         {title && (
-          <input
+          <TextField bare
             className={cx('canvas-title', errors[title.key] && 'is-invalid')}
             aria-label={title.label}
             placeholder={title.label}
@@ -519,28 +498,54 @@ function ImageInput({ id, label, value, onChange, describedBy }: { id: string; l
   return (
     <span className="image-input">
       <ImageTile src={value} name={label} size={40} />
-      <label className="btn btn-secondary btn-default image-input-btn">
-        <input
-          id={id}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          aria-describedby={describedBy}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => onChange(String(reader.result));
-            reader.readAsDataURL(file);
-          }}
-        />
+      <FileButton
+        className="image-input-btn"
+        id={id}
+        accept="image/*"
+        aria-describedby={describedBy}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => onChange(String(reader.result));
+          reader.readAsDataURL(file);
+        }}
+      >
         {value ? L.common.actions.replace : L.common.actions.upload}
-      </label>
+      </FileButton>
       {value && (
         <button type="button" className="multi-clear" onClick={() => onChange(null)}>
           {L.common.actions.remove}
         </button>
       )}
     </span>
+  );
+}
+
+
+/** Record lookup. When it depends on another field (a customer's contacts / machines) and that parent has exactly one match, the match is picked for you. */
+function RelationSelect({ actor, field, values, id, value, invalid, describedBy, onChange }: { actor: Actor; field: FieldDefinition; values: Values; id: string; value: unknown; invalid?: boolean; describedBy?: string; onChange: (v: unknown) => void }) {
+  const opts = relationOptions(actor, field, values);
+  const parent = field.relation?.filterBy ? values[field.relation.filterBy.fromField] : undefined;
+  const dependent = !!field.relation?.filterBy && !parent;
+  const only = opts.length === 1 ? opts[0].id : null;
+  useEffect(() => {
+    if (field.relation?.filterBy && parent && only && !value) onChange(only);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parent, only]);
+  return (
+    <SelectMenu
+      icon={fieldIcon(field)}
+      id={id}
+      block
+      label={field.label}
+      value={String(value ?? '')}
+      invalid={invalid}
+      describedBy={describedBy}
+      disabled={dependent || !opts.length}
+      placeholder={dependent ? L.common.form.chooseRelatedFirst : opts.length ? L.common.form.select : L.common.form.noOptions}
+      options={[...(!isRequired(field, values) && !isEmpty(value) ? [{ value: '', label: L.common.states.none }] : []), ...opts.map((o) => ({ value: o.id, label: `${o.label} (${o.id})` }))]}
+      onChange={(v) => onChange(v || null)}
+    />
   );
 }

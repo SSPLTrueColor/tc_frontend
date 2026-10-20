@@ -1,5 +1,6 @@
+import { listCrumb } from '../../components/shell/crumbs';
 import { useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { recordPeekPath } from '../../lib/routes';
 import { formatDate } from '../../lib/dates';
@@ -14,6 +15,7 @@ import { Button } from '../../components/primitives/Button';
 import { ErrorState, Skeleton } from '../../components/primitives/feedback';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { LinesTable, TaxSummary, TotalsBlock } from './LinesTable';
+import { LinkButton } from '../../components/primitives/controls';
 
 const P = L.quotations.pdf;
 
@@ -64,13 +66,12 @@ export function QuotationPdfPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('quotations')]}
         title={P.title(String(r.quoteNo))}
         description={P.description}
         actions={
           <>
-            <Link className="btn btn-secondary" to={recordPeekPath('tc', 'quotations', r.id)}>
-              <span className="btn-label">{L.quotations.actions.back}</span>
-            </Link>
+            <LinkButton to={recordPeekPath('tc', 'quotations', r.id)}>{L.quotations.actions.back}</LinkButton>
             <Button variant="primary" icon="download" onClick={() => window.print()}>
               {L.quotations.actions.printPdf}
             </Button>

@@ -23,6 +23,9 @@ import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { RecordInspector } from '../../components/resource/RecordInspector';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { EmbeddedResourceList, getLocation, LocationSourcePicker, Meter, ModeSwitch, OfflineSwitch, time12, useLocationSource, useOfflineState } from './common';
+import { TextField, Textarea } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const T = L.nav.pages;
 const FA = L.field.actions;
@@ -292,18 +295,17 @@ function LogVisitDialog({ customers, links, initialLink, source, onClose }: { cu
             <label className="field-label" htmlFor="lv-site">
               {P.siteName} <span className="req">*</span>
             </label>
-            <input id="lv-site" className="input" maxLength={140} value={site} onChange={(e) => setSite(e.target.value)} />
+            <TextField id="lv-site" maxLength={140} value={site} onChange={(e) => setSite(e.target.value)} />
           </div>
         )}
         <div className="form-field span-all">
           <span className="field-label">{P.purpose}</span>
-          <div className="segmented" role="radiogroup" aria-label={P.purpose}>
-            {activeMasterValues('visitPurpose').map((v) => (
-              <button key={v.key} type="button" role="radio" aria-checked={purpose === v.key} className={cx('seg-btn', purpose === v.key && 'is-on')} onClick={() => setPurpose(v.key)}>
-                {v.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={P.purpose}
+            value={purpose}
+            onChange={(next) => setPurpose(next)}
+            options={activeMasterValues('visitPurpose').map((v) => ({ value: v.key, label: v.label }))}
+          />
         </div>
         <div className="form-field span-all">
           <span className="field-label-row">
@@ -312,13 +314,13 @@ function LogVisitDialog({ customers, links, initialLink, source, onClose }: { cu
             </label>
             <VoiceButton onText={(t) => setRemarks((r) => (r ? `${r} ${t}` : t))} label={P.dictate} />
           </span>
-          <textarea id="lv-remarks" className="input textarea" rows={2} maxLength={2000} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+          <Textarea id="lv-remarks" className="textarea" rows={2} maxLength={2000} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="lv-next">
             {P.nextAction}
           </label>
-          <input id="lv-next" className="input" maxLength={200} value={nextAction} onChange={(e) => setNextAction(e.target.value)} />
+          <TextField id="lv-next" maxLength={200} value={nextAction} onChange={(e) => setNextAction(e.target.value)} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="lv-next-date">
@@ -384,13 +386,13 @@ function CompleteVisitDialog({ visit, onClose }: { visit: RecordData; onClose: (
             </label>
             <VoiceButton onText={(t) => setRemarks((r) => (r ? `${r} ${t}` : t))} label={P.log.dictate} />
           </span>
-          <textarea id="cv-remarks" className="input textarea" rows={3} maxLength={2000} value={remarks} onChange={(e) => setRemarks(e.target.value)} aria-invalid={!!error || undefined} data-autofocus />
+          <Textarea id="cv-remarks" className="textarea" rows={3} maxLength={2000} value={remarks} onChange={(e) => setRemarks(e.target.value)} aria-invalid={!!error || undefined} data-autofocus />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="cv-next">
             {P.log.nextAction}
           </label>
-          <input id="cv-next" className="input" maxLength={200} value={nextAction} onChange={(e) => setNextAction(e.target.value)} />
+          <TextField id="cv-next" maxLength={200} value={nextAction} onChange={(e) => setNextAction(e.target.value)} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="cv-next-date">
@@ -508,8 +510,8 @@ function BeatWeek({ switcher }: { switcher: ReactNode }) {
                 <h2 className="panel-title">{P.teamTitle}</h2>
               </div>
               {q.data.team.length ? (
-                <div className="table-scroll">
-                  <table className="mini-table">
+                
+                  <Table>
                     <thead>
                       <tr>
                         <th scope="col">{L.field.common.person}</th>
@@ -537,8 +539,8 @@ function BeatWeek({ switcher }: { switcher: ReactNode }) {
                         );
                       })}
                     </tbody>
-                  </table>
-                </div>
+                  </Table>
+                
               ) : (
                 <EmptyState icon="users" title={P.teamEmpty} />
               )}

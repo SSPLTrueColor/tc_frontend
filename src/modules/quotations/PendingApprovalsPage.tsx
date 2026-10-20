@@ -11,27 +11,18 @@ import { can, canReadResource } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterLabel } from '../../services/registry';
 import { ServiceError } from '../../services/types';
-import { Button, IconButton } from '../../components/primitives/Button';
-import { EmptyState, ErrorState, NoAccess, Skeleton, StatusChip, Tabs, useToast } from '../../components/primitives/feedback';
+import { Button } from '../../components/primitives/Button';
+import { DataTable, type Column } from '../../components/primitives/DataTable';
+import { KpiStrip } from '../../components/resource/ListCard';
+import { NoAccess, StatusChip, Tabs, useToast } from '../../components/primitives/feedback';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
+import { Textarea } from '../../components/primitives/controls';
 
 const P = L.quotations.pending;
-const PAGE = 25;
 type Tab = 'mine' | 'all';
-type SortKey = 'quoteNo' | 'value' | 'discount' | 'waiting';
 const LEVELS = Object.values(L.roles.approvalLevels);
-
-function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
-  return (
-    <div className="stat">
-      <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
-      {sub && <span className="stat-sub">{sub}</span>}
-    </div>
-  );
-}
 
 /**
  * ROUTES.quotationPendingApprovals — QUO-06 / QUO-14 Pending Approvals.
@@ -43,174 +34,170 @@ export function PendingApprovalsPage() {
   const isApprover = ['approve.l1', 'approve.l2', 'approve.l3'].some((c) => can(actor, c));
   const q = useServiceQuery(() => loadPendingApprovals(actor), [actor.user.id]);
   const [tab, setTab] = useState<Tab>(isApprover ? 'mine' : 'all');
-  const [search, setSearch] = useState('');
   const [division, setDivision] = useState('');
   const [level, setLevel] = useState('');
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'waiting', dir: -1 });
-  const [page, setPage] = useState(0);
   const [deciding, setDeciding] = useState<{ row: PendingApprovalRow; decision: 'approved' | 'rejected' } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState(false);
 
   const all = useMemo(() => q.data ?? [], [q.data]);
-  const rows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const list = all
-      .filter((r) => (tab === 'mine' ? r.canDecide : true))
-      .filter((r) => (!division || r.divisionId === division) && (!level || r.levelName === level))
-      .filter((r) => !needle || `${r.quoteNo} ${r.customerName} ${r.ownerName} ${r.approval.id}`.toLowerCase().includes(needle));
-    const val = (r: PendingApprovalRow): string | number => (sort.key === 'value' ? r.grandTotal : sort.key === 'discount' ? r.discountPct : sort.key === 'waiting' ? r.waitingHours : r.quoteNo);
-    return [...list].sort((a, b) => (val(a) < val(b) ? -sort.dir : val(a) > val(b) ? sort.dir : 0));
-  }, [all, tab, search, division, level, sort]);
+  const rows = useMemo(
+    () => all.filter((r) => (tab === 'mine' ? r.canDecide : true)).filter((r) => (!division || r.divisionId === division) && (!level || r.levelName === level)),
+    [all, tab, division, level],
+  );
 
   if (!canReadResource(actor, 'quotations') && !isApprover) return <NoAccess what={P.noAccess} />;
 
   const mine = all.filter((r) => r.canDecide);
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE));
-  const current = Math.min(page, pageCount - 1);
-  const visible = rows.slice(current * PAGE, current * PAGE + PAGE);
-  const filtered = !!(search || division || level);
-  const resetPage = () => setPage(0);
-  const sortBtn = (key: SortKey, label: string) => (
-    <button
-      type="button"
-      className="th-btn"
-      aria-label={P.sortBy(label)}
-      onClick={() => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === 'quoteNo' ? 1 : -1 }))}
-      aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}
-    >
-      <span className="th-label">{label}</span>
-      <span aria-hidden="true">{sort.key === key ? (sort.dir === 1 ? '↑' : '↓') : '↕'}</span>
-    </button>
-  );
+  const chosen = all.filter((r) => selected.has(r.approval.id) && r.canDecide);
 
-  return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.quotationPendingApprovals.title} description={P.description} />
-      {q.error ? (
-        <ErrorState title={P.loadError} onRetry={q.retry}>
-          {q.error}
-        </ErrorState>
-      ) : !q.data ? (
-        <Skeleton rows={8} />
-      ) : (
+  const columns: Column<PendingApprovalRow>[] = [
+    {
+      key: 'quoteNo',
+      label: P.colQuotation,
+      sort: (r) => r.quoteNo,
+      render: (r) => (
         <>
-          <section className="stats" aria-label={L.nav.pages.quotationPendingApprovals.title}>
-            <Stat label={P.statWaiting} value={all.length} />
-            <Stat label={P.statMine} value={mine.length} />
-            <Stat label={P.statOverdue} value={all.filter((r) => r.overdue).length} />
-            <Stat label={P.statValue} value={formatMoney(all.reduce((s, r) => s + r.grandTotal, 0))} />
-          </section>
+          <Link className="rel-link" to={recordPeekPath('tc', 'quotations', r.quoteId)}>
+            {r.quoteNo}
+          </Link>
+          <div className="muted small">
+            {r.approval.id} · {masterLabel('division', r.divisionId)}
+          </div>
+        </>
+      ),
+    },
+    { key: 'customer', label: P.colCustomer, sort: (r) => r.customerName, render: (r) => r.customerName },
+    { key: 'owner', label: P.colExecutive, sort: (r) => r.ownerName, render: (r) => r.ownerName },
+    { key: 'value', label: P.colValue, num: true, sort: (r) => r.grandTotal, render: (r) => formatMoney(r.grandTotal) },
+    { key: 'discount', label: P.colDiscount, num: true, sort: (r) => r.discountPct, render: (r) => `${r.discountPct}%` },
+    {
+      key: 'level',
+      label: P.colLevel,
+      sort: (r) => r.levelName,
+      render: (r) => (
+        <>
+          {r.levelName}
+          <div className="muted small">{P.levelOf(r.step, r.steps)}</div>
+        </>
+      ),
+    },
+    {
+      key: 'waiting',
+      label: P.colWaiting,
+      sort: (r) => r.waitingHours,
+      render: (r) => (
+        <span className="nowrap">
+          {formatDateTime(r.waitingSince)}
+          <div className={`small ${r.overdue ? 'text-danger' : 'muted'}`}>{P.hoursAgo(r.waitingHours)}</div>
+          {(r.overdue || r.approval.remindedAt) && (
+            <div className="qt-pending-flags">
+              {r.approval.remindedAt ? (
+                <span title={P.remindedTip(formatDateTime(r.approval.remindedAt))}>
+                  <StatusChip label={P.reminded} tone="warning" />
+                </span>
+              ) : (
+                <span title={P.overdueTip}>
+                  <StatusChip label={P.overdue} tone="danger" />
+                </span>
+              )}
+            </div>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'act',
+      label: P.colActions,
+      render: (r) =>
+        r.canDecide ? (
+          <div className="qt-pending-actions">
+            <Button size="compact" onClick={() => setDeciding({ row: r, decision: 'approved' })}>
+              {L.quotations.actions.approve}
+            </Button>
+            <Button size="compact" onClick={() => setDeciding({ row: r, decision: 'rejected' })}>
+              {L.quotations.actions.reject}
+            </Button>
+          </div>
+        ) : (
+          <span className="muted small">{r.ownRequest ? P.ownRequest : P.notYourLevel(r.levelName)}</span>
+        ),
+    },
+  ];
+
+  const title = L.nav.pages.quotationPendingApprovals.title;
+  return (
+    <ListPage
+      title={title}
+      description={P.description}
+      kpis={
+        <>
+          {q.data && (
+            <KpiStrip
+              label={title}
+              items={[
+                { key: 'waiting', label: P.statWaiting, value: all.length, sub: P.noun },
+                { key: 'mine', label: P.statMine, value: mine.length, sub: P.tabMine },
+                { key: 'overdue', label: P.statOverdue, value: all.filter((r) => r.overdue).length, sub: P.overdue },
+                { key: 'value', label: P.statValue, value: formatMoney(all.reduce((t, r) => t + r.grandTotal, 0)), sub: P.noun },
+              ]}
+            />
+          )}
           <Tabs<Tab>
-            label={L.nav.pages.quotationPendingApprovals.title}
+            label={title}
             value={tab}
-            onChange={(t) => {
-              setTab(t);
-              resetPage();
-            }}
+            onChange={setTab}
             tabs={[
               { id: 'mine', label: P.tabMine, count: mine.length },
               { id: 'all', label: P.tabAll, count: all.length },
             ]}
           />
-          <div className="toolbar">
-            <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), resetPage())} />
-            <SelectMenu label={P.filterDivision} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setDivision(v), resetPage())} />
-            <SelectMenu label={P.filterLevel} value={level} options={[{ value: '', label: P.allLevels }, ...LEVELS.map((l) => ({ value: l, label: l }))]} onChange={(v) => (setLevel(v), resetPage())} />
-          </div>
-          <div className="content-surface">
-            {rows.length === 0 ? (
-              <EmptyState icon="check-square" title={filtered ? P.emptyFiltered : tab === 'mine' ? P.emptyMine : P.emptyAll}>
-                {filtered ? P.emptyFilteredBody : tab === 'mine' ? P.emptyMineBody : P.emptyAllBody}
-              </EmptyState>
-            ) : (
-              <>
-                <div className="table-scroll">
-                  <table className="mini-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">{sortBtn('quoteNo', P.colQuotation)}</th>
-                        <th scope="col">{P.colCustomer}</th>
-                        <th scope="col">{P.colExecutive}</th>
-                        <th scope="col" className="th-num">
-                          {sortBtn('value', P.colValue)}
-                        </th>
-                        <th scope="col" className="th-num">
-                          {sortBtn('discount', P.colDiscount)}
-                        </th>
-                        <th scope="col">{P.colLevel}</th>
-                        <th scope="col">{sortBtn('waiting', P.colWaiting)}</th>
-                        <th scope="col">{P.colActions}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visible.map((r) => (
-                        <tr key={r.approval.id}>
-                          <td>
-                            <Link className="rel-link" to={recordPeekPath('tc', 'quotations', r.quoteId)}>
-                              {r.quoteNo}
-                            </Link>
-                            <div className="muted small">
-                              {r.approval.id} · {masterLabel('division', r.divisionId)}
-                            </div>
-                          </td>
-                          <td>{r.customerName}</td>
-                          <td>{r.ownerName}</td>
-                          <td className="td-num">{formatMoney(r.grandTotal)}</td>
-                          <td className="td-num">{r.discountPct}%</td>
-                          <td>
-                            {r.levelName}
-                            <div className="muted small">{P.levelOf(r.step, r.steps)}</div>
-                          </td>
-                          <td className="nowrap">
-                            {formatDateTime(r.waitingSince)}
-                            <div className={`small ${r.overdue ? 'text-danger' : 'muted'}`}>{P.hoursAgo(r.waitingHours)}</div>
-                            {(r.overdue || r.approval.remindedAt) && (
-                              <div className="qt-pending-flags">
-                                {r.approval.remindedAt ? (
-                                  <span title={P.remindedTip(formatDateTime(r.approval.remindedAt))}>
-                                    <StatusChip label={P.reminded} tone="warning" />
-                                  </span>
-                                ) : (
-                                  <span title={P.overdueTip}>
-                                    <StatusChip label={P.overdue} tone="danger" />
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            {r.canDecide ? (
-                              <div className="qt-pending-actions">
-                                <Button size="compact" variant="primary" onClick={() => setDeciding({ row: r, decision: 'approved' })}>
-                                  {L.quotations.actions.approve}
-                                </Button>
-                                <Button size="compact" onClick={() => setDeciding({ row: r, decision: 'rejected' })}>
-                                  {L.quotations.actions.reject}
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="muted small">{r.ownRequest ? P.ownRequest : P.notYourLevel(r.levelName)}</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="grid-footer">
-                  <span className="grid-footer-range">{P.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)}</span>
-                  <nav className="grid-pages" aria-label={P.pageOf(current + 1, pageCount)}>
-                    <IconButton icon="chevron-left" label={P.prev} disabledReason={current === 0 ? P.firstPage : undefined} onClick={() => setPage(current - 1)} />
-                    <span className="muted small">{P.pageOf(current + 1, pageCount)}</span>
-                    <IconButton icon="chevron-right" label={P.next} disabledReason={current >= pageCount - 1 ? P.lastPage : undefined} onClick={() => setPage(current + 1)} />
-                  </nav>
-                </div>
-              </>
-            )}
-          </div>
         </>
-      )}
+      }
+    >
+      <DataTable
+        key={tab}
+        label={title}
+        noun={P.noun}
+        rows={rows}
+        rowKey={(r) => r.approval.id}
+        columns={columns}
+        loading={!q.data && !q.error}
+        error={q.error}
+        onRetry={q.retry}
+        initialSort={{ key: 'waiting', dir: 'desc' }}
+        search={(r) => `${r.quoteNo} ${r.customerName} ${r.ownerName} ${r.approval.id}`}
+        summary={P.count(rows.length)}
+        activeFilters={(division ? 1 : 0) + (level ? 1 : 0)}
+        onClearFilters={() => (setDivision(''), setLevel(''))}
+        empty={q.data && !rows.length && !division && !level ? { icon: 'check-square', title: tab === 'mine' ? P.emptyMine : P.emptyAll, body: tab === 'mine' ? P.emptyMineBody : P.emptyAllBody } : undefined}
+        emptyText={P.emptyFiltered}
+        filters={
+          <>
+            <SelectMenu label={P.filterDivision} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={setDivision} />
+            <SelectMenu label={P.filterLevel} value={level} options={[{ value: '', label: P.allLevels }, ...LEVELS.map((l) => ({ value: l, label: l }))]} onChange={setLevel} />
+          </>
+        }
+        selection={{
+          keys: selected,
+          onChange: setSelected,
+          canSelect: (r) => r.canDecide,
+          selectAllLabel: P.selectAll,
+          rowLabel: (r) => P.selectRow(String(r.quoteNo)),
+          actions: (
+            <>
+              <span className="muted small">{P.selectedCount(chosen.length)}</span>{' '}
+              <Button onClick={() => setSelected(new Set())}>{P.clearSelection}</Button>{' '}
+              <Button variant="primary" onClick={() => setBulk(true)} disabled={!chosen.length}>
+                {P.bulkApprove(chosen.length)}
+              </Button>
+            </>
+          ),
+        }}
+      />
       {deciding && <DecideDialog row={deciding.row} decision={deciding.decision} onClose={() => setDeciding(null)} />}
-    </div>
+      {bulk && <BulkApproveDialog rows={chosen} onClose={() => setBulk(false)} onDone={() => setSelected(new Set())} />}
+    </ListPage>
   );
 }
 
@@ -271,8 +258,72 @@ function DecideDialog({ row, decision, onClose }: { row: PendingApprovalRow; dec
         <label className="field-label" htmlFor="qpa-note">
           {P.comment} {approve ? <span className="optional">{L.quotations.common.optional}</span> : <span className="req">*</span>}
         </label>
-        <textarea id="qpa-note" className="input textarea" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!error || undefined} />
+        <Textarea id="qpa-note" className="textarea" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!error || undefined} />
         {error && <p className="field-error">{error}</p>}
+      </div>
+    </Dialog>
+  );
+}
+
+/** Approve several requests at once with one optional comment; failures are listed, successes are kept. */
+function BulkApproveDialog({ rows, onClose, onDone }: { rows: PendingApprovalRow[]; onClose: () => void; onDone: () => void }) {
+  const actor = useActor();
+  const toast = useToast();
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const total = rows.reduce((n, r) => n + r.grandTotal, 0);
+  const submit = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    let ok = 0;
+    const failed: string[] = [];
+    for (const r of rows) {
+      try {
+        await quotationsApi.decideApproval(actor, r.approval.id, 'approved', note, r.approval.version);
+        ok++;
+      } catch {
+        failed.push(String(r.quoteNo));
+      }
+    }
+    inFlight.current = false;
+    setBusy(false);
+    toast(failed.length ? P.bulkPartial(ok, failed.join(', ')) : P.bulkDone(ok), failed.length ? 'danger' : 'success');
+    onDone();
+    onClose();
+  };
+  return (
+    <Dialog
+      open
+      onClose={() => !busy && onClose()}
+      size="sm"
+      role="alertdialog"
+      title={P.bulkTitle(rows.length)}
+      description={P.bulkBody(formatMoney(total))}
+      footer={
+        <>
+          <Button onClick={onClose} data-autofocus disabled={busy}>
+            {L.quotations.actions.cancel}
+          </Button>
+          <Button variant="primary" loading={busy} onClick={() => void submit()}>
+            {P.bulkApprove(rows.length)}
+          </Button>
+        </>
+      }
+    >
+      <ul className="plain-list small">
+        {rows.map((r) => (
+          <li key={r.approval.id}>
+            {r.quoteNo} · {r.customerName} · {formatMoney(r.grandTotal)} · {r.discountPct}%
+          </li>
+        ))}
+      </ul>
+      <div className="form-field">
+        <label className="field-label" htmlFor="qpa-bulk-note">
+          {P.comment} <span className="optional">{L.quotations.common.optional}</span>
+        </label>
+        <Textarea id="qpa-bulk-note" className="textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
     </Dialog>
   );

@@ -29,6 +29,16 @@ export const defaultSettings = (): PersonalSettings => ({
   customPalettes: [],
   recents: [],
   defaultViews: {},
+  language: 'en',
+  notifications: {
+    events: { approvals: ['inApp', 'email'], followUps: ['inApp', 'push'], slaBreach: ['inApp', 'email', 'whatsapp'], renewals: ['inApp', 'email'], payments: ['inApp'] },
+    quietHours: { enabled: false, from: '21:00', to: '08:00' },
+    dailyDigest: false,
+  },
+  mfaOptIn: false,
+  revokedSessions: [],
+  lastViews: {},
+  lastUsed: {},
 });
 
 export function createDb(now = clockNow()): Db {

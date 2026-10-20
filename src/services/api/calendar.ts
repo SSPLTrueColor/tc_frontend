@@ -10,6 +10,10 @@ export const calendarService = {
   move: (actor: Actor, id: string, next: { start: string; end: string; allDay: boolean }, version: number) => call(() => cal.moveEvent(actor, id, next, version)),
   shiftSeries: (actor: Actor, id: string, occurrence: { start: string; end: string }, next: { start: string; end: string; allDay: boolean }, version: number) => call(() => cal.shiftSeries(actor, id, occurrence, next, version)),
   updateOccurrence: (actor: Actor, id: string, occurrenceStart: string, patch: cal.EventInput, version: number) => call(() => cal.updateOccurrence(actor, id, occurrenceStart, patch, version)),
+  updateFollowing: (actor: Actor, id: string, occurrenceStart: string, patch: cal.EventInput, version: number) => call(() => cal.updateFollowing(actor, id, occurrenceStart, patch, version)),
+  deleteFollowing: (actor: Actor, id: string, occurrenceStart: string, version: number) => call(() => cal.deleteFollowing(actor, id, occurrenceStart, version)),
+  restore: (actor: Actor, id: string, fields: cal.EventInput) => call(() => cal.restoreEvent(actor, id, fields), { fast: true }),
+  undoOccurrence: (actor: Actor, seriesId: string, singleId: string, occurrenceStart: string) => call(() => cal.undoOccurrence(actor, seriesId, singleId, occurrenceStart), { fast: true }),
   deleteOccurrence: (actor: Actor, id: string, occurrenceStart: string, version: number) => call(() => cal.deleteOccurrence(actor, id, occurrenceStart, version)),
   remove: (actor: Actor, id: string) => call(() => cal.deleteEvent(actor, id)),
 };

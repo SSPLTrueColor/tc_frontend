@@ -19,6 +19,7 @@ import { ConflictPanel, FormBody, useRecordForm, useUnsavedGuard } from '../comp
 import { PageHeader } from '../components/shell/PageHeader';
 import { InfoTip } from '../components/primitives/InfoTip';
 import { L } from '../constants/labels';
+import { Textarea } from '../components/primitives/controls';
 
 const C = L.common;
 const I = L.common.inbox;
@@ -253,7 +254,7 @@ function DecisionDialog({ approvalId, decision, onClose }: { approvalId: string;
         <label className="field-label" htmlFor="decision-note">
           {I.note} {decision === 'rejected' ? <span className="req">*</span> : <span className="optional">{L.common.form.optional}</span>}
         </label>
-        <textarea id="decision-note" className="input textarea" rows={3} value={note} onChange={(e) => setNote(e.target.value)} data-autofocus />
+        <Textarea id="decision-note" className="textarea" rows={3} value={note} onChange={(e) => setNote(e.target.value)} data-autofocus />
         {error && (
           <p className="field-error" role="alert">
             {error}
@@ -315,6 +316,7 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
   return (
     <div className="page">
       <PageHeader
+        crumbs={[{ label: form.res.labelPlural, onClick: guard.requestClose }]}
         title={recordId ? L.common.form.editTitle(form.res.label, recordId) : (form.res.form.primaryLabel ?? L.common.form.newTitle(form.res.label))}
         description={L.common.form.fullPageDescription}
         onBack={guard.requestClose}

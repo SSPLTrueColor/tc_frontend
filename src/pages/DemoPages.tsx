@@ -19,8 +19,11 @@ import { Badge, EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../
 import { InfoTip } from '../components/primitives/InfoTip';
 import { Dialog } from '../components/primitives/overlay';
 import { SelectMenu } from '../components/primitives/SelectMenu';
-import { PageHeader } from '../components/shell/PageHeader';
+import { Clip, SettingsPage, SettingsSection } from '../components/settings/kit';
 import { byTime, SortPicker, type SortDir, usePaged } from '../modules/catalog/kit';
+import { SearchInput } from '../components/primitives/controls';
+import { Table } from '../components/primitives/Table';
+import { FileInput } from '../components/primitives/controls';
 
 const DC = L.admin.demoControls;
 const DT = L.admin.dataTransfer;
@@ -126,9 +129,9 @@ export function DataTransfer() {
       <Button icon="arrow-up" onClick={() => fileRef.current?.click()}>
         {DT.import}
       </Button>
-      <input
+      <FileInput
         ref={fileRef}
-        type="file"
+        
         accept="application/json,.json"
         hidden
         onChange={(e) => {
@@ -203,14 +206,14 @@ export function OutboxPage() {
   const paged = usePaged(rows);
   if (!can(actor, 'outbox.view')) return <NoAccess what={O.noAccessWhat} />;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.sentMessages.title} description={O.description} />
-      <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={O.searchPlaceholder} aria-label={O.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+    <SettingsPage title={L.nav.pages.sentMessages.title} description={O.short}>
+      <SettingsSection wide title={O.sectionTitle} help={O.sectionHelp}>
+      <div className="st-actions">
+        <SearchInput dense placeholder={O.searchPlaceholder} aria-label={O.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
         <SelectMenu label={O.filterChannel} value={channel} options={[{ value: '', label: O.allChannels }, ...Object.entries(CHANNEL_LABEL).map(([value, label]) => ({ value, label }))]} onChange={setChannel} />
         <SortPicker value={sort} onChange={setSort} />
       </div>
-      <div className="content-surface">
+      <div className="st-surface">
         {query.error ? (
           <ErrorState title={O.loadError} onRetry={query.retry}>
             {query.error}
@@ -219,8 +222,8 @@ export function OutboxPage() {
           <Skeleton rows={6} />
         ) : rows.length ? (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{O.columns.when}</th>
@@ -240,18 +243,19 @@ export function OutboxPage() {
                       <td>
                         <Badge tone="neutral">{CHANNEL_LABEL[m.channel]}</Badge>
                       </td>
-                      <td>{m.to}</td>
-                      <td>
-                        {m.subject && <strong>{m.subject} · </strong>}
-                        {m.body}
+                      <td className="st-cell-clip">
+                        <Clip text={m.to} />
+                      </td>
+                      <td className="st-cell-clip">
+                        <Clip text={`${m.subject ? `${m.subject} · ` : ''}${m.body}`} />
                       </td>
                       <td>{m.related ? <Link to={recordPeekPath(actor.workspaceId, m.related.resource, m.related.recordId)}>{m.related.recordId}</Link> : <EmptyValue />}</td>
                       <td>{getUser(m.createdBy)?.name ?? m.createdBy}</td>
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer(O.messages)}
           </>
         ) : all.length ? (
@@ -264,6 +268,7 @@ export function OutboxPage() {
           </EmptyState>
         )}
       </div>
-    </div>
+      </SettingsSection>
+    </SettingsPage>
   );
 }

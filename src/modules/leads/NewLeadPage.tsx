@@ -1,3 +1,5 @@
+import { lastUsedValues } from '../../services/lastUsed';
+import { listCrumb } from '../../components/shell/crumbs';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { addDays, todayKey } from '../../lib/dates';
@@ -18,6 +20,8 @@ import { FormSections } from '../../components/resource/FormFields';
 import { initialValues } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { L } from '../../constants/labels';
+import { TextField } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
 
 const T = L.leads.pages.newLead;
 const A = L.leads.actions;
@@ -33,7 +37,7 @@ export function NewLeadPage() {
   const toast = useToast();
   const res = getResource('leads');
   const access = useMemo(() => fieldAccessMap(actor, res, 'create'), [actor.user.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [values, setValues] = useState<Values>(() => initialValues(res, { divisionId: actor.divisionIds[0], nextFollowUpAt: addDays(todayKey(), 1) }));
+  const [values, setValues] = useState<Values>(() => initialValues(res, { ...lastUsedValues(actor.user.id, 'leads'), divisionId: actor.divisionIds[0], nextFollowUpAt: addDays(todayKey(), 1) }));
   const [companyMode, setCompanyMode] = useState<'existing' | 'new'>('existing');
   const [contactMode, setContactMode] = useState<'existing' | 'new'>('existing');
   const [company, setCompany] = useState<NewCompanyInput>(EMPTY_COMPANY);
@@ -41,7 +45,12 @@ export function NewLeadPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const setValue = (k: string, v: unknown) => setValues((x) => ({ ...x, [k]: v, ...(k === 'customerId' ? { contactId: null } : {}), ...(k === 'divisionId' ? { ownerId: null } : {}) }));
+  // Picking a customer with exactly one contact picks that contact too (one choice fewer).
+  const soleContact = (customerId: unknown) => {
+    const list = (getDb().records.contacts ?? []).filter((c) => c.customerId === customerId);
+    return list.length === 1 ? list[0].id : null;
+  };
+  const setValue = (k: string, v: unknown) => setValues((x) => ({ ...x, [k]: v, ...(k === 'customerId' ? { contactId: soleContact(v) } : {}), ...(k === 'divisionId' ? { ownerId: null } : {}) }));
 
   const partyReady = hasResource('customers') && hasResource('contacts');
   const customers = useMemo(() => (partyReady ? (getDb().records.customers ?? []).filter((c) => canReadRecord(actor, getResource('customers'), c)) : []), [partyReady, actor.user.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,6 +98,7 @@ export function NewLeadPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('leads')]}
         title={T.title}
         description={T.description}
         actions={
@@ -130,23 +140,15 @@ export function NewLeadPage() {
           <div className="form-grid">
             <div className="form-field span-all">
               <span className="field-label">{T.customer}</span>
-              <div className="segmented" role="radiogroup" aria-label={T.customer}>
-                {(['existing', 'new'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="radio"
-                    aria-checked={companyMode === m}
-                    className={`seg-btn${companyMode === m ? ' is-on' : ''}`}
-                    onClick={() => {
-                      setCompanyMode(m);
-                      if (m === 'new') setContactMode('new');
-                    }}
-                  >
-                    {m === 'existing' ? A.existingCustomer : A.newCustomer}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                label={T.customer}
+                value={companyMode}
+                onChange={(next) => {
+                  setCompanyMode(next);
+                  if (next === 'new') setContactMode('new');
+                }}
+                options={(['existing', 'new'] as const).map((m) => ({ value: m, label: m === 'existing' ? A.existingCustomer : A.newCustomer }))}
+              />
             </div>
             {companyMode === 'existing' ? (
               <div className="form-field">
@@ -162,14 +164,14 @@ export function NewLeadPage() {
                   <label className="field-label" htmlFor="nc-name">
                     {T.companyName} <span className="req">*</span>
                   </label>
-                  <input id="nc-name" className="input" maxLength={120} value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} aria-invalid={!!errors['company.name'] || undefined} />
+                  <TextField id="nc-name" maxLength={120} value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} aria-invalid={!!errors['company.name'] || undefined} />
                   {err('company.name')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nc-city">
                     {T.city} <span className="req">*</span>
                   </label>
-                  <input id="nc-city" className="input" maxLength={60} value={company.city} onChange={(e) => setCompany({ ...company, city: e.target.value })} />
+                  <TextField id="nc-city" maxLength={60} value={company.city} onChange={(e) => setCompany({ ...company, city: e.target.value })} />
                   {err('company.city')}
                 </div>
                 <div className="form-field">
@@ -198,7 +200,7 @@ export function NewLeadPage() {
                   <label className="field-label" htmlFor="nc-gstin">
                     {T.gstin} <span className="optional">{T.optional}</span>
                   </label>
-                  <input id="nc-gstin" className="input" maxLength={15} value={company.gstin} onChange={(e) => setCompany({ ...company, gstin: e.target.value.toUpperCase() })} />
+                  <TextField id="nc-gstin" maxLength={15} value={company.gstin} onChange={(e) => setCompany({ ...company, gstin: e.target.value.toUpperCase() })} />
                 </div>
                 {dupCompanies.length > 0 && (
                   <div className="span-all">
@@ -242,27 +244,27 @@ export function NewLeadPage() {
                   <label className="field-label" htmlFor="nk-name">
                     {T.contactName} <span className="req">*</span>
                   </label>
-                  <input id="nk-name" className="input" maxLength={80} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} />
+                  <TextField id="nk-name" maxLength={80} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} />
                   {err('contact.name')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-desig">
                     {T.designation} <span className="optional">{T.optional}</span>
                   </label>
-                  <input id="nk-desig" className="input" maxLength={80} value={contact.designation} onChange={(e) => setContact({ ...contact, designation: e.target.value })} />
+                  <TextField id="nk-desig" maxLength={80} value={contact.designation} onChange={(e) => setContact({ ...contact, designation: e.target.value })} />
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-mobile">
                     {T.mobile}
                   </label>
-                  <input id="nk-mobile" className="input" inputMode="tel" maxLength={16} value={contact.mobile} onChange={(e) => setContact({ ...contact, mobile: e.target.value })} />
+                  <TextField id="nk-mobile" inputMode="tel" maxLength={16} value={contact.mobile} onChange={(e) => setContact({ ...contact, mobile: e.target.value })} />
                   {err('contact.mobile')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-email">
                     {T.email}
                   </label>
-                  <input id="nk-email" className="input" type="email" maxLength={120} value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} />
+                  <TextField id="nk-email" type="email" maxLength={120} value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} />
                   {err('contact.email')}
                 </div>
               </>

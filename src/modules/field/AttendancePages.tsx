@@ -1,3 +1,5 @@
+import { EXCEPTION_TONE } from '../../domain/statusTones';
+import { Switch } from '../../components/primitives/controls';
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
@@ -19,7 +21,10 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { RecordInspector } from '../../components/resource/RecordInspector';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
+import { DataTable, type Column } from '../../components/primitives/DataTable';
 import { fmtMinutes, getLocation, LocationSourcePicker, OfflineSwitch, PAGE_SIZE, Pager, SearchBox, Stat, time12, useLocationSource, useOfflineState } from './common';
+import { Table } from '../../components/primitives/Table';
 
 const T = L.nav.pages;
 const FC = L.field.common;
@@ -164,16 +169,8 @@ export function AttendancePage() {
             <LocationSourcePicker value={source} onChange={setSource} />
             {state === 'out' && (
               <div className="row-gap">
-                <label className="switch">
-                  <input type="checkbox" role="switch" checked={onTour} onChange={(e) => setOnTour(e.target.checked)} aria-label={P.onTour} />
-                  <span className="switch-track" aria-hidden="true" />
-                  <span className="small">{P.onTour}</span>
-                </label>
-                <label className="switch">
-                  <input type="checkbox" role="switch" checked={selfie} onChange={(e) => setSelfie(e.target.checked)} aria-label={P.selfieAria} />
-                  <span className="switch-track" aria-hidden="true" />
-                  <span className="small">{P.selfie}</span>
-                </label>
+                <Switch checked={onTour} onChange={setOnTour} label={P.onTour} text={P.onTour} />
+                <Switch checked={selfie} onChange={setSelfie} label={P.selfieAria} text={P.selfie} />
               </div>
             )}
             {error && (
@@ -181,7 +178,7 @@ export function AttendancePage() {
                 {error}
               </p>
             )}
-            <Button variant="primary" size="default" className="field-big-btn" loading={busy} icon={state === 'out' ? 'door-open' : 'check'} onClick={() => act(state === 'out' ? 'in' : 'out')} disabledReason={!d.consent ? P.consentFirst : undefined}>
+            <Button variant={d.consent ? 'primary' : 'secondary'} size="default" className="field-big-btn" loading={busy} icon={state === 'out' ? 'door-open' : 'check'} onClick={() => act(state === 'out' ? 'in' : 'out')} disabledReason={!d.consent ? P.consentFirst : undefined}>
               {state === 'out' ? FA.checkIn : FA.checkOut}
             </Button>
           </div>
@@ -209,8 +206,8 @@ export function AttendancePage() {
           <h2 className="panel-title">{P.last7}</h2>
         </div>
         {d.recent.length ? (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{FC.date}</th>
@@ -235,8 +232,8 @@ export function AttendancePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         ) : (
           <EmptyState icon="calendar-clock" title={P.emptyTitle}>
             {P.emptyBody}
@@ -339,8 +336,8 @@ export function TeamAttendancePage() {
                 {P.noMatchBody}
               </EmptyState>
             ) : (
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{FC.person}</th>
@@ -387,8 +384,8 @@ export function TeamAttendancePage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
             )}
           </div>
           <Pager page={page} total={shown.length} onPage={setPage} />
@@ -402,7 +399,7 @@ export function TeamAttendancePage() {
 // ---------------------------------------------------------------- Exception Dashboard (ATT-10)
 
 type ExTab = 'all' | 'no_check_in' | 'late' | 'early_exit' | 'no_visits';
-const EX_TONE: Record<string, 'danger' | 'warning' | 'info'> = { no_check_in: 'danger', late: 'warning', early_exit: 'warning', no_visits: 'info', mock_location: 'danger', not_checked_out: 'warning' };
+const EX_TONE: Record<string, 'danger' | 'warning' | 'info'> = EXCEPTION_TONE;
 
 export function ExceptionDashboardPage() {
   const P = L.field.pages.exceptionDashboard;
@@ -410,64 +407,77 @@ export function ExceptionDashboardPage() {
   const [params, setParams] = useSearchParams();
   const date = params.get('date') ?? todayKey();
   const [tab, setTab] = useState<ExTab>('all');
-  const [search, setSearch] = useState('');
   const q = useServiceQuery(() => fieldApi.exceptions(actor, date), [actor.user.id, date]);
-  const needle = search.trim().toLowerCase();
-  const rows = (q.data ?? []).filter((r) => (tab === 'all' || r.kind === tab) && (!needle || String(r.employee.fullName).toLowerCase().includes(needle)));
+  type Row = NonNullable<typeof q.data>[number];
+  const rows = (q.data ?? []).filter((r) => tab === 'all' || r.kind === tab);
   const count = (k: ExTab) => (q.data ?? []).filter((r) => k === 'all' || r.kind === k).length;
+  const columns: Column<Row>[] = [
+    { key: 'kind', label: P.cols.type, sort: (r) => P.kinds[r.kind], render: (r) => <StatusChip label={P.kinds[r.kind]} tone={EX_TONE[r.kind]} /> },
+    {
+      key: 'person',
+      label: P.cols.person,
+      sort: (r) => String(r.employee.fullName),
+      render: (r) => (
+        <>
+          <div>{String(r.employee.fullName)}</div>
+          <div className="muted small">{String(r.employee.designation ?? '')}</div>
+        </>
+      ),
+    },
+    { key: 'detail', label: P.cols.detail, render: (r) => r.detail },
+    {
+      key: 'act',
+      label: P.cols.action,
+      render: (r) =>
+        r.kind !== 'no_check_in' ? (
+          <Link className="link small" to={routeLink(r.employee.id, date)}>
+            {FA.viewRoute}
+          </Link>
+        ) : null,
+    },
+  ];
   return (
-    <div className="page">
-      <PageHeader title={T.exceptionDashboard.title} description={P.description} />
-      <div className="toolbar field-toolbar">
-        <DatePicker value={date} onChange={(v) => setParams(v && v !== todayKey() ? { date: v } : {})} label={FC.date} clearable={false} />
-        <Button icon="chevron-left" onClick={() => setParams({ date: addDays(date, -1) })}>
-          {FA.previousDay}
-        </Button>
-        <SearchBox value={search} onChange={setSearch} label={FC.search} placeholder={FC.searchPlaceholder} />
-        <span className="spacer" />
-        <Link to={toPath(ROUTES.teamAttendance, {}, { date: date !== todayKey() ? date : undefined })} className="link small">
-          {P.teamLink}
-        </Link>
-      </div>
-      <Tabs<ExTab>
-        label={P.typeLabel}
-        value={tab}
-        onChange={setTab}
-        tabs={(['all', 'no_check_in', 'late', 'early_exit', 'no_visits'] as ExTab[]).map((id) => ({ id, label: id === 'all' ? P.all : P.kinds[id], count: q.data ? count(id) : undefined }))}
+    <ListPage
+      title={T.exceptionDashboard.title}
+      description={P.description}
+      kpis={
+        <Tabs<ExTab>
+          label={P.typeLabel}
+          value={tab}
+          onChange={setTab}
+          tabs={(['all', 'no_check_in', 'late', 'early_exit', 'no_visits'] as ExTab[]).map((id) => ({ id, label: id === 'all' ? P.all : P.kinds[id], count: q.data ? count(id) : undefined }))}
+        />
+      }
+    >
+      <DataTable
+        key={tab}
+        label={P.tableLabel}
+        noun={P.noun}
+        rows={rows}
+        rowKey={(r) => `${r.employee.id}-${r.kind}`}
+        columns={columns}
+        loading={!q.data && !q.error}
+        error={q.error}
+        onRetry={q.retry}
+        initialSort={{ key: 'person', dir: 'asc' }}
+        search={(r) => `${String(r.employee.fullName)} ${r.detail}`}
+        selectable={false}
+        tools={
+          <>
+            <DatePicker value={date} onChange={(v) => setParams(v && v !== todayKey() ? { date: v } : {})} label={FC.date} clearable={false} />
+            <Button icon="chevron-left" onClick={() => setParams({ date: addDays(date, -1) })}>
+              {FA.previousDay}
+            </Button>
+          </>
+        }
+        summary={
+          <Link to={toPath(ROUTES.teamAttendance, {}, { date: date !== todayKey() ? date : undefined })} className="link small">
+            {P.teamLink}
+          </Link>
+        }
+        empty={q.data && !rows.length ? { icon: 'check', title: P.emptyTitle, body: P.emptyBody(formatDate(date)) } : undefined}
       />
-      <div className="content-surface">
-        {q.error ? (
-          <ErrorState title={P.loadError} onRetry={q.retry}>
-            {q.error}
-          </ErrorState>
-        ) : !q.data ? (
-          <Skeleton rows={6} />
-        ) : rows.length ? (
-          <ul className="flow-list">
-            {rows.map((r, i) => (
-              <li key={`${r.employee.id}-${r.kind}-${i}`} className="flow-item">
-                <span className={`tag tone-${EX_TONE[r.kind]}`}>{P.kinds[r.kind]}</span>
-                <span className="flow-main">
-                  <span className="flow-title">{String(r.employee.fullName)}</span>
-                  <span className="muted small">
-                    {String(r.employee.designation ?? '')} · {r.detail}
-                  </span>
-                </span>
-                {r.kind !== 'no_check_in' && (
-                  <Link className="link small" to={routeLink(r.employee.id, date)}>
-                    {FA.viewRoute}
-                  </Link>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyState icon="check" title={P.emptyTitle}>
-            {P.emptyBody(formatDate(date))}
-          </EmptyState>
-        )}
-      </div>
-    </div>
+    </ListPage>
   );
 }
 
@@ -497,136 +507,74 @@ function PersonPicker({ date, value }: { date: string; value?: string }) {
   );
 }
 
-type RouteSort = 'name' | 'distance';
-
 function RoutePeople() {
   const P = L.field.pages.routeMap;
   const actor = useActor();
   const [params, setParams] = useSearchParams();
   const date = params.get('date') ?? todayKey();
-  const [search, setSearch] = useState('');
   const [withRoute, setWithRoute] = useState(false);
-  const [sort, setSort] = useState<RouteSort>('name');
-  const [page, setPage] = useState(0);
   const q = useServiceQuery(() => fieldApi.routePeople(actor, date), [actor.user.id, date]);
   const all = useMemo(() => q.data ?? [], [q.data]);
-  const needle = search.trim().toLowerCase();
-  const shown = all
-    .filter((r) => (!needle || String(r.employee.fullName).toLowerCase().includes(needle)) && (!withRoute || r.positions > 1))
-    .sort((a, b) => (sort === 'distance' ? (b.distanceKm ?? -1) - (a.distanceKm ?? -1) : String(a.employee.fullName).localeCompare(String(b.employee.fullName))));
-  const pageRows = shown.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-  const header = <PageHeader title={T.routeMap.title} description={P.description} />;
+  const shown = all.filter((r) => !withRoute || r.positions > 1);
+  type Row = (typeof all)[number];
   // Only your own route in scope: go straight to it.
   if (q.data && all.length === 1 && all[0].employee.id === actor.staffId) return <Navigate to={routeLink(actor.staffId, date)} replace />;
+  const notCheckedIn = <StatusChip label={FC.notCheckedIn} tone="neutral" />;
+  const columns: Column<Row>[] = [
+    {
+      key: 'person',
+      label: FC.person,
+      sort: (r) => String(r.employee.fullName),
+      render: (r) => (
+        <span className="row-gap">
+          <Avatar name={String(r.employee.fullName)} size={22} />
+          <span>
+            {String(r.employee.fullName)}
+            <div className="muted small">{String(r.employee.designation ?? '')}</div>
+          </span>
+        </span>
+      ),
+    },
+    { key: 'status', label: FC.status, sort: (r) => Number(r.checkedIn), render: (r) => (r.checkedIn ? <StatusChip label={FC.checkedIn} tone="success" /> : notCheckedIn) },
+    { key: 'distance', label: P.distance, num: true, sort: (r) => r.distanceKm ?? -1, render: (r) => (r.distanceKm !== null ? FC.kmValue(r.distanceKm) : <EmptyValue label={P.noRoute} />) },
+    { key: 'stops', label: P.stops, num: true, sort: (r) => r.positions, render: (r) => r.positions || <EmptyValue /> },
+    {
+      key: 'act',
+      label: FA.viewRoute,
+      render: (r) => (
+        <Link className="link small" to={routeLink(r.employee.id, date)}>
+          {FA.viewRoute}
+        </Link>
+      ),
+    },
+  ];
   return (
-    <div className="page">
-      {header}
-      <div className="toolbar field-toolbar">
-        <PersonPicker date={date} />
-        <DatePicker
-          value={date}
-          onChange={(v) => {
-            setPage(0);
-            setParams(v && v !== todayKey() ? { date: v } : {});
-          }}
-          label={FC.date}
-          clearable={false}
-        />
-        <SearchBox
-          value={search}
-          onChange={(v) => {
-            setSearch(v);
-            setPage(0);
-          }}
-          label={FC.search}
-          placeholder={FC.searchPlaceholder}
-        />
-        <label className="switch">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={withRoute}
-            onChange={(e) => {
-              setWithRoute(e.target.checked);
-              setPage(0);
-            }}
-            aria-label={P.withRouteOnly}
-          />
-          <span className="switch-track" aria-hidden="true" />
-          <span className="small">{P.withRouteOnly}</span>
-        </label>
-        <SelectMenu
-          label={P.sortLabel}
-          value={sort}
-          options={[
-            { value: 'name', label: P.sortName },
-            { value: 'distance', label: P.sortDistance },
-          ]}
-          onChange={(v) => setSort(v as RouteSort)}
-        />
-      </div>
-      <div className="content-surface">
-        {q.error ? (
-          <ErrorState title={P.listError} onRetry={q.retry}>
-            {q.error}
-          </ErrorState>
-        ) : !q.data ? (
-          <Skeleton rows={6} />
-        ) : !all.length ? (
-          <EmptyState icon="map-pin" title={P.emptyTitle}>
-            {P.emptyBody}
-          </EmptyState>
-        ) : !shown.length ? (
-          <EmptyState icon="search" title={P.noMatchTitle}>
-            {P.noMatchBody}
-          </EmptyState>
-        ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
-              <thead>
-                <tr>
-                  <th scope="col">{FC.person}</th>
-                  <th scope="col">{FC.status}</th>
-                  <th scope="col" className="num">
-                    {P.distance}
-                  </th>
-                  <th scope="col" className="num">
-                    {P.stops}
-                  </th>
-                  <th scope="col">
-                    <span className="sr-only">{FA.viewRoute}</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((r) => (
-                  <tr key={r.employee.id} className={cx(r.employee.id === actor.staffId && 'is-selected')}>
-                    <td>
-                      <span className="row-gap">
-                        <Avatar name={String(r.employee.fullName)} size={22} />
-                        <span>
-                          {String(r.employee.fullName)}
-                          <div className="muted small">{String(r.employee.designation ?? '')}</div>
-                        </span>
-                      </span>
-                    </td>
-                    <td>{r.checkedIn ? <StatusChip label={FC.checkedIn} tone="success" /> : notCheckedIn}</td>
-                    <td className="num">{r.distanceKm !== null ? FC.kmValue(r.distanceKm) : <EmptyValue label={P.noRoute} />}</td>
-                    <td className="num">{r.positions || <EmptyValue />}</td>
-                    <td>
-                      <Link className="link small" to={routeLink(r.employee.id, date)}>
-                        {FA.viewRoute}
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      <Pager page={page} total={shown.length} onPage={setPage} />
-    </div>
+    <ListPage title={T.routeMap.title} description={P.description}>
+      <DataTable
+        label={P.tableLabel}
+        noun={P.noun}
+        rows={shown}
+        rowKey={(r) => String(r.employee.id)}
+        columns={columns}
+        loading={!q.data && !q.error}
+        error={q.error}
+        onRetry={q.retry}
+        initialSort={{ key: 'person', dir: 'asc' }}
+        search={(r) => String(r.employee.fullName)}
+        selectable={false}
+        activeFilters={withRoute ? 1 : 0}
+        onClearFilters={() => setWithRoute(false)}
+        tools={
+          <>
+            <PersonPicker date={date} />
+            <DatePicker value={date} onChange={(v) => setParams(v && v !== todayKey() ? { date: v } : {})} label={FC.date} clearable={false} />
+          </>
+        }
+        filters={<Switch checked={withRoute} onChange={setWithRoute} label={P.withRouteOnly} text={P.withRouteOnly} />}
+        empty={q.data && !all.length ? { icon: 'map-pin', title: P.emptyTitle, body: P.emptyBody } : undefined}
+        emptyText={P.noMatchTitle}
+      />
+    </ListPage>
   );
 }
 

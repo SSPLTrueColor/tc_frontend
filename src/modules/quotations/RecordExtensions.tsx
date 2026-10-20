@@ -28,6 +28,9 @@ import { InfoTip } from '../../components/primitives/InfoTip';
 import { Dialog, Menu } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LinesTable, TaxSummary, TotalsBlock } from './LinesTable';
+import { TextField, Textarea } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
+import { FileInput } from '../../components/primitives/controls';
 
 type Props = RecordExtensionProps;
 
@@ -234,7 +237,7 @@ function SubmitDialog({ record, onClose }: DProps) {
           <label className="field-label" htmlFor="qs-reason">
             {D.submit.reason} <span className="req">*</span>
           </label>
-          <textarea id="qs-reason" className="input textarea" rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} data-autofocus aria-invalid={!!errors.reason || undefined} />
+          <Textarea id="qs-reason" className="textarea" rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} data-autofocus aria-invalid={!!errors.reason || undefined} />
           {errors.reason && <p className="field-error">{errors.reason}</p>}
         </div>
       )}
@@ -290,14 +293,14 @@ function SendDialog({ record, onClose }: DProps) {
           <label className="field-label" htmlFor="qsend-to">
             {channel === 'email' ? S.emailAddress : S.whatsappNumber} <span className="req">*</span>
           </label>
-          <input id="qsend-to" className="input" value={to} onChange={(e) => setTo(e.target.value)} aria-invalid={!!errors.to || undefined} />
+          <TextField id="qsend-to" value={to} onChange={(e) => setTo(e.target.value)} aria-invalid={!!errors.to || undefined} />
           {errors.to && <p className="field-error">{errors.to}</p>}
         </div>
         <div className="form-field span-all">
           <label className="field-label" htmlFor="qsend-msg">
             {S.message}
           </label>
-          <textarea id="qsend-msg" className="input textarea" rows={5} maxLength={1500} value={message} onChange={(e) => setMessage(e.target.value)} />
+          <Textarea id="qsend-msg" className="textarea" rows={5} maxLength={1500} value={message} onChange={(e) => setMessage(e.target.value)} />
         </div>
         {contact && (contact.consentEmail === false || contact.consentWhatsapp === false) && (
           <p className="muted small span-all">
@@ -341,13 +344,12 @@ function AcceptDialog({ record, onClose }: DProps) {
       <div className="form-grid cols-2">
         <div className="form-field span-all">
           <span className="field-label">{X.method}</span>
-          <div className="segmented" role="radiogroup" aria-label={X.method}>
-            {activeMasterValues('acceptanceMethod').map((m) => (
-              <button key={m.key} type="button" role="radio" aria-checked={method === m.key} className={`seg-btn${method === m.key ? ' is-on' : ''}`} onClick={() => setMethod(m.key as 'po' | 'electronic')}>
-                {m.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={X.method}
+            value={method}
+            onChange={(next) => setMethod(next as 'po' | 'electronic')}
+            options={activeMasterValues('acceptanceMethod').map((m) => ({ value: m.key, label: m.label }))}
+          />
         </div>
         {method === 'po' ? (
           <>
@@ -355,7 +357,7 @@ function AcceptDialog({ record, onClose }: DProps) {
               <label className="field-label" htmlFor="qa-po">
                 {X.poNo} <span className="req">*</span>
               </label>
-              <input id="qa-po" className="input" maxLength={40} value={poNo} onChange={(e) => setPoNo(e.target.value)} aria-invalid={!!errors.poNo || undefined} data-autofocus />
+              <TextField id="qa-po" maxLength={40} value={poNo} onChange={(e) => setPoNo(e.target.value)} aria-invalid={!!errors.poNo || undefined} data-autofocus />
               {errors.poNo && <p className="field-error">{errors.poNo}</p>}
             </div>
             <div className="form-field">
@@ -378,9 +380,9 @@ function AcceptDialog({ record, onClose }: DProps) {
                 </Button>
                 <span className="muted small">{file ? X.fileInfo(file.name, (file.size / 1024).toFixed(0)) : X.noFile}</span>
               </div>
-              <input
+              <FileInput
                 ref={fileRef}
-                type="file"
+                
                 hidden
                 accept=".pdf,.jpg,.jpeg,.png"
                 onChange={(e) => {
@@ -397,7 +399,7 @@ function AcceptDialog({ record, onClose }: DProps) {
             <label className="field-label" htmlFor="qa-name">
               {X.acceptedBy} <span className="req">*</span>
             </label>
-            <input id="qa-name" className="input" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.acceptedByName || undefined} data-autofocus />
+            <TextField id="qa-name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!errors.acceptedByName || undefined} data-autofocus />
             {errors.acceptedByName && <p className="field-error">{errors.acceptedByName}</p>}
           </div>
         )}
@@ -442,7 +444,7 @@ function RejectDialog({ record, onClose }: DProps) {
         <label className="field-label" htmlFor="qr-note">
           {X.note} <span className="optional">{T.common.optional}</span>
         </label>
-        <textarea id="qr-note" className="input textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+        <Textarea id="qr-note" className="textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
     </Dialog>
   );
@@ -498,7 +500,7 @@ function VersionDialog({ record, onClose }: DProps) {
         <label className="field-label" htmlFor="qv-note">
           {X.note} <span className="req">*</span>
         </label>
-        <textarea id="qv-note" className="input textarea" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} data-autofocus aria-invalid={!!error || undefined} />
+        <Textarea id="qv-note" className="textarea" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} data-autofocus aria-invalid={!!error || undefined} />
         {error && <p className="field-error">{error}</p>}
       </div>
     </Dialog>
@@ -785,7 +787,7 @@ export function RoiTab({ actor, record }: Props) {
       </label>
       <div className={`input-affix${prefix ? ' has-start' : ''}`}>
         {prefix && <span className="affix affix-start">{prefix}</span>}
-        <input id={`roi-${k}`} className="input" inputMode="decimal" value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value.replace(/[^\d.]/g, '') })} />
+        <TextField id={`roi-${k}`} inputMode="decimal" value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value.replace(/[^\d.]/g, '') })} />
       </div>
     </div>
   );

@@ -1,12 +1,12 @@
 /* Catalog & administration pages — tokens only. */
 .cat-stack {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .cat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 16px;
+  gap: var(--sp-4);
   align-items: start;
 }
 .cat-tree,
@@ -16,17 +16,17 @@
   padding: 0;
 }
 .cat-tree ul {
-  margin-left: 18px;
-  padding-left: 12px;
+  margin-left: var(--sp-4);
+  padding-left: var(--sp-3);
   border-left: 1px solid var(--s-border);
 }
 .cat-tree li {
-  padding: 4px 0;
+  padding: var(--sp-1) 0;
 }
 .cat-node {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
 }
 .cat-node .muted {
@@ -53,18 +53,18 @@
 .cat-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--sp-4);
 }
 .cat-cards .panel p {
-  margin-bottom: 10px;
+  margin-bottom: var(--sp-3);
 }
 .cat-sticky-actions {
   position: sticky;
   bottom: 0;
   background: var(--s-canvas);
-  padding: 10px 0;
+  padding: var(--sp-3) 0;
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   justify-content: flex-end;
   border-top: 1px solid var(--s-border);
 }
@@ -80,19 +80,19 @@
 
 /* Organisation chart — pannable / zoomable canvas. */
 .org-howto {
-  margin: 4px 0 8px;
+  margin: var(--sp-1) 0 var(--sp-2);
 }
 .org-stage {
-  display: flex;
-  gap: 16px;
-  align-items: stretch;
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
 }
 .org-canvas {
   position: relative;
   flex: 1;
   min-width: 0;
-  height: min(70vh, 640px);
-  min-height: 360px;
+  height: clamp(300px, 46vh, 460px);
+  min-height: 300px;
   overflow: hidden;
   cursor: grab;
   touch-action: none;
@@ -132,7 +132,7 @@
   transition: opacity 0.15s, box-shadow 0.15s;
 }
 .org-card:hover {
-  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  box-shadow: var(--s-shadow-sm);
 }
 .org-card.is-selected {
   outline: 2px solid var(--s-accent);
@@ -146,10 +146,10 @@
 .org-card-body {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   width: 100%;
   height: 100%;
-  padding: 0 10px;
+  padding: 0 var(--sp-3);
   background: none;
   border: 0;
   text-align: left;
@@ -172,7 +172,7 @@
   transform: translateX(-50%);
   min-width: 22px;
   height: 22px;
-  padding: 0 6px;
+  padding: 0 var(--sp-2);
   border: 1px solid var(--s-border);
   border-radius: 11px;
   background: var(--s-canvas);
@@ -189,7 +189,7 @@
   top: 12px;
   right: 12px;
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .org-minimap {
   position: absolute;
@@ -212,16 +212,14 @@
   stroke-width: 1.5;
 }
 .org-detail {
-  width: 300px;
-  flex: none;
   display: grid;
-  gap: 12px;
+  gap: var(--sp-4);
   align-content: start;
 }
 .org-facts {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 6px 12px;
+  gap: var(--sp-2) var(--sp-3);
   margin: 0;
 }
 .org-facts dt {
@@ -230,31 +228,22 @@
 .org-facts dd {
   margin: 0;
 }
-@media (max-width: 900px) {
-  .org-stage {
-    flex-direction: column;
-  }
-  .org-detail {
-    width: auto;
-  }
-}
 
 /* Quick guide strip */
 .guide {
   display: flex;
-  gap: 16px;
+  gap: var(--sp-4);
   align-items: flex-start;
   justify-content: space-between;
-  flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: var(--sp-4);
   background: var(--s-accent-subtle);
   border: 1px solid var(--s-border);
-  border-radius: 8px;
+  border-radius: var(--c-radius-panel);
 }
 .guide-steps {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-4);
   flex: 1;
   margin: 0;
   padding: 0;
@@ -262,16 +251,15 @@
 }
 .guide-steps li {
   display: flex;
-  gap: 10px;
-  max-width: 280px;
+  gap: var(--sp-3);
 }
 .guide-body {
   display: block;
 }
 .guide-num {
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--s-accent);
   color: var(--s-on-accent, #fff);
@@ -286,31 +274,31 @@
 
 /* Roles — simple view */
 .access-page > .tabs {
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
 }
 .access-body {
   display: grid;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .access-body > * {
   margin: 0;
 }
 .access-role {
   display: grid;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .access-role-foot {
   display: flex;
-  gap: 12px;
+  gap: var(--sp-3);
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  padding-top: 12px;
+  padding-top: var(--sp-3);
   border-top: 1px solid var(--s-border);
 }
 .access-role-text {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: baseline;
   flex-wrap: wrap;
   min-width: 0;
@@ -318,17 +306,17 @@
 }
 .access-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
   flex-wrap: wrap;
 }
 .role-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .role-chip {
-  padding: 4px 12px;
+  padding: var(--sp-1) var(--sp-3);
   border: 1px solid var(--s-border);
   border-radius: 16px;
   background: var(--s-canvas);
@@ -349,9 +337,9 @@
 .area-top {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-3);
   flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
   border-bottom: 1px solid var(--s-border);
 }
 .area + .area {
@@ -360,15 +348,15 @@
 .area-row {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) 180px 200px;
-  gap: 12px;
+  gap: var(--sp-3);
   align-items: center;
-  padding: 8px 16px;
+  padding: var(--sp-2) var(--sp-4);
   min-height: 44px;
 }
 .area-sub {
   background: var(--s-canvas);
   border-top: 1px dashed var(--s-border);
-  padding-left: 32px;
+  padding-left: var(--sp-6);
 }
 .area-name {
   display: grid;
@@ -384,7 +372,7 @@
   color: var(--s-accent-text);
   cursor: pointer;
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
   align-items: center;
 }
 @media (max-width: 760px) {

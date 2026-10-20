@@ -16,6 +16,7 @@ import { can } from '../../../services/authz';
 import { byId, contractRateFor, listPriceFor } from '../../../services/lookups';
 import { masterValue } from '../../../services/registry';
 import { recordTitle } from '../../../services/runtime';
+import { Table } from '../../../components/primitives/Table';
 
 const T = L.spares.ticketTab;
 const CT = L.consumables.customerTab;
@@ -50,7 +51,7 @@ export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
       ) : !q.data ? (
         <Skeleton rows={3} />
       ) : q.data.length ? (
-        <table className="mini-table">
+        <Table scroll={false}>
           <thead>
             <tr>
               <th scope="col">{T.cols.requisition}</th>
@@ -73,7 +74,7 @@ export function TicketPartsTab({ actor, record }: RecordExtensionProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       ) : (
         <EmptyState icon="blocks" title={T.empty}>
           {T.emptyBody}
@@ -126,7 +127,7 @@ export function CustomerConsumablesTab({ actor, record }: RecordExtensionProps) 
       <section>
         <h3 className="panel-title">{CT.orders(c.orderCount)}</h3>
         {c.orders.length ? (
-          <table className="mini-table">
+          <Table scroll={false}>
             <tbody>
               {c.orders.map((o) => (
                 <tr key={o.id}>
@@ -140,7 +141,7 @@ export function CustomerConsumablesTab({ actor, record }: RecordExtensionProps) 
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         ) : (
           <p className="muted small">{CT.noOrders}</p>
         )}

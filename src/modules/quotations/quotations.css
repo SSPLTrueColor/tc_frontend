@@ -20,10 +20,10 @@
 .qt-line-n {
   color: var(--s-text-muted);
   font-size: var(--fs-supportive);
-  padding-top: 24px;
+  padding-top: var(--sp-5);
 }
 .qt-line-del {
-  margin-top: 20px;
+  margin-top: var(--sp-5);
 }
 .qt-line-grid {
   display: grid;
@@ -45,7 +45,7 @@
 }
 .qt-disc {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 .qt-bottom {
   display: grid;
@@ -80,12 +80,12 @@
   color: #111;
   max-width: 820px;
   margin: 0 auto;
-  padding: 32px;
+  padding: var(--sp-6);
   border: 1px solid var(--s-border);
   border-top: 6px solid var(--qt-accent, #6d28d9);
   font-size: 12px;
   display: grid;
-  gap: 18px;
+  gap: var(--sp-4);
 }
 .qt-doc .mini-table th,
 .qt-doc .mini-table td,
@@ -100,7 +100,7 @@
 .qt-doc-head {
   display: flex;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--sp-5);
 }
 .qt-doc-company {
   font-size: 20px;
@@ -122,14 +122,14 @@
 }
 .qt-doc-meta th {
   text-align: left;
-  padding-right: 12px;
+  padding-right: var(--sp-3);
   color: #555;
   font-weight: 500;
 }
 .qt-doc-parties {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: var(--sp-5);
 }
 .qt-doc-label {
   text-transform: uppercase;
@@ -137,17 +137,17 @@
   letter-spacing: 1px;
   color: var(--qt-accent, #6d28d9);
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-1);
 }
 .qt-doc-bottom {
   display: grid;
   grid-template-columns: 1fr 300px;
-  gap: 24px;
+  gap: var(--sp-5);
   align-items: start;
 }
 .qt-doc-terms dl {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
   margin: 0;
 }
 .qt-doc-terms dt {
@@ -161,12 +161,12 @@
   display: flex;
   justify-content: space-between;
   align-items: end;
-  gap: 24px;
+  gap: var(--sp-5);
 }
 .qt-doc-signline {
   margin-top: 40px;
   border-top: 1px solid #999;
-  padding-top: 4px;
+  padding-top: var(--sp-1);
   width: 200px;
 }
 .qt-watermark {
@@ -181,7 +181,7 @@
 }
 @media (max-width: 760px) {
   .qt-doc {
-    padding: 16px;
+    padding: var(--sp-4);
   }
   .qt-doc-head,
   .qt-doc-parties,
@@ -242,7 +242,7 @@
 .qt-pending-flags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-1);
   margin-top: 2px;
 }
 .qt-pending-actions {

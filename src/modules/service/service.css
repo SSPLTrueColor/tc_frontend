@@ -2,14 +2,14 @@
 .svc-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .svc-tile {
   border: 1px solid var(--s-border);
   border-radius: var(--c-radius-control);
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-3);
   display: grid;
-  gap: 4px;
+  gap: var(--sp-1);
   background: var(--s-panel);
 }
 .svc-tile.is-hot {
@@ -36,12 +36,12 @@
 }
 .svc-jobs {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .svc-job {
   display: grid;
-  gap: 4px;
-  padding: 12px;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
   border: 1px solid var(--s-border);
   border-radius: var(--c-radius-control);
   background: var(--s-panel);
@@ -53,14 +53,14 @@
 }
 .svc-job-top {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
   align-items: center;
   flex-wrap: wrap;
 }
 .svc-steps {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .svc-steps .btn {
   min-height: 44px;
@@ -76,7 +76,7 @@
 }
 .svc-stars {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .svc-stars button {
   width: 44px;
@@ -90,7 +90,7 @@
 }
 .svc-stars button.is-on {
   background: var(--s-accent);
-  color: #fff;
+  color: var(--s-on-accent);
   border-color: transparent;
 }
 .svc-print {
@@ -98,7 +98,7 @@
 }
 .svc-print h2 {
   font-size: var(--fs-secondary);
-  margin: 12px 0 6px;
+  margin: var(--sp-3) 0 var(--sp-2);
 }
 @media print {
   .rail,

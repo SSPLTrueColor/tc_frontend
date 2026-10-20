@@ -166,6 +166,64 @@ export interface PersonalSettings {
   defaultViews: Record<string, string>;
   /** First-login guided tour (COM-12): set when the user finishes or skips it. */
   tourSeenAt?: string;
+  /** Interface language (the engineer app is English + Hindi, BRD §10); labels stay English in the prototype. */
+  language: 'en' | 'hi';
+  /** Which events reach the user on which channel (COM-03), quiet hours and the daily digest. */
+  notifications: NotificationPrefs;
+  /** Optional two-step verification for roles that are not required to use it (NFR-07, simulated). */
+  mfaOptIn: boolean;
+  /** Simulated signed-in devices the user has signed out. */
+  revokedSessions: string[];
+  /** Last list view opened per resource (so a list opens where the user left it). */
+  lastViews: Record<string, string>;
+  /** Last values chosen for required dropdowns when creating a record, per resource (pre-filled next time). */
+  lastUsed: Record<string, Record<string, string>>;
+}
+
+export type NotifEvent = 'approvals' | 'followUps' | 'slaBreach' | 'renewals' | 'payments';
+export type NotifChannel = 'inApp' | 'email' | 'whatsapp' | 'push';
+export interface NotificationPrefs {
+  events: Record<NotifEvent, NotifChannel[]>;
+  quietHours: { enabled: boolean; from: string; to: string };
+  dailyDigest: boolean;
+}
+
+export interface DpRequest {
+  id: string;
+  type: 'access' | 'correction' | 'erasure';
+  subject: string;
+  details: string;
+  status: 'open' | 'done' | 'rejected';
+  createdAt: string;
+  createdBy: string;
+  resolvedAt?: string;
+}
+/** Extra access an administrator gives one person on top of their role (ADM-02). Always has an end date and a reason. */
+export interface AccessGrant {
+  id: string;
+  userId: string;
+  kind: 'area' | 'capability';
+  /** Area grants: the module (e.g. `leads`) and what the person can do there. */
+  module?: string;
+  level?: 'view' | 'edit' | 'export' | 'full';
+  /** Capability grants: e.g. `approve.l2`. */
+  capability?: string;
+  /** Whose records: own / team / division / all. Ignored for capabilities. */
+  scope: 'own' | 'team' | 'division' | 'all';
+  reason: string;
+  grantedBy: string;
+  grantedAt: string;
+  /** Last day the access works (YYYY-MM-DD). */
+  expiresAt: string;
+  revokedAt?: string;
+  revokedBy?: string;
+}
+
+/** Data Protection (DPDP Act 2023): consent switches, retention periods and data-subject requests. */
+export interface DataProtection {
+  consents: { employeeLocation: boolean; customerComms: boolean; whatsappOptIn: boolean };
+  retention: { auditMonths: number; recycleDays: number; inactiveContactMonths: number };
+  requests: DpRequest[];
 }
 
 export interface Db {
@@ -194,6 +252,10 @@ export interface Db {
     policies?: Record<string, unknown>;
   };
   idempotency: Record<string, string>;
+  /** Data Protection settings; missing = defaults (services/account.ts). */
+  dataProtection?: DataProtection;
+  /** Extra access given to individual people (services/catalog/grants.ts). */
+  accessGrants?: AccessGrant[];
   /** Simulated sign-in: no passwords; MFA roles confirm a displayed one-time code. */
   session: { userId: string; workspaceId: string; signedIn: boolean; lastActiveAt: string };
   settings: Record<string, PersonalSettings>;

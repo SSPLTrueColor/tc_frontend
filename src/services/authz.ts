@@ -15,6 +15,8 @@ import { getDb, getRevision } from './db';
 import { getRole, getUser } from './registry';
 import { L } from '../constants/labels';
 import { applyRoleOverrides } from './catalog/roleOverrides';
+import { activeGrantsFor, applyGrants } from './catalog/grantEngine';
+import type { AccessGrant } from './types';
 import { hooksFor } from './resourceHooks';
 
 export interface Actor {
@@ -27,6 +29,8 @@ export interface Actor {
   teamStaffIds: string[];
   /** Divisions the actor belongs to (from the employee record). */
   divisionIds: string[];
+  /** Extra access currently active for this person (on top of the role). */
+  extras?: AccessGrant[];
 }
 
 const NONE: ResourcePermission = { read: 'none', create: false, update: 'none', delete: false, export: false };
@@ -47,10 +51,12 @@ export function actorFor(userId: string, workspaceId: string): Actor {
   const staffId = user.staffIds[workspaceId];
   const employees = (getDb().records.employees ?? []).filter((e) => e.workspaceId === workspaceId);
   const me = employees.find((e) => e.id === staffId);
+  const extras = activeGrantsFor(userId);
   const actor: Actor = {
     user,
-    // Shipped role + admin edits from Roles & Permissions (ADM-02); unchanged when nothing was edited.
-    role: applyRoleOverrides(getRole(String(me?.roleId ?? user.roleId))),
+    // Shipped role + admin edits from Roles & Permissions (ADM-02) + extra access given to this person.
+    role: applyGrants(applyRoleOverrides(getRole(String(me?.roleId ?? user.roleId))), extras),
+    extras,
     workspaceId,
     staffId,
     teamStaffIds: teamOf(staffId, employees),
@@ -79,8 +85,13 @@ function teamOf(staffId: string, employees: RecordData[]): string[] {
 export const perm = (actor: Actor, resource: string): ResourcePermission => actor.role.resources[resource] ?? NONE;
 
 /** Role capability check. `read:<resourceKey>` means "can read that resource" (used by sidebar pages that show a resource's data). */
-export const can = (actor: Actor, capability: string): boolean =>
-  capability.startsWith('read:') ? perm(actor, capability.slice(5)).read !== 'none' : actor.role.capabilities.includes(capability);
+export const can = (actor: Actor, capability: string): boolean => {
+  // "a+b" = every one of them (a sidebar page that needs two things).
+  if (capability.includes('+')) return capability.split('+').every((c) => can(actor, c));
+  if (capability.startsWith('read:')) return perm(actor, capability.slice(5)).read !== 'none';
+  if (capability.startsWith('create:')) return perm(actor, capability.slice(7)).create;
+  return actor.role.capabilities.includes(capability);
+};
 
 export function canReadResource(actor: Actor, resource: string) {
   return perm(actor, resource).read !== 'none';

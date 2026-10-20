@@ -12,6 +12,7 @@ import { can, canUpdateRecord } from '../../../services/authz';
 import { byId } from '../../../services/lookups';
 import { activeMasterValues } from '../../../services/registry';
 import { ServiceError } from '../../../services/types';
+import { Checkbox, TextField, Textarea } from '../../../components/primitives/controls';
 
 type Mode = 'reject' | 'issue' | 'consume' | 'return' | 'claim' | null;
 
@@ -129,7 +130,7 @@ function ReasonDialog({ title, description, label, confirm, danger, onClose, onS
         <label className="field-label" htmlFor="req-reason">
           {label} <span className="req">*</span>
         </label>
-        <textarea id="req-reason" className="input textarea" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={!!errors.reason || undefined} data-autofocus={danger ? undefined : true} />
+        <Textarea id="req-reason" className="textarea" rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={!!errors.reason || undefined} data-autofocus={danger ? undefined : true} />
         <Err msg={errors.reason ?? errors.form} />
       </div>
     </Dialog>
@@ -169,7 +170,7 @@ function IssueDialog({ props, stock, onClose }: { props: RecordExtensionProps; s
           <label className="field-label" htmlFor="iss-qty">
             {D.issueQty} <span className="req">*</span>
           </label>
-          <input id="iss-qty" className="input" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.issuedQty || undefined} data-autofocus />
+          <TextField id="iss-qty" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.issuedQty || undefined} data-autofocus />
           <p className="muted small">{D.issueQtyHint(String(record.qty), stock)}</p>
           <Err msg={errors.issuedQty} />
         </div>
@@ -177,14 +178,14 @@ function IssueDialog({ props, stock, onClose }: { props: RecordExtensionProps; s
           <label className="field-label" htmlFor="iss-courier">
             {D.courier} <span className="req">*</span>
           </label>
-          <input id="iss-courier" className="input" maxLength={60} placeholder={D.courierPlaceholder} value={courier} onChange={(e) => setCourier(e.target.value)} aria-invalid={!!errors.courier || undefined} />
+          <TextField id="iss-courier" maxLength={60} placeholder={D.courierPlaceholder} value={courier} onChange={(e) => setCourier(e.target.value)} aria-invalid={!!errors.courier || undefined} />
           <Err msg={errors.courier} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="iss-docket">
             {D.docket} <span className="req">*</span>
           </label>
-          <input id="iss-docket" className="input" maxLength={40} value={docket} onChange={(e) => setDocket(e.target.value)} aria-invalid={!!errors.docketNo || undefined} />
+          <TextField id="iss-docket" maxLength={40} value={docket} onChange={(e) => setDocket(e.target.value)} aria-invalid={!!errors.docketNo || undefined} />
           <Err msg={errors.docketNo} />
         </div>
         <Err msg={errors.form} />
@@ -223,7 +224,7 @@ function ConsumeDialog({ props, returnable, warrantyAllowed, onClose }: { props:
           <label className="field-label" htmlFor="con-qty">
             {D.consumeQty} <span className="req">*</span>
           </label>
-          <input id="con-qty" className="input" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.consumedQty || undefined} data-autofocus />
+          <TextField id="con-qty" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.consumedQty || undefined} data-autofocus />
           <p className="muted small">{D.consumeHint(issued, unitPrice ? formatMoney(unitPrice * (Number(qty) || 0)) : '')}</p>
           <Err msg={errors.consumedQty} />
         </div>
@@ -243,7 +244,7 @@ function ConsumeDialog({ props, returnable, warrantyAllowed, onClose }: { props:
         </div>
         {returnable && (
           <label className="check">
-            <input type="checkbox" checked={returned} onChange={(e) => setReturned(e.target.checked)} /> {D.handedBack}
+            <Checkbox checked={returned} onChange={(e) => setReturned(e.target.checked)} /> {D.handedBack}
           </label>
         )}
         <Err msg={errors.form} />

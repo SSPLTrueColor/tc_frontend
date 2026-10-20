@@ -8,11 +8,11 @@ import { byId } from '../../services/lookups';
 import { leadsQueries } from '../../services/api/leads';
 import { safeTitle, type FollowUpItem } from '../../services/leads/rules';
 import { Button } from '../../components/primitives/Button';
-import { EmptyState, ErrorState, Skeleton, Tabs } from '../../components/primitives/feedback';
+import { Tabs } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
-import { PageHeader } from '../../components/shell/PageHeader';
-import { Pager } from '../opportunities/PipelinePage';
+import { ListPage } from '../../components/shell/ListPage';
+import { DataTable, type Column } from '../../components/primitives/DataTable';
 import { L } from '../../constants/labels';
 
 const T = L.leads.pages.followUps;
@@ -25,111 +25,81 @@ export function FollowUpsPage() {
   const actor = useActor();
   const [bucket, setBucket] = useState<Bucket>('overdue');
   const [type, setType] = useState('');
-  const [q, setQ] = useState('');
   const [logFor, setLogFor] = useState<FollowUpItem | null>(null);
-  const [pageState, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
   const query = useServiceQuery(() => leadsQueries.followUps(actor, 7), [actor.user.id]);
   const all = query.data ?? [];
   const types = [...new Map(all.map((i) => [i.resource, i.resourceLabel])).entries()];
-  const rows = all.filter((i) => i.bucket === bucket && (!type || i.resource === type) && (!q || `${i.record.id} ${i.title}`.toLowerCase().includes(q.toLowerCase())));
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
-  const page = Math.min(pageState, pageCount - 1);
-  const pageRows = rows.slice(page * pageSize, (page + 1) * pageSize);
+  const rows = all.filter((i) => i.bucket === bucket && (!type || i.resource === type));
   const counts = (b: Bucket) => all.filter((i) => i.bucket === b && (!type || i.resource === type)).length;
+  const ownerOf = (i: FollowUpItem) => (i.ownerId ? String(byId('employees', i.ownerId)?.fullName ?? '') : '');
+
+  const columns: Column<FollowUpItem>[] = [
+    {
+      key: 'due',
+      label: T.cols.due,
+      sort: (i) => i.due,
+      render: (i) => <span className={`tag tone-${i.bucket === 'overdue' ? 'danger' : i.bucket === 'today' ? 'warning' : 'neutral'}`}>{formatDate(i.due)}</span>,
+    },
+    {
+      key: 'record',
+      label: T.cols.record,
+      sort: (i) => i.record.id,
+      render: (i) => {
+        const company = i.customerId && i.resource !== 'customers' ? safeTitle('customers', i.customerId, actor) : '';
+        return (
+          <Link to={recordPeekPath(actor.workspaceId, i.resource, i.record.id)} className="flow-main">
+            <span className="flow-title">
+              {i.record.id} · {i.title}
+            </span>
+            {company && company !== i.title && <span className="muted small">{company}</span>}
+          </Link>
+        );
+      },
+    },
+    { key: 'type', label: T.cols.type, sort: (i) => i.resourceLabel, render: (i) => i.resourceLabel },
+    { key: 'owner', label: T.cols.owner, sort: (i) => ownerOf(i), render: (i) => ownerOf(i) || <span className="muted">—</span> },
+    {
+      key: 'act',
+      label: T.cols.action,
+      render: (i) => (
+        <Button icon="message" onClick={() => setLogFor(i)}>
+          {L.leads.actions.logFollowUp}
+        </Button>
+      ),
+    },
+  ];
 
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.followUps.title} description={T.description} />
-      <Tabs<Bucket>
-        label={T.periodLabel}
-        value={bucket}
-        onChange={(b) => {
-          setBucket(b);
-          setPage(0);
-        }}
-        tabs={(['overdue', 'today', 'upcoming'] as Bucket[]).map((b) => ({
-          id: b,
-          label: BUCKET_LABEL[b],
-          count: query.data ? counts(b) : undefined,
-        }))}
+    <ListPage
+      title={L.nav.pages.followUps.title}
+      description={T.description}
+      kpis={
+        <Tabs<Bucket>
+          label={T.periodLabel}
+          value={bucket}
+          onChange={setBucket}
+          tabs={(['overdue', 'today', 'upcoming'] as Bucket[]).map((b) => ({ id: b, label: BUCKET_LABEL[b], count: query.data ? counts(b) : undefined }))}
+        />
+      }
+    >
+      <DataTable
+        key={bucket}
+        label={T.tableLabel}
+        noun={T.noun}
+        rows={rows}
+        rowKey={(i) => `${i.resource}:${i.record.id}`}
+        columns={columns}
+        loading={!query.data && !query.error}
+        error={query.error}
+        onRetry={query.retry}
+        initialSort={{ key: 'due', dir: 'asc' }}
+        search={(i) => `${i.record.id} ${i.title} ${i.resourceLabel}`}
+        summary={T.count(rows.length)}
+        activeFilters={type ? 1 : 0}
+        onClearFilters={() => setType('')}
+        empty={query.data && !rows.length && !type ? { icon: 'calendar-clock', title: bucket === 'overdue' ? T.emptyOverdue : bucket === 'today' ? T.emptyToday : T.emptyUpcoming, body: bucket === 'overdue' ? T.emptyOverdueBody : T.emptyBody } : undefined}
+        filters={<SelectMenu label={T.recordType} value={type} options={[{ value: '', label: T.allRecordTypes }, ...types.map(([value, label]) => ({ value, label }))]} onChange={setType} />}
       />
-      <div className="toolbar">
-        <input
-          type="search"
-          className="input input-compact"
-          placeholder={T.searchPlaceholder}
-          aria-label={T.searchLabel}
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(0);
-          }}
-        />
-        <SelectMenu
-          label={T.recordType}
-          value={type}
-          options={[{ value: '', label: T.allRecordTypes }, ...types.map(([value, label]) => ({ value, label }))]}
-          onChange={(v) => {
-            setType(v);
-            setPage(0);
-          }}
-        />
-        <span className="toolbar-count muted">{T.count(rows.length)}</span>
-      </div>
-      <div className="content-surface">
-        {query.error ? (
-          <ErrorState title={T.loadError} onRetry={query.retry}>
-            {query.error}
-          </ErrorState>
-        ) : !query.data ? (
-          <Skeleton rows={6} />
-        ) : rows.length ? (
-          <>
-            <ul className="flow-list">
-              {pageRows.map((i) => {
-                const owner = i.ownerId ? byId('employees', i.ownerId) : undefined;
-                const company = i.customerId && i.resource !== 'customers' ? safeTitle('customers', i.customerId, actor) : '';
-                return (
-                  <li key={`${i.resource}:${i.record.id}`} className="flow-item">
-                    <span className={`tag tone-${i.bucket === 'overdue' ? 'danger' : i.bucket === 'today' ? 'warning' : 'neutral'}`}>{formatDate(i.due)}</span>
-                    <Link to={recordPeekPath(actor.workspaceId, i.resource, i.record.id)} className="flow-main">
-                      <span className="flow-title">
-                        {i.record.id} · {i.title}
-                      </span>
-                      <span className="muted small">
-                        {i.resourceLabel}
-                        {company && company !== i.title ? ` · ${company}` : ''}
-                        {owner ? ` · ${String(owner.fullName)}` : ''}
-                      </span>
-                    </Link>
-                    <Button icon="message" onClick={() => setLogFor(i)}>
-                      {L.leads.actions.logFollowUp}
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-            {rows.length > 25 && (
-              <Pager
-                page={page}
-                pageCount={pageCount}
-                pageSize={pageSize}
-                total={rows.length} range={T.range}
-                onPage={setPage}
-                onSize={(n) => {
-                  setPageSize(n);
-                  setPage(0);
-                }}
-              />
-            )}
-          </>
-        ) : (
-          <EmptyState icon="calendar-clock" title={bucket === 'overdue' ? T.emptyOverdue : bucket === 'today' ? T.emptyToday : T.emptyUpcoming}>
-            {bucket === 'overdue' ? T.emptyOverdueBody : T.emptyBody}
-          </EmptyState>
-        )}
-      </div>
       {logFor && (
         <LogActivityDialog
           open
@@ -144,6 +114,6 @@ export function FollowUpsPage() {
           }}
         />
       )}
-    </div>
+    </ListPage>
   );
 }

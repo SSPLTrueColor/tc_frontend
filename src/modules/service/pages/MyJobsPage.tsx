@@ -1,16 +1,21 @@
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useServiceQuery } from '../../../hooks/useServiceQuery';
 import { formatDate, nowLocal } from '../../../lib/dates';
 import { loaders } from '../../../services/api/service';
 import { useActor } from '../../../services/hooks';
 import { setOffline } from '../../../services/offline';
-import { masterValue } from '../../../services/registry';
+import { activeMasterValues, masterValue } from '../../../services/registry';
 import { byId } from '../../../services/lookups';
 import { clockStates } from '../../../services/service/sla';
 import { customerName } from '../../../services/service/tickets';
 import { Button } from '../../../components/primitives/Button';
-import { EmptyState, ErrorState, InlineAlert, Skeleton, StatusChip, useToast } from '../../../components/primitives/feedback';
-import { PageHeader } from '../../../components/shell/PageHeader';
+import type { Tone } from '../../../metadata/types';
+import { InlineAlert, StatusChip, useToast } from '../../../components/primitives/feedback';
+import { ListPage } from '../../../components/shell/ListPage';
+import { DataTable } from '../../../components/primitives/DataTable';
+import { SelectMenu } from '../../../components/primitives/SelectMenu';
+import { EmptyValue } from '../../../components/primitives/display';
 import { clockText } from '../components/TicketExtensions';
 import { useOffline } from './useStep';
 import { L } from '../../../constants/labels';
@@ -46,62 +51,93 @@ export function OfflineBar() {
   );
 }
 
-/** FR-080: the engineer's jobs, most urgent first (mobile-first). */
+type JobRow = { id: string; kind: 'ticket' | 'pm'; to: string; customer: string; detail: string; machine: string; priority?: string; status: string; statusLabel: string; tone?: Tone; due: string; urgent: boolean };
+
+/** FR-080: the engineer's jobs (tickets and PM visits), most urgent first, in the same table and filter bar as every other list. */
 export function MyJobsPage() {
   const actor = useActor();
   const q = useServiceQuery(loaders.myJobs(actor), [actor.user.id]);
+  const [kind, setKind] = useState('');
+  const [priority, setPriority] = useState('');
+  const rows = useMemo<JobRow[]>(() => {
+    if (!q.data) return [];
+    const tickets = q.data.tickets.map((t): JobRow => {
+      const st = masterValue('ticketStatus', t.status);
+      const next = clockStates(t, nowLocal()).find((c) => c.status !== 'met' && c.status !== 'breached_met' && c.status !== 'not_applicable');
+      const machine = byId('machines', t.machineId);
+      return {
+        id: t.id,
+        kind: 'ticket',
+        to: toPath(ROUTES.myJob, { recordId: t.id }),
+        customer: customerName(t.customerId),
+        detail: s(t.description).slice(0, 120),
+        machine: machine ? `${s(machine.serialNo)} · ${s(machine.model)}` : '',
+        priority: s(t.priority),
+        status: s(t.status),
+        statusLabel: st?.label ?? s(t.status),
+        tone: st?.tone,
+        due: next ? `${next.clock === 'resolution' ? P.resolveBy : next.clock === 'arrival' ? P.reachSite : P.respond}: ${clockText(next)}` : P.awaitingConfirmation,
+        urgent: !!next && (next.status === 'breached' || next.status === 'at_risk'),
+      };
+    });
+    const pm = q.data.pm.map((p): JobRow => {
+      const st = masterValue('pmStatus', p.status);
+      return {
+        id: p.id,
+        kind: 'pm',
+        to: toPath(ROUTES.pmSchedule, {}, { tab: 'all', q: p.id }),
+        customer: customerName(p.customerId),
+        detail: P.pmHeading,
+        machine: s(byId('machines', p.machineId)?.serialNo),
+        status: s(p.status),
+        statusLabel: st?.label ?? s(p.status),
+        tone: st?.tone,
+        due: P.due(formatDate(s(p.dueDate))),
+        urgent: false,
+      };
+    });
+    return [...tickets, ...pm];
+  }, [q.data]);
+  const shown = rows.filter((r) => (!kind || r.kind === kind) && (!priority || r.priority === priority));
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.myJobs.title} description={P.description} />
+    <ListPage title={L.nav.pages.myJobs.title} description={P.description}>
       <OfflineBar />
-      {q.error ? (
-        <ErrorState title={P.loadError} onRetry={q.retry}>
-          {q.error}
-        </ErrorState>
-      ) : !q.data ? (
-        <Skeleton rows={6} />
-      ) : !q.data.tickets.length && !q.data.pm.length ? (
-        <EmptyState icon="check-square" title={P.empty}>
-          {P.emptyBody}
-        </EmptyState>
-      ) : (
-        <div className="svc-jobs">
-          {q.data.tickets.map((t) => {
-            const pr = masterValue('ticketPriority', t.priority);
-            const st = masterValue('ticketStatus', t.status);
-            const next = clockStates(t, nowLocal()).find((c) => c.status !== 'met' && c.status !== 'breached_met' && c.status !== 'not_applicable');
-            const machine = byId('machines', t.machineId);
-            return (
-              <Link key={t.id} to={toPath(ROUTES.myJob, { recordId: t.id })} className="svc-job">
-                <span className="svc-job-top">
-                  {pr && <StatusChip label={pr.label.replace(' (machine down)', '')} tone={pr.tone} />}
-                  {st && <StatusChip label={st.label} tone={st.tone} />}
-                  <span className="mono small muted">{t.id}</span>
-                </span>
-                <strong>{customerName(t.customerId)}</strong>
-                <span className="small">{s(t.description).slice(0, 120)}</span>
-                <span className={`small ${next && (next.status === 'breached' || next.status === 'at_risk') ? 'text-danger' : 'muted'}`}>
-                  {machine ? `${s(machine.serialNo)} · ${s(machine.model)} · ` : ''}
-                  {next ? `${next.clock === 'resolution' ? P.resolveBy : next.clock === 'arrival' ? P.reachSite : P.respond}: ${clockText(next)}` : P.awaitingConfirmation}
-                </span>
-              </Link>
-            );
-          })}
-          {q.data.pm.length > 0 && <h2 className="panel-title">{P.pmHeading}</h2>}
-          {q.data.pm.map((p) => (
-            <Link key={p.id} to={toPath(ROUTES.pmSchedule, {}, { tab: 'all', q: p.id })} className="svc-job">
-              <span className="svc-job-top">
-                <StatusChip label={masterValue('pmStatus', p.status)?.label ?? s(p.status)} tone={masterValue('pmStatus', p.status)?.tone} />
-                <span className="mono small muted">{p.id}</span>
-              </span>
-              <strong>{customerName(p.customerId)}</strong>
-              <span className="small muted">
-                {s(byId('machines', p.machineId)?.serialNo)} · {P.due(formatDate(s(p.dueDate)))}
-              </span>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
+      <DataTable
+        label={P.tableLabel}
+        rows={shown}
+        rowKey={(r) => `${r.kind}-${r.id}`}
+        noun={P.noun}
+        loading={!q.data && !q.error}
+        error={q.error}
+        onRetry={q.retry}
+        search={(r) => `${r.id} ${r.customer} ${r.detail} ${r.machine}`}
+        summary={P.count(shown.length)}
+        activeFilters={(kind ? 1 : 0) + (priority ? 1 : 0)}
+        onClearFilters={() => (setKind(''), setPriority(''))}
+        empty={q.data && !rows.length ? { icon: 'check-square', title: P.empty, body: P.emptyBody } : undefined}
+        filters={
+          <>
+            <SelectMenu label={P.typeFilter} value={kind} options={[{ value: '', label: P.allTypes }, { value: 'ticket', label: P.types.ticket }, { value: 'pm', label: P.types.pm }]} onChange={setKind} />
+            <SelectMenu label={P.priorityFilter} value={priority} options={[{ value: '', label: P.allPriorities }, ...activeMasterValues('ticketPriority').map((v) => ({ value: v.key, label: v.label.replace(' (machine down)', '') }))]} onChange={setPriority} />
+          </>
+        }
+        columns={[
+          { key: 'id', label: P.cols.job, sort: (r) => r.id, render: (r) => <Link to={r.to} className="mono">{r.id}</Link> },
+          { key: 'customer', label: P.cols.customer, sort: (r) => r.customer, render: (r) => (<><strong>{r.customer}</strong><div className="small muted">{r.detail}</div></>) },
+          { key: 'machine', label: P.cols.machine, render: (r) => r.machine || <EmptyValue /> },
+          {
+            key: 'priority',
+            label: P.cols.priority,
+            sort: (r) => r.priority ?? '',
+            render: (r) => {
+              const pr = r.priority ? masterValue('ticketPriority', r.priority) : undefined;
+              return pr ? <StatusChip label={pr.label.replace(' (machine down)', '')} tone={pr.tone} /> : <EmptyValue />;
+            },
+          },
+          { key: 'status', label: P.cols.status, sort: (r) => r.statusLabel, render: (r) => <StatusChip label={r.statusLabel} tone={r.tone} /> },
+          { key: 'due', label: P.cols.due, render: (r) => <span className={r.urgent ? 'text-danger small' : 'small muted'}>{r.due}</span> },
+        ]}
+      />
+    </ListPage>
   );
 }

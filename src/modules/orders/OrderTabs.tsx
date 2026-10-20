@@ -2,6 +2,7 @@
  * Sales order record tabs (GLOSSARY §1.2): Changes vs Quotation, Approval, Payment Schedule, Order Processing,
  * ERP Invoice, Dispatch & Delivery, Sales Contract, Hold / Cancellation. Details and Activity are shared tabs.
  */
+import { APPROVAL_TONE } from '../../domain/statusTones';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
@@ -30,6 +31,8 @@ import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { DiffAlert, Field, LinesTable, TotalsBlock } from './components';
 import { ConfirmDeliveryDialog } from './OrderActions';
+import { Checkbox, LinkButton, TextField, Textarea } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const O = L.orders;
 const D = L.dispatch;
@@ -55,7 +58,7 @@ export const chip = (master: string, key: unknown) => {
   return v ? <StatusChip label={v.label} tone={v.tone} /> : <EmptyValue />;
 };
 
-const APPROVAL_TONE: Record<Approval['status'], 'warning' | 'success' | 'danger' | 'neutral'> = { pending: 'warning', approved: 'success', rejected: 'danger', withdrawn: 'neutral' };
+
 const approvalChip = (a: Approval) => <StatusChip label={O.approvals.status[a.status]} tone={APPROVAL_TONE[a.status]} />;
 const userName = (id: string | undefined) => (id ? getUser(id)?.name ?? id : '');
 
@@ -85,9 +88,7 @@ export function LinesTab({ actor, record }: RecordExtensionProps) {
       />
       {v.canEditLines && (
         <p>
-          <Link className="btn btn-secondary" to={recordEditPath('salesOrders', o.id)}>
-            <span className="btn-label">{O.actions.editLines}</span>
-          </Link>
+          <LinkButton to={recordEditPath('salesOrders', o.id)}>{O.actions.editLines}</LinkButton>
         </p>
       )}
     </div>
@@ -98,8 +99,8 @@ export function LinesTab({ actor, record }: RecordExtensionProps) {
 
 function ApprovalList({ list }: { list: Approval[] }) {
   return (
-    <div className="table-scroll">
-      <table className="mini-table">
+    
+      <Table>
         <thead>
           <tr>
             <th scope="col">{O.table.type}</th>
@@ -136,8 +137,8 @@ function ApprovalList({ list }: { list: Approval[] }) {
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </Table>
+    
   );
 }
 
@@ -181,8 +182,8 @@ export function PaymentsTab({ actor, record }: RecordExtensionProps) {
         <Row label={R.outstanding}>{formatMoney(Math.max(0, total - received))}</Row>
       </dl>
       {v.milestones.length ? (
-        <div className="table-scroll">
-          <table className="mini-table">
+        
+          <Table>
             <thead>
               <tr>
                 <th scope="col">{FM.label}</th>
@@ -223,8 +224,8 @@ export function PaymentsTab({ actor, record }: RecordExtensionProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       ) : (
         <EmptyState icon="calendar-clock" title={R.noSchedule} />
       )}
@@ -285,8 +286,8 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
         </>
       }
     >
-      <div className="table-scroll">
-        <table className="mini-table">
+      
+        <Table>
           <thead>
             <tr>
               <th scope="col">{FM.label}</th>
@@ -301,10 +302,10 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
             {rows.map((r, i) => (
               <tr key={r.id ?? `new-${i}`}>
                 <td>
-                  <input className="input input-compact" aria-label={R.milestoneAria(i + 1, FM.label)} value={r.label} maxLength={60} onChange={(e) => set(i, { label: e.target.value })} />
+                  <TextField dense aria-label={R.milestoneAria(i + 1, FM.label)} value={r.label} maxLength={60} onChange={(e) => set(i, { label: e.target.value })} />
                 </td>
                 <td>
-                  <input className="input input-compact orders-num" type="number" min={0} max={100} aria-label={R.milestoneAria(i + 1, FM.percent)} value={r.percent} onChange={(e) => set(i, { percent: Number(e.target.value) })} />
+                  <TextField dense className="orders-num" type="number" min={0} max={100} aria-label={R.milestoneAria(i + 1, FM.percent)} value={r.percent} onChange={(e) => set(i, { percent: Number(e.target.value) })} />
                 </td>
                 <td>
                   <DatePicker label={R.milestoneAria(i + 1, FM.dueDate)} value={r.dueDate} onChange={(v) => set(i, { dueDate: v ?? '' })} clearable={false} />
@@ -317,8 +318,8 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      
       <div className="row-gap">
         <Button icon="plus" onClick={() => setRows([...rows, { label: O.schedule.balance, percent: Math.max(0, Math.round((100 - total) * 100) / 100), dueDate: addDays(orderDate, 60), received: 0 }])}>
           {O.actions.addMilestone}
@@ -377,7 +378,7 @@ export function ReceiptDialog({ milestone, onClose }: { milestone: Record<string
     >
       <div className="form-grid cols-2">
         <Field id="rc-amount" label={R.receiptAmount} required help={R.receiptOutstanding(formatMoney(outstanding))} error={errors.amount}>
-          <input id="rc-amount" className="input" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={!!errors.amount || undefined} data-autofocus />
+          <TextField id="rc-amount" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={!!errors.amount || undefined} data-autofocus />
         </Field>
         <Field id="rc-date" label={R.receiptDate} required error={errors.receivedAt}>
           <DatePicker id="rc-date" label={R.receiptDate} value={date} onChange={(v) => setDate(v ?? '')} invalid={!!errors.receivedAt} />
@@ -430,7 +431,7 @@ export function ProcessingTab({ actor, record }: RecordExtensionProps) {
     <div className="details">
       <div className="form-grid cols-2">
         <Field id="pr-po" label={F.poToPrincipalNo} error={errors.poToPrincipalNo}>
-          <input id="pr-po" className="input" maxLength={40} value={String(f.poToPrincipalNo)} onChange={(e) => set({ poToPrincipalNo: e.target.value })} aria-invalid={!!errors.poToPrincipalNo || undefined} />
+          <TextField id="pr-po" maxLength={40} value={String(f.poToPrincipalNo)} onChange={(e) => set({ poToPrincipalNo: e.target.value })} aria-invalid={!!errors.poToPrincipalNo || undefined} />
         </Field>
         <Field id="pr-po-date" label={F.poToPrincipalDate} error={errors.poToPrincipalDate}>
           <DatePicker id="pr-po-date" label={F.poToPrincipalDate} value={String(f.poToPrincipalDate || '')} onChange={(v) => set({ poToPrincipalDate: v ?? '' })} invalid={!!errors.poToPrincipalDate} />
@@ -443,18 +444,18 @@ export function ProcessingTab({ actor, record }: RecordExtensionProps) {
         </Field>
         <div>
           <label className="orders-check">
-            <input type="checkbox" checked={!!f.machineReady} onChange={(e) => set({ machineReady: e.target.checked })} /> {F.machineReady}
+            <Checkbox checked={!!f.machineReady} onChange={(e) => set({ machineReady: e.target.checked })} /> {F.machineReady}
           </label>
           {errors.machineReady && <p className="field-error">{errors.machineReady}</p>}
         </div>
         <div>
           <label className="orders-check">
-            <input type="checkbox" checked={!!f.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} /> {F.pdiDone}
+            <Checkbox checked={!!f.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} /> {F.pdiDone}
           </label>
           {errors.pdiDone && <p className="field-error">{errors.pdiDone}</p>}
         </div>
         <Field id="pr-notes" label={F.processingNotes} wide error={errors.processingNotes}>
-          <textarea id="pr-notes" className="input textarea" rows={2} maxLength={1000} value={String(f.processingNotes)} onChange={(e) => set({ processingNotes: e.target.value })} />
+          <Textarea id="pr-notes" className="textarea" rows={2} maxLength={1000} value={String(f.processingNotes)} onChange={(e) => set({ processingNotes: e.target.value })} />
         </Field>
       </div>
       {errors.form && <p className="field-error">{errors.form}</p>}
@@ -623,12 +624,8 @@ export function ContractTab({ actor, record }: RecordExtensionProps) {
             </Row>
           </dl>
           <div className="row-gap">
-            <Link className="btn btn-secondary" to={toPath(ROUTES.salesContractPdf, { recordId: v.order.id })}>
-              <span className="btn-label">{O.actions.viewPdf}</span>
-            </Link>
-            <Link className="btn btn-secondary" to={recordPeekPath('tc', 'salesContracts', current.id)}>
-              <span className="btn-label">{O.actions.editTerms}</span>
-            </Link>
+            <LinkButton to={toPath(ROUTES.salesContractPdf, { recordId: v.order.id })}>{O.actions.viewPdf}</LinkButton>
+            <LinkButton to={recordPeekPath('tc', 'salesContracts', current.id)}>{O.actions.editTerms}</LinkButton>
             {['draft', 'sent_for_signature'].includes(String(current.status)) && (
               <Button
                 disabledReason={can(actor, 'orders.contract') ? undefined : O.disabled.sendContract}
@@ -720,10 +717,10 @@ export function SignDialog({ contractId, otp, onClose }: { contractId: string; o
       </InlineAlert>
       <div className="form-grid cols-2">
         <Field id="sg-name" label={R.signerName} required error={errors.signerName}>
-          <input id="sg-name" className="input" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} data-autofocus />
+          <TextField id="sg-name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} data-autofocus />
         </Field>
         <Field id="sg-otp" label={R.otp} required error={errors.otp}>
-          <input id="sg-otp" className="input" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+          <TextField id="sg-otp" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
         </Field>
       </div>
       {errors.form && <p className="field-error">{errors.form}</p>}

@@ -160,6 +160,10 @@ export const ROUTES = {
   report: '/reports/:reportId',
 
   // Administration (4.14)
+  profile: '/admin/profile',
+  notificationPreferences: '/admin/notification-preferences',
+  security: '/admin/security',
+  dataProtection: '/admin/data-protection',
   organisationHierarchy: '/admin/organisation-hierarchy',
   rolesPermissions: '/admin/roles-permissions',
   masters: '/admin/masters',
@@ -178,6 +182,7 @@ export const ROUTES = {
   recycleBin: '/admin/recycle-bin',
   sentMessages: '/admin/sent-messages',
   demoSettings: '/admin/demo-settings',
+  componentGallery: '/admin/component-gallery',
 } as const;
 
 export type RouteId = keyof typeof ROUTES;

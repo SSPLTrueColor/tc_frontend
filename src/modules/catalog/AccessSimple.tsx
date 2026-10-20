@@ -92,7 +92,7 @@ export function sentence(p: ResourcePermission, plural: string): string {
   return S.sentence(res, S.who[p.read], parts);
 }
 
-const moduleName = (id: string) =>
+export const moduleName = (id: string) =>
   (L.nav.modules as Record<string, { nav: string }>)[id]?.nav ?? id;
 
 interface Props {

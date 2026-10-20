@@ -1,3 +1,5 @@
+import { PageHeader } from '../shell/PageHeader';
+import { pageTitleForPath } from '../../lib/pageTitle';
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
@@ -71,27 +73,24 @@ export function ErrorState({ title = L.common.states.somethingWrong, children, o
   );
 }
 
+/** A page the role cannot open: still a normal page (title in the top bar), then the reason. */
 export function NoAccess({ what }: { what: string }) {
+  const { pathname } = useLocation();
   return (
-    <div className="state">
-      <span className="state-icon">
-        <Icon name="lock" size={20} />
-      </span>
-      <p className="state-title">{L.common.states.noAccess(what)}</p>
-      <p className="state-text">{L.common.states.noAccessBody}</p>
+    <div className="page">
+      <PageHeader title={pageTitleForPath(pathname) ?? L.common.states.noAccessTitle} />
+      <div className="state">
+        <span className="state-icon">
+          <Icon name="lock" size={20} />
+        </span>
+        <p className="state-title">{L.common.states.noAccess(what)}</p>
+        <p className="state-text">{L.common.states.noAccessBody}</p>
+      </div>
     </div>
   );
 }
 
-export function Skeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="skeleton" aria-busy="true" aria-label={L.common.states.loading}>
-      {Array.from({ length: rows }).map((_, i) => (
-        <span key={i} className="skeleton-row" />
-      ))}
-    </div>
-  );
-}
+export { Skeleton } from './Skeleton';
 
 export function InlineAlert({ tone = 'info', children, title }: { tone?: 'info' | 'warning' | 'danger' | 'success'; title?: string; children: ReactNode }) {
   const icon = tone === 'danger' || tone === 'warning' ? 'alert' : tone === 'success' ? 'check' : 'info';
@@ -148,16 +147,18 @@ interface Toast {
   id: number;
   tone: 'success' | 'danger' | 'info';
   message: string;
+  /** Optional inline action (e.g. Undo, Retry); the toast stays a little longer so it can be used. */
+  action?: { label: string; onClick: () => void };
 }
-const ToastCtx = createContext<(message: string, tone?: Toast['tone']) => void>(() => {});
+const ToastCtx = createContext<(message: string, tone?: Toast['tone'], action?: Toast['action']) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((message: string, tone: Toast['tone'] = 'success') => {
+  const push = useCallback((message: string, tone: Toast['tone'] = 'success', action?: Toast['action']) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t.slice(-3), { id, tone, message }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
+    setToasts((t) => [...t.slice(-3), { id, tone, message, action }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), action ? 8000 : 4500);
   }, []);
   return (
     <ToastCtx.Provider value={push}>
@@ -168,6 +169,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div key={t.id} className={cx('toast', `tone-${t.tone}`)}>
               <Icon name={t.tone === 'danger' ? 'alert' : t.tone === 'info' ? 'info' : 'check'} />
               <span>{t.message}</span>
+              {t.action && (
+                <button
+                  type="button"
+                  className="toast-action"
+                  onClick={() => {
+                    setToasts((x) => x.filter((y) => y.id !== t.id));
+                    t.action?.onClick();
+                  }}
+                >
+                  {t.action.label}
+                </button>
+              )}
               <button type="button" className="toast-close" aria-label={L.common.states.dismiss} onClick={() => setToasts((x) => x.filter((y) => y.id !== t.id))}>
                 <Icon name="x" size={14} />
               </button>

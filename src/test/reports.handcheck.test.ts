@@ -115,7 +115,7 @@ describe('QA hand-check: dashboard KPIs = Appendix C from raw records', () => {
   it('KPI Summary (all Appendix C KPIs) for System Administrator over 1 year', () => {
     const from = addDays(today(), -364);
     const to = today();
-    const res = runReport(actorFor('u_rahul', 'tc'), 'kpi-summary', { from, to });
+    const res = runReport(actorFor('u_rahul', 'tc'), 'business-scorecard', undefined, { from, to });
     const v = (key: string) => {
       const cell = s(res.rows.find((r) => r._key === key)?.value);
       return cell ? Number(cell.split(':')[1]) : null;
@@ -205,13 +205,15 @@ describe('QA: report scope and export (ADM-07, COM-08, COM-09)', () => {
     for (const u of demoUsers) {
       const a = actorFor(u.id, 'tc');
       for (const def of listReports(a)) {
-        const res = runReport(a, def.id, { from: addDays(todayKey(), -364), to: todayKey() });
-        expect(Array.isArray(res.rows), `${u.id} ${def.id}`).toBe(true);
+        for (const view of def.views) {
+          const res = runReport(a, def.id, view.id, { from: addDays(todayKey(), -364), to: todayKey() });
+          expect(Array.isArray(res.rows), `${u.id} ${def.id}/${view.id}`).toBe(true);
+        }
       }
     }
     // Sales Executive's CRM adoption lists only himself (no colleagues shown as "inactive").
     const karan = actorFor('u_karan', 'tc');
-    expect(runReport(karan, 'crm-adoption', {}).rows.map((r) => r.id)).toEqual([karan.staffId]);
+    expect(runReport(karan, 'crm-adoption', undefined, {}).rows.map((r) => r.id)).toEqual([karan.staffId]);
   });
 
   it('export is limited to roles with X in the matrix and every export is audited', async () => {
@@ -222,13 +224,14 @@ describe('QA: report scope and export (ADM-07, COM-08, COM-09)', () => {
     denied.forEach((u) => expect(canExportReports(actorFor(u, 'tc')), u).toBe(false));
     const admin = actorFor('u_rahul', 'tc');
     const f = { from: addDays(todayKey(), -29), to: todayKey() };
-    const result = runReport(admin, 'order-backlog', f);
+    const result = runReport(admin, 'order-backlog', 'backlog', f);
+    const input = { viewLabel: 'Backlog', columns: result.columns, rows: result.rows, filterLines: ['Period: test'], generatedAt: '20 Oct 2026' };
     const before = getDb().audit.length;
-    const csv = exportReport(admin, 'order-backlog', result, f);
-    expect(csv.split('\n').length).toBe(result.rows.length + 1);
+    const bytes = exportReport(admin, 'order-backlog', input);
+    expect(String.fromCharCode(bytes[0], bytes[1])).toBe('PK'); // an .xlsx is a zip package
     expect(getDb().audit.length).toBe(before + 1);
     expect(getDb().audit[getDb().audit.length - 1].action).toBe('export');
     const karan = actorFor('u_karan', 'tc');
-    expect(() => exportReport(karan, 'order-backlog', runReport(karan, 'order-backlog', f), f)).toThrow();
+    expect(() => exportReport(karan, 'order-backlog', input)).toThrow();
   });
 });

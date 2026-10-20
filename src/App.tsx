@@ -11,7 +11,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { RecordPage, ResourcePage } from './pages/ResourcePage';
 import { FullPageFormPage, InboxPage } from './pages/WorkPages';
-import { AccessPage, AuditPage, MastersPage, SettingsPage } from './pages/AdminPages';
+import { AccessPage, AuditPage, DemoSettingsPage, MastersPage } from './pages/AdminPages';
 import { OutboxPage } from './pages/DemoPages';
 import { moduleRoutes } from './modules/routes';
 import { LEGACY_REDIRECTS, ROUTES, keyOfSlug, slugOf } from './constants/routes';
@@ -77,7 +77,7 @@ function Workspace() {
           <Route path={ROUTES.rolesPermissions} element={<AccessPage />} />
           <Route path={ROUTES.auditTrail} element={<AuditPage />} />
           <Route path={ROUTES.sentMessages} element={<OutboxPage />} />
-          <Route path={ROUTES.demoSettings} element={<SettingsPage />} />
+          <Route path={ROUTES.demoSettings} element={<DemoSettingsPage />} />
           {moduleRoutes
             .filter((r) => !r.public)
             .map((r) => (

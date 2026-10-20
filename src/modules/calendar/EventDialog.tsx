@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { L } from '../../constants/labels';
 import { addDays, formatDateTime, formatDate } from '../../lib/dates';
 import { errorMessage } from '../../services/api/client';
@@ -15,11 +15,13 @@ import { MultiSelectMenu } from '../../components/primitives/MultiSelectMenu';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { VoiceButton } from '../../components/crm/VoiceButton';
+import { Checkbox, TextField, Textarea } from '../../components/primitives/controls';
 
 export type DialogMode =
-  | { kind: 'create'; start: string; end: string; allDay: boolean }
-  /** `scope`: whole event / series ("all") or one occurrence of a series ("this"). */
-  | { kind: 'edit'; item: CalItem; scope: 'all' | 'this'; occurrence?: { start: string; end: string } };
+  /** `draft`: what the quick-create popover already collected ("More options"). */
+  | { kind: 'create'; start: string; end: string; allDay: boolean; draft?: { title?: string; eventType?: string } }
+  /** `scope`: whole event / series ("all"), one occurrence ("this") or an occurrence and every later one ("following"). */
+  | { kind: 'edit'; item: CalItem; scope: 'all' | 'this' | 'following'; occurrence?: { start: string; end: string } };
 
 interface Values {
   title: string;
@@ -36,6 +38,7 @@ interface Values {
   location: string;
   status: string;
   notes: string;
+  reminder: string;
 }
 
 /** Employees the actor may put events on, following their calendar update scope. */
@@ -53,9 +56,9 @@ const LINK_TYPES = () => [{ value: '', label: C.form.noLinkedRecord }, ...active
 
 function initialValues(actor: Actor, mode: DialogMode): Values {
   if (mode.kind === 'create')
-    return { title: '', eventType: 'meeting', allDay: mode.allDay, start: mode.start, end: mode.end, recurrence: 'none', recurrenceUntil: '', assigneeId: actor.staffId, attendeeIds: [], linkResource: '', linkId: '', location: '', status: 'scheduled', notes: '' };
+    return { title: mode.draft?.title ?? '', eventType: mode.draft?.eventType ?? 'meeting', allDay: mode.allDay, start: mode.start, end: mode.end, recurrence: 'none', recurrenceUntil: '', assigneeId: actor.staffId, attendeeIds: [], linkResource: '', linkId: '', location: '', status: 'scheduled', notes: '', reminder: 'none' };
   const i = mode.item;
-  const occ = mode.scope === 'this' && mode.occurrence ? mode.occurrence : { start: i.start, end: i.end };
+  const occ = mode.scope !== 'all' && mode.occurrence ? mode.occurrence : { start: i.start, end: i.end };
   return {
     title: i.title,
     eventType: i.type,
@@ -71,6 +74,7 @@ function initialValues(actor: Actor, mode: DialogMode): Values {
     location: i.location ?? '',
     status: i.status,
     notes: i.notes ?? '',
+    reminder: i.reminder,
   };
 }
 
@@ -84,6 +88,8 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Synchronous guard: a rapid double click must create one event, not two (state updates are async). */
+  const saving = useRef(false);
 
   useEffect(() => {
     if (mode) {
@@ -112,6 +118,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
   };
 
   const save = async () => {
+    if (saving.current) return;
     setTried(true);
     if (Object.keys(liveErrors).length) return;
     const link = records.find((r) => r.value === v.linkId);
@@ -132,12 +139,17 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
       location: v.location.trim() || null,
       status: v.status,
       notes: v.notes.trim() || null,
+      reminder: v.reminder,
     };
+    saving.current = true;
     setBusy(true);
     try {
       if (mode.kind === 'create') {
         await calendarService.create(actor, payload);
         toast(C.toasts.created(String(payload.title)));
+      } else if (mode.scope === 'following' && mode.occurrence) {
+        await calendarService.updateFollowing(actor, mode.item.recordId, mode.occurrence.start, payload, mode.item.version);
+        toast(C.toasts.seriesFollowingUpdated);
       } else if (mode.scope === 'this' && mode.occurrence) {
         await calendarService.updateOccurrence(actor, mode.item.recordId, mode.occurrence.start, payload, mode.item.version);
         toast(C.toasts.occurrenceUpdated);
@@ -150,6 +162,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
       if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
       else setErrors({ form: errorMessage(e) });
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -160,7 +173,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
       open
       onClose={onClose}
       size="md"
-      title={mode.kind === 'create' ? C.form.newEvent : mode.scope === 'this' ? C.form.editOccurrence : mode.item.recurrence !== 'none' ? C.form.editSeries : C.form.editEvent}
+      title={mode.kind === 'create' ? C.form.newEvent : mode.scope === 'this' ? C.form.editOccurrence : mode.scope === 'following' ? C.form.editFollowing : mode.item.recurrence !== 'none' ? C.form.editSeries : C.form.editEvent}
       description={C.form.description}
       footer={
         <>
@@ -176,7 +189,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
           <label className="field-label" htmlFor="ev-title">
             {FL.title} <span className="req">*</span>
           </label>
-          <input id="ev-title" className="input" maxLength={120} value={v.title} onChange={(e) => set({ title: e.target.value })} aria-invalid={!!shown.title || undefined} data-autofocus />
+          <TextField id="ev-title" maxLength={120} value={v.title} onChange={(e) => set({ title: e.target.value })} aria-invalid={!!shown.title || undefined} data-autofocus />
           {shown.title && <p className="field-error">{shown.title}</p>}
         </div>
         <div className="form-field">
@@ -188,7 +201,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
         <div className="form-field">
           <span className="field-label">{FL.allDay}</span>
           <label className="switch">
-            <input type="checkbox" checked={v.allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
+            <Checkbox checked={v.allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
             <span className="switch-track" aria-hidden="true" />
             <span>{v.allDay ? C.form.yes : C.form.no}</span>
           </label>
@@ -252,7 +265,13 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
           <label className="field-label" htmlFor="ev-loc">
             {FL.location}
           </label>
-          <input id="ev-loc" className="input" maxLength={160} value={v.location} onChange={(e) => set({ location: e.target.value })} />
+          <TextField id="ev-loc" maxLength={160} value={v.location} onChange={(e) => set({ location: e.target.value })} />
+        </div>
+        <div className="form-field">
+          <label className="field-label" htmlFor="ev-rem">
+            {FL.reminder}
+          </label>
+          <SelectMenu id="ev-rem" block label={FL.reminder} value={v.reminder} options={activeMasterValues('calReminder').map((x) => ({ value: x.key, label: x.label }))} onChange={(x) => set({ reminder: x })} />
         </div>
         {isEdit && (
           <div className="form-field">
@@ -269,7 +288,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
             </label>
             <VoiceButton onText={(t) => set({ notes: v.notes ? `${v.notes} ${t}` : t })} label={C.form.dictateNotes} />
           </span>
-          <textarea id="ev-notes" className="input textarea" rows={2} maxLength={2000} value={v.notes} onChange={(e) => set({ notes: e.target.value })} />
+          <Textarea id="ev-notes" className="textarea" rows={2} maxLength={2000} value={v.notes} onChange={(e) => set({ notes: e.target.value })} />
         </div>
         {overlaps.length > 0 && (
           <div className="span-all">

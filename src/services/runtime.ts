@@ -4,6 +4,7 @@
  * hide/mask); every write is validated, version-checked, audited and emits a
  * versioned domain event into the simulated outbox.
  */
+import { rememberLastUsed } from './lastUsed';
 import type { FieldAccess, FieldDefinition, FilterGroup, RecordData, ResourceDefinition } from '../metadata/types';
 import { formatDate, formatDateTime } from '../lib/dates';
 import { nowIso } from '../lib/clock';
@@ -289,6 +290,7 @@ export function createRecord(actor: Actor, resKey: string, input: Record<string,
       createdBy: actor.user.id,
     };
     d.records[resKey] = [record, ...(d.records[resKey] ?? [])];
+    rememberLastUsed(d, actor, res, record);
     if (opts.idempotencyKey) d.idempotency[opts.idempotencyKey] = record.id;
     appendAudit(d, actor, { action: 'create', resource: resKey, recordId: record.id, summary: AU.created(res.label.toLowerCase(), record.id), correlationId });
     emitEvent(d, actor, { eventType: `${resKey}.created`, resourceId: res.id, recordId: record.id, correlationId, idempotencyKey: opts.idempotencyKey, payload: { id: record.id } });

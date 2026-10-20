@@ -1,5 +1,4 @@
 /** Field Force (4.11) and Targets & Recognition (4.12): hooks (BR-42 … BR-47), approval types and record actions. */
-import { Link } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { ROUTES, toPath } from '../../constants/routes';
 import { Button } from '../../components/primitives/Button';
@@ -17,6 +16,7 @@ import { type HookContext, registerResourceHooks } from '../../services/resource
 import { insertRecordIn, patchRecordIn, updateRecord } from '../../services/runtime';
 import { ServiceError, type Approval } from '../../services/types';
 import { registerApprovalType, requestApprovalIn } from '../../services/workflow';
+import { LinkButton } from '../../components/primitives/controls';
 
 const E = L.field.errors;
 const AP = L.field.approvals;
@@ -321,9 +321,7 @@ function AttendanceActions({ record }: RecordExtensionProps) {
   const points = (record.routePoints ?? getDb().records.attendance?.find((a) => a.id === record.id)?.routePoints) as unknown[] | undefined;
   const hasRoute = (points?.length ?? 0) > 1;
   return hasRoute ? (
-    <Link className="btn btn-secondary" to={toPath(ROUTES.routeMapFor, { userId: String(record.employeeId) }, { date: String(record.date) })}>
-      <span className="btn-label">{L.field.actions.viewRoute}</span>
-    </Link>
+    <LinkButton to={toPath(ROUTES.routeMapFor, { userId: String(record.employeeId) }, { date: String(record.date) })}>{L.field.actions.viewRoute}</LinkButton>
   ) : null;
 }
 registerRecordActions('attendance', AttendanceActions);

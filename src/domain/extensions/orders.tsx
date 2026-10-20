@@ -1,6 +1,5 @@
 /** Sales Orders & Contracts: lifecycle guards, approval types, hand-off hooks and record extensions (tabs per GLOSSARY §1.2). */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { registerRecordActions, registerRecordBanner, registerRecordTab, type RecordExtensionProps } from '../../components/resource/extensions';
 import { Button } from '../../components/primitives/Button';
 import { useToast } from '../../components/primitives/feedback';
@@ -19,6 +18,7 @@ import { APPROVAL, CANCEL, HOLD, milestonesOf, onCancelApproved, onHoldApproved,
 import { COMMERCIAL_FIELDS } from '../modules/orders';
 import { DispatchActions, MilestoneActions, OrderActions, OrderBanner } from '../../modules/orders/OrderActions';
 import { ApprovalTab, ContractTab, DispatchTab, ErpInvoiceTab, HoldCancelTab, LinesTab, PaymentsTab, ProcessingTab, SignDialog } from '../../modules/orders/OrderTabs';
+import { LinkButton } from '../../components/primitives/controls';
 
 const O = L.orders;
 const E = O.errors;
@@ -96,9 +96,7 @@ function ContractActions({ actor, record }: RecordExtensionProps) {
   const [otp, setOtp] = useState<string | null>(null);
   return (
     <>
-      <Link className="btn btn-secondary" to={toPath(ROUTES.salesContractPdf, { recordId: String(record.salesOrderId) })}>
-        <span className="btn-label">{O.actions.viewPdf}</span>
-      </Link>
+      <LinkButton to={toPath(ROUTES.salesContractPdf, { recordId: String(record.salesOrderId) })}>{O.actions.viewPdf}</LinkButton>
       {['draft', 'sent_for_signature'].includes(String(record.status)) && (
         <Button
           disabledReason={can(actor, 'orders.contract') ? undefined : O.disabled.sendContract}

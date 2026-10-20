@@ -1,3 +1,5 @@
+import { SkeletonLine } from '../../components/primitives/Skeleton';
+import { Sparkline } from '../../components/primitives/Sparkline';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Pie, PieChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -13,6 +15,7 @@ import { InfoTip } from '../../components/primitives/InfoTip';
 import { compactInr } from '../../services/reports/format';
 import type { AlertItem, Board, FeedItem, Fmt, Kpi, Pipe, Share, Trend } from '../../services/reports/overview';
 import type { PlanItem } from '../../services/reports/dashboard';
+import { Table } from '../../components/primitives/Table';
 
 const COLOR: Record<string, string> = {
   success: 'var(--s-success)',
@@ -69,7 +72,7 @@ export function CardSkeleton({ className, rows = 6 }: { className?: string; rows
   return (
     <section className={cx('panel dash-card', className)} aria-busy="true" aria-label={CD.loading}>
       <div className="panel-head">
-        <span className="skeleton-row dash-skel-title" />
+        <SkeletonLine size="title" />
       </div>
       <Skeleton rows={rows} />
     </section>
@@ -79,8 +82,8 @@ export function CardSkeleton({ className, rows = 6 }: { className?: string; rows
 export function KpiSkeleton() {
   return (
     <div className="kpi-card" aria-busy="true" aria-label={CD.loading}>
-      <span className="skeleton-row dash-skel-title" />
-      <span className="skeleton-row dash-skel-value" />
+      <SkeletonLine size="title" />
+      <SkeletonLine size="value" />
       <span className="skeleton-row" />
     </div>
   );
@@ -90,17 +93,7 @@ export function KpiSkeleton() {
 
 function Spark({ data, tone }: { data: number[]; tone: string }) {
   if (data.length < 2) return <span className="kpi-snap">{CD.currentSnapshot}</span>;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const span = max - min || 1;
-  const pts = data.map((v, i) => [(i / (data.length - 1)) * 100, 26 - ((v - min) / span) * 22] as const);
-  const line = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  return (
-    <svg className="kpi-spark" viewBox="0 0 100 28" preserveAspectRatio="none" role="img" aria-label={CD.sparkAria(data.length, formatNumber(Math.round(data[0])), formatNumber(Math.round(data[data.length - 1])))}>
-      <polygon points={`0,28 ${line} 100,28`} fill={tone} opacity="0.12" />
-      <polyline points={line} fill="none" stroke={tone} strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
+  return <Sparkline data={data} tone={tone} label={CD.sparkAria(data.length, formatNumber(Math.round(data[0])), formatNumber(Math.round(data[data.length - 1])))} />;
 }
 
 export function KpiCard({ kpi }: { kpi: Kpi }) {
@@ -366,8 +359,8 @@ export function BoardCard({ board }: { board: Board }) {
           {board.empty}
         </EmptyState>
       ) : (
-        <div className="table-scroll">
-          <table className="mini-table dash-table">
+        
+          <Table className="dash-table">
             <caption className="sr-only">{board.title}</caption>
             <thead>
               <tr>
@@ -397,8 +390,8 @@ export function BoardCard({ board }: { board: Board }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       )}
     </Card>
   );

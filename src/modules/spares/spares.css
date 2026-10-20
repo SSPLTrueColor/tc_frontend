@@ -1,17 +1,17 @@
 /* Spare Parts & Consumables pages — layout helpers only (template tokens). */
 .sp-stack {
   display: grid;
-  gap: 12px;
+  gap: var(--sp-3);
   align-content: start;
 }
 .sp-stack > section {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .sp-page-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
   align-items: center;
 }
 .sp-table-wrap {

@@ -15,10 +15,12 @@ import { getResource } from '../../services/registry';
 import { displayText } from '../../services/runtime';
 import { Button } from '../../components/primitives/Button';
 import { EmptyValue } from '../../components/primitives/display';
-import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
+import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, useToast } from '../../components/primitives/feedback';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { SettingsPage, SettingsSkeleton } from '../../components/settings/kit';
+import { Table } from '../../components/primitives/Table';
+import { FileInput } from '../../components/primitives/controls';
 
 const X = L.admin.importExport;
 
@@ -36,22 +38,20 @@ export function ImportExportPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   if (!can(actor, 'data.export') && !can(actor, 'data.import')) return <NoAccess what={X.noAccessWhat} />;
-  const header = <PageHeader title={L.nav.pages.bulkImportExport.title} description={X.description} />;
+  const T = L.nav.pages.bulkImportExport.title;
   if (lists.error)
     return (
-      <div className="page">
-        {header}
+      <SettingsPage title={T} description={X.short}>
         <ErrorState title={X.loadError} onRetry={lists.retry}>
           {lists.error}
         </ErrorState>
-      </div>
+      </SettingsPage>
     );
   if (!lists.data)
     return (
-      <div className="page">
-        {header}
-        <Skeleton rows={6} />
-      </div>
+      <SettingsPage title={T} description={X.short}>
+        <SettingsSkeleton sections={2} />
+      </SettingsPage>
     );
   const { importable, exportable } = lists.data;
   const impKey = imp || importable[0]?.key || '';
@@ -82,8 +82,7 @@ export function ImportExportPage() {
   };
 
   return (
-    <div className="page">
-      {header}
+    <SettingsPage title={T} description={X.short}>
       <div className="cat-grid">
         <section className="panel">
           <h2 className="panel-title dialog-title-row">
@@ -125,9 +124,9 @@ export function ImportExportPage() {
                 <Button variant="primary" icon="arrow-up" loading={busy === 'preview'} onClick={() => fileRef.current?.click()}>
                   {X.chooseFile}
                 </Button>
-                <input
+                <FileInput
                   ref={fileRef}
-                  type="file"
+                  
                   accept=".csv,text/csv"
                   hidden
                   onChange={(e) => {
@@ -234,7 +233,7 @@ export function ImportExportPage() {
             </EmptyState>
           ) : (
             <div className="table-scroll">
-              <table className="mini-table">
+              <Table scroll={false}>
                 <thead>
                   <tr>
                     <th scope="col">{X.line}</th>
@@ -261,12 +260,12 @@ export function ImportExportPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </Table>
               {preview.rows.length > 200 && <p className="muted small">{X.firstRows(200, preview.rows.length)}</p>}
             </div>
           )}
         </section>
       )}
-    </div>
+    </SettingsPage>
   );
 }

@@ -1,6 +1,5 @@
 /** Sales order record actions, banner and dialogs (approval, Hold Order / Cancel Order, Push to ERP, Record Dispatch, Confirm Delivery). */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
 import { L } from '../../constants/labels';
 import { ROUTES, toPath } from '../../constants/routes';
@@ -22,6 +21,7 @@ import { InlineAlert, useToast } from '../../components/primitives/feedback';
 import { Dialog } from '../../components/primitives/overlay';
 import { Field, FilePick } from './components';
 import { ReceiptDialog } from './OrderTabs';
+import { Checkbox, LinkButton, TextField, Textarea } from '../../components/primitives/controls';
 
 const O = L.orders;
 const D = L.dispatch;
@@ -54,9 +54,7 @@ export function OrderActions({ actor, record }: RecordExtensionProps) {
         </Button>
       )}
       {SO_BEFORE_DISPATCH.includes(status) && editable && (
-        <Link className="btn btn-secondary" to={recordEditPath('salesOrders', record.id)}>
-          <span className="btn-label">{O.actions.editLines}</span>
-        </Link>
+        <LinkButton to={recordEditPath('salesOrders', record.id)}>{O.actions.editLines}</LinkButton>
       )}
       {status === 'ready_for_dispatch' && (
         <Button variant="primary" icon="send" onClick={() => setDispatching(true)} disabledReason={can(actor, 'orders.dispatch') ? undefined : O.disabled.dispatch}>
@@ -84,9 +82,7 @@ export function OrderActions({ actor, record }: RecordExtensionProps) {
         </Button>
       )}
       {record.orderKind === 'consumables' && status !== 'cancelled' && can(actor, 'orders.contract') && (
-        <Link className="btn btn-secondary" to={toPath(ROUTES.salesOrderNew, {}, { repeatOf: record.id })}>
-          <span className="btn-label">{O.actions.repeatOrder}</span>
-        </Link>
+        <LinkButton to={toPath(ROUTES.salesOrderNew, {}, { repeatOf: record.id })}>{O.actions.repeatOrder}</LinkButton>
       )}
       {SO_BEFORE_DISPATCH.includes(status) && (
         <Button onClick={() => setReason('hold')} disabledReason={busyReason}>
@@ -160,7 +156,7 @@ function ReasonDialog({ kind, orderId, orderNo, onClose }: { kind: Kind; orderId
       }
     >
       <Field id="so-reason" label={kind === 'submit' ? O.dialogs.approverNote : O.dialogs.reason} required={kind !== 'submit'} error={error}>
-        <textarea id="so-reason" className="input textarea" rows={3} maxLength={500} value={text} onChange={(e) => setText(e.target.value)} data-autofocus={!c.danger || undefined} />
+        <Textarea id="so-reason" className="textarea" rows={3} maxLength={500} value={text} onChange={(e) => setText(e.target.value)} data-autofocus={!c.danger || undefined} />
       </Field>
     </Dialog>
   );
@@ -216,22 +212,22 @@ function DispatchDialog({ order, onClose }: { order: RecordExtensionProps['recor
           <DatePicker id="dp-exp" label={FD.expectedDelivery} value={f.expectedDelivery} onChange={(v) => set({ expectedDelivery: v ?? '' })} invalid={!!errors.expectedDelivery} />
         </Field>
         <Field id="dp-tr" label={FD.transporter} required error={errors.transporter}>
-          <input id="dp-tr" className="input" maxLength={80} value={f.transporter} onChange={(e) => set({ transporter: e.target.value })} placeholder={FD.transporterPlaceholder} data-autofocus />
+          <TextField id="dp-tr" maxLength={80} value={f.transporter} onChange={(e) => set({ transporter: e.target.value })} placeholder={FD.transporterPlaceholder} data-autofocus />
         </Field>
         <Field id="dp-lr" label={FD.lrNumber} required error={errors.lrNumber}>
-          <input id="dp-lr" className="input" maxLength={40} value={f.lrNumber} onChange={(e) => set({ lrNumber: e.target.value })} />
+          <TextField id="dp-lr" maxLength={40} value={f.lrNumber} onChange={(e) => set({ lrNumber: e.target.value })} />
         </Field>
         <Field id="dp-ch" label={FD.challanNo}>
-          <input id="dp-ch" className="input" maxLength={40} value={f.challanNo} onChange={(e) => set({ challanNo: e.target.value })} />
+          <TextField id="dp-ch" maxLength={40} value={f.challanNo} onChange={(e) => set({ challanNo: e.target.value })} />
         </Field>
         <Field id="dp-inv" label={FD.invoiceRef}>
-          <input id="dp-inv" className="input" maxLength={40} value={f.invoiceRef} onChange={(e) => set({ invoiceRef: e.target.value })} />
+          <TextField id="dp-inv" maxLength={40} value={f.invoiceRef} onChange={(e) => set({ invoiceRef: e.target.value })} />
         </Field>
         <Field id="dp-ewb" label={FD.ewayBill} required error={errors.ewayBill} help={FD.ewayBillHelp}>
-          <input id="dp-ewb" className="input" inputMode="numeric" maxLength={12} value={f.ewayBill} onChange={(e) => set({ ewayBill: e.target.value.replace(/\D/g, '') })} />
+          <TextField id="dp-ewb" inputMode="numeric" maxLength={12} value={f.ewayBill} onChange={(e) => set({ ewayBill: e.target.value.replace(/\D/g, '') })} />
         </Field>
         <label className="orders-check">
-          <input type="checkbox" checked={f.notifyCustomer} onChange={(e) => set({ notifyCustomer: e.target.checked })} /> {FD.notifyCustomer}
+          <Checkbox checked={f.notifyCustomer} onChange={(e) => set({ notifyCustomer: e.target.checked })} /> {FD.notifyCustomer}
         </label>
       </div>
       {form && <InlineAlert tone="danger">{form}</InlineAlert>}

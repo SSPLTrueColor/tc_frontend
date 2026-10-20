@@ -21,6 +21,7 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { DatePicker } from '../../components/primitives/DatePicker';
 import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
+import { TextField, Textarea } from '../../components/primitives/controls';
 
 const A = L.customers.actions;
 const M = L.customers.messages;
@@ -174,7 +175,7 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
               <label className="field-label" htmlFor="cv-company">
                 {V.companyName} <span className="req">*</span>
               </label>
-              <input id="cv-company" className="input" maxLength={120} value={v.companyName} onChange={(e) => set('companyName', e.target.value)} data-autofocus />
+              <TextField id="cv-company" maxLength={120} value={v.companyName} onChange={(e) => set('companyName', e.target.value)} data-autofocus />
               {err('companyName')}
               {similar.length > 0 && (
                 <InlineAlert tone="warning" title={L.customers.banners.duplicateTitle}>
@@ -245,7 +246,7 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
             <label className="field-label" htmlFor="cv-event">
               {V.eventName} <span className="req">*</span>
             </label>
-            <input id="cv-event" className="input" maxLength={120} value={v.eventName} onChange={(e) => set('eventName', e.target.value)} placeholder={V.eventPlaceholder} />
+            <TextField id="cv-event" maxLength={120} value={v.eventName} onChange={(e) => set('eventName', e.target.value)} placeholder={V.eventPlaceholder} />
             {err('eventName')}
           </div>
         )}
@@ -253,7 +254,7 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
           <label className="field-label" htmlFor="cv-req">
             {V.requirement}
           </label>
-          <textarea id="cv-req" className="input textarea" rows={2} maxLength={1000} value={v.requirement} onChange={(e) => set('requirement', e.target.value)} />
+          <Textarea id="cv-req" className="textarea" rows={2} maxLength={1000} value={v.requirement} onChange={(e) => set('requirement', e.target.value)} />
         </div>
         {errors.form && (
           <p className="field-error span-all" role="alert">

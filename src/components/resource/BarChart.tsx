@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { cx } from '../../lib/format';
 import { L } from '../../constants/labels';
+import { Table } from '../primitives/Table';
 
 /**
  * Single-series bar chart (dataviz: one series → slot-1 color, thin marks,
@@ -26,7 +27,7 @@ export function BarChart({ data, label, unit, onSelect }: { data: { key: string;
         </button>
       </div>
       {asTable ? (
-        <table className="mini-table">
+        <Table scroll={false}>
           <thead>
             <tr>
               <th scope="col">{L.common.list.day}</th>
@@ -43,7 +44,7 @@ export function BarChart({ data, label, unit, onSelect }: { data: { key: string;
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       ) : (
         <div className="chart-svg-wrap">
           <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${label}: ${data.map((d) => `${d.label} ${d.value}`).join(', ')}`} className="chart-svg">

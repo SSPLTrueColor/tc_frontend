@@ -18,6 +18,9 @@ import { PageHeader } from '../../../components/shell/PageHeader';
 import { AssignDialog, clockText } from '../components/TicketExtensions';
 import { L } from '../../../constants/labels';
 import { resourcePath } from '../../../lib/routes';
+import { TextField, Textarea } from '../../../components/primitives/controls';
+import { SegmentedControl } from '../../../components/primitives/controls';
+import { Table } from '../../../components/primitives/Table';
 
 const S = L.service;
 const P = S.pages.engineerCalendar;
@@ -76,7 +79,7 @@ export function EngineerCalendarPage() {
                           {P.responseIn(s(masterValue('division', t.divisionId)?.label), resp ? clockText(resp) : S.sla.chips.not_applicable)}
                         </span>
                       </Link>
-                      <Button variant="primary" onClick={() => setAssign(t.id)}>
+                      <Button onClick={() => setAssign(t.id)}>
                         {S.actions.assignEngineer}
                       </Button>
                     </li>
@@ -96,8 +99,8 @@ export function EngineerCalendarPage() {
               </h2>
             </div>
             {q.data.engineers.length ? (
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{P.colEngineer}</th>
@@ -136,8 +139,8 @@ export function EngineerCalendarPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
             ) : (
               <EmptyState icon="users" title={P.noEngineers} />
             )}
@@ -210,25 +213,24 @@ function IncomingDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="form-grid">
-        <div className="segmented" role="radiogroup" aria-label={S.incoming.channel}>
-          {(['whatsapp', 'email'] as const).map((c) => (
-            <button key={c} type="button" role="radio" aria-checked={channel === c} className={`seg-btn${channel === c ? ' is-on' : ''}`} onClick={() => setChannel(c)}>
-              {S.incoming.channels[c]}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={S.incoming.channel}
+          value={channel}
+          onChange={(next) => setChannel(next)}
+          options={(['whatsapp', 'email'] as const).map((c) => ({ value: c, label: S.incoming.channels[c] }))}
+        />
         <div className="form-field">
           <label className="field-label" htmlFor="in-from">
             {channel === 'whatsapp' ? S.incoming.fromMobile : S.incoming.fromEmail} <span className="req">*</span>
           </label>
-          <input id="in-from" className="input" value={from} onChange={(e) => setFrom(e.target.value)} placeholder={channel === 'whatsapp' ? S.incoming.fromMobilePlaceholder : S.incoming.fromEmailPlaceholder} aria-invalid={!!errors.from || undefined} data-autofocus />
+          <TextField id="in-from" value={from} onChange={(e) => setFrom(e.target.value)} placeholder={channel === 'whatsapp' ? S.incoming.fromMobilePlaceholder : S.incoming.fromEmailPlaceholder} aria-invalid={!!errors.from || undefined} data-autofocus />
           {errors.from && <p className="field-error">{errors.from}</p>}
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="in-msg">
             {S.incoming.message} <span className="req">*</span>
           </label>
-          <textarea id="in-msg" className="input textarea" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={S.incoming.messagePlaceholder} aria-invalid={!!errors.description || undefined} />
+          <Textarea id="in-msg" className="textarea" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={S.incoming.messagePlaceholder} aria-invalid={!!errors.description || undefined} />
           {errors.description && <p className="field-error">{errors.description}</p>}
         </div>
         {errors.form && !errors.from && !errors.description && (

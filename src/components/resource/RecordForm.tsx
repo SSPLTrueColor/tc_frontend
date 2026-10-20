@@ -1,3 +1,4 @@
+import { lastUsedValues } from '../../services/lastUsed';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { RecordData, ResourceDefinition } from '../../metadata/types';
 import { uid } from '../../lib/ids';
@@ -18,6 +19,7 @@ import { hooksFor } from '../../services/resourceHooks';
 import { EmptyValue } from '../primitives/display';
 import { applyFormLayout, divisionOf } from '../../services/formLayouts';
 import { L } from '../../constants/labels';
+import { TextField } from '../primitives/controls';
 
 const C = L.common;
 const F = L.common.form;
@@ -47,7 +49,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
       return null;
     }
   }, [recordId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [values, setValues] = useState<Values>(() => (loaded ? { ...loaded.record } : initialValues(res, initial)));
+  const [values, setValues] = useState<Values>(() => (loaded ? { ...loaded.record } : initialValues(res, { ...lastUsedValues(actor.user.id, resKey), ...initial })));
   const [baseVersion, setBaseVersion] = useState(loaded?.record.version ?? 0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [errorLinks, setErrorLinks] = useState<Record<string, { label: string; to: string }>>({});
@@ -182,7 +184,7 @@ export function ConflictPanel({ form, onOverride }: { form: RecordFormState; onO
             <label className="field-label" htmlFor="override-reason">
               {F.overrideReason}
             </label>
-            <input id="override-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={F.overridePlaceholder} />
+            <TextField id="override-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={F.overridePlaceholder} />
             <Button variant="danger" disabled={reason.trim().length < 5} onClick={() => onOverride(reason)}>
               {F.overrideAction}
             </Button>

@@ -209,8 +209,8 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
         <thead>
           <tr>
             <th className="col-select sticky-left" style={{ left: 0 }} scope="col">
-              <input
-                type="checkbox"
+              <Checkbox
+                
                 aria-label={LS.selectAll}
                 checked={allSelected}
                 ref={(el) => el && (el.indeterminate = !allSelected && someSelected)}
@@ -325,7 +325,7 @@ function Table({ res, actor, rows, columns, onColumnsChange, sort, onSortChange,
                         }}
                       >
                         <td className="col-select sticky-left" style={{ left: 0 }} onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" aria-label={LS.selectRow(recordTitle(res.key, r.id, actor))} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                          <Checkbox aria-label={LS.selectRow(recordTitle(res.key, r.id, actor))} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
                         </td>
                         {masterDetail && (
                           <td className="col-expand sticky-left" style={{ left: 40 }} onClick={(e) => e.stopPropagation()}>
@@ -465,6 +465,7 @@ function IdCell({ id, onOpen }: { id: string; onOpen: () => void }) {
 
 export { fieldIcon } from './fieldIcon';
 import { fieldIcon } from './fieldIcon';
+import { Checkbox } from '../primitives/controls';
 
 /**
  * Cell content for every row style: optional leading picture (image field or initials tile), the value,
@@ -578,8 +579,8 @@ function CardList({ res, actor, rows, onOpen, activeId, columns, selected, onSel
     <ul className="card-list" aria-label={LS.listAria(res.labelPlural)}>
       {rows.map((r) => (
         <li key={r.id} className={cx('card-row', activeId === r.id && 'is-active')}>
-          <input
-            type="checkbox"
+          <Checkbox
+            
             aria-label={LS.selectRow(r.id)}
             checked={selected.has(r.id)}
             onChange={() => {

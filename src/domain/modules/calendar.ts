@@ -29,6 +29,7 @@ const masters: MasterDefinition[] = [
   ]),
   master('calEventStatus', M.eventStatus.label, [mv('scheduled', M.eventStatus.values.scheduled, 'info'), mv('completed', M.eventStatus.values.completed, 'success'), mv('cancelled', M.eventStatus.values.cancelled, 'neutral')]),
   master('calRecurrence', M.recurrence.label, [mv('none', M.recurrence.values.none), mv('daily', M.recurrence.values.daily), mv('weekly', M.recurrence.values.weekly), mv('monthly', M.recurrence.values.monthly)]),
+  master('calReminder', M.reminder.label, [mv('none', M.reminder.values.none), mv('15m', M.reminder.values['15m']), mv('1h', M.reminder.values['1h']), mv('1d', M.reminder.values['1d'])]),
   master('calLinkType', M.linkType.label, [
     mv('customers', M.linkType.values.customers),
     mv('leads', M.linkType.values.leads),
@@ -72,6 +73,7 @@ export const calendarEvents: ResourceDefinition = {
     f('linkLabel', FL.linkLabel, 'text', { capabilities: { list: true, search: true, sort: true }, width: 220 }),
     f('customerId', FL.customerId, 'relation', { relation: { resource: 'customers' }, width: 200 }),
     f('location', FL.location, 'text', { maxLength: 160, capabilities: ALL }),
+    f('reminder', FL.reminder, 'master', { master: 'calReminder', defaultValue: 'none', width: 150 }),
     f('status', FL.status, 'master', { master: 'calEventStatus', defaultValue: 'scheduled', width: 120 }),
     f('notes', FL.notes, 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
     // Recurrence bookkeeping: occurrences removed or moved individually ("this event" edits).
@@ -81,7 +83,7 @@ export const calendarEvents: ResourceDefinition = {
   relationships: [],
   form: {
     quickCreate: ['title', 'eventType', 'start', 'end', 'assigneeId'],
-    sections: [{ id: 'main', title: L.calendar.sections.main, fields: ['title', 'eventType', 'allDay', 'start', 'end', 'recurrence', 'recurrenceUntil', 'assigneeId', 'attendeeIds', 'location', 'status', 'notes'], columns: 2 }],
+    sections: [{ id: 'main', title: L.calendar.sections.main, fields: ['title', 'eventType', 'allDay', 'start', 'end', 'recurrence', 'recurrenceUntil', 'assigneeId', 'attendeeIds', 'location', 'reminder', 'status', 'notes'], columns: 2 }],
   },
   views: views([
     { id: 'v_cal_upcoming', resource: 'calendarEvents', name: L.calendar.views.upcoming, type: 'table', filter: group('and', [cond('status', 'eq', 'scheduled')]), sort: [{ field: 'start', dir: 'asc' }], columns: cols('start', 'title', 'eventType', 'assigneeId', 'linkLabel', 'recurrence', 'status') },

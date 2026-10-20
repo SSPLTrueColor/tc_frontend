@@ -11,10 +11,10 @@ import { recordPeekPath } from '../../lib/routes';
 import { Button } from '../../components/primitives/Button';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
-import { InfoTip } from '../../components/primitives/InfoTip';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { SettingsField, SettingsPage, SettingsSection } from '../../components/settings/kit';
 import { byTime, SortPicker, type SortDir, usePaged } from './kit';
+import { Table } from '../../components/primitives/Table';
 
 const I = L.admin.integrations;
 const ACTION_LABEL: Record<string, string> = Object.fromEntries(Object.entries(I.actions).map(([k, v]) => [`integration.${k}`, v]));
@@ -45,62 +45,53 @@ export function IntegrationsPage() {
   };
 
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.integrations.title} description={I.description} />
-      <div className="cat-cards">
-        <section className="panel">
-          <h2 className="panel-title dialog-title-row">
-            {I.leadCapture}
-            <InfoTip text={I.leadCaptureTip} label={L.admin.common.about(I.leadCapture)} />
-          </h2>
-          <p className="muted small">{I.leadCaptureRefs}</p>
-          <div className="row-gap">
-            <SelectMenu label={I.leadSource} value={source} options={LEAD_CHANNELS.map((c) => ({ value: c.key, label: c.label }))} onChange={setSource} />
-            <Button variant="primary" loading={busy === 'lead'} onClick={() => run('lead', () => captureLead(actor, source))}>
-              {I.simulateLead}
-            </Button>
-          </div>
-        </section>
-        <section className="panel">
-          <h2 className="panel-title dialog-title-row">
-            {I.erp}
-            <InfoTip text={I.erpTip} label={L.admin.common.about(I.erp)} />
-          </h2>
-          <p className="muted small">{I.erpRefs}</p>
-          <Button variant="primary" loading={busy === 'erp'} onClick={() => run('erp', async () => {
-            const r = await runErpSync(actor);
-            return { message: I.erpDone(r.customers, r.spares) };
-          })}>
+    <SettingsPage title={L.nav.pages.integrations.title} description={I.short.page}>
+      <SettingsSection title={I.leadCapture} help={I.short.lead}>
+        <SettingsField label={I.leadSource} htmlFor="int-source">
+          <SelectMenu id="int-source" label={I.leadSource} value={source} options={LEAD_CHANNELS.map((c) => ({ value: c.key, label: c.label }))} onChange={setSource} />
+        </SettingsField>
+        <div>
+          <Button loading={busy === 'lead'} onClick={() => run('lead', () => captureLead(actor, source))}>
+            {I.simulateLead}
+          </Button>
+        </div>
+      </SettingsSection>
+      <SettingsSection title={I.erp} help={I.short.erp}>
+        <p className="st-help">{I.erpTip}</p>
+        <div>
+          <Button
+            loading={busy === 'erp'}
+            onClick={() =>
+              run('erp', async () => {
+                const r = await runErpSync(actor);
+                return { message: I.erpDone(r.customers, r.spares) };
+              })
+            }
+          >
             {I.erpSync}
           </Button>
-        </section>
-        <section className="panel">
-          <h2 className="panel-title dialog-title-row">
-            {I.messageTicket}
-            <InfoTip text={I.messageTicketTip} label={L.admin.common.about(I.messageTicket)} />
-          </h2>
-          <p className="muted small">{I.messageTicketRefs}</p>
-          <div className="row-gap">
-            <Button loading={busy === 'wa'} onClick={() => run('wa', () => receiveMessage(actor, 'whatsapp'))}>
-              {I.simulateWhatsapp}
-            </Button>
-            <Button loading={busy === 'mail'} onClick={() => run('mail', () => receiveMessage(actor, 'email'))}>
-              {I.simulateEmail}
-            </Button>
-          </div>
-        </section>
-        <section className="panel">
-          <h2 className="panel-title">{I.notConnected}</h2>
-          <ul className="plain-list bullets small">
-            {I.notConnectedItems.map((t) => (
-              <li key={t}>{t}</li>
-            ))}
-          </ul>
-        </section>
-      </div>
-      <section className="panel">
-        <h2 className="panel-title">{I.log}</h2>
-        <div className="toolbar">
+        </div>
+      </SettingsSection>
+      <SettingsSection title={I.messageTicket} help={I.short.message}>
+        <p className="st-help">{I.messageTicketTip}</p>
+        <div className="st-actions">
+          <Button loading={busy === 'wa'} onClick={() => run('wa', () => receiveMessage(actor, 'whatsapp'))}>
+            {I.simulateWhatsapp}
+          </Button>
+          <Button loading={busy === 'mail'} onClick={() => run('mail', () => receiveMessage(actor, 'email'))}>
+            {I.simulateEmail}
+          </Button>
+        </div>
+      </SettingsSection>
+      <SettingsSection title={I.notConnected} help={I.short.notConnected}>
+        <ul className="plain-list bullets small">
+          {I.notConnectedItems.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      </SettingsSection>
+      <SettingsSection wide title={I.log} help={I.short.log}>
+        <div className="st-actions">
           <SelectMenu label={I.filterType} value={logType} options={[{ value: '', label: I.allTypes }, ...Object.entries(ACTION_LABEL).map(([value, label]) => ({ value, label }))]} onChange={setLogType} />
           <SortPicker value={sort} onChange={setSort} />
         </div>
@@ -116,8 +107,8 @@ export function IntegrationsPage() {
           </EmptyState>
         ) : (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{I.columns.when}</th>
@@ -140,12 +131,12 @@ export function IntegrationsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer(I.runs)}
           </>
         )}
-      </section>
-    </div>
+      </SettingsSection>
+    </SettingsPage>
   );
 }

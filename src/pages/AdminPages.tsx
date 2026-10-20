@@ -2,6 +2,7 @@
  * Administration & Configuration pages (BRD 4.14): Masters (ADM-03), Custom Fields & Form Layouts (ADM-05),
  * Roles & Permissions (ADM-02), Audit Trail with the System Events view (COM-09) and Demo Settings.
  */
+import { FIELD_ACCESS_TONE } from '../domain/statusTones';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { L } from '../constants/labels';
@@ -17,27 +18,31 @@ import { actorFor, can, canReadResource, fieldAccess } from '../services/authz';
 import { getRoleMatrix, LOCKED_ROLES, SCOPES, validateRolePermissions } from '../services/catalog/access';
 import { getFormLayout, layoutResources, listFormLayouts, sectionHasRequired, validateFormLayout } from '../services/catalog/formLayouts';
 import { addDraftField, discardDraft, draftSummary, ensureDraft, getDraft, type NewFieldSpec, publishDraft, removeDraftField, revertDraftMaster, setDraftMaster, validateDraft, type ConfigIssue } from '../services/config';
-import { getDb, STORAGE_KEY } from '../services/db';
+import { getDb, resetDb, STORAGE_KEY } from '../services/db';
 import { demoUsers, NO_ACCESS } from '../domain/pack';
 import { DataTransfer, DemoControls } from './DemoPages';
 import { useActor, useRevision } from '../services/hooks';
 import { activeMasterValues, allMasters, allResources, getMaster, getResource, getUser, masterLabel } from '../services/registry';
-import { getSettings, updateSettings } from '../services/settings';
 import { ServiceError } from '../services/types';
+import { Switch } from '../components/primitives/controls';
 import { Button, IconButton } from '../components/primitives/Button';
 import { Icon } from '../components/primitives/Icon';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, StatusChip, Tabs, useToast } from '../components/primitives/feedback';
-import { PageHeader } from '../components/shell/PageHeader';
 import { SelectMenu } from '../components/primitives/SelectMenu';
 import { DatePicker } from '../components/primitives/DatePicker';
 import { InfoTip } from '../components/primitives/InfoTip';
-import { ResetDialog } from '../components/shell/AppShell';
 import { confirmDelete } from '../components/primitives/overlay';
 import { relativeTime } from '../lib/dates';
 import { DateText, EmptyValue } from '../components/primitives/display';
-import { ThemePicker } from '../components/shell/ThemePicker';
+import { DangerZone, SaveBar, SettingsField, SettingsPage, SettingsSection, SettingsSkeleton } from '../components/settings/kit';
 import { byTime, QuickGuide, SortPicker, type SortDir, usePaged } from '../modules/catalog/kit';
 import { AccessSimple } from '../modules/catalog/AccessSimple';
+import { ExpiringAccess } from '../modules/catalog/ExpiringAccess';
+import { PeopleAccess } from '../modules/catalog/PeopleAccess';
+import { listActiveGrants, listPeople } from '../services/catalog/grants';
+import { Checkbox, SearchInput, TextField } from '../components/primitives/controls';
+import { SegmentedControl } from '../components/primitives/controls';
+import { Table } from '../components/primitives/Table';
 
 const A = L.admin;
 const TONES: Tone[] = ['neutral', 'info', 'success', 'warning', 'danger', 'accent'];
@@ -150,8 +155,7 @@ export function MastersPage() {
   if (!can(actor, 'config.publish')) return <NoAccess what={A.masters.noAccessWhat} />;
   const M = A.masters;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.masters.title} description={M.description} actions={d.actions} />
+    <SettingsPage title={L.nav.pages.masters.title} description={M.short} actions={d.actions}>
       {d.banner}
       <Tabs<MastersTab>
         label={M.sectionsLabel}
@@ -163,12 +167,12 @@ export function MastersPage() {
           { id: 'history', label: M.tabs.history, count: getDb().config.history.length },
         ]}
       />
-      <div className="content-surface" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      <div className="st-stack" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'masters' && <MastersEditor onChange={d.onChange} />}
         {tab === 'records' && <RecordMasters />}
         {tab === 'history' && <History />}
       </div>
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -205,13 +209,11 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
   const M = A.masters;
   const masters = allMasters();
   const [sel, setSel] = useState(masters[0].key);
-  const [search, setSearch] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const draft = getDraft();
   const editing = draft?.masters[sel];
   const m: MasterDefinition = editing ?? getMaster(sel);
   const editable = !!draft;
-  const listed = masters.filter((x) => !search || x.label.toLowerCase().includes(search.toLowerCase()));
   const write = (next: MasterDefinition) => {
     setDraftMaster(actor, next);
     onChange();
@@ -227,118 +229,97 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
   };
   const duplicate = !!newLabel.trim() && m.values.some((v) => v.label.toLowerCase() === newLabel.trim().toLowerCase());
   return (
-    <div className="studio-split">
-      <nav className="studio-list" aria-label={M.listLabel}>
-        <input type="search" className="input input-compact" placeholder={M.searchPlaceholder} aria-label={M.searchPlaceholder} value={search} onChange={(e) => setSearch(e.target.value)} />
-        {listed.length ? (
-          <ul className="nav-list">
-            {listed.map((x) => (
-              <li key={x.key}>
-                <button type="button" className={cx('nav-row', sel === x.key && 'is-active')} onClick={() => setSel(x.key)} aria-current={sel === x.key ? 'true' : undefined}>
-                  <span className="nav-label">{x.label}</span>
-                  {draft?.masters[x.key] && <span className="nav-meta">{M.draftBadge}</span>}
-                  <span className="nav-meta">v{x.version}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted small">{M.noMatch}</p>
-        )}
-      </nav>
-      <section className="studio-editor">
-        <div className="panel-head">
-          <div>
-            <h2 className="panel-title dialog-title-row">
-              {m.label}
-              <InfoTip text={M.valuesTip} label={M.valuesTipLabel} />
-            </h2>
-            <p className="muted small">
-              {M.meta(m.key, getMaster(sel).version)}
-              {m.description ? ` · ${m.description}` : ''}
-            </p>
-          </div>
-          {editing && (
+    <section className="st-card st-editor">
+      <SettingsField label={M.pick} htmlFor="master-pick">
+        <SelectMenu
+          id="master-pick"
+          searchable
+          label={M.pick}
+          value={sel}
+          options={masters.map((x) => ({ value: x.key, label: `${x.label}${draft?.masters[x.key] ? ` · ${M.draftBadge}` : ''}` }))}
+          onChange={setSel}
+        />
+      </SettingsField>
+      <div className="st-section-head">
+        <h2 className="st-section-title">{m.label}</h2>
+        <p className="st-help">
+          {M.meta(m.key, getMaster(sel).version)}
+          {m.description ? ` · ${m.description}` : ''}
+        </p>
+        {editing && (
+          <div className="st-section-actions">
             <Button variant="ghost" icon="reset" onClick={() => revertDraftMaster(actor, sel)}>
               {M.revert}
             </Button>
-          )}
-        </div>
-        {!editable && <InlineAlert tone="info">{M.readOnly}</InlineAlert>}
-        <div className="table-scroll">
-          <table className="mini-table studio-table">
-            <thead>
-              <tr>
-                <th scope="col">{M.columns.key}</th>
-                <th scope="col">{M.columns.label}</th>
-                <th scope="col">{M.columns.tone}</th>
-                <th scope="col">{M.columns.active}</th>
-                <th scope="col">{M.columns.parent}</th>
-                <th scope="col">
-                  <span className="sr-only">{M.columns.order}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...m.values]
-                .sort((a, b) => a.order - b.order)
-                .map((v) => (
-                  <tr key={v.key} className={cx(!v.active && 'is-inactive')}>
-                    <td>
-                      <code>{v.key}</code>
-                    </td>
-                    <td>
-                      <input className="input input-compact" aria-label={M.labelFor(v.key)} value={v.label} disabled={!editable} onChange={(e) => setVal(v.key, { label: e.target.value })} />
-                    </td>
-                    <td>
-                      <SelectMenu label={M.toneFor(v.key)} value={v.tone ?? 'neutral'} disabled={!editable} options={TONES.map((t) => ({ value: t, label: A.tones[t] }))} onChange={(t) => setVal(v.key, { tone: t as Tone })} />
-                      <StatusChip label={v.label || v.key} tone={v.tone} />
-                    </td>
-                    <td>
-                      <label className="switch">
-                        <input type="checkbox" role="switch" checked={v.active} disabled={!editable} onChange={(e) => setVal(v.key, { active: e.target.checked })} aria-label={M.activeFor(v.key)} />
-                        <span className="switch-track" aria-hidden="true" />
-                        <span className="small">{v.active ? A.common.active : A.common.inactive}</span>
-                      </label>
-                    </td>
-                    <td>{v.parent ?? <EmptyValue />}</td>
-                    <td className="li-actions">
-                      <IconButton icon="arrow-up" label={M.moveUp(v.key)} disabled={!editable} onClick={() => move(v.key, -1)} />
-                      <IconButton icon="arrow-down" label={M.moveDown(v.key)} disabled={!editable} onClick={() => move(v.key, 1)} />
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-        {editable && (
-          <form
-            className="inline-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const label = newLabel.trim();
-              if (!label || duplicate) return;
-              const key = label
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '_')
-                .replace(/^_|_$/g, '')
-                .replace(/^(\d)/, 'v_$1');
-              write({ ...m, values: [...m.values, { key, label, tone: 'neutral', active: true, order: m.values.length }] });
-              setNewLabel('');
-            }}
-          >
-            <label className="sr-only" htmlFor="new-master-value">
-              {M.newValue}
-            </label>
-            <input id="new-master-value" className="input input-compact" placeholder={M.newValue} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} aria-invalid={duplicate || undefined} />
-            <Button type="submit" icon="plus" disabledReason={!newLabel.trim() ? M.newValue : duplicate ? M.duplicateValue : undefined}>
-              {M.addValue}
-            </Button>
-            {duplicate && <p className="field-error">{M.duplicateValue}</p>}
-          </form>
+          </div>
         )}
-      </section>
-    </div>
+      </div>
+      {!editable && <InlineAlert tone="info">{M.readOnly}</InlineAlert>}
+      
+        <Table className="st-masters">
+          <thead>
+            <tr>
+              <th scope="col">{M.columns.label}</th>
+              <th scope="col">{M.columns.tone}</th>
+              <th scope="col">{M.columns.active}</th>
+              <th scope="col">
+                <span className="sr-only">{M.columns.order}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...m.values]
+              .sort((a, b) => a.order - b.order)
+              .map((v) => (
+                <tr key={v.key} className={cx(!v.active && 'is-inactive')}>
+                  <td>
+                    <TextField aria-label={M.labelFor(v.key)} value={v.label} maxLength={80} disabled={!editable} onChange={(e) => setVal(v.key, { label: e.target.value })} />
+                    <span className="field-help">
+                      <code>{v.key}</code>
+                      {v.parent ? ` · ${v.parent}` : ''}
+                    </span>
+                  </td>
+                  <td>
+                    <SelectMenu label={M.toneFor(v.key)} value={v.tone ?? 'neutral'} disabled={!editable} options={TONES.map((t) => ({ value: t, label: A.tones[t] }))} onChange={(t) => setVal(v.key, { tone: t as Tone })} />
+                  </td>
+                  <td>
+                    <Switch className="st-switch" checked={v.active} disabled={!editable} onChange={(on) => setVal(v.key, { active: on })} label={M.activeFor(v.key)} />
+                  </td>
+                  <td className="li-actions">
+                    <IconButton icon="arrow-up" label={M.moveUp(v.key)} disabled={!editable} onClick={() => move(v.key, -1)} />
+                    <IconButton icon="arrow-down" label={M.moveDown(v.key)} disabled={!editable} onClick={() => move(v.key, 1)} />
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </Table>
+      
+      {editable && (
+        <form
+          className="st-add"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const label = newLabel.trim();
+            if (!label || duplicate) return;
+            const key = label
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '_')
+              .replace(/^_|_$/g, '')
+              .replace(/^(\d)/, 'v_$1');
+            if (!key) return;
+            write({ ...m, values: [...m.values, { key, label, tone: 'neutral', active: true, order: m.values.length }] });
+            setNewLabel('');
+          }}
+        >
+          <SettingsField label={M.newValue} htmlFor="new-master-value" error={duplicate ? M.duplicateValue : undefined}>
+            <TextField id="new-master-value" maxLength={80} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} aria-invalid={duplicate || undefined} />
+          </SettingsField>
+          <Button type="submit" icon="plus" disabledReason={!newLabel.trim() ? M.newValue : duplicate ? M.duplicateValue : undefined}>
+            {M.addValue}
+          </Button>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -384,8 +365,7 @@ export function CustomFieldsPage() {
   if (!can(actor, 'config.publish')) return <NoAccess what={A.customFields.noAccessWhat} />;
   const C = A.customFields;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.customFields.title} description={C.description} actions={tab === 'fields' ? d.actions : undefined} />
+    <SettingsPage title={L.nav.pages.customFields.title} description={C.short} actions={tab === 'fields' ? d.actions : undefined}>
       {tab === 'fields' && d.banner}
       <Tabs<FieldsTab>
         label={C.sectionsLabel}
@@ -398,13 +378,13 @@ export function CustomFieldsPage() {
           { id: 'history', label: C.tabs.history, count: getDb().config.history.length },
         ]}
       />
-      <div className="content-surface" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      <div className="st-stack" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'fields' && <FieldsEditor onChange={d.onChange} />}
         {tab === 'layouts' && <FormLayoutsEditor />}
         {tab === 'registry' && <Registry />}
         {tab === 'history' && <History />}
       </div>
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -449,9 +429,9 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             <label className="field-label" htmlFor="nf-label">
               {C.label} <span className="req">*</span>
             </label>
-            <input
+            <TextField
               id="nf-label"
-              className="input"
+              
               value={spec.label}
               disabled={!draft}
               onChange={(e) =>
@@ -471,7 +451,7 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             <label className="field-label" htmlFor="nf-key">
               {C.key}
             </label>
-            <input id="nf-key" className="input mono" value={spec.key} disabled={!draft} onChange={(e) => set({ key: e.target.value })} />
+            <TextField id="nf-key" className="mono" value={spec.key} disabled={!draft} onChange={(e) => set({ key: e.target.value })} />
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="nf-type">
@@ -495,7 +475,7 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
           </div>
           <div className="form-field">
             <label className="check">
-              <input type="checkbox" checked={spec.required} disabled={!draft} onChange={(e) => set({ required: e.target.checked })} /> {C.required}
+              <Checkbox checked={spec.required} disabled={!draft} onChange={(e) => set({ required: e.target.checked })} /> {C.required}
             </label>
           </div>
           <div className="form-field">
@@ -521,9 +501,9 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             ) : spec.type === 'date' ? (
               <DatePicker id="nf-default" block label={C.defaultValue} value={String(spec.defaultValue ?? '')} disabled={!draft} onChange={(v) => set({ defaultValue: v ?? undefined })} />
             ) : (
-              <input
+              <TextField
                 id="nf-default"
-                className="input"
+                
                 type={spec.type === 'number' ? 'number' : 'text'}
                 value={String(spec.defaultValue ?? '')}
                 disabled={!draft}
@@ -535,7 +515,7 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             <label className="field-label" htmlFor="nf-help">
               {C.help} <span className="optional">{C.optional}</span>
             </label>
-            <input id="nf-help" className="input" value={spec.help ?? ''} disabled={!draft} onChange={(e) => set({ help: e.target.value })} />
+            <TextField id="nf-help" value={spec.help ?? ''} disabled={!draft} onChange={(e) => set({ help: e.target.value })} />
           </div>
           <div className="span-2">
             <Button type="submit" icon="plus" disabledReason={!draft ? C.startDraftFirst : !spec.label.trim() || !spec.key ? C.enterLabel : undefined}>
@@ -631,6 +611,10 @@ function FormLayoutsEditor() {
   };
 
   const save = async () => {
+    if (errors.length) {
+      toast(errors[0], 'danger');
+      return;
+    }
     setBusy(true);
     try {
       await saveLayout(actor, { resource: resKey, division, order, hidden });
@@ -643,25 +627,23 @@ function FormLayoutsEditor() {
   };
 
   return (
-    <div className="cat-stack">
-      <p className="muted">{F.intro}</p>
-      <div className="toolbar">
-        <label className="field-label" htmlFor="fl-res">
-          {F.resource}
-        </label>
-        <SelectMenu id="fl-res" searchable label={F.resource} value={resKey} options={resources.map((r) => ({ value: r.key, label: r.labelPlural }))} onChange={setResKey} />
-        <label className="field-label" htmlFor="fl-div">
-          {F.division}
-        </label>
-        <SelectMenu id="fl-div" label={F.division} value={division} options={divisions.map((d) => ({ value: d.key, label: d.label }))} onChange={setDivision} />
-        {current ? <Badge tone="accent">{F.customised}</Badge> : <Badge tone="neutral">{F.shipped}</Badge>}
+    <div className="st-stack st-stack-flush">
+      <p className="st-help">{F.intro}</p>
+      <div className="st-pair">
+        <SettingsField label={F.resource} htmlFor="fl-res">
+          <SelectMenu id="fl-res" searchable label={F.resource} value={resKey} options={resources.map((r) => ({ value: r.key, label: r.labelPlural }))} onChange={setResKey} />
+        </SettingsField>
+        <SettingsField label={F.division} htmlFor="fl-div">
+          <SelectMenu id="fl-div" label={F.division} value={division} options={divisions.map((d) => ({ value: d.key, label: d.label }))} onChange={setDivision} />
+        </SettingsField>
       </div>
+      <div>{current ? <Badge tone="accent">{F.customised}</Badge> : <Badge tone="neutral">{F.shipped}</Badge>}</div>
       {current && <p className="muted small">{F.lastChanged(getUser(current.updatedBy)?.name ?? current.updatedBy, relativeTime(current.updatedAt))}</p>}
       <div className="cat-grid">
         <section className="panel">
           <h2 className="panel-title">{F.sectionsTitle}</h2>
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{F.position}</th>
@@ -694,11 +676,7 @@ function FormLayoutsEditor() {
                       </td>
                       <td className="num">{s.fields.length}</td>
                       <td>
-                        <label className="switch" data-tooltip={locked ? F.requiredLocked : undefined}>
-                          <input type="checkbox" role="switch" checked={!isHidden} disabled={locked} onChange={(e) => setHidden(e.target.checked ? hidden.filter((h) => h !== s.id) : [...hidden, s.id])} aria-label={F.visibleFor(title)} />
-                          <span className="switch-track" aria-hidden="true" />
-                          <span className="small">{isHidden ? F.hidden : F.shown}</span>
-                        </label>
+                        <Switch tooltip={locked ? F.requiredLocked : undefined} checked={!isHidden} disabled={locked} onChange={(on) => setHidden(on ? hidden.filter((h) => h !== s.id) : [...hidden, s.id])} label={F.visibleFor(title)} text={isHidden ? F.hidden : F.shown} />
                       </td>
                       <td className="li-actions">
                         <IconButton icon="arrow-up" label={F.moveUp(title)} disabled={i === 0} onClick={() => move(i, -1)} />
@@ -708,8 +686,8 @@ function FormLayoutsEditor() {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
           {errors.length > 0 && (
             <ul className="plain-list">
               {errors.map((e) => (
@@ -719,41 +697,6 @@ function FormLayoutsEditor() {
               ))}
             </ul>
           )}
-          <div className="row-gap">
-            <Button
-              icon="reset"
-              disabledReason={current ? undefined : F.shipped}
-              onClick={() =>
-                confirmDelete({
-                  title: F.resetTitle,
-                  message: F.resetMessage(res.labelPlural, divLabel),
-                  confirmLabel: F.reset,
-                  onConfirm: async () => {
-                    try {
-                      await resetLayout(actor, resKey, division);
-                      toast(F.resetDone);
-                    } catch (e) {
-                      toast(errorMessage(e), 'danger');
-                    }
-                  },
-                })
-              }
-            >
-              {F.reset}
-            </Button>
-            <Button
-              onClick={() => {
-                setOrder(savedOrder);
-                setHidden(savedHidden);
-              }}
-              disabledReason={dirty ? undefined : A.common.noUnsavedChanges}
-            >
-              {A.common.discardChanges}
-            </Button>
-            <Button variant="primary" loading={busy} onClick={save} disabledReason={!dirty ? A.common.noUnsavedChanges : errors.length ? errors[0] : undefined}>
-              {F.save}
-            </Button>
-          </div>
         </section>
         <section className="panel">
           <h2 className="panel-title dialog-title-row">
@@ -802,6 +745,36 @@ function FormLayoutsEditor() {
           )}
         </section>
       </div>
+      <SaveBar
+        dirty={dirty}
+        busy={busy}
+        errorCount={errors.length}
+        saveLabel={F.save}
+        onSave={save}
+        onCancel={() => {
+          setOrder(savedOrder);
+          setHidden(savedHidden);
+        }}
+      />
+      {current && (
+        <DangerZone
+          title={F.resetTitle}
+          description={F.resetMessage(res.labelPlural, divLabel)}
+          actionLabel={F.reset}
+          confirmWord={L.settingsKit.resetWord}
+          confirmTitle={F.resetTitle}
+          confirmBody={F.resetMessage(res.labelPlural, divLabel)}
+          onConfirm={async () => {
+            try {
+              await resetLayout(actor, resKey, division);
+              toast(F.resetDone);
+            } catch (e) {
+              toast(errorMessage(e), 'danger');
+              throw e;
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -816,7 +789,7 @@ function Registry() {
   return (
     <div className="studio-split">
       <nav className="studio-list" aria-label={R.listLabel}>
-        <input type="search" className="input input-compact" placeholder={A.common.search} aria-label={R.listLabel} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <SearchInput dense placeholder={A.common.search} aria-label={R.listLabel} value={search} onChange={(e) => setSearch(e.target.value)} />
         <ul className="nav-list">
           {listed.map((r) => (
             <li key={r.key}>
@@ -834,8 +807,8 @@ function Registry() {
           {R.meta(res.id, res.module, res.fields.length, res.status)}
           {res.lifecycle ? R.lifecycle(res.lifecycle.field, res.lifecycle.transitions.length) : ''}
         </p>
-        <div className="table-scroll">
-          <table className="mini-table">
+        
+          <Table>
             <thead>
               <tr>
                 <th scope="col">{R.columns.field}</th>
@@ -882,8 +855,8 @@ function Registry() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       </section>
     </div>
   );
@@ -891,9 +864,9 @@ function Registry() {
 
 // ---------------------------------------------------------------- Roles & Permissions (ADM-02)
 
-const ACCESS_TONE: Record<FieldAccess, Tone> = { edit: 'success', view: 'info', mask: 'warning', hide: 'neutral' };
+const ACCESS_TONE = FIELD_ACCESS_TONE;
 const ACCESS_VALUES: FieldAccess[] = ['edit', 'view', 'mask', 'hide'];
-type AccessTab = 'simple' | 'edit' | 'matrix' | 'preview';
+type AccessTab = 'people' | 'simple' | 'expiring' | 'edit' | 'matrix' | 'preview';
 
 interface RoleDraft {
   roleId: string;
@@ -909,7 +882,7 @@ export function AccessPage() {
   const X = A.access;
   const resources = allResources();
   const q = useServiceQuery(() => getRoleMatrix(actor), [actor.user.id]);
-  const [tab, setTab] = useState<AccessTab>('simple');
+  const [tab, setTab] = useState<AccessTab>('people');
   const [roleId, setRoleId] = useState('sales_manager');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<RoleDraft | null>(null);
@@ -917,26 +890,27 @@ export function AccessPage() {
   const [busy, setBusy] = useState(false);
   const [fieldRes, setFieldRes] = useState(resources.find((r) => r.fields.some(isSensitive))?.key ?? resources[0].key);
   const [previewRes, setPreviewRes] = useState(resources[0].key);
+  const [cmpRes, setCmpRes] = useState(resources[0].key);
+  const [resetting, setResetting] = useState(false);
   const filtered = useMemo(() => resources.filter((r) => !search || r.labelPlural.toLowerCase().includes(search.toLowerCase())), [resources, search]);
   const paged = usePaged(filtered);
 
   if (!can(actor, 'access.view')) return <NoAccess what={X.noAccessWhat} />;
-  const header = <PageHeader title={L.nav.pages.rolesPermissions.title} description={X.description} />;
+  const pageTitle = L.nav.pages.rolesPermissions.title;
+  const activeGrants = can(actor, 'access.view') ? listActiveGrants(actor) : [];
   if (q.error)
     return (
-      <div className="page">
-        {header}
+      <SettingsPage title={pageTitle} description={X.short}>
         <ErrorState title={X.loadError} onRetry={q.retry}>
           {q.error}
         </ErrorState>
-      </div>
+      </SettingsPage>
     );
   if (!q.data)
     return (
-      <div className="page">
-        {header}
-        <Skeleton rows={10} />
-      </div>
+      <SettingsPage title={pageTitle} description={X.short}>
+        <SettingsSkeleton sections={3} />
+      </SettingsPage>
     );
 
   const { roles, shipped, overrides } = q.data;
@@ -973,108 +947,70 @@ export function AccessPage() {
     }
   };
 
-  const actions = (
-    <>
-    {!locked && (
-      <>
-        <Button
-          icon="reset"
-          disabledReason={overrides[role.id] ? undefined : X.resetRole}
-          onClick={() =>
-            confirmDelete({
-              title: X.resetTitle(role.label),
-              message: X.resetMessage,
-              confirmLabel: X.resetRole,
-              onConfirm: async () => {
-                try {
-                  await resetRole(actor, role.id);
-                  setDraft(null);
-                  toast(X.resetDone(role.label));
-                } catch (e) {
-                  toast(errorMessage(e), 'danger');
-                }
-              },
-            })
-          }
-        >
-          {X.resetRole}
-        </Button>
-        <Button onClick={() => setDraft(null)} disabledReason={dirty ? undefined : A.common.noUnsavedChanges}>
-          {A.common.discardChanges}
-        </Button>
-        <Button variant="primary" loading={busy} onClick={save} disabledReason={dirty ? undefined : A.common.noUnsavedChanges}>
-          {X.save}
-        </Button>
-      </>
-    )}
-    </>
-  );
-
   const yes = (b: boolean | string) => (b === true ? '✓' : b === false ? '✗' : A.scopes[b as RowScope]?.short ?? String(b));
   const preview = actorFor(demoUsers.find((u) => u.roleId === role.id)?.id ?? actor.user.id, actor.workspaceId);
   const previewDef = getResource(previewRes);
 
   const roleCard = (
-    <section className="panel access-role">
-      <div className="role-chips" role="group" aria-label={X.role}>
-        {roles.map((r) => (
-          <button
-            key={r.id}
-            type="button"
-            className={cx('role-chip', r.id === role.id && 'is-active')}
-            aria-pressed={r.id === role.id}
-            onClick={() => {
-              setRoleId(r.id);
-              setDraft(null);
-              setTried(false);
-            }}
-          >
-            {r.label}
-            {overrides[r.id] ? ' •' : ''}
-          </button>
-        ))}
-      </div>
-      <div className="access-role-foot">
-        <div className="access-role-text">
-          <strong>{role.label}</strong> {overrides[role.id] && <Badge tone="accent">{X.customised}</Badge>}
-          <span className="muted small">{role.description}</span>
-        </div>
+    <section className="st-card st-role">
+      <div className="st-role-pick">
+        <label className="field-label" htmlFor="ap-role">
+          {X.role}
+        </label>
+        <SelectMenu
+          id="ap-role"
+          label={X.role}
+          value={role.id}
+          options={roles.map((r) => ({ value: r.id, label: overrides[r.id] ? `${r.label} · ${X.customised}` : r.label }))}
+          onChange={(v) => {
+            setRoleId(v);
+            setDraft(null);
+            setTried(false);
+          }}
+        />
         {tab === 'simple' && !locked && (
-          <div className="access-actions">
-            <SelectMenu
-              label={X.simple.copyFrom}
-              value=""
-              options={[{ value: '', label: X.simple.copyPlaceholder }, ...roles.filter((r) => r.id !== role.id).map((r) => ({ value: r.id, label: r.label }))]}
-              onChange={(v) => {
-                const from = roles.find((r) => r.id === v);
-                if (!from) return;
-                setDraft({ ...work, resources: Object.fromEntries(resources.map((r) => [r.key, { ...NO_ACCESS, ...(from.resources[r.key] ?? {}), sensitive_data: work.resources[r.key].sensitive_data }])) });
-                toast(X.simple.copied(from.label), 'info');
-              }}
-            />
-            {actions}
-          </div>
+          <SelectMenu
+            label={X.simple.copyFrom}
+            value=""
+            options={[{ value: '', label: X.simple.copyPlaceholder }, ...roles.filter((r) => r.id !== role.id).map((r) => ({ value: r.id, label: r.label }))]}
+            onChange={(v) => {
+              const from = roles.find((r) => r.id === v);
+              if (!from) return;
+              setDraft({ ...work, resources: Object.fromEntries(resources.map((r) => [r.key, { ...NO_ACCESS, ...(from.resources[r.key] ?? {}), sensitive_data: work.resources[r.key].sensitive_data }])) });
+              toast(X.simple.copied(from.label), 'info');
+            }}
+          />
         )}
       </div>
+      <p className="st-help">{role.description}</p>
     </section>
   );
 
   return (
-    <div className="page access-page">
-      {header}
+    <SettingsPage title={pageTitle} description={L.grants.short}>
       <Tabs<AccessTab>
         label={X.sectionsLabel}
-        value={tab}
+        value={tab === 'matrix' || tab === 'preview' ? 'edit' : tab}
         onChange={setTab}
         tabs={[
-          { id: 'simple', label: X.simple.tabs.simple },
-          { id: 'edit', label: X.simple.tabs.advanced },
-          { id: 'matrix', label: X.simple.tabs.matrix },
-          { id: 'preview', label: X.simple.tabs.preview },
+          { id: 'people', label: L.grants.tabs.people },
+          { id: 'simple', label: L.grants.tabs.roles },
+          { id: 'expiring', label: L.grants.tabs.expiring, count: activeGrants.length },
+          { id: 'edit', label: L.grants.tabs.advanced },
         ]}
       />
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="access-body">
-        {tab !== 'matrix' && roleCard}
+      {(tab === 'edit' || tab === 'matrix' || tab === 'preview') && (
+        <SegmentedControl
+          label={L.grants.tabs.advanced}
+          value={tab}
+          onChange={(next) => setTab(next)}
+          options={(['edit', 'matrix', 'preview'] as const).map((v) => ({ value: v, label: L.grants.advancedViews[v] }))}
+        />
+      )}
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="st-stack">
+        {(tab === 'simple' || tab === 'edit' || tab === 'preview') && roleCard}
+        {tab === 'people' && <PeopleAccess actor={actor} people={listPeople(actor)} />}
+        {tab === 'expiring' && <ExpiringAccess actor={actor} />}
         {tab === 'simple' && (
           <>
             {LOCKED_ROLES.includes(role.id) && <InlineAlert tone="info">{X.adminLocked}</InlineAlert>}
@@ -1100,12 +1036,10 @@ export function AccessPage() {
             {LOCKED_ROLES.includes(role.id) && <InlineAlert tone="info">{X.adminLocked}</InlineAlert>}
             <section className="panel">
               <div className="toolbar">
-                <input type="search" className="input input-compact" placeholder={X.searchRecordTypes} aria-label={X.searchRecordTypes} value={search} onChange={(e) => setSearch(e.target.value)} />
-                <span className="spacer" />
-                {actions}
+                <SearchInput dense placeholder={X.searchRecordTypes} aria-label={X.searchRecordTypes} value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{X.columns.recordType}</th>
@@ -1123,7 +1057,7 @@ export function AccessPage() {
                       const err = tried ? rowErrors[rs.key] : undefined;
                       const flag = (k: 'create' | 'delete' | 'export' | 'sensitive_data', label: string) => (
                         <td>
-                          <input type="checkbox" className="checkbox" checked={!!p[k]} disabled={locked} aria-label={X.flagFor(label, rs.labelPlural)} onChange={(e) => setPerm(rs.key, { [k]: e.target.checked })} />
+                          <Checkbox checked={!!p[k]} disabled={locked} aria-label={X.flagFor(label, rs.labelPlural)} onChange={(e) => setPerm(rs.key, { [k]: e.target.checked })} />
                         </td>
                       );
                       return (
@@ -1152,8 +1086,8 @@ export function AccessPage() {
                       );
                     })}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
               {paged.footer(A.common.recordType.toLowerCase())}
             </section>
             <section className="panel">
@@ -1165,8 +1099,8 @@ export function AccessPage() {
                 <SelectMenu searchable label={X.fieldsResource} value={fieldRes} options={resources.filter((r) => r.fields.some(isSensitive)).map((r) => ({ value: r.key, label: r.labelPlural }))} onChange={setFieldRes} />
               </div>
               {sensitiveFields.length ? (
-                <div className="table-scroll">
-                  <table className="mini-table">
+                
+                  <Table>
                     <thead>
                       <tr>
                         <th scope="col">{X.field}</th>
@@ -1194,8 +1128,8 @@ export function AccessPage() {
                         );
                       })}
                     </tbody>
-                  </table>
-                </div>
+                  </Table>
+                
               ) : (
                 <p className="muted">{X.noSensitiveFields}</p>
               )}
@@ -1204,54 +1138,52 @@ export function AccessPage() {
         )}
 
         {tab === 'matrix' && (
-          <section className="panel">
-            <div className="table-scroll">
-              <table className="mini-table matrix">
+          <section className="st-card">
+            <div className="st-section-head">
+              <h2 className="st-section-title">{X.simple.compareTitle}</h2>
+              <p className="st-help">{X.simple.compareHelp}</p>
+            </div>
+            <div className="st-compare-pick">
+              <label className="field-label" htmlFor="ap-cmp">
+                {X.previewResource}
+              </label>
+              <SelectMenu id="ap-cmp" searchable label={X.previewResource} value={cmpRes} options={resources.map((r) => ({ value: r.key, label: r.labelPlural }))} onChange={setCmpRes} />
+            </div>
+            
+              <Table>
                 <thead>
                   <tr>
-                    <th scope="col">{X.columns.recordType}</th>
-                    {roles.map((r) => (
-                      <th key={r.id} scope="col" colSpan={6} className="matrix-role">
-                        {r.label}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr>
-                    <th scope="col" />
-                    {roles.map((r) => (
-                      <Fragment key={r.id}>
-                        {Object.values(X.matrixShort).map((h) => (
-                          <th key={h} scope="col" className="matrix-sub">
-                            {h}
-                          </th>
-                        ))}
-                      </Fragment>
-                    ))}
+                    <th scope="col">{X.role}</th>
+                    {Object.values(X.matrixShort)
+                      .slice(0, 5)
+                      .map((h) => (
+                        <th key={h} scope="col">
+                          {h}
+                        </th>
+                      ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((rs) => (
-                    <tr key={rs.key}>
-                      <th scope="row">{rs.labelPlural}</th>
-                      {roles.map((r) => {
-                        const p = r.resources[rs.key] ?? NO_ACCESS;
-                        const hasContact = rs.fields.some((f) => f.sensitivity === 'contact');
-                        return (
-                          <Fragment key={r.id}>
-                            <td>{yes(p.read)}</td>
-                            <td>{yes(p.create)}</td>
-                            <td>{yes(p.update)}</td>
-                            <td>{yes(p.delete)}</td>
-                            <td>{yes(p.export)}</td>
-                            <td data-tooltip={hasContact ? X.contactTipRaw : X.contactTipNone}>{hasContact ? (p.sensitive_data ? X.contactRaw : X.contactMasked) : X.contactNa}</td>
-                          </Fragment>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                  {roles.map((r) => {
+                    const p = r.resources[cmpRes] ?? NO_ACCESS;
+                    return (
+                      <tr key={r.id}>
+                        <th scope="row">
+                          <span className="st-clip" data-tooltip={r.label}>
+                            {r.label}
+                          </span>
+                        </th>
+                        <td>{yes(p.read)}</td>
+                        <td>{yes(p.create)}</td>
+                        <td>{yes(p.update)}</td>
+                        <td>{yes(p.delete)}</td>
+                        <td>{yes(p.export)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
           </section>
         )}
 
@@ -1269,8 +1201,8 @@ export function AccessPage() {
                 <Badge tone="neutral">{X.noAccessBadge}</Badge> {X.previewNoAccess(preview.role.label, previewDef.labelPlural.toLowerCase())}
               </p>
             ) : (
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{X.field}</th>
@@ -1297,15 +1229,40 @@ export function AccessPage() {
                       );
                     })}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
             )}
             <p className="muted small">{X.rowScope(A.scopes[preview.role.resources[previewRes]?.read ?? 'none'].long)}</p>
           </section>
         )}
         <p className="muted small">{X.simulation}</p>
       </div>
-    </div>
+      <SaveBar dirty={dirty && !locked} busy={busy} errorCount={tried ? Object.keys(rowErrors).length : 0} onSave={save} onCancel={() => { setDraft(null); setTried(false); }} saveLabel={X.save} />
+      {!locked && !!overrides[role.id] && (
+        <DangerZone
+          title={X.resetTitle(role.label)}
+          description={X.resetMessage}
+          actionLabel={X.resetRole}
+          confirmWord={L.settingsKit.resetWord}
+          confirmTitle={X.resetTitle(role.label)}
+          confirmBody={X.resetMessage}
+          onConfirm={async () => {
+            setResetting(true);
+            try {
+              await resetRole(actor, role.id);
+              setDraft(null);
+              toast(X.resetDone(role.label));
+            } catch (e) {
+              toast(errorMessage(e), 'danger');
+              throw e;
+            } finally {
+              setResetting(false);
+            }
+          }}
+          disabledReason={resetting ? X.resetRole : undefined}
+        />
+      )}
+    </SettingsPage>
   );
 }
 
@@ -1319,8 +1276,7 @@ export function AuditPage() {
   const view: AuditView = params.get('view') === 'events' && can(actor, 'events.view') ? 'events' : 'entries';
   if (!can(actor, 'audit.view')) return <NoAccess what={A.audit.noAccessWhat} />;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.auditTrail.title} description={view === 'events' ? A.events.description : A.audit.description} />
+    <SettingsPage title={L.nav.pages.auditTrail.title} description={view === 'events' ? A.events.short : A.audit.short}>
       {can(actor, 'events.view') && (
         <Tabs<AuditView>
           label={A.audit.sectionsLabel}
@@ -1332,8 +1288,8 @@ export function AuditPage() {
           ]}
         />
       )}
-      {view === 'events' ? <EventsView /> : <AuditEntries />}
-    </div>
+      <div className="st-stack">{view === 'events' ? <EventsView /> : <AuditEntries />}</div>
+    </SettingsPage>
   );
 }
 
@@ -1356,7 +1312,7 @@ function AuditEntries() {
   return (
     <>
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchInput dense placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
         <SelectMenu searchable label={T.filterAction} value={action} options={[{ value: '', label: T.allActions }, ...actions.map((a) => ({ value: a, label: a }))]} onChange={setAction} />
         <SortPicker value={sort} onChange={setSort} />
       </div>
@@ -1367,8 +1323,8 @@ function AuditEntries() {
           <Skeleton rows={8} />
         ) : rows.length ? (
           <>
-            <div className="table-scroll">
-              <table className="mini-table audit-table">
+            
+              <Table className="audit-table">
                 <thead>
                   <tr>
                     <th scope="col">{T.columns.when}</th>
@@ -1426,8 +1382,8 @@ function AuditEntries() {
                     </Fragment>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer(T.entries)}
           </>
         ) : all.length ? (
@@ -1515,13 +1471,11 @@ export function EventsPage() {
 
 // ---------------------------------------------------------------- Demo Settings
 
-export function SettingsPage() {
+export function DemoSettingsPage() {
   useRevision();
   const actor = useActor();
+  const toast = useToast();
   const S = A.settings;
-  const s = getSettings(actor.user.id);
-  const [reset, setReset] = useState(false);
-  const set = (p: Parameters<typeof updateSettings>[1]) => updateSettings(actor.user.id, p);
   const db = getDb();
   const recordLabel = (k: string) => {
     try {
@@ -1531,117 +1485,78 @@ export function SettingsPage() {
     }
   };
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.demoSettings.title} description={S.description} />
-      <div className="settings-grid">
-        <section className="panel">
-          <h2 className="panel-title">{S.appearance}</h2>
-          {/* Theme changer: mode + colour palettes (presets and custom). */}
-          <ThemePicker />
-          <fieldset className="form-field">
-            <legend className="field-label">{S.navDensity}</legend>
-            <div className="segmented">
-              {(['balanced', 'compact'] as const).map((d) => (
-                <button key={d} type="button" className={cx('seg-btn', s.navDensity === d && 'is-on')} aria-pressed={s.navDensity === d} onClick={() => set({ navDensity: d })}>
-                  {d === 'balanced' ? S.balanced : S.compact}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <div className="form-field">
-            <span className="field-label">{S.sidebar}</span>
-            <div className="row-gap">
-              <span className="muted">{S.width(s.sidebarWidth)}</span>
-              <Button onClick={() => set({ sidebarWidth: 240, sidebarCollapsed: false })}>{S.resetWidth}</Button>
-              <Button onClick={() => set({ sidebarCollapsed: !s.sidebarCollapsed })}>{s.sidebarCollapsed ? S.showSidebar : S.hideSidebar}</Button>
-            </div>
-          </div>
-        </section>
-        <section className="panel">
-          <h2 className="panel-title">{S.locale}</h2>
-          <dl className="detail-list">
-            <div className="detail-row">
-              <dt>{S.timeZone}</dt>
-              <dd>{S.timeZoneValue}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>{S.currency}</dt>
-              <dd>{S.currencyValue}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>{S.dateFormat}</dt>
-              <dd>{S.dateFormatValue}</dd>
-            </div>
-          </dl>
-        </section>
-        <section className="panel">
-          <h2 className="panel-title">{S.demoData}</h2>
-          <dl className="detail-list">
-            <div className="detail-row">
-              <dt>{S.dataset}</dt>
-              <dd>
-                {S.datasetValue(db.seed)}
-                <DateText value={db.seededAt} showTime />
-              </dd>
-            </div>
-            <div className="detail-row">
-              <dt>{S.storage}</dt>
-              <dd>{S.storageValue(STORAGE_KEY)}</dd>
-            </div>
-            <div className="detail-row">
-              <dt>{S.records}</dt>
-              <dd>
+    <SettingsPage title={L.nav.pages.demoSettings.title} description={S.short}>
+      <SettingsSection title={S.demoData} help={S.demoDataHelp}>
+        <dl className="st-facts">
+          <dt>{S.dataset}</dt>
+          <dd>
+            {S.datasetValue(db.seed)}
+            <DateText value={db.seededAt} showTime />
+          </dd>
+          <dt>{S.storage}</dt>
+          <dd>{S.storageValue(STORAGE_KEY)}</dd>
+          <dt>{S.records}</dt>
+          <dd>
+            <details className="st-details">
+              <summary>{S.recordsSummary(Object.keys(db.records).length, Object.values(db.records).reduce((n, v) => n + v.length, 0))}</summary>
+              <p className="muted small">
                 {Object.entries(db.records)
                   .map(([k, v]) => `${v.length} ${recordLabel(k)}`)
                   .join(' · ')}
-              </dd>
-            </div>
-          </dl>
-          <div className="row-gap">
-            <Button variant="danger" icon="reset" onClick={() => setReset(true)}>
-              {S.reset}
-            </Button>
-            {can(actor, 'demo.settings') && <DataTransfer />}
+              </p>
+            </details>
+          </dd>
+        </dl>
+        {can(actor, 'demo.settings') && (
+          <div className="st-actions">
+            <DataTransfer />
           </div>
-          <ResetDialog open={reset} onClose={() => setReset(false)} />
-        </section>
-        {can(actor, 'demo.settings') && <DemoControls />}
-        <section className="panel span-all">
-          <h2 className="panel-title dialog-title-row">
-            {S.tokens}
-            <InfoTip text={S.tokensTip} label={S.tokensTipLabel} />
-          </h2>
-          <div className="table-scroll">
-            <table className="mini-table">
-              <thead>
-                <tr>
-                  <th scope="col">{S.tokenColumns.token}</th>
-                  <th scope="col">{S.tokenColumns.cssVar}</th>
-                  <th scope="col">{S.tokenColumns.value}</th>
-                  <th scope="col">{S.tokenColumns.status}</th>
+        )}
+      </SettingsSection>
+      {can(actor, 'demo.settings') && <DemoControls />}
+      <SettingsSection wide title={S.tokens} help={S.tokensTip}>
+        
+          <Table>
+            <thead>
+              <tr>
+                <th scope="col">{S.tokenColumns.token}</th>
+                <th scope="col">{S.tokenColumns.cssVar}</th>
+                <th scope="col">{S.tokenColumns.value}</th>
+                <th scope="col">{S.tokenColumns.status}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tokenRegistry.map((t) => (
+                <tr key={t.name}>
+                  <td>{t.name}</td>
+                  <td>
+                    <code>{t.cssVar}</code>
+                  </td>
+                  <td>
+                    {t.value}
+                    {t.note && <span className="muted small"> · {t.note}</span>}
+                  </td>
+                  <td>
+                    <Badge tone={t.status.startsWith('locked') ? 'success' : 'warning'}>{t.status}</Badge>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {tokenRegistry.map((t) => (
-                  <tr key={t.name}>
-                    <td>{t.name}</td>
-                    <td>
-                      <code>{t.cssVar}</code>
-                    </td>
-                    <td>
-                      {t.value}
-                      {t.note && <span className="muted small"> · {t.note}</span>}
-                    </td>
-                    <td>
-                      <Badge tone={t.status.startsWith('locked') ? 'success' : 'warning'}>{t.status}</Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    </div>
+              ))}
+            </tbody>
+          </Table>
+        
+      </SettingsSection>
+      <DangerZone
+        title={S.reset}
+        description={S.resetHelp}
+        actionLabel={S.resetAction}
+        confirmWord={L.settingsKit.resetWord}
+        confirmTitle={L.common.confirm.resetTitle}
+        confirmBody={L.common.confirm.resetBody}
+        onConfirm={() => {
+          resetDb();
+          toast(L.common.toasts.demoReset, 'info');
+        }}
+      />
+    </SettingsPage>
   );
 }

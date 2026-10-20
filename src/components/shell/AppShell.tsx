@@ -1,3 +1,4 @@
+import { SETTINGS_NAV, type SettingsNavItem } from '../../domain/settingsNav';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { appModules, demoUsers, organization, workspaces } from '../../domain/pack';
@@ -30,6 +31,7 @@ import { PaletteEditor, ThemePicker } from './ThemePicker';
 import { GuidedTour, useTour, useTourHighlight } from './GuidedTour';
 import { moduleTitle, RESOURCE_PAGES } from '../../domain/sidebar';
 import { L } from '../../constants/labels';
+import { SearchInput, TextField } from '../primitives/controls';
 
 const C = L.common;
 
@@ -319,6 +321,50 @@ function NavItem({ entry, star = true }: { entry: NavEntry; star?: boolean }) {
   );
 }
 
+
+/** Settings left nav: grouped, sticky (the sidebar does not scroll with the page), filtered by what the role may open. */
+function SettingsNav({ headerAction }: { headerAction?: ReactNode }) {
+  const actor = useActor();
+  const location = useLocation();
+  const K = L.settingsKit.nav;
+  const [q, setQ] = useState('');
+  const needle = q.trim().toLowerCase();
+  const allowed = (i: SettingsNavItem) => (i.resource ? canReadResource(actor, i.resource) : !i.capability || can(actor, i.capability));
+  const groups = SETTINGS_NAV.map((g) => ({
+    id: g.id,
+    items: g.items.filter(allowed).filter((i) => !needle || (K.items[i.id] ?? i.id).toLowerCase().includes(needle)),
+  })).filter((g) => g.items.length);
+  const active = (i: SettingsNavItem) => location.pathname === i.path || (i.resource !== undefined && location.pathname.startsWith(`${i.path}/`));
+  return (
+    <>
+      <div className="sidebar-head">
+        <span className="sidebar-title">{K.title}</span>
+        {headerAction}
+      </div>
+      <div className="sidebar-search">
+        <Icon name="search" size={14} />
+        <SearchInput placeholder={K.find} aria-label={K.findAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+      </div>
+      <div className="sidebar-scroll">
+        {groups.length ? (
+          groups.map((g) => (
+            <div key={g.id} className="nav-group">
+              <span className="nav-section is-static">{(K.groups as Record<string, string>)[g.id]}</span>
+              <ul className="nav-list">
+                {g.items.map((i) => (
+                  <NavItem key={i.id} star={false} entry={{ key: i.id, label: K.items[i.id] ?? i.id, path: i.path, icon: i.icon, active: active(i) }} />
+                ))}
+              </ul>
+            </div>
+          ))
+        ) : (
+          <p className="nav-empty muted">{K.noMatch(q)}</p>
+        )}
+      </div>
+    </>
+  );
+}
+
 function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: ReactNode }) {
   const actor = useActor();
   const settings = getSettings(actor.user.id);
@@ -353,7 +399,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
       const res = getResource(rk);
       const views = listViews(actor, rk);
       const base = resourcePath(actor.workspaceId, rk);
-      const current = location.pathname === base ? (new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || views[0]?.id)) : undefined;
+      const current = location.pathname === base ? (new URLSearchParams(location.search).get('view') ?? (settings.defaultViews[rk] || settings.lastViews[rk] || views[0]?.id)) : undefined;
       const withIcons = m.navChildIcons?.includes(rk);
       const items: NavEntry[] = views.map((v) => {
         const typeIcon = TYPE_ICON[v.type];
@@ -372,6 +418,8 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
   const needle = q.trim().toLowerCase();
   const results = needle ? all.filter((e) => e.label.toLowerCase().includes(needle)) : [];
 
+  if (mod === 'admin') return <SettingsNav headerAction={headerAction} />;
+
   return (
     <>
       <div className="sidebar-head">
@@ -383,7 +431,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
       </div>
       <div className="sidebar-search">
         <Icon name="search" size={14} />
-        <input type="search" placeholder={C.sidebar.findPage(all.length)} aria-label={C.sidebar.findPageAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+        <SearchInput placeholder={C.sidebar.findPage(all.length)} aria-label={C.sidebar.findPageAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
       </div>
       <div className="sidebar-scroll">
         {/* Section separators are plain muted text. Rows WITH an icon: icon + text. Rows WITHOUT an icon
@@ -1078,8 +1126,8 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
   return (
     <Dialog open={open} onClose={onClose} title={C.palette.title} description={C.palette.description} size="md">
       <div className="palette">
-        <input
-          className="input"
+        <TextField
+          
           placeholder={C.palette.placeholder}
           aria-label={C.palette.title}
           role="combobox"

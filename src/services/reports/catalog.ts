@@ -1,12 +1,17 @@
 /** The report catalogue: declarative definitions, grouped into the BRD report categories (GLOSSARY §1.2). */
 import { L } from '../../constants/labels';
 import { canReadResource, type Actor } from '../authz';
-import { kpiReports } from './defs/kpis';
-import { operationsReports } from './defs/operations';
-import { salesReports } from './defs/sales';
+import { customerReports } from './defs/customers';
+import { fieldReports } from './defs/field';
+import { installedReports } from './defs/installed';
+import { leadReports } from './defs/leads';
+import { orderReports } from './defs/orders';
+import { overviewReports } from './defs/overview';
+import { quotationReports } from './defs/quotations';
+import { serviceReports } from './defs/service';
 import type { ReportDef, ReportGroup } from './types';
 
-export const REPORTS: ReportDef[] = [...kpiReports, ...salesReports, ...operationsReports];
+export const REPORTS: ReportDef[] = [...overviewReports, ...customerReports, ...leadReports, ...quotationReports, ...orderReports, ...installedReports, ...serviceReports, ...fieldReports];
 
 /** Category pages: id is the URL segment (/reports/<id>); the title is the page title in L.nav.pages. */
 export const REPORT_GROUPS: { id: ReportGroup; label: string; icon: string }[] = [
@@ -19,6 +24,34 @@ export const REPORT_GROUPS: { id: ReportGroup; label: string; icon: string }[] =
   { id: 'service', label: L.nav.pages.reportService.title, icon: 'settings' },
   { id: 'field-force', label: L.nav.pages.reportFieldForce.title, icon: 'id-card' },
 ];
+
+/**
+ * Earlier report ids (bookmarks, links in other screens) and where they live now:
+ * reports that were merged open as a view of the report that absorbed them.
+ */
+export const LEGACY_REPORTS: Record<string, { id: string; view?: string }> = {
+  'kpi-summary': { id: 'business-scorecard' },
+  'activity-scorecard': { id: 'business-scorecard' },
+  'lead-ageing': { id: 'lead-speed', view: 'ageing' },
+  'lead-first-response': { id: 'lead-speed', view: 'response' },
+  'pending-followups': { id: 'lead-speed', view: 'followups' },
+  'pending-approvals': { id: 'quotation-value' },
+  'quote-to-order': { id: 'quotation-value' },
+  'pending-orders': { id: 'order-backlog', view: 'awaiting' },
+  'delayed-dispatches': { id: 'order-backlog', view: 'delayed' },
+  'warranty-expiry': { id: 'warranty-amc', view: 'warranty' },
+  'amc-renewals-due': { id: 'warranty-amc', view: 'renewals' },
+  'amc-status': { id: 'warranty-amc', view: 'status' },
+  'engineer-productivity': { id: 'service-quality', view: 'engineer' },
+  'first-time-fix': { id: 'service-quality', view: 'month' },
+  csat: { id: 'service-quality', view: 'month' },
+  'machine-downtime': { id: 'machine-reliability', view: 'downtime' },
+  'mtbf-by-model': { id: 'machine-reliability', view: 'mtbf' },
+  'repeat-complaints': { id: 'machine-reliability', view: 'repeats' },
+  'attendance-daily': { id: 'attendance', view: 'daily' },
+  'attendance-monthly': { id: 'attendance', view: 'employee' },
+  'attendance-exceptions': { id: 'attendance', view: 'exceptions' },
+};
 
 /** Reports whose base resource the actor can read. */
 export const reportsFor = (actor: Actor) => REPORTS.filter((r) => r.needs.every((k) => canReadResource(actor, k)));

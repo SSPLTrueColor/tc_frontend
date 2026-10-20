@@ -27,6 +27,10 @@ import { DateText, EmptyValue } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
+import { TextField, Textarea } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
+import { FileInput } from '../../components/primitives/controls';
 
 const T = L.installed;
 const M = T.messages;
@@ -140,9 +144,9 @@ export function InstallationActions({ actor, record }: RecordExtensionProps) {
           <Button icon="plus" onClick={() => fileRef.current?.click()} disabledReason={!canEdit ? M.readOnly : undefined}>
             {A.addMedia}
           </Button>
-          <input
+          <FileInput
             ref={fileRef}
-            type="file"
+            
             hidden
             multiple
             accept="image/*,video/*"
@@ -284,17 +288,16 @@ function SignOffDialog({ record, onClose }: { record: RecordData; onClose: () =>
       ) : (
         <div className="form-grid cols-2">
           <Field id="so-name" label={M.representative} required error={errors.signedOffBy} wide>
-            <input id="so-name" className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} data-autofocus />
+            <TextField id="so-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} data-autofocus />
           </Field>
           <fieldset className="form-field span-all">
             <legend className="field-label">{T.fields.installations.signOffMethod}</legend>
-            <div className="segmented" role="radiogroup" aria-label={T.fields.installations.signOffMethod}>
-              {(['otp', 'signature'] as const).map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={method === m} className={`seg-btn${method === m ? ' is-on' : ''}`} onClick={() => setMethod(m)}>
-                  {masterLabel('installSignOffMethod', m)}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label={T.fields.installations.signOffMethod}
+              value={method}
+              onChange={(next) => setMethod(next)}
+              options={(['otp', 'signature'] as const).map((m) => ({ value: m, label: masterLabel('installSignOffMethod', m) }))}
+            />
           </fieldset>
           {method === 'otp' ? (
             <>
@@ -318,7 +321,7 @@ function SignOffDialog({ record, onClose }: { record: RecordData; onClose: () =>
                 </InlineAlert>
               )}
               <Field id="so-otp" label={M.codeFromCustomer} required error={errors.otp}>
-                <input id="so-otp" className="input" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} disabled={!sentCode} />
+                <TextField id="so-otp" inputMode="numeric" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))} disabled={!sentCode} />
               </Field>
             </>
           ) : (
@@ -421,23 +424,15 @@ function MoveDialog({ machine, onClose }: { machine: RecordData; onClose: () => 
       <div className="form-grid cols-2">
         <fieldset className="form-field span-all">
           <legend className="field-label">{T.fields.machineMoves.moveType}</legend>
-          <div className="segmented" role="radiogroup" aria-label={M.changeType}>
-            {(['relocation', 'resale'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={moveType === m}
-                className={`seg-btn${moveType === m ? ' is-on' : ''}`}
-                onClick={() => {
-                  setMoveType(m);
-                  setSite('');
-                }}
-              >
-                {masterLabel('machineMoveType', m)}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={M.changeType}
+            value={moveType}
+            onChange={(next) => {
+              setMoveType(next);
+              setSite('');
+            }}
+            options={(['relocation', 'resale'] as const).map((m) => ({ value: m, label: masterLabel('machineMoveType', m) }))}
+          />
         </fieldset>
         {moveType === 'resale' && (
           <Field id="mv-to" label={M.newOwner} required error={errors.toCustomerId} wide>
@@ -451,7 +446,7 @@ function MoveDialog({ machine, onClose }: { machine: RecordData; onClose: () => 
           <DatePicker id="mv-date" block value={date} onChange={(v) => setDate(v ?? '')} label={M.effectiveDate} />
         </Field>
         <Field id="mv-reason" label={M.reason} required error={errors.reason} wide>
-          <input id="mv-reason" className="input" maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <TextField id="mv-reason" maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
         <FormError errors={errors} />
       </div>
@@ -462,8 +457,8 @@ function MoveDialog({ machine, onClose }: { machine: RecordData; onClose: () => 
 function MiniTable({ head, rows, empty }: { head: string[]; rows: ReactNode[][]; empty: string }) {
   if (!rows.length) return <EmptyState icon="list" title={empty} />;
   return (
-    <div className="table-scroll">
-      <table className="mini-table">
+    
+      <Table>
         <thead>
           <tr>
             {head.map((h) => (
@@ -482,8 +477,8 @@ function MiniTable({ head, rows, empty }: { head: string[]; rows: ReactNode[][];
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </Table>
+    
   );
 }
 
@@ -575,13 +570,13 @@ function ReplaceDialog({ component, onClose }: { component: RecordData; onClose:
     >
       <div className="form-grid">
         <Field id="rp-serial" label={M.newSerial} required error={errors.newSerial}>
-          <input id="rp-serial" className="input" value={serial} maxLength={30} onChange={(e) => setSerial(e.target.value.toUpperCase())} data-autofocus />
+          <TextField id="rp-serial" value={serial} maxLength={30} onChange={(e) => setSerial(e.target.value.toUpperCase())} data-autofocus />
         </Field>
         <Field id="rp-date" label={M.replacedOn} required error={errors.date}>
           <DatePicker id="rp-date" block value={date} onChange={(v) => setDate(v ?? '')} label={M.replacedOn} />
         </Field>
         <Field id="rp-reason" label={M.reason} required error={errors.reason}>
-          <input id="rp-reason" className="input" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <TextField id="rp-reason" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} />
         </Field>
         <FormError errors={errors} />
       </div>
@@ -722,7 +717,7 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
           <SelectMenu id="rn-type" block label={T.fields.amcContracts.contractType} value={type} options={options('amcType') as { value: 'amc' | 'cmc'; label: string }[]} onChange={setType} />
         </Field>
         <Field id="rn-visits" label={T.fields.amcContracts.pmVisitsPerYear} required error={errors.pmVisitsPerYear}>
-          <input id="rn-visits" className="input" inputMode="numeric" value={visits} onChange={(e) => setVisits(e.target.value.replace(/\D/g, ''))} />
+          <TextField id="rn-visits" inputMode="numeric" value={visits} onChange={(e) => setVisits(e.target.value.replace(/\D/g, ''))} />
         </Field>
         <Field id="rn-start" label={T.fields.amcContracts.startDate} required error={errors.startDate}>
           <DatePicker id="rn-start" block value={startDate} onChange={(v) => setStart(v ?? '')} label={T.fields.amcContracts.startDate} />
@@ -733,7 +728,7 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
         <Field id="rn-value" label={T.fields.amcContracts.value} required error={errors.value}>
           <div className="input-affix">
             <span className="affix affix-start">₹</span>
-            <input id="rn-value" className="input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ''))} />
+            <TextField id="rn-value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ''))} />
           </div>
         </Field>
         <div className="form-field">
@@ -793,7 +788,7 @@ export function LostDialog({ contract, onClose }: { contract: RecordData; onClos
           <SelectMenu id="lo-reason" block label={T.fields.amcContracts.lostReason} value={reason} options={options('lostReason')} onChange={setReason} />
         </Field>
         <Field id="lo-note" label={M.note}>
-          <textarea id="lo-note" className="input textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea id="lo-note" className="textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
         <FormError errors={errors} />
       </div>
@@ -871,8 +866,8 @@ function FieldList({ actor, resKey, record, keys, title }: { actor: RecordExtens
 /** Checklist rows: label + Yes / No chip. */
 function Checklist({ items, caption }: { items: { key: string; label: string; done: boolean }[]; caption: string }) {
   return (
-    <div className="table-scroll">
-      <table className="mini-table">
+    
+      <Table>
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr>
@@ -890,8 +885,8 @@ function Checklist({ items, caption }: { items: { key: string; label: string; do
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </Table>
+    
   );
 }
 
@@ -987,7 +982,7 @@ function HandoverDialog({ record, onClose }: { record: RecordData; onClose: () =
       >
         {fields.map(([k, label, max], i) => (
           <Field key={k} id={`ho-${k}`} label={label} required error={errors[k]}>
-            <textarea id={`ho-${k}`} className="input textarea" rows={3} maxLength={max} value={values[k]} onChange={(e) => setValues({ ...values, [k]: e.target.value })} aria-invalid={!!errors[k] || undefined} data-autofocus={i === 0 || undefined} />
+            <Textarea id={`ho-${k}`} className="textarea" rows={3} maxLength={max} value={values[k]} onChange={(e) => setValues({ ...values, [k]: e.target.value })} aria-invalid={!!errors[k] || undefined} data-autofocus={i === 0 || undefined} />
           </Field>
         ))}
         <FormError errors={errors} />

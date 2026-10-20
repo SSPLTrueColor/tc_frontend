@@ -37,7 +37,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-009 | CUS-09 | S | Credit limit, outstanding, overdue read-only from ERP | Customer 360 header | Simulated (mock ERP) | Simulated (Refresh from ERP) |
 | FR-010 | CUS-10 | M | Bulk ownership transfer (accounts, open leads, opps, tasks) with history | `/admin/ownership-transfer` | Built | Done (`/admin/ownership-transfer`, preview + reason + audit) |
 | FR-011 | CUS-11 | S | Key Account flag + one-page account plan | Customer 360 → Account plan tab | Built | Done (Account tab) |
-| FR-012 | CUS-12 | M | Reports: customer-wise sales, machine history, warranty expiry, AMC renewals due, dormant customers | `/reports/:reportId` | Built | Done (`/reports`: customer-sales, machine-history, warranty-expiry, amc-renewals-due, dormant-customers) |
+| FR-012 | CUS-12 | M | Reports: customer-wise sales, machine history, warranty expiry, AMC renewals due, dormant customers | `/reports/:reportId` | Built | Done (Customers: `customer-sales`, `machine-history`, `dormant-customers`; warranty expiry and AMC renewals due are views of `warranty-amc` under Installed Base Reports) |
 
 #### Lead Management (BRD 4.2)
 
@@ -56,7 +56,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-023 | LEAD-11 | M | Mandatory disqualify/loss reason from master; Nurture with re-contact date | Lead detail → status actions | Built | Done (disqualify reason, nurture date, manager-only reactivation) |
 | FR-024 | LEAD-12 | S | Referrer recorded; referrer notified on conversion; referral report | Lead form; `/reports/referrals` | Built (notification in-app) | Done (Referral Report under Lead Reports) |
 | FR-025 | LEAD-13 | C | Rule-based lead scoring | Lead list column + `/admin/lead-scoring-rules` | Built | Done (`/leadScoringRules`, 12 rules) |
-| FR-026 | LEAD-14 | M | Reports: conversion % (month/user/product/source/campaign), ageing, first response, pending follow-ups, lost reasons, exec performance | `/reports/:reportId` | Built | Done (lead conversion, ageing, first response, pending follow-ups, lost leads, exec performance) |
+| FR-026 | LEAD-14 | M | Reports: conversion % (month/user/product/source/campaign), ageing, first response, pending follow-ups, lost reasons, exec performance | `/reports/:reportId` | Built | Done (`lead-conversion` by month/owner/product/source/campaign; `lead-speed` views ageing, first response, pending follow-ups; `lost-leads`; `exec-performance`) |
 
 #### Opportunity & Pipeline (BRD 4.3)
 
@@ -69,7 +69,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-031 | OPP-05 | M | Won enables "Generate Sales Order"; Lost needs reason + competitor/price | Opportunity status actions | Built | Done (Generate sales order gated on accepted quotation; Mark lost dialog) |
 | FR-032 | OPP-06 | M | Stagnation alert (no update in N days or past close date) | Opportunity list badge; notifications | Built | Done (stagnant flag, banner, daily sweep notifications) |
 | FR-033 | OPP-07 | S | Monthly/quarterly forecast (weighted + commit) by user/division/category | `/sales-forecast` | Built | Done (`/sales-forecast`, computed) |
-| FR-034 | OPP-08 | S | Tasks & calendar for meetings/demos/follow-ups; two-way Google/Outlook sync | `/calendar` | Built (calendar) / N/A (external sync: needs OAuth + backend) | Done — `/calendar` on FullCalendar (month/week/day/agenda, drag-create, drag/resize reschedule, recurrence with this/all, overlap warning, IST, Monday start); Google/Outlook sync N/A |
+| FR-034 | OPP-08 | S | Tasks & calendar for meetings/demos/follow-ups; two-way Google/Outlook sync | `/calendar` | Built (calendar) / N/A (external sync: needs OAuth + backend) | Done — `/calendar` on FullCalendar (month/week/day/agenda, quick-create popover + full dialog, drag/resize with Undo, recurrence with this / this and following / all, search, today's agenda, keyboard shortcuts, simulated reminders, overlap warning, IST, Monday start; 70+ seed events; see `docs/CALENDAR-QA.md`); Google/Outlook sync N/A |
 
 #### Quotation Management (BRD 4.4)
 
@@ -88,7 +88,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-045 | QUO-11 | S | Customer acceptance by PO upload or electronic acceptance | Quotation → Mark accepted dialog | Simulated (file name stored, no real upload) | Simulated (PO file metadata or e-acceptance → opportunity Won) |
 | FR-046 | QUO-12 | S | Landed cost / margin visible only to Management & Accounts | Quotation editor (field-level permission) | Built | Done (landed cost & margin financial-only) |
 | FR-047 | QUO-13 | C | ROI / payback calculator attachable to quotation | Quotation → ROI tab | Built | Done (ROI tab) |
-| FR-048 | QUO-14 | M | Reports: quotation value, pending approvals, quote-to-order, lost with reasons, discount analysis | `/reports/:reportId` | Built | Done (quotation value, pending approvals, quote-to-order, lost quotations, discount analysis) |
+| FR-048 | QUO-14 | M | Reports: quotation value, pending approvals, quote-to-order, lost with reasons, discount analysis | `/reports/:reportId` | Built | Done (`quotation-value` = value + quote-to-order + average discount; `lost-quotations`; `discount-analysis`; pending approvals stay on `/quotations/pending-approvals`, the same list, so no duplicate report) |
 
 #### Sales Order & Sales Contract (BRD 4.5)
 
@@ -104,7 +104,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-056 | SO-08 | M | Import/SCM processing status: PO to principal, shipment ETA, customs, machine readiness, PDI | Order → Processing tab | Built | Done (Processing tab, SCM-only edit) |
 | FR-057 | SO-09 | M | Approved SO pushed to ERP; invoice no./date and e-way bill returned | Order → ERP panel | Simulated ("Sync from ERP" fills invoice data) | Simulated (ERP push + Sync from ERP) |
 | FR-058 | SO-10 | M | Hold / cancellation with reason and approval | Order status actions; `/approvals` | Built | Done (hold/resume/cancel with reason + approval) |
-| FR-059 | SO-11 | M | Reports: order value, backlog, pending, delayed dispatch, payment overdues, sales performance | `/reports/:reportId` | Built | Done (order value, backlog, pending, delayed dispatches, payment status, sales performance) |
+| FR-059 | SO-11 | M | Reports: order value, backlog, pending, delayed dispatch, payment overdues, sales performance | `/reports/:reportId` | Built | Done (`order-value` incl. sales performance by owner; `order-backlog` views backlog, waiting for approval, delayed dispatches; `payment-status` with overdue ageing) |
 
 #### Dispatch, Delivery, Installation & Commissioning (BRD 4.6)
 
@@ -129,7 +129,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-071 | IB-04 | M | AMC/CMC contracts: number, type, validity, machines, PM visits, SLA terms, value, billing schedule | `/amc-cmc-contracts`, `/amc-cmc-contracts/:id` | Built | Done (`/amcContracts`, AMC/26-27/0001, activation generates PM visits; one machine per contract) |
 | FR-072 | IB-05 | M | Reminders at 90/60/30 days; renewal quotation; renewal pipeline; lost-renewal reasons | `/renewal-pipeline` | Built | Done (`/renewal-pipeline`, 90/60/30 reminders, renewal opportunity, renew/lost/expire) |
 | FR-073 | IB-06 | S | Usage readings (print counters, ink consumption) per visit | Machine → Readings tab; ticket job card | Built | Done (Readings tab) |
-| FR-074 | IB-07 | M | Reports: warranty expiry, AMC due/renewed/lost, machines without contract, base by model/region | `/reports/:reportId` | Built | Done (warranty expiry, AMC status/renewal %, machines without contract, installed base) |
+| FR-074 | IB-07 | M | Reports: warranty expiry, AMC due/renewed/lost, machines without contract, base by model/region | `/reports/:reportId` | Built | Done (`warranty-amc` views warranty expiry, AMC renewals due, contract status/renewal %; `machines-without-contract`; `installed-base-by-model`) |
 
 #### Service Ticket Management (BRD 4.8)
 
@@ -151,7 +151,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-088 | SRV-14 | M | "Opportunity spotted" by engineer creates lead with engineer as referrer | `/my-jobs/:id` action | Built | Done (Opportunity spotted → lead, engineer referrer) |
 | FR-089 | SRV-15 | M | Re-open within configurable period after closure | Ticket status action | Built | Done (re-open window, clocks restart) |
 | FR-090 | SRV-16 | S | Knowledge base searchable by model/error code; engineer contributions with approval | `/knowledge-base`, `/knowledge-base/:id` | Built | Done (`/knowledgeArticles`, approval to publish) |
-| FR-091 | SRV-17 | M | Reports: ageing, SLA compliance, MTTR, FTFR, downtime, repeats, MTBF, PM compliance, productivity, CSAT | `/reports/:reportId` | Built | Done (open tickets & ageing, SLA compliance, MTTR, FTFR, downtime, repeats, MTBF, PM compliance, engineer productivity, CSAT) |
+| FR-091 | SRV-17 | M | Reports: ageing, SLA compliance, MTTR, FTFR, downtime, repeats, MTBF, PM compliance, productivity, CSAT | `/reports/:reportId` | Built | Done (`open-tickets`; `sla-compliance` incl. MTTR; `service-quality` by engineer / by month: MTTR, FTFR, repeats, CSAT; `machine-reliability` views downtime, MTBF, repeat complaints; `pm-compliance`) |
 
 #### Spare Parts & Engineer Stock (BRD 4.9)
 
@@ -188,7 +188,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | FR-110 | ATT-07 | S | Location tracking between check-in/out; route map; distance | `/route-map/:userId` | Simulated (seeded GPS points drawn as SVG polyline) | Simulated (`/route-map/:userId`, SVG route + km) |
 | FR-111 | ATT-08 | S | T&E claims: distance-based conveyance, bill upload, limits, approval, export | `/expense-claims`, `/expense-claims/:id` | Built (upload = metadata) | Done — bill upload Simulated (manager → Accounts approval, payroll CSV export) |
 | FR-112 | ATT-09 | C | Leave application/approval or HRMS integration | `/leave-applications` | Built (HRMS: N/A) | Done (`/leave-applications`; HRMS N/A) |
-| FR-113 | ATT-10 | M | Reports: daily/monthly attendance, visit reports, exception dashboard | `/reports/:reportId`; `/exception-dashboard` | Built | Done (`/exception-dashboard` + attendance daily/monthly, field visits reports) |
+| FR-113 | ATT-10 | M | Reports: daily/monthly attendance, visit reports, exception dashboard | `/reports/:reportId`; `/exception-dashboard` | Built | Done (`attendance` views daily, by employee, exceptions; `field-visits`; `/exception-dashboard` stays as the live board) |
 
 #### Targets, Performance & Recognition (BRD 4.12)
 
@@ -205,7 +205,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
 | FR-119 | ADM-01 | M | Configurable hierarchy (divisions, departments, managers) drives visibility and approvals | `/admin/organisation-hierarchy` | Built | Done (`/admin/organisation-hierarchy`) |
-| FR-120 | ADM-02 | M | Permissions at module, record (own/team/division/all), field and action level | `/admin/roles-permissions` | Built | Done (editable role × record scopes, flags and field access; applied at runtime, audited, Reset to Default) |
+| FR-120 | ADM-02 | M | Permissions at module, record (own/team/division/all), field and action level | `/admin/roles-permissions` | Built | Done (editable role × record scopes, flags and field access; applied at runtime, audited, Reset to Default). People view: change a person's role with a before/after preview, plain-words access summary, "why can't they see X" check; **extra access** for one person (area + level + reach, or an approval capability) with required end date (≤ 180 days) and reason, extend / remove, "Expiring soon" review list, all audited. Second-approver and "request access" Deferred |
 | FR-121 | ADM-03 | M | Masters (products & prices, types/specs, territories, industries, sources, lost reasons, complaint categories, checklists, T&C, GST/HSN) | `/admin/masters` | Built | Done (Masters page; Product & Price Master under Administration) |
 | FR-122 | ADM-04 | M | Configurable workflows and approval matrices | `/admin/workflows` | Built (limited to statuses/thresholds/approver levels defined here) | Done (`/admin/workflows`: thresholds, approvers, SLA matrix, escalation; approval engine) |
 | FR-123 | ADM-05 | M | Custom fields and form layouts per division | `/admin/custom-fields` | Built (custom fields render on Customer, Lead, Opportunity, Ticket forms) | Done (custom fields + per-division form layouts: section order / hide, applied by every form) |
@@ -249,7 +249,7 @@ Every BRD requirement appears here exactly once with a prototype ID, the screen 
 
 | ID | BRD | Pri | Requirement (condensed) | Screen / route | Approach | Status |
 |---|---|---|---|---|---|---|
-| FR-149 | 4.13 | M | Role-, module- and decision-based dashboards; customisable later | `/dashboard` (per role), `/reports` | Built (fixed role dashboards; widget customisation Deferred, see Q-26) | Done (`/dashboard` role dashboard: global date range Today/7D/30D/This month/Custom, KPI cards with % change vs previous period, Recharts trend/donut/funnel, top performers, agenda, activity feed and alerts, all computed from scoped records and linking to filtered lists; `/reports/kpi-summary`; user customisation Deferred, Q-26) |
+| FR-149 | 4.13 | M | Role-, module- and decision-based dashboards; customisable later | `/dashboard` (per role), `/reports` | Built (fixed role dashboards; widget customisation Deferred, see Q-26) | Done (`/dashboard` role dashboard: global date range Today/7D/30D/This month/Custom, KPI cards with % change vs previous period, Recharts trend/donut/funnel, top performers, agenda, activity feed and alerts, all computed from scoped records and linking to filtered lists; `/reports/business-scorecard`; user customisation Deferred, Q-26) |
 
 ### 1.2 Non-functional requirements
 
@@ -263,11 +263,11 @@ Frontend simulation for each NFR is in §6.
 | NFR-04 | §7 Availability | 99.5% monthly uptime | N/A | — |
 | NFR-05 | §7 Scalability | 300 users, 5 years of data | Simulated | Simulated (≈2.7 MB seed: ~57 customers, 150 leads, 90 opportunities, 119 machines, 220 tickets) |
 | NFR-06 | §7 Security | TLS 1.2+, AES-256 at rest | N/A | — |
-| NFR-07 | §7 Security | MFA for admin and management | Simulated | Done |
-| NFR-08 | §7 Security | Password policy and session timeout | Simulated | Done (idle timeout; no passwords) |
+| NFR-07 | §7 Security | MFA for admin and management | Simulated | Done (required for System Administrator and Management; Settings → Security shows status, optional opt-in for other roles, signed-in devices) |
+| NFR-08 | §7 Security | Password policy and session timeout | Simulated | Done (idle timeout, shown on Settings → Security; no passwords) |
 | NFR-09 | §7 Security | Role, record and field-level security | Built (client-side) | Done (row scope + field masking in the service layer for all modules) |
 | NFR-10 | §7 Security | OWASP Top 10 protection; VAPT before go-live and annually | N/A (partly Built: no unsafe HTML, validated inputs) | — |
-| NFR-11 | §7 Data protection | DPDP Act 2023: consent (location, communications), purpose limitation, retention, correction/erasure requests | Simulated | Simulated (location consent before first check-in, contact consent fields) |
+| NFR-11 | §7 Data protection | DPDP Act 2023: consent (location, communications), purpose limitation, retention, correction/erasure requests | Simulated | Simulated (location consent before first check-in, contact consent fields; Settings → Data Protection: consent switches, retention periods, correction / erasure request log, all audited) |
 | NFR-12 | §7 Backup | Daily backups (30 days), RPO ≤ 24 h, RTO ≤ 8 h, quarterly restore test | N/A (partly Simulated: export/import of full demo data) | Done (export/import JSON, reset) |
 | NFR-13 | §7 Audit logs | Retained ≥ 3 years; not editable by any user | Built (append-only in UI) | Done |
 | NFR-14 | §7 Usability | Adoption rules (§2.2); consistent screens; 5–6" phones; accessible contrast | Built | Done |
@@ -421,7 +421,7 @@ Every resource list is `/<slug>` with `?view=`, `?peek=<id>` (side panel), `/new
 | 13 | Targets & Recognition | Weekly Activity Scorecard | `/activity-scorecard` | TGT-03 | FR-116 |
 | 13 | Targets & Recognition | Leaderboards & Recognition | `/leaderboards` | TGT-04 | FR-117 |
 | 14 | Reports (4.13 Dashboards & Reports) | All Reports · report viewer | `/reports`, `/reports/:reportId` | 4.13 | FR-149 |
-| 14 | Reports | KPIs & CRM Adoption | `/reports/kpis` | Appendix C, §9.3 | FR-149, NFR-23 |
+| 14 | Reports | KPIs & CRM Adoption (Business Scorecard, Pipeline & Forecast, CRM Adoption) | `/reports/kpis` | Appendix C, §9.3, OPP-07 | FR-149, NFR-23 |
 | 14 | Reports | Customer Reports | `/reports/customers` | CUS-12 | FR-012 |
 | 14 | Reports | Lead Reports (incl. Referral Report `/reports/referrals`) | `/reports/leads` | LEAD-14, LEAD-12 | FR-026, FR-024 |
 | 14 | Reports | Quotation Reports | `/reports/quotations` | QUO-14 | FR-048 |
@@ -448,6 +448,10 @@ Every resource list is `/<slug>` with `?view=`, `?peek=<id>` (side panel), `/new
 | 15 | Administration | Audit Trail (incl. System Events view `?view=events`) | `/admin/audit-trail` | COM-09 | FR-137 |
 | 15 | Administration | Recycle Bin | `/admin/recycle-bin` | COM-10 | FR-138 |
 | 15 | Administration | Sent Messages (Simulated) | `/admin/sent-messages` | COM-03 (simulated outbox) | FR-131, FR-145, FR-146 |
+| 15 | Settings → My account | Profile & Appearance (language, theme, navigation, form layout) | `/admin/profile` | COM-12, NFR-14 | FR-140 (Simulated: language labels stay English) |
+| 15 | Settings → My account | Notification Preferences (channels per event, quiet hours, daily digest) | `/admin/notification-preferences` | COM-03 | FR-131 (Simulated: email / WhatsApp / push land in Sent Messages) |
+| 15 | Settings → My account | Security (two-step verification, session timeout, signed-in devices) | `/admin/security` | NFR-07, NFR-08 | NFR-07, NFR-08 (Simulated) |
+| 15 | Settings → Governance | Data Protection (consent, retention, correction / erasure requests) | `/admin/data-protection` | NFR-11 (DPDP Act 2023) | NFR-11 (Simulated) |
 | 15 | Administration | Demo Settings (simulated clock, offline toggle, reset demo data) | `/admin/demo-settings` | NFR simulation (§6 of this file) | NFR-12, NFR-15, NFR-18 |
 
 ---
@@ -815,5 +819,5 @@ Each step ends with `npm run build` passing, no console errors, routes reachable
 | 10 ✅ | Consumables | FR-098–103 |
 | 11 ✅ | Field force | FR-104–113 |
 | 12 ✅ | Targets & performance | FR-114–118 |
-| 13 ✅ | Dashboards & reports | FR-149 + all report FRs |
+| 13 ✅ | Dashboards & reports | FR-149 + all report FRs; 27 reports, see `docs/REPORTS-QA.md` |
 | 14 ✅ | Remaining admin (workflows, custom fields, templates, import/export, integrations, recycle bin) | FR-122–125, 141–148 |

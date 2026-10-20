@@ -9,6 +9,9 @@ import { EmptyValue } from '../../components/primitives/display';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { InlineAlert } from '../../components/primitives/feedback';
 import { L } from '../../constants/labels';
+import { TextField } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
+import { FileInput } from '../../components/primitives/controls';
 
 const O = L.orders;
 
@@ -35,11 +38,11 @@ export function Field({ id, label, required, help, error, children, wide }: { id
 export function FilePick({ id, value, onPick, accept = '.pdf,.jpg,.jpeg,.png', invalid }: { id: string; value: string; onPick: (name: string, size: number) => void; accept?: string; invalid?: boolean }) {
   return (
     <div className="orders-file">
-      <input
+      <FileInput
         id={id}
-        type="file"
+        
         accept={accept}
-        className="input"
+        
         aria-invalid={invalid || undefined}
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -75,8 +78,8 @@ export function LinesTable({
     );
   const ref = new Map((diffAgainst ?? []).map((l) => [l.productId, l]));
   return (
-    <div className="table-scroll">
-      <table className="mini-table orders-lines">
+    
+      <Table className="orders-lines">
         <thead>
           <tr>
             <th scope="col">#</th>
@@ -121,7 +124,7 @@ export function LinesTable({
                 <td className="mono small">{l.hsnSac || <EmptyValue />}</td>
                 <td className="num">
                   {editable ? (
-                    <input className="input input-compact orders-num" type="number" min={1} step={1} value={l.qty} aria-label={O.lines.qtyAria(i + 1)} onChange={(e) => onChange?.(i, { qty: Number(e.target.value) })} />
+                    <TextField dense className="orders-num" type="number" min={1} step={1} value={l.qty} aria-label={O.lines.qtyAria(i + 1)} onChange={(e) => onChange?.(i, { qty: Number(e.target.value) })} />
                   ) : (
                     l.qty
                   )}
@@ -129,8 +132,8 @@ export function LinesTable({
                 <td className="num">{formatMoney(Number(l.listPrice))}</td>
                 <td className="num">
                   {editable ? (
-                    <input
-                      className="input input-compact orders-num"
+                    <TextField
+                      dense className="orders-num"
                       type="number"
                       min={0}
                       max={100}
@@ -159,8 +162,8 @@ export function LinesTable({
             );
           })}
         </tbody>
-      </table>
-    </div>
+      </Table>
+    
   );
 }
 

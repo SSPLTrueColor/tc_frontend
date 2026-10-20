@@ -38,20 +38,48 @@ import { Button, IconButton } from '../../components/primitives/Button';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { InfoTip } from '../../components/primitives/InfoTip';
-import { confirmDelete } from '../../components/primitives/overlay';
+import { Menu, confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { QuickCreateDialog } from '../../components/resource/RecordForm';
+import { ListPage } from '../../components/shell/ListPage';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { SettingsPage } from '../../components/settings/kit';
 import { ConvertDialog, convertBlockedReason } from './components';
+import { TextField } from '../../components/primitives/controls';
+import { DataTable } from '../../components/primitives/DataTable';
+import { Table } from '../../components/primitives/Table';
+import { FileInput, Radio } from '../../components/primitives/controls';
 
 const A = L.customers.actions;
 const PAGES = L.nav.pages;
 
 // ---------------------------------------------------------------- Contact Pool (CUS-05)
 
-const PAGE_SIZE = 25;
-type PoolSort = 'createdAt' | 'name' | 'city';
 type StatusFilter = 'open' | 'all' | 'new' | 'contacted' | 'converted';
+
+/** Import sources in one menu, so the page header carries a single primary button like every other list. */
+function ImportMenu({ disabledReason, onPick }: { disabledReason?: string; onPick: (add?: 'phone' | 'card') => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button ref={ref} icon="arrow-up" iconRight="chevron-down" aria-haspopup="menu" aria-expanded={open} disabledReason={disabledReason} onClick={() => setOpen((o) => !o)}>
+        {A.importMenu}
+      </Button>
+      <Menu
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={ref}
+        label={A.importMenuLabel}
+        items={[
+          { id: 'excel', label: A.uploadExcel, icon: 'arrow-up', onSelect: () => onPick() },
+          { id: 'phone', label: A.phoneBook, icon: 'users', onSelect: () => onPick('phone') },
+          { id: 'card', label: A.visitingCard, icon: 'id-card', onSelect: () => onPick('card') },
+        ]}
+      />
+    </>
+  );
+}
 
 export function ContactPoolPage() {
   const actor = useActor();
@@ -60,40 +88,24 @@ export function ContactPoolPage() {
   const P = L.customers.pool;
   const readable = perm(actor, 'contacts').read !== 'none';
   const q = useServiceQuery(() => (readable ? getContactPool(actor) : []), [actor.user.id]);
-  const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('open');
   const [source, setSource] = useState('');
-  const [sort, setSort] = useState<{ key: PoolSort; dir: 1 | -1 }>({ key: 'createdAt', dir: -1 });
-  const [page, setPage] = useState(0);
   const [adding, setAdding] = useState(false);
   const [converting, setConverting] = useState<PoolContact['contact'] | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const rows = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    const list = (q.data ?? [])
-      .filter(({ contact: c }) => (status === 'all' ? true : status === 'open' ? c.poolStatus !== 'converted' : c.poolStatus === status))
-      .filter(({ contact: c }) => !source || c.source === source)
-      .filter(({ contact: c }) => !needle || [c.name, c.mobile, c.whatsapp, c.email, c.city, c.designation].some((v) => String(v ?? '').toLowerCase().includes(needle)));
-    const val = (r: PoolContact) => String(r.contact[sort.key] ?? '').toLowerCase();
-    return [...list].sort((a, b) => (val(a) < val(b) ? -sort.dir : val(a) > val(b) ? sort.dir : 0));
-  }, [q.data, search, status, source, sort]);
+  const rows = useMemo(
+    () =>
+      (q.data ?? [])
+        .filter(({ contact: c }) => (status === 'all' ? true : status === 'open' ? c.poolStatus !== 'converted' : c.poolStatus === status))
+        .filter(({ contact: c }) => !source || c.source === source),
+    [q.data, status, source],
+  );
 
   if (!readable) return <NoAccess what={P.noAccess} />;
 
   const canCreate = perm(actor, 'contacts').create;
   const canDelete = perm(actor, 'contacts').delete;
-  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const current = Math.min(page, pageCount - 1);
-  const visible = rows.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE);
-  const filtered = !!(search.trim() || source || status !== 'open');
-  const reset = () => setPage(0);
-  const sortBtn = (key: PoolSort, label: string) => (
-    <button type="button" className="th-btn" onClick={() => (setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 })), reset())} aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}>
-      <span className="th-label">{label}</span>
-      <span aria-hidden="true">{sort.key === key ? (sort.dir === 1 ? '↑' : '↓') : '↕'}</span>
-    </button>
-  );
   const importWith = (add?: 'phone' | 'card') => navigate(toPath(ROUTES.contactPoolImport, {}, { add }));
   const remove = (c: PoolContact['contact']) =>
     confirmDelete({
@@ -121,127 +133,102 @@ export function ContactPoolPage() {
   ];
 
   return (
-    <div className="page">
-      <PageHeader title={PAGES.contactPool.title} description={P.description} />
-      <div className="toolbar">
-        <Button variant="primary" icon="plus" onClick={() => setAdding(true)} disabledReason={canCreate ? undefined : P.noCreate}>
-          {A.addManually}
-        </Button>
-        <Button icon="arrow-up" onClick={() => importWith()} disabledReason={canCreate ? undefined : P.noCreate}>
-          {A.uploadExcel}
-        </Button>
-        <Button icon="users" onClick={() => importWith('phone')} disabledReason={canCreate ? undefined : P.noCreate} title={A.simulatedPhoneBook}>
-          {A.phoneBook}
-        </Button>
-        <Button icon="id-card" onClick={() => importWith('card')} disabledReason={canCreate ? undefined : P.noCreate} title={A.simulatedCard}>
-          {A.visitingCard}
-        </Button>
-        <InfoTip text={L.customers.import.demoTip} label={L.customers.import.demoTipLabel} />
-      </div>
-      <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), reset())} />
-        <SelectMenu label={P.filterStatus} value={status} options={statusOptions} onChange={(v) => (setStatus(v as StatusFilter), reset())} />
-        <SelectMenu label={P.filterSource} value={source} options={[{ value: '', label: P.sourceAll }, ...activeMasterValues('leadSource').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setSource(v), reset())} />
-        <span className="spacer" />
-        {q.data && <span className="toolbar-count">{P.count(rows.length)}</span>}
-      </div>
-      <div className="content-surface">
-        {q.error ? (
-          <ErrorState title={P.loadError} onRetry={q.retry}>
-            {q.error}
-          </ErrorState>
-        ) : !q.data ? (
-          <Skeleton rows={8} />
-        ) : rows.length === 0 ? (
-          <EmptyState
-            icon={filtered ? 'search' : 'users'}
-            title={filtered ? P.noMatch : P.empty}
-            action={
-              filtered ? (
-                <Button onClick={() => (setSearch(''), setSource(''), setStatus('open'), reset())}>{A.clear}</Button>
-              ) : canCreate ? (
-                <Button variant="primary" icon="plus" onClick={() => setAdding(true)}>
-                  {A.addManually}
-                </Button>
-              ) : undefined
-            }
-          >
-            {filtered ? P.noMatchText : P.emptyText}
-          </EmptyState>
-        ) : (
-          <>
-            <div className="table-scroll">
-              <table className="mini-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{sortBtn('name', P.cols.name)}</th>
-                    <th scope="col">{P.cols.mobile}</th>
-                    <th scope="col">{P.cols.email}</th>
-                    <th scope="col">{sortBtn('city', P.cols.city)}</th>
-                    <th scope="col">{P.cols.source}</th>
-                    <th scope="col">{P.cols.owner}</th>
-                    <th scope="col">{sortBtn('createdAt', P.cols.added)}</th>
-                    <th scope="col">{P.cols.status}</th>
-                    <th scope="col">{P.cols.actions}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map(({ contact: c, leadId }) => {
-                    const st = masterValue('poolStatus', c.poolStatus);
-                    const blocked = convertBlockedReason(actor, c);
-                    return (
-                      <tr key={c.id}>
-                        <td>
-                          <Link className="rel-link" to={recordPeekPath(actor.workspaceId, 'contacts', c.id)}>
-                            {String(c.name)}
-                          </Link>
-                          {c.designation ? <div className="muted small">{String(c.designation)}</div> : null}
-                        </td>
-                        <td className="nowrap">{c.mobile ? String(c.mobile) : <EmptyValue />}</td>
-                        <td>{c.email ? String(c.email) : <EmptyValue />}</td>
-                        <td>{c.city ? String(c.city) : <EmptyValue />}</td>
-                        <td>{c.source ? masterLabel('leadSource', c.source) : <EmptyValue />}</td>
-                        <td>{c.ownerId ? recordTitle('employees', c.ownerId, actor) : <EmptyValue />}</td>
-                        <td className="nowrap">
-                          <DateText value={String(c.createdAt ?? '')} />
-                        </td>
-                        <td>{st && <StatusChip label={st.label} tone={st.tone} />}</td>
-                        <td className="nowrap">
-                          {leadId ? (
-                            <Link className="link small" to={recordPeekPath(actor.workspaceId, 'leads', leadId)}>
-                              {A.openLead(leadId)}
-                            </Link>
-                          ) : (
-                            <>
-                              <Button size="compact" icon="arrow-up" onClick={() => setConverting(c)} disabledReason={blocked}>
-                                {A.convertToLead}
-                              </Button>{' '}
-                              <IconButton icon="trash" label={A.delete} disabledReason={canDelete ? (deleting === c.id ? A.delete : undefined) : P.noDelete} onClick={() => remove(c)} />
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="grid-footer">
-              <span className="grid-footer-range">
-                <strong>{P.range(current * PAGE_SIZE + 1, Math.min(rows.length, (current + 1) * PAGE_SIZE), rows.length)}</strong>
-              </span>
-              <nav className="grid-pages" aria-label={P.pagination}>
-                <IconButton icon="chevron-left" label={P.prevPage} disabledReason={current === 0 ? P.firstPage : undefined} onClick={() => setPage(current - 1)} />
-                <span className="muted small">{P.page(current + 1, pageCount)}</span>
-                <IconButton icon="chevron-right" label={P.nextPage} disabledReason={current >= pageCount - 1 ? P.lastPage : undefined} onClick={() => setPage(current + 1)} />
-              </nav>
-            </div>
-          </>
-        )}
-      </div>
+    <ListPage
+      title={PAGES.contactPool.title}
+      description={P.description}
+      actions={
+        <>
+          <ImportMenu disabledReason={canCreate ? undefined : P.noCreate} onPick={importWith} />
+          <Button variant="primary" icon="plus" onClick={() => setAdding(true)} disabledReason={canCreate ? undefined : P.noCreate}>
+            {A.addManually}
+          </Button>
+        </>
+      }
+    >
+        <DataTable<PoolContact>
+          label={PAGES.contactPool.title}
+          noun={P.noun}
+          rows={rows}
+          rowKey={(r) => r.contact.id}
+          loading={!q.data && !q.error}
+          error={q.error ? `${P.loadError}: ${q.error}` : null}
+          onRetry={q.retry}
+          search={({ contact: c }) => [c.name, c.mobile, c.whatsapp, c.email, c.city, c.designation].map((v) => String(v ?? '')).join(' ')}
+          initialSort={{ key: 'added', dir: 'desc' }}
+          activeFilters={(status !== 'open' ? 1 : 0) + (source ? 1 : 0)}
+          onClearFilters={() => (setStatus('open'), setSource(''))}
+          summary={q.data ? P.count(rows.length) : undefined}
+          filters={
+            <>
+              <SelectMenu label={P.filterStatus} value={status} options={statusOptions} onChange={(v) => setStatus(v as StatusFilter)} />
+              <SelectMenu label={P.filterSource} value={source} options={[{ value: '', label: P.sourceAll }, ...activeMasterValues('leadSource').map((v) => ({ value: v.key, label: v.label }))]} onChange={setSource} />
+            </>
+          }
+          empty={
+            q.data && !q.data.length
+              ? { icon: 'users', title: P.empty, body: P.emptyText, action: canCreate ? <Button variant="primary" icon="plus" onClick={() => setAdding(true)}>{A.addManually}</Button> : undefined }
+              : undefined
+          }
+          emptyText={P.noMatch}
+          columns={[
+            {
+              key: 'name',
+              label: P.cols.name,
+              sort: (r) => String(r.contact.name ?? ''),
+              render: ({ contact: c }) => (
+                <>
+                  <Link className="rel-link" to={recordPeekPath(actor.workspaceId, 'contacts', c.id)}>
+                    {String(c.name)}
+                  </Link>
+                  {c.designation ? <div className="muted small">{String(c.designation)}</div> : null}
+                </>
+              ),
+            },
+            {
+              key: 'mobile',
+              label: P.cols.mobile,
+              render: ({ contact: c }) =>
+                c.mobile || c.email ? (
+                  <>
+                    <div className="nowrap">{c.mobile ? String(c.mobile) : <EmptyValue />}</div>
+                    {c.email ? <div className="muted small">{String(c.email)}</div> : null}
+                  </>
+                ) : (
+                  <EmptyValue />
+                ),
+            },
+            { key: 'city', label: P.cols.city, sort: (r) => String(r.contact.city ?? ''), render: ({ contact: c }) => (c.city ? String(c.city) : <EmptyValue />) },
+            { key: 'source', label: P.cols.source, render: ({ contact: c }) => (c.source ? masterLabel('leadSource', c.source) : <EmptyValue />) },
+            { key: 'owner', label: P.cols.owner, render: ({ contact: c }) => (c.ownerId ? recordTitle('employees', c.ownerId, actor) : <EmptyValue />) },
+            { key: 'added', label: P.cols.added, sort: (r) => String(r.contact.createdAt ?? ''), render: ({ contact: c }) => <DateText value={String(c.createdAt ?? '')} /> },
+            {
+              key: 'status',
+              label: P.cols.status,
+              render: ({ contact: c }) => {
+                const st = masterValue('poolStatus', c.poolStatus);
+                return st ? <StatusChip label={st.label} tone={st.tone} /> : null;
+              },
+            },
+            {
+              key: 'act',
+              label: P.cols.actions,
+              render: ({ contact: c, leadId }) =>
+                leadId ? (
+                  <Link className="link small" to={recordPeekPath(actor.workspaceId, 'leads', leadId)}>
+                    {A.openLead(leadId)}
+                  </Link>
+                ) : (
+                  <>
+                    <IconButton icon="arrow-up" label={A.convertToLead} onClick={() => setConverting(c)} disabledReason={convertBlockedReason(actor, c)} />
+                    <IconButton icon="trash" label={A.delete} disabledReason={canDelete ? (deleting === c.id ? A.delete : undefined) : P.noDelete} onClick={() => remove(c)} />
+                  </>
+                ),
+            },
+          ]}
+        />
       <QuickCreateDialog open={adding} resKey="contacts" initial={{ customerId: null, poolStatus: 'new', ownerId: actor.staffId, divisionIds: actor.divisionIds.slice(0, 1) }} onClose={() => setAdding(false)} onCreated={() => setAdding(false)} />
       {converting && <ConvertDialog actor={actor} contact={converting} onClose={() => setConverting(null)} />}
-    </div>
+    </ListPage>
   );
 }
 
@@ -259,8 +246,7 @@ export function DuplicatesPage() {
   const customers = getDb().records.customers ?? [];
   const contacts = getDb().records.contacts ?? [];
   return (
-    <div className="page">
-      <PageHeader title={PAGES.duplicateMerge.title} description={D.description} />
+    <SettingsPage title={PAGES.duplicateMerge.title} description={D.short}>
       <div className="content-surface">
         {q.error ? (
           <ErrorState title={D.loadError} onRetry={q.retry}>
@@ -273,8 +259,8 @@ export function DuplicatesPage() {
             {D.emptyText}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{D.cols.why}</th>
@@ -301,7 +287,7 @@ export function DuplicatesPage() {
                               <li key={id}>
                                 {isCustomer ? (
                                   <label className="row-gap">
-                                    <input type="radio" name={`keep-${i}`} checked={survivor === id} onChange={() => setKeep((k) => ({ ...k, [i]: id }))} />
+                                    <Radio name={`keep-${i}`} checked={survivor === id} onChange={() => setKeep((k) => ({ ...k, [i]: id }))} />
                                     <Link to={recordPeekPath(actor.workspaceId, 'customers', id)}>
                                       <span className="mono">{id}</span> {String(r?.name ?? '')}
                                     </Link>
@@ -354,11 +340,11 @@ export function DuplicatesPage() {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         )}
       </div>
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -401,8 +387,7 @@ export function TransferPage() {
       },
     });
   return (
-    <div className="page">
-      <PageHeader title={PAGES.ownershipTransfer.title} description={X.description} />
+    <SettingsPage title={PAGES.ownershipTransfer.title} description={X.short}>
       <section className="panel">
         <div className="form-grid cols-2">
           <div className="form-field">
@@ -426,7 +411,7 @@ export function TransferPage() {
               </label>
               <InfoTip text={X.reasonTip} label={X.reasonTipLabel} />
             </span>
-            <input id="tr-reason" className="input" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={X.reasonPlaceholder} />
+            <TextField id="tr-reason" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={X.reasonPlaceholder} />
             {errors.reason && <p className="field-error">{errors.reason}</p>}
           </div>
         </div>
@@ -460,7 +445,7 @@ export function TransferPage() {
           </>
         )}
       </section>
-    </div>
+    </SettingsPage>
   );
 }
 
@@ -515,9 +500,9 @@ export function ContactImportPage() {
         <Button variant="primary" icon="arrow-up" loading={busy === 'csv'} onClick={() => fileRef.current?.click()}>
           {A.uploadExcel}
         </Button>
-        <input
+        <FileInput
           ref={fileRef}
-          type="file"
+          
           accept=".csv,text/csv"
           hidden
           onChange={(e) => {
@@ -589,8 +574,8 @@ export function ContactImportPage() {
                 {A.importN(valid.length)}
               </Button>
             </div>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{I.cols.line}</th>
@@ -625,8 +610,8 @@ export function ContactImportPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
           </>
         )}
       </div>

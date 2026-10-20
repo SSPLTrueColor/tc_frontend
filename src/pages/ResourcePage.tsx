@@ -1,8 +1,11 @@
+import { useShortcuts } from '../hooks/useShortcuts';
+import { listCrumb } from '../components/shell/crumbs';
+import { Pagination } from '../components/primitives/Pagination';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { ColumnState, FilterCondition, FilterGroup, RecordData, ViewDefinition } from '../metadata/types';
 import { cx } from '../lib/format';
-import { recordNewPath, recordPagePath, recordPeekPath, resourceKeyFromParams, resourcePath } from '../lib/routes';
+import { recordNewPath, recordPagePath, resourceKeyFromParams, resourcePath } from '../lib/routes';
 import { formatDate, todayKey } from '../lib/dates';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { canReadRecord, perm } from '../services/authz';
@@ -12,11 +15,10 @@ import { cloneGroup, decodeFilter, encodeFilter, OPERATOR_LABELS, VALUELESS } fr
 import { useActor, useRevision } from '../services/hooks';
 import { getResource, masterLabel } from '../services/registry';
 import { availableTransitions, displayText, queryRecords, recordTitle, transitionRecord } from '../services/runtime';
-import { getSettings, pushRecent } from '../services/settings';
+import { getSettings, pushRecent, updateSettings } from '../services/settings';
 import { ServiceError } from '../services/types';
 import { listViews, unavailableViewFields } from '../services/views';
-import { Button, IconButton } from '../components/primitives/Button';
-import { SelectMenu } from '../components/primitives/SelectMenu';
+import { Button } from '../components/primitives/Button';
 // (kept for the commented-out "All of" chip line) import { FadeScroller } from '../components/primitives/FadeScroller';
 import { EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../components/primitives/feedback';
 import { Menu, type MenuItem } from '../components/primitives/overlay';
@@ -28,6 +30,7 @@ import { RecordInspector } from '../components/resource/RecordInspector';
 import { ColumnManager, FilterButton, ViewBar } from '../components/resource/ViewControls';
 import { PageHeader } from '../components/shell/PageHeader';
 import { L } from '../constants/labels';
+import { SearchInput } from '../components/primitives/controls';
 
 const C = L.common;
 const LS = L.common.list;
@@ -52,11 +55,17 @@ export function ResourcePage() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const toast = useToast();
+  const searchRef = useRef<HTMLInputElement>(null);
+  const primaryRef = useRef<(() => void) | undefined>(undefined);
+  useShortcuts({ n: () => primaryRef.current?.(), '/': () => searchRef.current?.focus() });
   const res = getResource(resource);
   const views = listViews(actor, resource);
   const settings = getSettings(actor.user.id);
   const requestedView = params.get('view');
-  const view = views.find((v) => v.id === requestedView) ?? views.find((v) => v.id === settings.defaultViews[resource]) ?? views[0];
+  const view = views.find((v) => v.id === requestedView) ?? views.find((v) => v.id === settings.defaultViews[resource]) ?? views.find((v) => v.id === settings.lastViews[resource]) ?? views[0];
+  useEffect(() => {
+    if (view && getSettings(actor.user.id).lastViews[resource] !== view.id) updateSettings(actor.user.id, { lastViews: { ...getSettings(actor.user.id).lastViews, [resource]: view.id } });
+  }, [view?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const staleView = requestedView && requestedView !== view.id;
   const peek = params.get('peek') ?? undefined;
   const search = params.get('q') ?? '';
@@ -116,12 +125,7 @@ export function ResourcePage() {
   const query = useServiceQuery(() => queryRecords(actor, resource, { filter: working.filter, search, sort: working.sort }), [resource, actor.user.id, working.filter, search, working.sort]);
 
   if (perm(actor, resource).read === 'none') {
-    return (
-      <div className="page">
-        <PageHeader title={res.labelPlural} crumbs={[{ label: res.labelPlural }]} />
-        <NoAccess what={res.labelPlural} />
-      </div>
-    );
+    return <NoAccess what={res.labelPlural} />;
   }
 
   const isPaged = view.type === 'table';
@@ -139,6 +143,7 @@ export function ResourcePage() {
     else if (res.form.fullPage) navigate(recordNewPath(res.key));
     else setCreating({ mode: 'quick' });
   };
+  primaryRef.current = perm(actor, resource).create ? primary : undefined;
 
   const rowMenu = (r: RecordData): MenuItem[] => {
     const raw = getDb().records[resource].find((x) => x.id === r.id);
@@ -212,7 +217,7 @@ export function ResourcePage() {
                 {C.actions.quickAdd}
               </Button>
             )}
-            <Button icon="plus" onClick={primary} /* same look as Export (owner rule) */ disabledReason={perm(actor, resource).create ? undefined : LS.cannotCreate(actor.role.label, res.labelPlural.toLowerCase())}>
+            <Button variant="primary" icon="plus" onClick={primary} title={LS.shortcutHint('N')} disabledReason={perm(actor, resource).create ? undefined : LS.cannotCreate(actor.role.label, res.labelPlural.toLowerCase())}>
               {res.form.primaryLabel ?? C.actions.newRecord(res.label)}
             </Button>
           </div>
@@ -221,7 +226,7 @@ export function ResourcePage() {
         <div className="view-tools view-tools-row">
           <div className="search-field">
             <IconSearch />
-            <input type="search" className="input input-compact" placeholder={LS.search} aria-label={LS.searchAria(res.labelPlural.toLowerCase())} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            <SearchInput ref={searchRef} dense placeholder={`${LS.search} (/)`} aria-label={LS.searchAria(res.labelPlural.toLowerCase())} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
           <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
           {/* Rich views only (rows with several lines): switch between 2-line and 3-line rows */}
@@ -317,7 +322,7 @@ export function ResourcePage() {
             </ErrorState>
           ) : firstLoad ? (
             <Skeleton rows={8} />
-          ) : view.type === 'board' ? (
+          ) : view.type === 'board' && result.total > 0 ? (
             <BoardView res={res} actor={actor} rows={result.rows} boardField={view.boardField ?? res.lifecycle!.field} cardFields={working.columns.filter((c) => !c.hidden).map((c) => c.key)} onOpen={open} activeId={peek} />
           ) : view.type === 'calendar' && res.calendar ? (
             <CalendarView
@@ -468,8 +473,9 @@ export function RecordPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb(res.key, actor.workspaceId)]}
+        description={res.description}
         title={visible ? (res.recordPageTitle ? `${res.recordPageTitle} · ${recordId}` : `${res.label} ${recordId}`) : res.recordPageTitle ?? res.label}
-        onBack={() => navigate(recordPeekPath(actor.workspaceId, res.key, recordId))}
       />
       <div className="record-page">
         <RecordInspector resKey={resource} recordId={recordId} onClose={() => navigate(-1)} variant="page" />
@@ -478,40 +484,7 @@ export function RecordPage() {
   );
 }
 
-/** Frozen table footer: range, sample-data note, rows per page and numbered pages. */
-function GridFooter({ page, pageCount, pageSize, total, noun, onPage, onSize }: { page: number; pageCount: number; pageSize: number; total: number; noun: string; onPage: (p: number) => void; onSize: (n: number) => void }) {
-  const from = total ? page * pageSize + 1 : 0;
-  const to = Math.min(total, (page + 1) * pageSize);
-  // 1 … p-1 p p+1 … N
-  const pages: (number | 'gap')[] = [];
-  for (let i = 0; i < pageCount; i++) {
-    if (i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 1) pages.push(i);
-    else if (pages[pages.length - 1] !== 'gap') pages.push('gap');
-  }
-  return (
-    <div className="grid-footer">
-      <span className="grid-footer-range" aria-live="polite">
-        <strong>
-          {from}–{to}
-        </strong>{' '}
-        {LS.ofTotal(total.toLocaleString('en-IN'), noun)}
-      </span>
-      <nav className="grid-pages" aria-label={LS.pagination}>
-        <IconButton icon="chevron-left" label={LS.previousPage} disabledReason={page === 0 ? LS.firstPage : undefined} onClick={() => onPage(page - 1)} />
-        {pages.map((p, i) =>
-          p === 'gap' ? (
-            <span key={`g${i}`} className="grid-page-gap" aria-hidden="true">
-              …
-            </span>
-          ) : (
-            <button key={p} type="button" className={cx('grid-page', p === page && 'is-current')} aria-current={p === page ? 'page' : undefined} aria-label={LS.page(p + 1)} onClick={() => onPage(p)}>
-              {p + 1}
-            </button>
-          ),
-        )}
-        <IconButton icon="chevron-right" label={LS.nextPage} disabledReason={page >= pageCount - 1 ? LS.lastPage : undefined} onClick={() => onPage(page + 1)} />
-      </nav>
-      <SelectMenu label={LS.rowsPerPage} value={pageSize} options={PAGE_SIZES.map((n) => ({ value: n, label: LS.perPage(n) }))} onChange={onSize} />
-    </div>
-  );
+/** Table footer: the shared Pagination (range, numbered pages, rows per page). */
+function GridFooter({ page, pageSize, total, noun, onPage, onSize }: { page: number; pageCount?: number; pageSize: number; total: number; noun: string; onPage: (p: number) => void; onSize: (n: number) => void }) {
+  return <Pagination page={page} pageSize={pageSize} total={total} noun={noun} onPage={onPage} onSize={onSize} sizes={PAGE_SIZES} />;
 }

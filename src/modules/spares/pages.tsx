@@ -1,10 +1,11 @@
+import { REORDER_TONE } from '../../domain/statusTones';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/primitives/Button';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
@@ -17,7 +18,7 @@ import { useActor } from '../../services/hooks';
 import { getPolicies } from '../../services/policies';
 import { recordTitle } from '../../services/runtime';
 import type { LeakageRow, ReorderRow } from '../../services/spares/consumables';
-import { SimpleTable } from './components/ListKit';
+import { DataTable } from '../../components/primitives/DataTable';
 import { RepeatOrderDialog } from './components/RepeatOrderDialog';
 import { useBusy } from './components/useBusy';
 
@@ -33,8 +34,7 @@ export function MinimumLevelAlertsPage() {
   if (!can(actor, 'spares.stock')) return <NoAccess what={P.noAccess} />;
   const rows = (q.data?.below ?? []).filter((r) => critOnly === 'all' || r.critical);
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.minimumLevelAlerts.title}
         description={P.description}
         actions={
@@ -58,8 +58,7 @@ export function MinimumLevelAlertsPage() {
             </Button>
           </div>
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -72,23 +71,22 @@ export function MinimumLevelAlertsPage() {
             {q.data.lastSync ? P.lastSync(formatDate(q.data.lastSync)) : ''}.
           </EmptyState>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}
             search={(r) => `${r.partNo} ${r.description}`}
             initialSort={{ key: 'short', dir: 'desc' }}
-            tools={
+            summary={
               <>
-                <span className="muted small">
-                  {P.summary(q.data.below.length, q.data.totalParts)}
-                  {q.data.lastSync ? P.lastSyncPrefix : ''}
-                  {q.data.lastSync && <DateText value={q.data.lastSync} />}
-                </span>
-                <span className="spacer" />
-                <SelectMenu label={L.spares.common.show} value={critOnly} options={[{ value: 'all', label: P.critOptions.all }, { value: 'critical', label: P.critOptions.critical }]} onChange={setCritOnly} />
+                {P.summary(q.data.below.length, q.data.totalParts)}
+                {q.data.lastSync ? P.lastSyncPrefix : ''}
+                {q.data.lastSync && <DateText value={q.data.lastSync} />}
               </>
             }
+            activeFilters={critOnly === 'all' ? 0 : 1}
+            onClearFilters={() => setCritOnly('all')}
+            filters={<SelectMenu label={L.spares.common.show} value={critOnly} options={[{ value: 'all', label: P.critOptions.all }, { value: 'critical', label: P.critOptions.critical }]} onChange={setCritOnly} />}
             columns={[
               { key: 'part', label: P.cols.part, sort: (r) => r.partNo, render: (r) => <Link to={recordPeekPath(actor.workspaceId, 'spareParts', r.id)}>{r.partNo}</Link> },
               { key: 'desc', label: P.cols.description, sort: (r) => r.description, render: (r) => r.description },
@@ -101,8 +99,7 @@ export function MinimumLevelAlertsPage() {
             ]}
           />
         )}
-      </div>
-    </div>
+    </ListPage>
   );
 }
 
@@ -117,9 +114,8 @@ export function LeakageListPage() {
   const rows = useMemo(() => (q.data?.rows ?? []).filter((r) => kind === 'all' || (kind === 'never' ? !r.lastOrderDate : !!r.lastOrderDate)), [q.data, kind]);
   if (!can(actor, 'consumables.view')) return <NoAccess what={P.noAccess} />;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.leakageList.title} description={P.description(getPolicies().leakageDays)} />
-      <div className="content-surface">
+    <ListPage title={L.nav.pages.leakageList.title} description={P.description(getPolicies().leakageDays)}
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -134,19 +130,16 @@ export function LeakageListPage() {
                 {P.noneBody(q.data.machineCustomers, q.data.days)}
               </EmptyState>
             ) : (
-              <SimpleTable
+              <DataTable
                 label={P.tableLabel}
                 rows={rows}
                 rowKey={(r) => r.customerId}
                 search={(r) => `${r.customerName} ${r.models}`}
                 initialSort={{ key: 'since', dir: 'desc' }}
-                tools={
-                  <>
-                    <span className="muted small">{P.summary(q.data.rows.length, q.data.machineCustomers)}</span>
-                    <span className="spacer" />
-                    <SelectMenu label={L.consumables.common.show} value={kind} options={[{ value: 'all', label: P.kindOptions.all }, { value: 'never', label: P.kindOptions.never }, { value: 'lapsed', label: P.kindOptions.lapsed }]} onChange={setKind} />
-                  </>
-                }
+                summary={P.summary(q.data.rows.length, q.data.machineCustomers)}
+                activeFilters={kind === 'all' ? 0 : 1}
+                onClearFilters={() => setKind('all')}
+                filters={<SelectMenu label={L.consumables.common.show} value={kind} options={[{ value: 'all', label: P.kindOptions.all }, { value: 'never', label: P.kindOptions.never }, { value: 'lapsed', label: P.kindOptions.lapsed }]} onChange={setKind} />}
                 columns={[
                   { key: 'cust', label: P.cols.customer, sort: (r) => r.customerName, render: (r) => <Link to={recordPeekPath(actor.workspaceId, 'customers', r.customerId)}>{r.customerName}</Link> },
                   { key: 'mach', label: P.cols.machines, num: true, sort: (r) => r.machines, render: (r) => r.machines },
@@ -154,21 +147,21 @@ export function LeakageListPage() {
                   { key: 'last', label: P.cols.last, sort: (r) => r.lastOrderDate ?? '', render: (r) => (r.lastOrderDate ? <DateText value={r.lastOrderDate} /> : <Badge tone="danger">{P.never}</Badge>) },
                   { key: 'since', label: P.cols.since, num: true, sort: (r) => r.daysSince ?? 99999, render: (r) => r.daysSince ?? <EmptyValue /> },
                   { key: 'owner', label: P.cols.owner, sort: (r) => recordTitle('employees', r.ownerId, actor), render: (r) => (r.ownerId ? recordTitle('employees', r.ownerId, actor) : <EmptyValue />) },
-                  { key: 'act', label: P.cols.actions, render: (r) => <Button onClick={() => setLogFor(r)}>{L.consumables.actions.logFollowUp}</Button> },
+                  { key: 'act', label: P.cols.actions, render: (r) => <Button size="compact" onClick={() => setLogFor(r)}>{L.consumables.actions.logFollowUp}</Button> },
                 ]}
               />
             )}
           </>
         )}
-      </div>
+      
       {logFor && <LogActivityDialog open onClose={() => setLogFor(null)} requireNextFollowUp parent={{ parentResource: 'customers', parentId: logFor.customerId, parentLabel: `${logFor.customerId} · ${logFor.customerName}`, customerId: logFor.customerId }} />}
-    </div>
+    </ListPage>
   );
 }
 
 // ---------------------------------------------------------------- Reorder Prediction (CON-04, FR-101 / BR-40)
 
-const STATE_TONE: Record<ReorderRow['state'], 'danger' | 'warning' | 'neutral'> = { missed: 'danger', due: 'warning', upcoming: 'neutral' };
+const STATE_TONE = REORDER_TONE;
 
 export function ReorderPredictionPage() {
   const actor = useActor();
@@ -182,8 +175,7 @@ export function ReorderPredictionPage() {
   const counts = (q.data?.rows ?? []).reduce((m, r) => ({ ...m, [r.state]: (m[r.state] ?? 0) + 1 }), {} as Record<string, number>);
   const canRepeat = !!actor.role.resources.salesOrders?.create;
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.reorderPrediction.title}
         description={P.description(getPolicies().missedReorderDays)}
         actions={
@@ -191,8 +183,7 @@ export function ReorderPredictionPage() {
             {L.consumables.actions.sendReminders}
           </Button>
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -207,16 +198,16 @@ export function ReorderPredictionPage() {
                 {P.noneBody}
               </EmptyState>
             ) : (
-              <SimpleTable
+              <DataTable
                 label={P.tableLabel}
                 rows={rows}
                 rowKey={(r) => r.customerId}
                 search={(r) => r.customerName}
                 initialSort={{ key: 'due', dir: 'asc' }}
-                tools={
-                  <>
-                    <span className="muted small">{P.summary(counts.missed ?? 0, counts.due ?? 0, counts.upcoming ?? 0)}</span>
-                    <span className="spacer" />
+                summary={P.summary(counts.missed ?? 0, counts.due ?? 0, counts.upcoming ?? 0)}
+                activeFilters={state === 'open' ? 0 : 1}
+                onClearFilters={() => setState('open')}
+                filters={
                     <SelectMenu
                       label={L.consumables.common.show}
                       value={state}
@@ -229,7 +220,6 @@ export function ReorderPredictionPage() {
                       ]}
                       onChange={setState}
                     />
-                  </>
                 }
                 columns={[
                   { key: 'cust', label: P.cols.customer, sort: (r) => r.customerName, render: (r) => <Link to={recordPeekPath(actor.workspaceId, 'customers', r.customerId)}>{r.customerName}</Link> },
@@ -244,7 +234,7 @@ export function ReorderPredictionPage() {
                     key: 'act',
                     label: P.cols.actions,
                     render: (r) => (
-                      <Button icon="reset" disabledReason={canRepeat ? undefined : L.consumables.pages.repeatOrders.noCreate} onClick={() => setRepeat({ id: r.lastOrderId, label: r.lastOrderId })}>
+                      <Button size="compact" icon="reset" disabledReason={canRepeat ? undefined : L.consumables.pages.repeatOrders.noCreate} onClick={() => setRepeat({ id: r.lastOrderId, label: r.lastOrderId })}>
                         {L.consumables.actions.repeatOrder}
                       </Button>
                     ),
@@ -254,11 +244,11 @@ export function ReorderPredictionPage() {
             )}
           </>
         )}
-      </div>
+      
       <p className="muted small">
         {P.rateContractsNote} <Link to={resourcePath(actor.workspaceId, 'rateContracts', { view: 'v_rc_valid' })}>{P.rateContractsLink}</Link>
       </p>
       {repeat && <RepeatOrderDialog orderId={repeat.id} orderLabel={repeat.label} onClose={() => setRepeat(null)} />}
-    </div>
+    </ListPage>
   );
 }

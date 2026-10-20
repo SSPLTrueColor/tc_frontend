@@ -12,8 +12,10 @@ import { DateText } from '../../components/primitives/display';
 import { EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../../components/primitives/feedback';
 import { confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { Clip, SettingsPage, SettingsSection } from '../../components/settings/kit';
 import { byTime, SortPicker, type SortDir, usePaged } from './kit';
+import { SearchInput } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const B = L.admin.recycleBin;
 
@@ -63,14 +65,14 @@ export function RecycleBinPage() {
     }
   };
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.recycleBin.title} description={B.description} />
-      <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={B.searchPlaceholder} aria-label={B.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+    <SettingsPage title={L.nav.pages.recycleBin.title} description={B.short}>
+      <SettingsSection wide title={B.sectionTitle} help={B.sectionHelp}>
+      <div className="st-actions">
+        <SearchInput dense placeholder={B.searchPlaceholder} aria-label={B.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
         <SelectMenu label={B.filterType} value={type} options={[{ value: '', label: L.admin.common.allRecordTypes }, ...types.map((t) => ({ value: t, label: safeLabel(t) }))]} onChange={setType} />
         <SortPicker value={sort} onChange={setSort} />
       </div>
-      <div className="content-surface">
+      <div className="st-surface">
         {bin.error ? (
           <ErrorState title={B.loadError} onRetry={bin.retry}>
             {bin.error}
@@ -83,8 +85,8 @@ export function RecycleBinPage() {
           </EmptyState>
         ) : (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{B.columns.record}</th>
@@ -100,14 +102,14 @@ export function RecycleBinPage() {
                   {paged.shown.map((e) => (
                     <tr key={e.id}>
                       <td>
-                        <span className="mono">{e.record.id}</span> · {titleOf(e) === e.record.id ? recordTitle(e.resource, e.record.id, actor) : titleOf(e)}
+                        <Clip text={`${e.record.id} · ${titleOf(e) === e.record.id ? recordTitle(e.resource, e.record.id, actor) : titleOf(e)}`} />
                       </td>
                       <td>{safeLabel(e.resource)}</td>
                       <td className="nowrap">
                         <DateText value={e.deletedAt} />
                       </td>
                       <td>{getUser(e.deletedBy)?.name ?? e.deletedBy}</td>
-                      <td className="row-gap">
+                      <td className="st-row-actions">
                         <Button loading={busyId === e.id} onClick={() => act(e.id, () => restoreFromBin(actor, e.id), B.restored(e.record.id))}>
                           {B.restore}
                         </Button>
@@ -128,12 +130,13 @@ export function RecycleBinPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer(B.items)}
           </>
         )}
       </div>
-    </div>
+      </SettingsSection>
+    </SettingsPage>
   );
 }

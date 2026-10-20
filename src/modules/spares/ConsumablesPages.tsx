@@ -6,7 +6,7 @@ import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, StatusC
 import { confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { FormDrawer } from '../../components/resource/RecordForm';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { formatMoney } from '../../lib/format';
@@ -17,7 +17,7 @@ import { can, canReadResource } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterValue } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
-import { SimpleTable } from './components/ListKit';
+import { DataTable } from '../../components/primitives/DataTable';
 import { RepeatOrderDialog } from './components/RepeatOrderDialog';
 
 // ---------------------------------------------------------------- Repeat Orders (CON-02, FR-099)
@@ -41,9 +41,8 @@ export function RepeatOrdersPage() {
   );
   if (!can(actor, 'consumables.view')) return <NoAccess what={P.noAccess} />;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.repeatOrders.title} description={P.description} />
-      <div className="content-surface">
+    <ListPage title={L.nav.pages.repeatOrders.title} description={P.description}
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -58,17 +57,18 @@ export function RepeatOrdersPage() {
             </EmptyState>
           </>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}
             search={(r) => `${r.orderNo} ${r.customerName} ${r.products}`}
             initialSort={{ key: 'date', dir: 'desc' }}
             emptyText={P.noRowsBody}
-            tools={
+            summary={P.summary(rows.length, new Set(rows.map((r) => r.customerId)).size)}
+            activeFilters={(customer ? 1 : 0) + (price !== 'all' ? 1 : 0) + (show !== 'latest' ? 1 : 0)}
+            onClearFilters={() => (setCustomer(''), setPrice('all'), setShow('latest'))}
+            filters={
               <>
-                <span className="muted small">{P.summary(rows.length, new Set(rows.map((r) => r.customerId)).size)}</span>
-                <span className="spacer" />
                 <SelectMenu label={P.customer} searchable value={customer} options={[{ value: '', label: P.allCustomers }, ...customers]} onChange={setCustomer} />
                 <SelectMenu label={P.priceFilter} value={price} options={[{ value: 'all', label: P.priceOptions.all }, { value: 'contract', label: P.priceOptions.contract }, { value: 'list', label: P.priceOptions.list }]} onChange={setPrice} />
                 <SelectMenu label={L.consumables.common.show} value={show} options={[{ value: 'latest', label: P.showOptions.latest }, { value: 'all', label: P.showOptions.all }]} onChange={setShow} />
@@ -87,7 +87,7 @@ export function RepeatOrdersPage() {
                 key: 'act',
                 label: P.cols.actions,
                 render: (r) => (
-                  <Button icon="reset" disabledReason={q.data?.canRepeat ? undefined : P.noCreate} onClick={() => setRepeat({ id: r.id, label: r.orderNo })}>
+                  <Button size="compact" icon="reset" disabledReason={q.data?.canRepeat ? undefined : P.noCreate} onClick={() => setRepeat({ id: r.id, label: r.orderNo })}>
                     {L.consumables.actions.repeatOrder}
                   </Button>
                 ),
@@ -95,9 +95,9 @@ export function RepeatOrdersPage() {
             ]}
           />
         )}
-      </div>
+      
       {repeat && <RepeatOrderDialog orderId={repeat.id} orderLabel={repeat.label} onClose={() => setRepeat(null)} />}
-    </div>
+    </ListPage>
   );
 }
 
@@ -128,8 +128,7 @@ export function DealerOrdersPage() {
     });
   const total = rows.reduce((s, r) => s + r.value, 0);
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.dealerOrders.title}
         description={P.description}
         actions={
@@ -137,8 +136,7 @@ export function DealerOrdersPage() {
             {L.consumables.actions.newDealerOrder}
           </Button>
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -150,17 +148,18 @@ export function DealerOrdersPage() {
             {P.emptyBody}
           </EmptyState>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}
             search={(r) => `${r.id} ${r.dealerName} ${r.endCustomer} ${r.endCustomerCity} ${r.productName} ${r.invoiceNo}`}
             initialSort={{ key: 'date', dir: 'desc' }}
             emptyText={P.noRowsBody}
-            tools={
+            summary={P.summary(rows.length, formatMoney(total))}
+            activeFilters={(dealer ? 1 : 0) + (status ? 1 : 0)}
+            onClearFilters={() => (setDealer(''), setStatus(''))}
+            filters={
               <>
-                <span className="muted small">{P.summary(rows.length, formatMoney(total))}</span>
-                <span className="spacer" />
                 <SelectMenu label={P.dealer} searchable value={dealer} options={[{ value: '', label: P.allDealers }, ...data.dealers]} onChange={setDealer} />
                 <SelectMenu label={P.status} value={status} options={[{ value: '', label: P.allStatuses }, ...activeMasterValues('dealerOrderStatus').map((v) => ({ value: v.key, label: v.label }))]} onChange={setStatus} />
               </>
@@ -199,8 +198,8 @@ export function DealerOrdersPage() {
             ]}
           />
         )}
-      </div>
+      
       <FormDrawer resKey="dealerOrders" recordId={form?.id} open={!!form} onClose={() => setForm(null)} />
-    </div>
+    </ListPage>
   );
 }

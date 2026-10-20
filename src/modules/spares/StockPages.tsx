@@ -4,7 +4,7 @@ import { Button } from '../../components/primitives/Button';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { formatMoney } from '../../lib/format';
@@ -12,10 +12,11 @@ import { recordPeekPath, resourcePath } from '../../lib/routes';
 import * as api from '../../services/api/spares';
 import { can } from '../../services/authz';
 import { useActor } from '../../services/hooks';
-import type { Column } from './components/ListKit';
-import { SimpleTable } from './components/ListKit';
+import type { Column } from '../../components/primitives/DataTable';
+import { DataTable } from '../../components/primitives/DataTable';
 import { useBusy } from './components/useBusy';
 import type { EngineerPartRow, EngineerRow, StockFigures } from '../../services/spares/stock';
+import { LinkButton } from '../../components/primitives/controls';
 
 // ---------------------------------------------------------------- Main Store Stock (SPR-02, FR-093)
 
@@ -37,8 +38,7 @@ export function MainStoreStockPage() {
   );
   if (!can(actor, 'spares.stock')) return <NoAccess what={P.noAccess} />;
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.mainStoreStock.title}
         description={P.description}
         actions={
@@ -57,8 +57,7 @@ export function MainStoreStockPage() {
             </Button>
           ) : undefined
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -80,16 +79,17 @@ export function MainStoreStockPage() {
                 </>
               )}
             </p>
-            <SimpleTable
+            <DataTable
               label={P.tableLabel}
               rows={rows}
               rowKey={(r) => r.id}
               search={(r) => `${r.partNo} ${r.description} ${r.categoryLabel}`}
               initialSort={{ key: 'part', dir: 'asc' }}
               emptyText={P.noRowsBody}
-              tools={
+              activeFilters={(category ? 1 : 0) + (state !== 'all' ? 1 : 0)}
+              onClearFilters={() => (setCategory(''), setState('all'))}
+              filters={
                 <>
-                  <span className="spacer" />
                   <SelectMenu label={P.filterCategory} value={category} options={[{ value: '', label: P.allCategories }, ...q.data.categories]} onChange={setCategory} />
                   <SelectMenu
                     label={P.filterState}
@@ -126,8 +126,7 @@ export function MainStoreStockPage() {
             />
           </>
         )}
-      </div>
-    </div>
+    </ListPage>
   );
 }
 
@@ -186,9 +185,8 @@ export function EngineerStockPage() {
     ...figureColumns<EngineerPartRow>(),
   ];
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.engineerStock.title} description={P.description} />
-      <div className="content-surface">
+    <ListPage title={L.nav.pages.engineerStock.title} description={P.description}
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -206,20 +204,17 @@ export function EngineerStockPage() {
                 </EmptyState>
               </>
             ) : (
-              <SimpleTable
+              <DataTable
                 key={data.selected ?? 'own'}
                 label={P.tableParts}
                 rows={data.parts}
                 rowKey={(r) => r.partId}
                 search={(r) => `${r.partNo} ${r.description}`}
                 initialSort={{ key: 'inHand', dir: 'desc' }}
-                tools={
+                filters={
                   <>
-                    <span className="spacer" />
                     {picker}
-                    <Link className="btn btn-secondary" to={resourcePath(actor.workspaceId, 'requisitions', { view: 'v_req_all' })}>
-                      <span className="btn-label">{P.openRequisitions}</span>
-                    </Link>
+                    <LinkButton to={resourcePath(actor.workspaceId, 'requisitions', { view: 'v_req_all' })}>{P.openRequisitions}</LinkButton>
                   </>
                 }
                 columns={partCols}
@@ -231,22 +226,16 @@ export function EngineerStockPage() {
             {P.emptyBody}
           </EmptyState>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableEngineers}
             rows={data.engineers}
             rowKey={(r) => r.engineerId}
             search={(r) => r.engineerName}
             initialSort={{ key: 'inHand', dir: 'desc' }}
-            tools={
-              <>
-                <span className="spacer" />
-                {picker}
-              </>
-            }
+            filters={picker}
             columns={engineerCols}
           />
         )}
-      </div>
-    </div>
+    </ListPage>
   );
 }

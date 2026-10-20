@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { nowLocal, todayKey } from '../../lib/dates';
+import { addDays, nowLocal, todayKey } from '../../lib/dates';
 import { call, errorMessage } from '../../services/api/client';
 import { logActivity, type ActivityInput } from '../../services/activities';
 import { useActor } from '../../services/hooks';
@@ -12,6 +12,7 @@ import { Dialog } from '../primitives/overlay';
 import { SelectMenu } from '../primitives/SelectMenu';
 import { VoiceButton } from './VoiceButton';
 import { L } from '../../constants/labels';
+import { TextField, Textarea } from '../primitives/controls';
 
 const A = L.common.activity;
 
@@ -42,7 +43,7 @@ export function LogActivityDialog({
   const [type, setType] = useState(defaultType);
   const [subject, setSubject] = useState('');
   const [at, setAt] = useState(nowLocal());
-  const [next, setNext] = useState('');
+  const [next, setNext] = useState(() => (requireNextFollowUp ? addDays(todayKey(), 1) : ''));
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -103,7 +104,7 @@ export function LogActivityDialog({
           <label className="field-label" htmlFor="act-subject">
             {A.subject} <span className="req">*</span>
           </label>
-          <input id="act-subject" className="input" maxLength={140} value={subject} onChange={(e) => setSubject(e.target.value)} aria-invalid={!!errors.subject || undefined} data-autofocus />
+          <TextField id="act-subject" maxLength={140} value={subject} onChange={(e) => setSubject(e.target.value)} aria-invalid={!!errors.subject || undefined} data-autofocus />
           {errors.subject && <p className="field-error">{errors.subject}</p>}
         </div>
         <div className="form-field">
@@ -120,7 +121,7 @@ export function LogActivityDialog({
             </label>
             <VoiceButton onText={(t) => setNotes((n) => (n ? `${n} ${t}` : t))} label={L.common.voice.dictateNotes} />
           </span>
-          <textarea id="act-notes" className="input textarea" rows={3} maxLength={2000} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Textarea id="act-notes" className="textarea" rows={3} maxLength={2000} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
         {errors.form && (
           <p className="field-error span-all" role="alert">

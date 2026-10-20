@@ -26,6 +26,7 @@ import { InfoTip } from '../../components/primitives/InfoTip';
 import { FormDrawer, QuickCreateDialog } from '../../components/resource/RecordForm';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { RefreshErpButton } from './components';
+import { Table } from '../../components/primitives/Table';
 
 const C = L.customers.c360;
 const T = L.customers.tabs;
@@ -61,8 +62,8 @@ function Pending({ q }: { q: { error: string | null; retry: () => void } }) {
 function LinkedTable({ rows, ws }: { rows: LinkedRow[]; ws: string }) {
   const showAmount = rows.some((r) => r.amount !== undefined);
   return (
-    <div className="table-scroll">
-      <table className="mini-table">
+    
+      <Table>
         <thead>
           <tr>
             <th scope="col">{C.columns.id}</th>
@@ -91,8 +92,8 @@ function LinkedTable({ rows, ws }: { rows: LinkedRow[]; ws: string }) {
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </Table>
+    
   );
 }
 
@@ -394,8 +395,8 @@ export function PaymentStatusTab({ actor, record, res }: RecordExtensionProps) {
         ) : (
           <>
             <p className="small">{P.totals(formatMoney(openTotal), formatMoney(pastDueTotal))}</p>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{P.cols.milestone}</th>
@@ -426,8 +427,8 @@ export function PaymentStatusTab({ actor, record, res }: RecordExtensionProps) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
           </>
         )}
       </Section>
@@ -482,8 +483,8 @@ export function FeedbackTab({ actor, record }: RecordExtensionProps) {
             {Fb.emptyText}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{Fb.cols.ticket}</th>
@@ -506,8 +507,8 @@ export function FeedbackTab({ actor, record }: RecordExtensionProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         )}
       </Section>
     </div>
@@ -642,8 +643,8 @@ export function DocumentsTab({ actor, record }: RecordExtensionProps) {
             {D.emptyText}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{D.cols.file}</th>
@@ -666,8 +667,8 @@ export function DocumentsTab({ actor, record }: RecordExtensionProps) {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         )}
       </Section>
     </div>

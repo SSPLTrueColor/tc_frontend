@@ -1,4 +1,5 @@
-import { Link, useParams } from 'react-router-dom';
+import { listCrumb } from '../../components/shell/crumbs';
+import { useParams } from 'react-router-dom';
 import { organization } from '../../domain/pack';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
@@ -13,6 +14,7 @@ import { Button } from '../../components/primitives/Button';
 import { ErrorState, Skeleton } from '../../components/primitives/feedback';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { LinesTable } from './components';
+import { LinkButton } from '../../components/primitives/controls';
 
 const O = L.orders;
 const P = O.pages.contractPdf;
@@ -27,9 +29,7 @@ export function SalesContractPdfPage() {
   const actor = useActor();
   const q = useServiceQuery(() => ({ ...printableContract(actor, id), view: orderView(actor, id) }), [id, actor.user.id]);
   const back = (
-    <Link className="btn btn-secondary" to={recordPeekPath(actor.workspaceId, 'salesOrders', id)}>
-      <span className="btn-label">{O.actions.backToOrder}</span>
-    </Link>
+    <LinkButton to={recordPeekPath(actor.workspaceId, 'salesOrders', id)}>{O.actions.backToOrder}</LinkButton>
   );
   if (q.error)
     return (
@@ -51,6 +51,7 @@ export function SalesContractPdfPage() {
   return (
     <div className="page">
       <PageHeader
+        crumbs={[listCrumb('salesOrders')]}
         title={TITLE}
         description={P.title(String(contract.contractNo))}
         actions={

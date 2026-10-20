@@ -1,3 +1,4 @@
+import { Pagination } from '../../components/primitives/Pagination';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { ColumnState, RecordData } from '../../metadata/types';
@@ -11,7 +12,7 @@ import { periodLabel, pipelineFacets, pipelineRows, pipelineTotals, type Pipelin
 import { runStagnationSweep } from '../../services/api/opportunities';
 import { activeMasterValues, getResource } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
-import { Button, IconButton } from '../../components/primitives/Button';
+import { Button } from '../../components/primitives/Button';
 import { EmptyState, ErrorState, NoAccess, Skeleton } from '../../components/primitives/feedback';
 import { Icon } from '../../components/primitives/Icon';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
@@ -21,6 +22,8 @@ import { FormDrawer, QuickCreateDialog } from '../../components/resource/RecordF
 import { RecordInspector } from '../../components/resource/RecordInspector';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { moneyShort } from './format';
+import { SearchInput } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
 
 const T = L.opportunities.pages.pipeline;
 const PAGE_SIZES = [25, 50, 100];
@@ -86,12 +89,7 @@ export function PipelinePage() {
   );
 
   if (!readable)
-    return (
-      <div className="page">
-        <PageHeader title={L.nav.pages.pipeline.title} />
-        <NoAccess what={L.opportunities.messages.noAccessPipeline} />
-      </div>
-    );
+    return <NoAccess what={L.opportunities.messages.noAccessPipeline} />;
 
   const rows = query.data ?? [];
   const totals = pipelineTotals(rows);
@@ -113,15 +111,14 @@ export function PipelinePage() {
       <div className="page-main">
         <PageHeader title={L.nav.pages.pipeline.title} description={T.description} />
         <div className="view-toolbar view-tabs-row">
-          <div className="segmented" role="radiogroup" aria-label={T.layout}>
-            {(['kanban', 'list'] as const).map((m) => (
-              <button key={m} type="button" role="radio" aria-checked={mode === m} className={cx('seg-btn', mode === m && 'is-on')} onClick={() => update({ mode: m === 'list' ? 'list' : undefined, page: undefined })}>
-                {m === 'kanban' ? T.kanban : T.list}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={T.layout}
+            value={mode}
+            onChange={(next) => update({ mode: next === 'list' ? 'list' : undefined, page: undefined })}
+            options={(['kanban', 'list'] as const).map((m) => ({ value: m, label: m === 'kanban' ? T.kanban : T.list }))}
+          />
           <div className="view-tools view-tools-primary">
-            <Button icon="plus" onClick={() => setCreating({ mode: 'quick' })} disabledReason={canCreate ? undefined : T.cannotCreate(actor.role.label)}>
+            <Button variant="primary" icon="plus" onClick={() => setCreating({ mode: 'quick' })} disabledReason={canCreate ? undefined : T.cannotCreate(actor.role.label)}>
               {L.opportunities.actions.newOpportunity}
             </Button>
           </div>
@@ -131,7 +128,7 @@ export function PipelinePage() {
             <span className="search-icon" aria-hidden="true">
               <Icon name="search" size={14} />
             </span>
-            <input type="search" className="input input-compact" placeholder={T.search} aria-label={T.searchLabel} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            <SearchInput dense placeholder={T.search} aria-label={T.searchLabel} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
           <SelectMenu label={T.division} value={params.get('division') ?? ''} options={masterOptions('division', T.allDivisions)} onChange={(v) => update({ division: v, page: undefined })} />
           <SelectMenu label={T.owner} value={params.get('owner') ?? ''} searchable options={[{ value: '', label: T.allOwners }, ...ownerOptions]} onChange={(v) => update({ owner: v, page: undefined })} />
@@ -252,36 +249,8 @@ export function PipelinePage() {
   );
 }
 
-/** Table footer (same markup as the resource list footer): range, numbered pages, rows per page. */
-export function Pager({ page, pageCount, pageSize, total, onPage, onSize, range = T.range }: { page: number; pageCount: number; pageSize: number; total: number; onPage: (p: number) => void; onSize: (n: number) => void; range?: (from: number, to: number, total: number) => string }) {
-  const from = total ? page * pageSize + 1 : 0;
-  const to = Math.min(total, (page + 1) * pageSize);
-  const pages: (number | 'gap')[] = [];
-  for (let i = 0; i < pageCount; i++) {
-    if (i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 1) pages.push(i);
-    else if (pages[pages.length - 1] !== 'gap') pages.push('gap');
-  }
-  return (
-    <div className="grid-footer">
-      <span className="grid-footer-range" aria-live="polite">
-        {range(from, to, total)}
-      </span>
-      <nav className="grid-pages" aria-label={T.pagination}>
-        <IconButton icon="chevron-left" label={T.previousPage} disabledReason={page === 0 ? T.firstPage : undefined} onClick={() => onPage(page - 1)} />
-        {pages.map((p, i) =>
-          p === 'gap' ? (
-            <span key={`g${i}`} className="grid-page-gap" aria-hidden="true">
-              …
-            </span>
-          ) : (
-            <button key={p} type="button" className={cx('grid-page', p === page && 'is-current')} aria-current={p === page ? 'page' : undefined} aria-label={T.pageN(p + 1)} onClick={() => onPage(p)}>
-              {p + 1}
-            </button>
-          ),
-        )}
-        <IconButton icon="chevron-right" label={T.nextPage} disabledReason={page >= pageCount - 1 ? T.lastPage : undefined} onClick={() => onPage(page + 1)} />
-      </nav>
-      <SelectMenu label={T.rowsPerPage} value={pageSize} options={PAGE_SIZES.map((n) => ({ value: n, label: T.perPage(n) }))} onChange={onSize} />
-    </div>
-  );
+/** List footer: the shared Pagination, with the noun taken from the page's own "1–25 of N things" wording. */
+export function Pager({ page, pageSize, total, onPage, onSize, range = T.range }: { page: number; pageCount?: number; pageSize: number; total: number; onPage: (p: number) => void; onSize: (n: number) => void; range?: (from: number, to: number, total: number) => string }) {
+  const noun = range(1, 2, 3).replace(/^1–2 of 3\s*/, '');
+  return <Pagination page={page} pageSize={pageSize} total={total} noun={noun} onPage={onPage} onSize={onSize} sizes={PAGE_SIZES} />;
 }

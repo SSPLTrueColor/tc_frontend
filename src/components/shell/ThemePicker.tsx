@@ -9,6 +9,9 @@ import { InfoTip } from '../primitives/InfoTip';
 import { confirmDelete, Dialog } from '../primitives/overlay';
 import { useToast } from '../primitives/feedback';
 import { L } from '../../constants/labels';
+import { TextField } from '../primitives/controls';
+import { SegmentedControl } from '../primitives/controls';
+import { ColorInput } from '../primitives/controls';
 
 const TH = L.common.theme;
 
@@ -87,13 +90,12 @@ export function ThemePicker({ onEditPalette }: { onEditPalette?: (p: Palette) =>
     <div className="theme-picker">
       <div className="form-field">
         <span className="field-label">{TH.mode}</span>
-        <div className="segmented" role="radiogroup" aria-label={TH.colourMode}>
-          {(['system', 'light', 'dark'] as const).map((t) => (
-            <button key={t} type="button" role="radio" aria-checked={s.theme === t} className={cx('seg-btn', s.theme === t && 'is-on')} onClick={() => updateSettings(actor.user.id, { theme: t })}>
-              {TH.modes[t]}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={TH.colourMode}
+          value={s.theme}
+          onChange={(next) => updateSettings(actor.user.id, { theme: next })}
+          options={(['system', 'light', 'dark'] as const).map((t) => ({ value: t, label: TH.modes[t] }))}
+        />
       </div>
       <div className="form-field">
         <span className="field-label-row">
@@ -127,8 +129,8 @@ function ColorField({ id, label, value, onChange }: { id: string; label: string;
         {label}
       </label>
       <span className={cx('color-field', !valid && 'is-invalid')}>
-        <input
-          type="color"
+        <ColorInput
+          
           className="color-swatch"
           aria-label={TH.pickerAria(label)}
           value={value}
@@ -137,9 +139,9 @@ function ColorField({ id, label, value, onChange }: { id: string; label: string;
             onChange(e.target.value);
           }}
         />
-        <input
+        <TextField
           id={id}
-          className="input"
+          
           value={text}
           maxLength={7}
           spellCheck={false}
@@ -193,7 +195,7 @@ export function PaletteEditor({ initial, onClose }: { initial: Palette; onClose:
             <label className="field-label" htmlFor="pal-name">
               {TH.name} <span className="req">*</span>
             </label>
-            <input id="pal-name" className="input" value={p.name} maxLength={30} placeholder={TH.namePlaceholder} onChange={(e) => setP({ ...p, name: e.target.value })} data-autofocus aria-invalid={(tried && !!nameError) || undefined} />
+            <TextField id="pal-name" value={p.name} maxLength={30} placeholder={TH.namePlaceholder} onChange={(e) => setP({ ...p, name: e.target.value })} data-autofocus aria-invalid={(tried && !!nameError) || undefined} />
             {tried && nameError && <span className="field-error">{nameError}</span>}
           </div>
           <ColorField id="pal-accent" label={TH.accent} value={p.accent} onChange={(v) => setP({ ...p, accent: v })} />
