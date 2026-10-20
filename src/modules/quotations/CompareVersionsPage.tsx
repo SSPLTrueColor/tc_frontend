@@ -14,6 +14,7 @@ import { EmptyValue } from '../../components/primitives/display';
 import { EmptyState, ErrorState, Skeleton } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { Table } from '../../components/primitives/Table';
 
 const C = L.quotations.compare;
 const F = L.quotations.fields.quotations;
@@ -89,8 +90,8 @@ export function CompareVersionsPage() {
         </Link>
       </div>
       <section className="panel">
-        <div className="table-scroll">
-          <table className="mini-table qt-compare">
+        
+          <Table className="qt-compare">
             <thead>
               <tr>
                 <th scope="col">{C.field}</th>
@@ -111,13 +112,13 @@ export function CompareVersionsPage() {
                 );
               })}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       </section>
       <section className="panel">
         <h2 className="panel-title">{C.lineItems}</h2>
-        <div className="table-scroll">
-          <table className="mini-table qt-compare">
+        
+          <Table className="qt-compare">
             <thead>
               <tr>
                 <th scope="col">{L.quotations.lineTable.item}</th>
@@ -138,8 +139,8 @@ export function CompareVersionsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
         {b.record.revisionNote ? <p className="muted small">{C.versionNote(String(b.record.revisionNote))}</p> : null}
       </section>
     </div>

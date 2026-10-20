@@ -1,3 +1,5 @@
+import { EXCEPTION_TONE } from '../../domain/statusTones';
+import { Switch } from '../../components/primitives/controls';
 import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
@@ -20,6 +22,7 @@ import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { RecordInspector } from '../../components/resource/RecordInspector';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { fmtMinutes, getLocation, LocationSourcePicker, OfflineSwitch, PAGE_SIZE, Pager, SearchBox, Stat, time12, useLocationSource, useOfflineState } from './common';
+import { Table } from '../../components/primitives/Table';
 
 const T = L.nav.pages;
 const FC = L.field.common;
@@ -164,16 +167,8 @@ export function AttendancePage() {
             <LocationSourcePicker value={source} onChange={setSource} />
             {state === 'out' && (
               <div className="row-gap">
-                <label className="switch">
-                  <input type="checkbox" role="switch" checked={onTour} onChange={(e) => setOnTour(e.target.checked)} aria-label={P.onTour} />
-                  <span className="switch-track" aria-hidden="true" />
-                  <span className="small">{P.onTour}</span>
-                </label>
-                <label className="switch">
-                  <input type="checkbox" role="switch" checked={selfie} onChange={(e) => setSelfie(e.target.checked)} aria-label={P.selfieAria} />
-                  <span className="switch-track" aria-hidden="true" />
-                  <span className="small">{P.selfie}</span>
-                </label>
+                <Switch checked={onTour} onChange={setOnTour} label={P.onTour} text={P.onTour} />
+                <Switch checked={selfie} onChange={setSelfie} label={P.selfieAria} text={P.selfie} />
               </div>
             )}
             {error && (
@@ -209,8 +204,8 @@ export function AttendancePage() {
           <h2 className="panel-title">{P.last7}</h2>
         </div>
         {d.recent.length ? (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{FC.date}</th>
@@ -235,8 +230,8 @@ export function AttendancePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         ) : (
           <EmptyState icon="calendar-clock" title={P.emptyTitle}>
             {P.emptyBody}
@@ -339,8 +334,8 @@ export function TeamAttendancePage() {
                 {P.noMatchBody}
               </EmptyState>
             ) : (
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{FC.person}</th>
@@ -387,8 +382,8 @@ export function TeamAttendancePage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
             )}
           </div>
           <Pager page={page} total={shown.length} onPage={setPage} />
@@ -402,7 +397,7 @@ export function TeamAttendancePage() {
 // ---------------------------------------------------------------- Exception Dashboard (ATT-10)
 
 type ExTab = 'all' | 'no_check_in' | 'late' | 'early_exit' | 'no_visits';
-const EX_TONE: Record<string, 'danger' | 'warning' | 'info'> = { no_check_in: 'danger', late: 'warning', early_exit: 'warning', no_visits: 'info', mock_location: 'danger', not_checked_out: 'warning' };
+const EX_TONE: Record<string, 'danger' | 'warning' | 'info'> = EXCEPTION_TONE;
 
 export function ExceptionDashboardPage() {
   const P = L.field.pages.exceptionDashboard;
@@ -541,20 +536,7 @@ function RoutePeople() {
           label={FC.search}
           placeholder={FC.searchPlaceholder}
         />
-        <label className="switch">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={withRoute}
-            onChange={(e) => {
-              setWithRoute(e.target.checked);
-              setPage(0);
-            }}
-            aria-label={P.withRouteOnly}
-          />
-          <span className="switch-track" aria-hidden="true" />
-          <span className="small">{P.withRouteOnly}</span>
-        </label>
+        <Switch checked={withRoute} onChange={(on) => { setWithRoute(on); setPage(0); }} label={P.withRouteOnly} text={P.withRouteOnly} />
         <SelectMenu
           label={P.sortLabel}
           value={sort}
@@ -581,8 +563,8 @@ function RoutePeople() {
             {P.noMatchBody}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{FC.person}</th>
@@ -621,8 +603,8 @@ function RoutePeople() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         )}
       </div>
       <Pager page={page} total={shown.length} onPage={setPage} />

@@ -16,6 +16,8 @@ import { EmptyState, ErrorState, NoAccess, Skeleton, StatusChip, Tabs, useToast 
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
+import { SearchInput, Textarea } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const P = L.quotations.pending;
 const PAGE = 25;
@@ -112,7 +114,7 @@ export function PendingApprovalsPage() {
             ]}
           />
           <div className="toolbar">
-            <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), resetPage())} />
+            <SearchInput dense placeholder={P.search} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), resetPage())} />
             <SelectMenu label={P.filterDivision} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setDivision(v), resetPage())} />
             <SelectMenu label={P.filterLevel} value={level} options={[{ value: '', label: P.allLevels }, ...LEVELS.map((l) => ({ value: l, label: l }))]} onChange={(v) => (setLevel(v), resetPage())} />
           </div>
@@ -123,8 +125,8 @@ export function PendingApprovalsPage() {
               </EmptyState>
             ) : (
               <>
-                <div className="table-scroll">
-                  <table className="mini-table">
+                
+                  <Table>
                     <thead>
                       <tr>
                         <th scope="col">{sortBtn('quoteNo', P.colQuotation)}</th>
@@ -194,8 +196,8 @@ export function PendingApprovalsPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
-                </div>
+                  </Table>
+                
                 <div className="grid-footer">
                   <span className="grid-footer-range">{P.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)}</span>
                   <nav className="grid-pages" aria-label={P.pageOf(current + 1, pageCount)}>
@@ -271,7 +273,7 @@ function DecideDialog({ row, decision, onClose }: { row: PendingApprovalRow; dec
         <label className="field-label" htmlFor="qpa-note">
           {P.comment} {approve ? <span className="optional">{L.quotations.common.optional}</span> : <span className="req">*</span>}
         </label>
-        <textarea id="qpa-note" className="input textarea" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!error || undefined} />
+        <Textarea id="qpa-note" className="textarea" rows={3} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!error || undefined} />
         {error && <p className="field-error">{error}</p>}
       </div>
     </Dialog>

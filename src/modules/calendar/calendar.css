@@ -44,12 +44,12 @@
 
 /* ---------------------------------------------------------------- page layout */
 .cal-page {
-  padding-bottom: 8px;
+  padding-bottom: var(--sp-2);
 }
 .cal-layout {
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--sp-3);
   align-items: stretch;
   /* One scroll area (the grid itself): fills the window, never shorter than a usable month. */
   height: max(600px, calc(100dvh - 168px));
@@ -58,13 +58,13 @@
   grid-template-columns: minmax(0, 1fr);
 }
 .cal-side {
-  padding: 16px;
+  padding: var(--sp-4);
   overflow-y: auto;
   min-height: 0;
 }
 .cal-side-inner {
   display: grid;
-  gap: 14px;
+  gap: var(--sp-4);
 }
 .cal-create {
   justify-self: stretch;
@@ -72,7 +72,7 @@
 }
 .cal-filter {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .cal-filter-title {
   font-size: var(--fs-supportive);
@@ -89,7 +89,7 @@
 .cal-check {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 26px;
   font-size: var(--fs-supportive);
   color: var(--s-text);
@@ -104,14 +104,14 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: var(--sp-3);
 }
 .cal-toolbar {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 .cal-toolbar > .btn,
 .cal-toolbar > .icon-btn,
@@ -121,7 +121,7 @@
 .cal-title {
   font-size: var(--fs-secondary);
   font-weight: var(--fw-semibold);
-  margin-left: 4px;
+  margin-left: var(--sp-1);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -150,13 +150,13 @@
   right: 2px;
 }
 .cal-search-count {
-  margin: 8px 0 0;
+  margin: var(--sp-2) 0 0;
 }
 .cal-head {
   display: flex;
   align-items: stretch;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 .cal-head .cal-search {
   align-self: center;
@@ -165,10 +165,10 @@
 .cal-today-strip {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   flex: 1;
   min-width: 0;
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--s-border);
   border-radius: var(--c-radius-panel);
   background: var(--s-sunken);
@@ -183,7 +183,7 @@
 }
 .cal-today-badge {
   flex: none;
-  padding: 1px 8px;
+  padding: 1px var(--sp-2);
   border-radius: 10px;
   background: var(--s-accent);
   color: var(--s-on-accent, #fff);
@@ -211,7 +211,7 @@
 }
 .cal-empty .state {
   pointer-events: auto;
-  padding: 20px 24px;
+  padding: var(--sp-5) var(--sp-5);
   border-radius: var(--c-radius-panel);
   background: color-mix(in srgb, var(--s-panel) 94%, transparent);
   border: 1px solid var(--s-border);
@@ -226,13 +226,13 @@
 }
 .cal-quick {
   display: grid;
-  gap: 12px;
-  padding: 4px;
+  gap: var(--sp-3);
+  padding: var(--sp-1);
 }
 .cal-quick-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .cal-quick-title {
   flex: 1;
@@ -241,7 +241,7 @@
 .cal-quick-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   flex-wrap: wrap;
 }
 .cal-quick-row > .select-menu,
@@ -265,7 +265,7 @@
 .cal-quick-actions {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 @media (max-width: 760px) {
   .cal-layout {
@@ -299,7 +299,7 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-1);
   font-size: var(--fs-supportive);
 }
 .mini-month-grid {
@@ -390,7 +390,7 @@
 }
 /* Column headers: small, muted, regular weight (template table headers). */
 .tc-cal .fc .fc-col-header-cell-cushion {
-  padding: 8px 4px;
+  padding: var(--sp-2) var(--sp-1);
   font-weight: 400;
   color: var(--s-text-secondary);
   text-decoration: none;
@@ -403,10 +403,10 @@
   text-decoration: none;
 }
 .tc-cal .fc .fc-daygrid-day-number {
-  margin: 4px;
+  margin: var(--sp-1);
   min-width: 24px;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 var(--sp-2);
   display: inline-grid;
   place-items: center;
   border-radius: 12px;
@@ -463,7 +463,7 @@
 .tc-cal .fc-h-event .fc-event-main,
 .tc-cal .fc-v-event .fc-event-main {
   color: var(--s-text);
-  padding: 1px 6px;
+  padding: 1px var(--sp-2);
   overflow: hidden;
 }
 .tc-cal .fc-event:focus-visible {
@@ -473,7 +473,7 @@
 .tc-cal .ev-line {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--sp-2);
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -519,14 +519,14 @@
   font-variant-numeric: tabular-nums;
 }
 .tc-cal .fc-list-event .ev-link {
-  margin-left: 8px;
+  margin-left: var(--sp-2);
   color: var(--s-text-secondary);
 }
 .tc-cal .fc-daygrid-event-harness {
-  margin-top: 3px;
+  margin-top: var(--sp-1);
 }
 .tc-cal .fc-daygrid-day-events {
-  padding: 0 4px 4px;
+  padding: 0 var(--sp-1) var(--sp-1);
 }
 .tc-cal .fc-daygrid-day-frame {
   padding: 2px;
@@ -567,7 +567,7 @@
 }
 .tc-cal .fc .fc-daygrid-more-link {
   font-weight: var(--fw-semibold);
-  padding: 0 4px;
+  padding: 0 var(--sp-1);
 }
 .tc-cal .fc .fc-daygrid-more-link:hover {
   background: var(--s-hover);
@@ -584,7 +584,7 @@
 .tc-cal .fc .fc-popover-header {
   background: var(--s-sunken);
   color: var(--s-text);
-  padding: 6px 10px;
+  padding: var(--sp-2) var(--sp-3);
   font-weight: var(--fw-semibold);
 }
 .tc-cal .fc .fc-popover-close {
@@ -600,10 +600,10 @@
 .tc-cal .fc .fc-list-day-cushion {
   background: var(--s-sunken);
   font-weight: var(--fw-semibold);
-  padding: 6px 12px;
+  padding: var(--sp-2) var(--sp-3);
 }
 .tc-cal .fc .fc-list-event td {
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
 }
 .tc-cal .fc .fc-list-event-time {
   color: var(--s-text-secondary);
@@ -617,13 +617,13 @@
 /* ---------------------------------------------------------------- detail popover */
 .cal-detail {
   display: grid;
-  gap: 10px;
-  padding: 4px;
+  gap: var(--sp-3);
+  padding: var(--sp-1);
 }
 .cal-detail-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .cal-detail-title {
   font-size: var(--fs-secondary);
@@ -632,7 +632,7 @@
 .cal-detail-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 /* A new view fades in; the grid keeps its size, so nothing jumps. */

@@ -14,6 +14,7 @@ import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { Pager } from '../opportunities/PipelinePage';
 import { L } from '../../constants/labels';
+import { SearchInput } from '../../components/primitives/controls';
 
 const T = L.leads.pages.followUps;
 
@@ -55,9 +56,9 @@ export function FollowUpsPage() {
         }))}
       />
       <div className="toolbar">
-        <input
-          type="search"
-          className="input input-compact"
+        <SearchInput
+          
+          dense
           placeholder={T.searchPlaceholder}
           aria-label={T.searchLabel}
           value={q}

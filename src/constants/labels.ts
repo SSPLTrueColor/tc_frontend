@@ -32,6 +32,7 @@ const common = {
     saveDraft: 'Save Draft',
     saveAndIssue: 'Save & Issue',
     cancel: 'Cancel',
+    confirm: 'Confirm',
     create: 'Create',
     close: 'Close',
     back: 'Back',
@@ -133,6 +134,7 @@ const common = {
 
   // ------------------------------------------------------------ Confirmations
   confirm: {
+    typeToConfirm: (word: string) => `Type “${word}” to confirm`,
     deleteTitle: (id: string) => `Delete ${id}?`,
     deleteBody: 'The record moves to the recycle bin, where an administrator can restore it. Records referenced elsewhere cannot be deleted.',
     deleteDefaultLabel: 'Delete',
@@ -343,6 +345,14 @@ const common = {
   },
 
   // ------------------------------------------------------------ Lists: views, filters, columns, grid, pagination, bulk actions
+  table: {
+    rows: 'rows',
+    search: 'Search',
+    searchAria: (label: string) => `Search ${label}`,
+    noMatch: (q: string) => `No rows match “${q}”`,
+    noRows: 'Nothing to show',
+  },
+
   list: {
     search: 'Search',
     searchAria: (plural: string) => `Search ${plural}`,
@@ -1151,6 +1161,7 @@ const nav = {
     recycleBin: { title: 'Recycle Bin', brd: 'COM-10' },
     sentMessages: { title: 'Sent Messages (Simulated)', brd: 'COM-03' },
     demoSettings: { title: 'Demo Settings', brd: 'NFR simulation' },
+    componentGallery: { title: 'Component Gallery', brd: 'NFR-14 (consistency)' },
   },
 } as const;
 
@@ -6626,6 +6637,7 @@ const reports = {
       changeFilters: 'Change filters',
       scrollable: 'scrolls sideways when the table is wider than the screen',
       of: (total: string) => `of ${total} rows`,
+      rows: 'rows',
       pagination: 'Pagination',
       previous: 'Previous page',
       next: 'Next page',
@@ -8659,6 +8671,7 @@ const settingsKit = {
       auditTrail: 'Audit Trail',
       dataProtection: 'Data Protection',
       demoSettings: 'Demo Settings',
+      componentGallery: 'Component Gallery',
     } as Record<string, string>,
   },
 } as const;
@@ -8783,6 +8796,25 @@ const grants = {
   loadError: 'Could not load people and access',
 } as const;
 
+// ==================== component gallery (Demo) ====================
+const gallery = {
+  description: 'Every shared component in every state. If a page looks different from this, the page is wrong.',
+  buttons: 'Buttons',
+  buttonsHelp: 'One filled (primary) button per page. Everything else is secondary, ghost, or in a ⋯ menu.',
+  fields: 'Form fields',
+  fieldsHelp: 'Label above, helper or error below. 40 px in forms, 32 px (dense) in toolbars.',
+  choices: 'Choices',
+  choicesHelp: 'Checkbox, radio, switch (instant), segmented (2–5 options), tabs (sections of one page).',
+  status: 'Status colours',
+  statusHelp: 'One colour means one thing everywhere: success finished, warning waiting, danger failed, info in progress, neutral inactive.',
+  states: 'Loading, empty and error',
+  statesHelp: 'Every list, chart and form has all three.',
+  tables: 'Tables and pagination',
+  tablesHelp: 'DataTable for computed lists, Table for short static ones, DataGrid for resource lists.',
+  overlays: 'Dialogs, confirmations and toasts',
+  overlaysHelp: 'Confirm anything that deletes or cannot be undone; type a word for the worst cases.',
+} as const;
+
 // ==================== account & governance settings ===========================================
 const account = {
   profile: {
@@ -8893,4 +8925,4 @@ const account = {
   },
 } as const;
 
-export const L = { grants, account, settingsKit, common, nav, roles, customers, leads, opportunities, quotations, orders, dispatch, installed, service, spares, consumables, field, targets, reports, dashboard, calendar, admin, catalog } as const;
+export const L = { gallery, grants, account, settingsKit, common, nav, roles, customers, leads, opportunities, quotations, orders, dispatch, installed, service, spares, consumables, field, targets, reports, dashboard, calendar, admin, catalog } as const;

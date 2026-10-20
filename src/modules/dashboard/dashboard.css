@@ -2,13 +2,13 @@
 .dash2 {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sp-4);
 }
 .dash2-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
+  gap: var(--sp-2) var(--sp-3);
 }
 .dash2-bar .rep-date {
   width: 250px;
@@ -23,15 +23,15 @@
 .dash2-kpis {
   display: grid;
   grid-template-columns: repeat(var(--n, 6), minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .kpi-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   min-width: 0;
-  padding: 12px 14px;
+  padding: var(--sp-3) var(--sp-4);
   background: var(--s-panel);
   border: 1px solid var(--s-border);
   border-radius: var(--c-radius-panel);
@@ -48,7 +48,7 @@ a.kpi-card:focus-visible {
 .kpi-top {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
 }
 .kpi-icon {
@@ -76,8 +76,8 @@ a.kpi-card:focus-visible {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 4px 8px;
-  margin-top: 4px;
+  gap: var(--sp-1) var(--sp-2);
+  margin-top: var(--sp-1);
 }
 .kpi-value {
   font-size: 22px;
@@ -89,7 +89,7 @@ a.kpi-card:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 0 6px;
+  padding: 0 var(--sp-2);
   height: 20px;
   border-radius: 10px;
   font-size: var(--fs-supportive);
@@ -131,7 +131,7 @@ a.kpi-card:focus-visible {
 .kpi-radial {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-top: auto;
   min-height: 44px;
 }
@@ -145,7 +145,7 @@ a.kpi-card:focus-visible {
 .dash2-grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--sp-4);
   align-items: stretch;
 }
 .dash2-grid > .dash-card {
@@ -168,13 +168,13 @@ a.kpi-card:focus-visible {
   min-width: 0;
 }
 .dash-note {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
 }
 .dc-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin: 0 0 6px;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0 0 var(--sp-2);
   padding: 0;
   list-style: none;
   color: var(--s-text-secondary);
@@ -183,7 +183,7 @@ a.kpi-card:focus-visible {
 .dc-legend li {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .dc-dot {
   display: inline-block;
@@ -194,7 +194,7 @@ a.kpi-card:focus-visible {
 }
 .dc-tip {
   min-width: 150px;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   background: var(--s-elevated);
   border: 1px solid var(--s-border);
   border-radius: 8px;
@@ -203,17 +203,17 @@ a.kpi-card:focus-visible {
   font-size: var(--fs-supportive);
 }
 .dc-tip-head {
-  margin-bottom: 4px;
+  margin-bottom: var(--sp-1);
   color: var(--s-text-secondary);
 }
 .dc-tip-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 .dc-tip-row strong {
   margin-left: auto;
-  padding-left: 12px;
+  padding-left: var(--sp-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -222,7 +222,7 @@ a.kpi-card:focus-visible {
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 250px;
 }
 .dash-donut {
@@ -258,8 +258,8 @@ a.kpi-card:focus-visible {
 .share-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 4px;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-1);
   border-radius: 6px;
   color: var(--s-text);
   font-size: var(--fs-supportive);
@@ -317,13 +317,6 @@ a.kpi-card:focus-visible {
 .alert-count {
   min-width: 28px;
   justify-content: center;
-}
-.dash-skel-title {
-  width: 40%;
-}
-.dash-skel-value {
-  width: 55%;
-  height: 24px;
 }
 
 @media (max-width: 1279px) {

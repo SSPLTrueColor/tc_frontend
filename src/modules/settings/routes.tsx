@@ -1,5 +1,6 @@
 import { ROUTES } from '../../constants/routes';
 import type { AppRoute } from '../types';
+import { ComponentGalleryPage } from './ComponentGalleryPage';
 import { DataProtectionPage } from './DataProtectionPage';
 import { NotificationPreferencesPage } from './NotificationPreferencesPage';
 import { ProfilePage } from './ProfilePage';
@@ -11,4 +12,5 @@ export const routes: AppRoute[] = [
   { path: ROUTES.notificationPreferences, element: <NotificationPreferencesPage /> },
   { path: ROUTES.security, element: <SecurityPage /> },
   { path: ROUTES.dataProtection, element: <DataProtectionPage /> },
+  { path: ROUTES.componentGallery, element: <ComponentGalleryPage /> },
 ];

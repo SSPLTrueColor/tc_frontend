@@ -11,6 +11,9 @@ import { Button } from '../../components/primitives/Button';
 import { EmptyState, InlineAlert, NoAccess, useToast } from '../../components/primitives/feedback';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { L } from '../../constants/labels';
+import { TextField, Textarea } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
+import { FileInput } from '../../components/primitives/controls';
 
 const T = L.leads.pages.importLeads;
 const A = L.leads.actions;
@@ -66,9 +69,9 @@ export function ImportLeadsPage() {
           </>
         }
       />
-      <input
+      <FileInput
         ref={fileRef}
-        type="file"
+        
         accept=".csv,text/csv"
         hidden
         onChange={(e) => {
@@ -90,13 +93,13 @@ export function ImportLeadsPage() {
             <label className="field-label" htmlFor="imp-event">
               {T.eventName} <span className="req">*</span>
             </label>
-            <input id="imp-event" className="input" maxLength={80} placeholder={T.eventPlaceholder} value={eventName} onChange={(e) => setEventName(e.target.value)} />
+            <TextField id="imp-event" maxLength={80} placeholder={T.eventPlaceholder} value={eventName} onChange={(e) => setEventName(e.target.value)} />
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="imp-paste">
               {T.paste}
             </label>
-            <textarea id="imp-paste" className="input textarea" rows={2} placeholder={T.pastePlaceholder} onBlur={(e) => e.target.value.trim() && load(e.target.value)} />
+            <Textarea id="imp-paste" className="textarea" rows={2} placeholder={T.pastePlaceholder} onBlur={(e) => e.target.value.trim() && load(e.target.value)} />
           </div>
         </div>
         {preview.length ? (
@@ -104,8 +107,8 @@ export function ImportLeadsPage() {
             <p className="toolbar-count muted">
               {T.summary(preview.length, valid, preview.length - valid)}
             </p>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{T.cols.line}</th>
@@ -148,8 +151,8 @@ export function ImportLeadsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {error && (
               <p className="field-error" role="alert">
                 {error}

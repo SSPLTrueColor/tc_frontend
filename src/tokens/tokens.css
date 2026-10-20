@@ -289,3 +289,73 @@
     --c-control-h-compact: var(--uab-control-h-touch);
   }
 }
+
+/* ---------- Status chips (owner reference, final): bright pastel pill, no border, no dot ---------- */
+:root {
+  --chip-success-bg: #dcfce7;
+  --chip-success-fg: #15803d;
+  --chip-info-bg: #e0e7ff;
+  --chip-info-fg: #4338ca;
+  --chip-accent-bg: #ede9fe;
+  --chip-accent-fg: #6d28d9;
+  --chip-warning-bg: #fef3c7;
+  --chip-warning-fg: #b45309;
+  --chip-danger-bg: #fee2e2;
+  --chip-danger-fg: #b91c1c;
+  --chip-neutral-bg: #f1f2f4;
+  --chip-neutral-fg: #596070;
+}
+:root[data-theme='dark'] {
+  --chip-success-bg: #12301f;
+  --chip-success-fg: #6ee7a0;
+  --chip-info-bg: #1e2147;
+  --chip-info-fg: #a5b4fc;
+  --chip-accent-bg: #2a1f4a;
+  --chip-accent-fg: #c4b5fd;
+  --chip-warning-bg: #3a2a0f;
+  --chip-warning-fg: #fcd34d;
+  --chip-danger-bg: #3d1717;
+  --chip-danger-fg: #fca5a5;
+  --chip-neutral-bg: #2a2a31;
+  --chip-neutral-fg: #b4b4bf;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --chip-success-bg: #12301f;
+    --chip-success-fg: #6ee7a0;
+    --chip-info-bg: #1e2147;
+    --chip-info-fg: #a5b4fc;
+    --chip-accent-bg: #2a1f4a;
+    --chip-accent-fg: #c4b5fd;
+    --chip-warning-bg: #3a2a0f;
+    --chip-warning-fg: #fcd34d;
+    --chip-danger-bg: #3d1717;
+    --chip-danger-fg: #fca5a5;
+    --chip-neutral-bg: #2a2a31;
+    --chip-neutral-fg: #b4b4bf;
+  }
+}
+
+/* ---------- Hyperlinks are always BLUE (independent of the colour theme) ---------- */
+:root {
+  --c-link: #2557d6;
+}
+:root[data-theme='dark'] {
+  --c-link: #8ab4ff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --c-link: #8ab4ff;
+  }
+}
+
+/* ---------- elevation + overlays (the only places raw rgba() is allowed) ---------- */
+:root {
+  --s-shadow-xs: 0 1px 2px rgba(20, 20, 30, 0.08);
+  --s-shadow-sm: 0 4px 14px rgba(20, 20, 30, 0.12);
+  --s-shadow-lg: 0 10px 30px rgba(20, 20, 30, 0.18), 0 1px 3px rgba(20, 20, 30, 0.1);
+  --s-shadow-edge: 6px 0 8px -6px rgba(20, 20, 30, 0.08);
+  --s-overlay-weak: rgba(0, 0, 0, 0.06);
+  --s-overlay: rgba(0, 0, 0, 0.08);
+  --c-rail-text-dim: rgba(255, 255, 255, 0.65);
+}

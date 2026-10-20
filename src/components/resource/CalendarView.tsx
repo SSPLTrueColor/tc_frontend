@@ -13,6 +13,7 @@ import { StatusChip } from '../primitives/feedback';
 import { DatePicker } from '../primitives/DatePicker';
 import { InfoTip } from '../primitives/InfoTip';
 import { L } from '../../constants/labels';
+import { Checkbox, SegmentedControl } from '../primitives/controls';
 
 const DAY_START = 7;
 const DAY_END = 19;
@@ -86,15 +87,9 @@ export function CalendarView({
         {onCreateAt && <InfoTip text={L.common.list.calendarAbout} label={L.common.list.calendarAboutLabel} />}
       </div>
       <div className="cal-nav">
-        <div className="segmented" role="radiogroup" aria-label={L.common.list.groupLanesBy}>
-          {cal.lanes.map((l, i) => (
-            <button key={l.field} type="button" role="radio" aria-checked={i === laneIdx} className={cx('seg-btn', i === laneIdx && 'is-on')} onClick={() => setLaneIdx(i)}>
-              {l.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl label={L.common.list.groupLanesBy} value={String(laneIdx)} onChange={(v) => setLaneIdx(Number(v))} options={cal.lanes.map((l, i) => ({ value: String(i), label: l.label }))} />
         <label className="check">
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> {L.common.list.showCancelled}
+          <Checkbox checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} /> {L.common.list.showCancelled}
         </label>
       </div>
     </div>

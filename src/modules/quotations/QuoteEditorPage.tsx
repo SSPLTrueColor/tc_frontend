@@ -24,6 +24,7 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { useUnsavedGuard } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { TotalsBlock } from './LinesTable';
+import { TextField, Textarea } from '../../components/primitives/controls';
 
 const T = L.quotations;
 const E = T.editor;
@@ -325,13 +326,13 @@ function QuoteEditor({ data }: { data: EditorData }) {
                       <label className="field-label" htmlFor={`${id}-d`}>
                         {E.description_}
                       </label>
-                      <input id={`${id}-d`} className="input" maxLength={200} value={lines[i].description} onChange={(e) => setLine(i, { description: e.target.value })} />
+                      <TextField id={`${id}-d`} maxLength={200} value={lines[i].description} onChange={(e) => setLine(i, { description: e.target.value })} />
                     </div>
                     <div className="form-field">
                       <label className="field-label" htmlFor={`${id}-q`}>
                         {T.lineTable.qty}
                       </label>
-                      <input id={`${id}-q`} className="input num" inputMode="numeric" value={String(lines[i].qty)} onChange={(e) => setLine(i, { qty: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
+                      <TextField id={`${id}-q`} className="num" inputMode="numeric" value={String(lines[i].qty)} onChange={(e) => setLine(i, { qty: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
                     </div>
                     <div className="form-field">
                       <span className="field-label-row">
@@ -347,7 +348,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                       ) : (
                         <div className="input-affix has-start">
                           <span className="affix affix-start">₹</span>
-                          <input id={`${id}-lp`} className="input num" inputMode="decimal" value={String(lines[i].listPrice)} onChange={(e) => setLine(i, { listPrice: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} />
+                          <TextField id={`${id}-lp`} className="num" inputMode="decimal" value={String(lines[i].listPrice)} onChange={(e) => setLine(i, { listPrice: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} />
                         </div>
                       )}
                     </div>
@@ -356,9 +357,9 @@ function QuoteEditor({ data }: { data: EditorData }) {
                         {T.lineTable.discount}
                       </label>
                       <div className="qt-disc">
-                        <input
+                        <TextField
                           id={`${id}-dc`}
-                          className="input num"
+                          className="num"
                           inputMode="decimal"
                           value={String(byAmount ? lines[i].discountAmt : lines[i].discountPct)}
                           onChange={(e) => {
@@ -387,7 +388,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                       <label className="field-label" htmlFor={`${id}-h`}>
                         {T.lineTable.hsnSac}
                       </label>
-                      <input id={`${id}-h`} className="input mono" maxLength={8} value={lines[i].hsnSac} onChange={(e) => setLine(i, { hsnSac: e.target.value.replace(/\D/g, '') })} />
+                      <TextField id={`${id}-h`} className="mono" maxLength={8} value={lines[i].hsnSac} onChange={(e) => setLine(i, { hsnSac: e.target.value.replace(/\D/g, '') })} />
                     </div>
                     <div className="form-field">
                       <span className="field-label">{T.lineTable.net}</span>
@@ -441,7 +442,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
               </label>
               <div className="input-affix has-start">
                 <span className="affix affix-start">₹</span>
-                <input id="qt-freight" className="input" inputMode="decimal" value={String(header.freight ?? 0)} onChange={(e) => set('freight', Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} />
+                <TextField id="qt-freight" inputMode="decimal" value={String(header.freight ?? 0)} onChange={(e) => set('freight', Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} />
               </div>
             </div>
             <div className="form-field">
@@ -450,7 +451,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
               </label>
               <div className="input-affix has-start">
                 <span className="affix affix-start">₹</span>
-                <input id="qt-ins" className="input" inputMode="decimal" value={String(header.insurance ?? 0)} onChange={(e) => set('insurance', Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} />
+                <TextField id="qt-ins" inputMode="decimal" value={String(header.insurance ?? 0)} onChange={(e) => set('insurance', Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} />
               </div>
             </div>
             <p className="muted small span-all">
@@ -465,7 +466,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                   <label className="field-label" htmlFor="qt-reason">
                     {T.dialogs.submit.reason} <span className="req">*</span>
                   </label>
-                  <textarea id="qt-reason" className="input textarea" rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={!!errors.reason || undefined} />
+                  <Textarea id="qt-reason" className="textarea" rows={2} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={!!errors.reason || undefined} />
                   {errors.reason && <p className="field-error">{errors.reason}</p>}
                 </div>
               </div>
@@ -499,7 +500,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
               <label className="field-label" htmlFor={`qt-${k}`}>
                 {label}
               </label>
-              <textarea id={`qt-${k}`} className="input textarea" rows={3} maxLength={1000} value={String(header[k] ?? '')} onChange={(e) => set(k, e.target.value)} />
+              <Textarea id={`qt-${k}`} className="textarea" rows={3} maxLength={1000} value={String(header[k] ?? '')} onChange={(e) => set(k, e.target.value)} />
             </div>
           ))}
         </div>

@@ -8,6 +8,8 @@ import { useActor } from '../../services/hooks';
 import type { NotificationPrefs, NotifChannel, NotifEvent } from '../../services/types';
 import { SaveBar, SettingsField, SettingsPage, SettingsSection, SettingsSkeleton, ToggleRow, useDraft } from '../../components/settings/kit';
 import { ErrorState, useToast } from '../../components/primitives/feedback';
+import { Checkbox, TextField } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const N = L.account.notifications;
 const title = L.nav.pages.notificationPreferences.title;
@@ -68,8 +70,8 @@ export function NotificationPreferencesPage() {
   return (
     <SettingsPage title={title} description={N.description}>
       <SettingsSection wide title={N.channelsTitle} help={N.channelsHelp}>
-        <div className="table-scroll">
-          <table className="mini-table st-grid">
+        
+          <Table className="st-grid">
             <thead>
               <tr>
                 <th scope="col">{N.update}</th>
@@ -89,9 +91,9 @@ export function NotificationPreferencesPage() {
                   </th>
                   {NOTIF_CHANNELS.map((c) => (
                     <td key={c} className="st-check" data-label={N.channels[c]}>
-                      <input
-                        type="checkbox"
-                        className="checkbox st-box"
+                      <Checkbox
+                        
+                        className="st-box"
                         checked={p.events[ev].includes(c)}
                         disabled={c === 'inApp'}
                         data-tooltip={c === 'inApp' ? N.always : undefined}
@@ -103,8 +105,8 @@ export function NotificationPreferencesPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       </SettingsSection>
 
       <SettingsSection title={N.quietTitle} help={N.quietHelp}>
@@ -112,10 +114,10 @@ export function NotificationPreferencesPage() {
         {p.quietHours.enabled && (
           <div className="st-pair">
             <SettingsField label={N.from} htmlFor="np-from" error={tried ? errors.quiet : undefined}>
-              <input id="np-from" className="input" type="time" value={p.quietHours.from} onChange={(e) => form.replace({ ...p, quietHours: { ...p.quietHours, from: e.target.value } })} aria-invalid={(tried && !!errors.quiet) || undefined} />
+              <TextField id="np-from" type="time" value={p.quietHours.from} onChange={(e) => form.replace({ ...p, quietHours: { ...p.quietHours, from: e.target.value } })} aria-invalid={(tried && !!errors.quiet) || undefined} />
             </SettingsField>
             <SettingsField label={N.to} htmlFor="np-to">
-              <input id="np-to" className="input" type="time" value={p.quietHours.to} onChange={(e) => form.replace({ ...p, quietHours: { ...p.quietHours, to: e.target.value } })} aria-invalid={(tried && !!errors.quiet) || undefined} />
+              <TextField id="np-to" type="time" value={p.quietHours.to} onChange={(e) => form.replace({ ...p, quietHours: { ...p.quietHours, to: e.target.value } })} aria-invalid={(tried && !!errors.quiet) || undefined} />
             </SettingsField>
           </div>
         )}

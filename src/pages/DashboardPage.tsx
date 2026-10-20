@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { L } from '../constants/labels';
 import { addDays, todayKey } from '../lib/dates';
-import { cx } from '../lib/format';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { call, errorMessage } from '../services/api/client';
 import { useActor } from '../services/hooks';
@@ -15,6 +14,7 @@ import { PageHeader } from '../components/shell/PageHeader';
 import { AgendaCard, AlertsCard, BoardCard, CardSkeleton, FeedCard, KpiCard, KpiSkeleton, PipeCard, ShareCard, TrendCard } from '../modules/dashboard/widgets';
 import '../modules/reports/reports.css';
 import '../modules/dashboard/dashboard.css';
+import { SegmentedControl } from '../components/primitives/controls';
 
 const D = L.dashboard;
 const PRESETS: { id: RangeKey; label: string }[] = (['today', '7d', '30d', 'month', 'custom'] as const).map((id) => ({ id, label: D.range.presets[id] }));
@@ -81,13 +81,12 @@ export function DashboardPage() {
 
   const bar = (
     <div className="dash2-bar" role="group" aria-label={D.range.group}>
-      <div className="segmented" role="radiogroup" aria-label={D.range.presetsGroup}>
-        {PRESETS.map((p) => (
-          <button key={p.id} type="button" role="radio" aria-checked={key === p.id} className={cx('seg-btn', key === p.id && 'is-on')} onClick={() => setRange(p.id)}>
-            {p.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl
+        label={D.range.presetsGroup}
+        value={key}
+        onChange={(next) => setRange(next)}
+        options={PRESETS.map((p) => ({ value: p.id, label: p.label }))}
+      />
       {key === 'custom' && (
         <span className="rep-date">
           <DateRangePicker label={D.range.custom} value={{ from: range.from, to: range.to }} onChange={setCustom} />

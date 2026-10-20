@@ -184,35 +184,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.st-skel {
-  background: var(--s-border);
-  border-radius: var(--c-radius-control);
-  animation: st-pulse 1.2s ease-in-out infinite;
-}
-.st-skel-line {
-  height: 20px;
-  width: 60%;
-}
-.st-skel-card {
-  display: grid;
-  gap: var(--sp-4);
-}
-.st-skel-title {
-  height: 20px;
-  width: 30%;
-}
-.st-skel-box {
-  height: 96px;
-}
-@keyframes st-pulse {
-  50% {
-    opacity: 0.5;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .st-skel {
-    animation: none;
-  }
   .st-savebar {
     transition: none;
   }

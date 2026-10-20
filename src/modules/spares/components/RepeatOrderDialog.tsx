@@ -16,6 +16,9 @@ import * as api from '../../../services/api/spares';
 import { useActor } from '../../../services/hooks';
 import { lineNet } from '../../../services/orders/lines';
 import { ServiceError } from '../../../services/types';
+import { TextField } from '../../../components/primitives/controls';
+import { Table } from '../../../components/primitives/Table';
+import { FileInput } from '../../../components/primitives/controls';
 
 const D = L.consumables.pages.repeatDialog;
 const A = L.consumables.actions;
@@ -87,7 +90,7 @@ export function RepeatOrderDialog({ orderId, orderLabel, onClose }: { orderId: s
       ) : (
         <div className="form-grid">
           <div className="sp-table-wrap span-all">
-            <table className="mini-table">
+            <Table scroll={false}>
               <thead>
                 <tr>
                   <th scope="col">{D.cols.product}</th>
@@ -126,13 +129,13 @@ export function RepeatOrderDialog({ orderId, orderLabel, onClose }: { orderId: s
                   </td>
                 </tr>
               </tfoot>
-            </table>
+            </Table>
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="rep-po">
               {D.poNo} <span className="req">*</span>
             </label>
-            <input id="rep-po" className="input" maxLength={40} value={poNo} onChange={(e) => setPoNo(e.target.value)} aria-invalid={!!errors.customerPoNo || undefined} aria-describedby={errors.customerPoNo ? 'rep-po-err' : undefined} data-autofocus />
+            <TextField id="rep-po" maxLength={40} value={poNo} onChange={(e) => setPoNo(e.target.value)} aria-invalid={!!errors.customerPoNo || undefined} aria-describedby={errors.customerPoNo ? 'rep-po-err' : undefined} data-autofocus />
             <Err id="rep-po-err" msg={errors.customerPoNo} />
           </div>
           <div className="form-field">
@@ -146,10 +149,10 @@ export function RepeatOrderDialog({ orderId, orderLabel, onClose }: { orderId: s
             <label className="field-label" htmlFor="rep-file">
               {D.poFile} <span className="req">*</span>
             </label>
-            <input
+            <FileInput
               id="rep-file"
-              type="file"
-              className="input"
+              
+              
               accept=".pdf,.jpg,.jpeg,.png"
               aria-invalid={!!errors.poFileName || undefined}
               onChange={(e) => {

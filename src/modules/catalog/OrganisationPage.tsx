@@ -9,6 +9,7 @@ import { EmptyValue } from '../../components/primitives/display';
 import { Clip, SettingsPage, SettingsSection, SettingsSkeleton } from '../../components/settings/kit';
 import { usePaged } from './kit';
 import { OrgChart } from './OrgChart';
+import { Table } from '../../components/primitives/Table';
 
 const O = L.admin.organisation;
 const title = L.nav.pages.organisationHierarchy.title;
@@ -50,8 +51,8 @@ export function OrganisationPage() {
         {tab === 'lists' && (
           <>
             <SettingsSection wide title={O.divisions} help={O.divisionsHelp}>
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{O.division}</th>
@@ -72,12 +73,12 @@ export function OrganisationPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
             </SettingsSection>
             <SettingsSection wide title={O.territories} help={O.territoriesTip}>
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{O.territory}</th>
@@ -96,8 +97,8 @@ export function OrganisationPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
               {territories.footer(O.territory.toLowerCase())}
             </SettingsSection>
           </>

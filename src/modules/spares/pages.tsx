@@ -1,3 +1,4 @@
+import { REORDER_TONE } from '../../domain/statusTones';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../components/primitives/Button';
@@ -17,7 +18,7 @@ import { useActor } from '../../services/hooks';
 import { getPolicies } from '../../services/policies';
 import { recordTitle } from '../../services/runtime';
 import type { LeakageRow, ReorderRow } from '../../services/spares/consumables';
-import { SimpleTable } from './components/ListKit';
+import { DataTable } from '../../components/primitives/DataTable';
 import { RepeatOrderDialog } from './components/RepeatOrderDialog';
 import { useBusy } from './components/useBusy';
 
@@ -72,7 +73,7 @@ export function MinimumLevelAlertsPage() {
             {q.data.lastSync ? P.lastSync(formatDate(q.data.lastSync)) : ''}.
           </EmptyState>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}
@@ -134,7 +135,7 @@ export function LeakageListPage() {
                 {P.noneBody(q.data.machineCustomers, q.data.days)}
               </EmptyState>
             ) : (
-              <SimpleTable
+              <DataTable
                 label={P.tableLabel}
                 rows={rows}
                 rowKey={(r) => r.customerId}
@@ -168,7 +169,7 @@ export function LeakageListPage() {
 
 // ---------------------------------------------------------------- Reorder Prediction (CON-04, FR-101 / BR-40)
 
-const STATE_TONE: Record<ReorderRow['state'], 'danger' | 'warning' | 'neutral'> = { missed: 'danger', due: 'warning', upcoming: 'neutral' };
+const STATE_TONE = REORDER_TONE;
 
 export function ReorderPredictionPage() {
   const actor = useActor();
@@ -207,7 +208,7 @@ export function ReorderPredictionPage() {
                 {P.noneBody}
               </EmptyState>
             ) : (
-              <SimpleTable
+              <DataTable
                 label={P.tableLabel}
                 rows={rows}
                 rowKey={(r) => r.customerId}

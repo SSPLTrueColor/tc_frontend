@@ -1,19 +1,20 @@
+import { Skeleton, SkeletonLine } from '../../components/primitives/Skeleton';
+import { Pagination, PAGE_SIZES } from '../../components/primitives/Pagination';
 import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { L } from '../../constants/labels';
-import { Button, IconButton } from '../../components/primitives/Button';
+import { Button } from '../../components/primitives/Button';
 import { EmptyState } from '../../components/primitives/feedback';
 import { EmptyValue } from '../../components/primitives/display';
 import { Icon } from '../../components/primitives/Icon';
 import { Popover } from '../../components/primitives/overlay';
-import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { cx } from '../../lib/format';
 import { totalsFor } from '../../services/reports/engine';
 import { formatCell } from '../../services/reports/format';
 import type { ReportColumn, ReportRow } from '../../services/reports/types';
+import { Checkbox, SearchInput } from '../../components/primitives/controls';
 
 const T = L.reports.page.table;
-const PAGE_SIZES = [25, 50, 100];
 const MAX_DEFAULT_COLUMNS = 7;
 const NUMERIC = new Set(['money', 'number', 'pct', 'hours', 'days']);
 const RAW_SORT = new Set(['date', 'month']);
@@ -127,18 +128,6 @@ export function useTableModel(columns: ReportColumn[], rows: ReportRow[], resetK
   };
 }
 
-/** 1 … 4 5 [6] 7 8 … 20 */
-function pageList(page: number, count: number): (number | 'gap')[] {
-  if (count <= 7) return Array.from({ length: count }, (_, i) => i);
-  const set = new Set([0, count - 1, page - 1, page, page + 1].filter((p) => p >= 0 && p < count));
-  const sorted = [...set].sort((a, b) => a - b);
-  const out: (number | 'gap')[] = [];
-  sorted.forEach((p, i) => {
-    if (i > 0 && p - sorted[i - 1] > 1) out.push('gap');
-    out.push(p);
-  });
-  return out;
-}
 
 function ColumnsMenu({ model }: { model: TableModel }) {
   const [open, setOpen] = useState(false);
@@ -154,7 +143,7 @@ function ColumnsMenu({ model }: { model: TableModel }) {
           {model.columns.map((c) => (
             <li key={c.key}>
               <label className="rp-check">
-                <input type="checkbox" checked={shown.has(c.key)} disabled={shown.has(c.key) && shown.size === 1} onChange={() => model.toggleColumn(c.key)} />
+                <Checkbox checked={shown.has(c.key)} disabled={shown.has(c.key) && shown.size === 1} onChange={() => model.toggleColumn(c.key)} />
                 <span>{c.label}</span>
               </label>
             </li>
@@ -184,15 +173,13 @@ export function ReportTable({ model, title, busy, onChangeFilters }: { model: Ta
   const hasTotals = visible.some((c) => c.total);
   const searching = model.search.trim().length > 0;
   const total = model.rows.length;
-  const first = total ? model.page * model.size + 1 : 0;
-  const last = Math.min(total, (model.page + 1) * model.size);
 
   return (
     <section className={cx('panel rp-tablecard', busy && 'is-busy')} aria-label={title} aria-busy={busy || undefined}>
       <div className="rp-tablebar">
         <h2 className="panel-title">{title}</h2>
         <div className="rp-tabletools">
-          <input type="search" className="input input-compact rp-search" placeholder={T.search} aria-label={T.search} value={model.search} onChange={(e) => model.setSearch(e.target.value)} />
+          <SearchInput dense className="rp-search" placeholder={T.search} aria-label={T.search} value={model.search} onChange={(e) => model.setSearch(e.target.value)} />
           <ColumnsMenu model={model} />
         </div>
       </div>
@@ -261,25 +248,7 @@ export function ReportTable({ model, title, busy, onChangeFilters }: { model: Ta
               )}
             </table>
           </div>
-          <div className="grid-footer rp-footer">
-            <span className="grid-footer-range" aria-live="polite">
-              <strong>{first.toLocaleString('en-IN')}–{last.toLocaleString('en-IN')}</strong> {T.of(total.toLocaleString('en-IN'))}
-            </span>
-            <nav className="grid-pages" aria-label={T.pagination}>
-              <IconButton icon="chevron-left" label={T.previous} disabledReason={model.page === 0 ? T.firstPage : undefined} onClick={() => model.setPage(model.page - 1)} />
-              {pageList(model.page, model.pageCount).map((p, i) =>
-                p === 'gap' ? (
-                  <span key={`g${i}`} className="grid-page-gap" aria-hidden="true">…</span>
-                ) : (
-                  <button key={p} type="button" className={cx('grid-page', p === model.page && 'is-current')} aria-current={p === model.page ? 'page' : undefined} aria-label={T.goToPage(p + 1)} onClick={() => model.setPage(p)}>
-                    {p + 1}
-                  </button>
-                ),
-              )}
-              <IconButton icon="chevron-right" label={T.next} disabledReason={model.page >= model.pageCount - 1 ? T.lastPage : undefined} onClick={() => model.setPage(model.page + 1)} />
-            </nav>
-            <SelectMenu label={T.rowsPerPage} value={model.size} options={PAGE_SIZES.map((x) => ({ value: x, label: T.perPage(x) }))} onChange={model.setSize} />
-          </div>
+          <Pagination className="rp-footer" page={model.page} pageSize={model.size} total={total} noun={T.rows} onPage={model.setPage} onSize={model.setSize} sizes={PAGE_SIZES} />
         </>
       )}
     </section>
@@ -290,13 +259,9 @@ export function TableSkeleton() {
   return (
     <section className="panel rp-tablecard" aria-busy="true" aria-label={L.common.states.loading}>
       <div className="rp-tablebar">
-        <span className="skeleton-row rp-skel-title" />
+        <SkeletonLine size="title" />
       </div>
-      <div className="rp-skel-table">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <span key={i} className="skeleton-row" />
-        ))}
-      </div>
+      <Skeleton rows={8} className="rp-skel-table" />
     </section>
   );
 }

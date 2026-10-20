@@ -31,6 +31,7 @@ import { PaletteEditor, ThemePicker } from './ThemePicker';
 import { GuidedTour, useTour, useTourHighlight } from './GuidedTour';
 import { moduleTitle, RESOURCE_PAGES } from '../../domain/sidebar';
 import { L } from '../../constants/labels';
+import { SearchInput, TextField } from '../primitives/controls';
 
 const C = L.common;
 
@@ -342,7 +343,7 @@ function SettingsNav({ headerAction }: { headerAction?: ReactNode }) {
       </div>
       <div className="sidebar-search">
         <Icon name="search" size={14} />
-        <input type="search" placeholder={K.find} aria-label={K.findAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+        <SearchInput placeholder={K.find} aria-label={K.findAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
       </div>
       <div className="sidebar-scroll">
         {groups.length ? (
@@ -430,7 +431,7 @@ function SidebarContent({ mod, headerAction }: { mod: string; headerAction?: Rea
       </div>
       <div className="sidebar-search">
         <Icon name="search" size={14} />
-        <input type="search" placeholder={C.sidebar.findPage(all.length)} aria-label={C.sidebar.findPageAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
+        <SearchInput placeholder={C.sidebar.findPage(all.length)} aria-label={C.sidebar.findPageAria} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && setQ('')} />
       </div>
       <div className="sidebar-scroll">
         {/* Section separators are plain muted text. Rows WITH an icon: icon + text. Rows WITHOUT an icon
@@ -1125,8 +1126,8 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
   return (
     <Dialog open={open} onClose={onClose} title={C.palette.title} description={C.palette.description} size="md">
       <div className="palette">
-        <input
-          className="input"
+        <TextField
+          
           placeholder={C.palette.placeholder}
           aria-label={C.palette.title}
           role="combobox"

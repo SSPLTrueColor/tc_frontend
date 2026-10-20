@@ -19,6 +19,8 @@ import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, useToast } from '
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { SettingsPage, SettingsSkeleton } from '../../components/settings/kit';
+import { Table } from '../../components/primitives/Table';
+import { FileInput } from '../../components/primitives/controls';
 
 const X = L.admin.importExport;
 
@@ -122,9 +124,9 @@ export function ImportExportPage() {
                 <Button variant="primary" icon="arrow-up" loading={busy === 'preview'} onClick={() => fileRef.current?.click()}>
                   {X.chooseFile}
                 </Button>
-                <input
+                <FileInput
                   ref={fileRef}
-                  type="file"
+                  
                   accept=".csv,text/csv"
                   hidden
                   onChange={(e) => {
@@ -231,7 +233,7 @@ export function ImportExportPage() {
             </EmptyState>
           ) : (
             <div className="table-scroll">
-              <table className="mini-table">
+              <Table scroll={false}>
                 <thead>
                   <tr>
                     <th scope="col">{X.line}</th>
@@ -258,7 +260,7 @@ export function ImportExportPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </Table>
               {preview.rows.length > 200 && <p className="muted small">{X.firstRows(200, preview.rows.length)}</p>}
             </div>
           )}

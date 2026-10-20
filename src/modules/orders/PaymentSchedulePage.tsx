@@ -21,6 +21,7 @@ import { Icon } from '../../components/primitives/Icon';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { KpiStrip, SortTh, TableCard, TableFooter } from '../../components/resource/ListCard';
 import { ReceiptDialog } from './OrderTabs';
+import { SearchInput } from '../../components/primitives/controls';
 
 const O = L.orders;
 const P = O.pages.paymentSchedule;
@@ -168,7 +169,7 @@ export function PaymentSchedulePage() {
               <span className="search-icon" aria-hidden="true">
                 <Icon name="search" size={14} />
               </span>
-              <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchAria} value={q} onChange={(e) => (setQ(e.target.value), setPage(0))} />
+              <SearchInput dense placeholder={P.search} aria-label={P.searchAria} value={q} onChange={(e) => (setQ(e.target.value), setPage(0))} />
             </div>
             <SelectMenu<Range> label={P.range} value={range} options={RANGES.map((r) => ({ value: r, label: P.ranges[r] }))} onChange={setRange} />
             <SelectMenu label={P.statusFilter} value={status} options={[{ value: '', label: P.allStatuses }, ...activeMasterValues('milestoneStatus').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setStatus(v), setPage(0))} />

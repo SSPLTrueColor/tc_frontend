@@ -10,6 +10,7 @@ import { InfoTip } from '../components/primitives/InfoTip';
 import { SelectMenu } from '../components/primitives/SelectMenu';
 import { L } from '../constants/labels';
 import { ROUTES } from '../constants/routes';
+import { TextField } from '../components/primitives/controls';
 
 const G = L.common.login;
 const rolePosition = (roleLabel: string, title: string) => L.common.account.rolePosition(roleLabel, title);
@@ -128,7 +129,7 @@ export function LoginPage() {
               <label className="field-label" htmlFor="login-otp">
                 {G.oneTimeCode} <span className="req">*</span>
               </label>
-              <input id="login-otp" className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} aria-invalid={!!error || undefined} autoFocus />
+              <TextField id="login-otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} aria-invalid={!!error || undefined} autoFocus />
             </div>
             {error && (
               <p className="field-error span-all" role="alert">

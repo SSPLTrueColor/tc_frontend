@@ -1,3 +1,4 @@
+import { Pagination } from '../components/primitives/Pagination';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { ColumnState, FilterCondition, FilterGroup, RecordData, ViewDefinition } from '../metadata/types';
@@ -15,8 +16,7 @@ import { availableTransitions, displayText, queryRecords, recordTitle, transitio
 import { getSettings, pushRecent } from '../services/settings';
 import { ServiceError } from '../services/types';
 import { listViews, unavailableViewFields } from '../services/views';
-import { Button, IconButton } from '../components/primitives/Button';
-import { SelectMenu } from '../components/primitives/SelectMenu';
+import { Button } from '../components/primitives/Button';
 // (kept for the commented-out "All of" chip line) import { FadeScroller } from '../components/primitives/FadeScroller';
 import { EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../components/primitives/feedback';
 import { Menu, type MenuItem } from '../components/primitives/overlay';
@@ -28,6 +28,7 @@ import { RecordInspector } from '../components/resource/RecordInspector';
 import { ColumnManager, FilterButton, ViewBar } from '../components/resource/ViewControls';
 import { PageHeader } from '../components/shell/PageHeader';
 import { L } from '../constants/labels';
+import { SearchInput } from '../components/primitives/controls';
 
 const C = L.common;
 const LS = L.common.list;
@@ -221,7 +222,7 @@ export function ResourcePage() {
         <div className="view-tools view-tools-row">
           <div className="search-field">
             <IconSearch />
-            <input type="search" className="input input-compact" placeholder={LS.search} aria-label={LS.searchAria(res.labelPlural.toLowerCase())} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            <SearchInput dense placeholder={LS.search} aria-label={LS.searchAria(res.labelPlural.toLowerCase())} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
           <FilterButton res={res} actor={actor} filter={working.filter} onChange={setFilter} />
           {/* Rich views only (rows with several lines): switch between 2-line and 3-line rows */}
@@ -478,40 +479,7 @@ export function RecordPage() {
   );
 }
 
-/** Frozen table footer: range, sample-data note, rows per page and numbered pages. */
-function GridFooter({ page, pageCount, pageSize, total, noun, onPage, onSize }: { page: number; pageCount: number; pageSize: number; total: number; noun: string; onPage: (p: number) => void; onSize: (n: number) => void }) {
-  const from = total ? page * pageSize + 1 : 0;
-  const to = Math.min(total, (page + 1) * pageSize);
-  // 1 … p-1 p p+1 … N
-  const pages: (number | 'gap')[] = [];
-  for (let i = 0; i < pageCount; i++) {
-    if (i === 0 || i === pageCount - 1 || Math.abs(i - page) <= 1) pages.push(i);
-    else if (pages[pages.length - 1] !== 'gap') pages.push('gap');
-  }
-  return (
-    <div className="grid-footer">
-      <span className="grid-footer-range" aria-live="polite">
-        <strong>
-          {from}–{to}
-        </strong>{' '}
-        {LS.ofTotal(total.toLocaleString('en-IN'), noun)}
-      </span>
-      <nav className="grid-pages" aria-label={LS.pagination}>
-        <IconButton icon="chevron-left" label={LS.previousPage} disabledReason={page === 0 ? LS.firstPage : undefined} onClick={() => onPage(page - 1)} />
-        {pages.map((p, i) =>
-          p === 'gap' ? (
-            <span key={`g${i}`} className="grid-page-gap" aria-hidden="true">
-              …
-            </span>
-          ) : (
-            <button key={p} type="button" className={cx('grid-page', p === page && 'is-current')} aria-current={p === page ? 'page' : undefined} aria-label={LS.page(p + 1)} onClick={() => onPage(p)}>
-              {p + 1}
-            </button>
-          ),
-        )}
-        <IconButton icon="chevron-right" label={LS.nextPage} disabledReason={page >= pageCount - 1 ? LS.lastPage : undefined} onClick={() => onPage(page + 1)} />
-      </nav>
-      <SelectMenu label={LS.rowsPerPage} value={pageSize} options={PAGE_SIZES.map((n) => ({ value: n, label: LS.perPage(n) }))} onChange={onSize} />
-    </div>
-  );
+/** Table footer: the shared Pagination (range, numbered pages, rows per page). */
+function GridFooter({ page, pageSize, total, noun, onPage, onSize }: { page: number; pageCount?: number; pageSize: number; total: number; noun: string; onPage: (p: number) => void; onSize: (n: number) => void }) {
+  return <Pagination page={page} pageSize={pageSize} total={total} noun={noun} onPage={onPage} onSize={onSize} sizes={PAGE_SIZES} />;
 }

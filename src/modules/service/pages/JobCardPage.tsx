@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useServiceQuery } from '../../../hooks/useServiceQuery';
 import { formatDateTime } from '../../../lib/dates';
 import { formatMoney } from '../../../lib/format';
@@ -16,6 +16,8 @@ import { PageHeader } from '../../../components/shell/PageHeader';
 import { organization } from '../../../domain/pack';
 import { L } from '../../../constants/labels';
 import { resourcePath } from '../../../lib/routes';
+import { LinkButton } from '../../../components/primitives/controls';
+import { Table } from '../../../components/primitives/Table';
 
 const S = L.service;
 const P = S.pages.jobCard;
@@ -55,9 +57,7 @@ export function JobCardPage() {
         description={P.description}
         actions={
           <span className="row-gap no-print">
-            <Link className="btn btn-secondary" to={resourcePath(actor.workspaceId, 'tickets', { peek: t.id })}>
-              <span className="btn-label">{S.actions.backToTicket}</span>
-            </Link>
+            <LinkButton to={resourcePath(actor.workspaceId, 'tickets', { peek: t.id })}>{S.actions.backToTicket}</LinkButton>
             <Button
               icon="send"
               disabledReason={t.resolvedAt ? undefined : P.sendDisabled}
@@ -129,7 +129,7 @@ export function JobCardPage() {
         </dl>
         <h2>{P.visits}</h2>
         {visits.length ? (
-          <table className="mini-table">
+          <Table scroll={false}>
             <thead>
               <tr>
                 <th scope="col">{P.colEngineer}</th>
@@ -169,7 +169,7 @@ export function JobCardPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         ) : (
           <p className="muted">{P.noVisits}</p>
         )}

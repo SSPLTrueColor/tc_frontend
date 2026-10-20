@@ -18,6 +18,7 @@ import { hooksFor } from '../../services/resourceHooks';
 import { EmptyValue } from '../primitives/display';
 import { applyFormLayout, divisionOf } from '../../services/formLayouts';
 import { L } from '../../constants/labels';
+import { TextField } from '../primitives/controls';
 
 const C = L.common;
 const F = L.common.form;
@@ -182,7 +183,7 @@ export function ConflictPanel({ form, onOverride }: { form: RecordFormState; onO
             <label className="field-label" htmlFor="override-reason">
               {F.overrideReason}
             </label>
-            <input id="override-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={F.overridePlaceholder} />
+            <TextField id="override-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={F.overridePlaceholder} />
             <Button variant="danger" disabled={reason.trim().length < 5} onClick={() => onOverride(reason)}>
               {F.overrideAction}
             </Button>

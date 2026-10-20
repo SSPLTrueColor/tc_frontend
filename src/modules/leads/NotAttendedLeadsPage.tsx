@@ -15,7 +15,8 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { L } from '../../constants/labels';
-import { SortableTable, type Column } from './SortableTable';
+import { DataTable, type Column } from '../../components/primitives/DataTable';
+import { SearchInput } from '../../components/primitives/controls';
 
 const T = L.leads.pages.notAttended;
 type Escalation = '' | 'escalated' | 'pending';
@@ -160,7 +161,7 @@ export function NotAttendedLeadsPage() {
                 <span className="search-icon" aria-hidden="true">
                   <Icon name="search" size={14} />
                 </span>
-                <input type="search" className="input input-compact" placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+                <SearchInput dense placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
               <SelectMenu label={T.division} value={division} options={[{ value: '', label: T.allDivisions }, ...divisions.map((d) => ({ value: d, label: masterLabel('division', d) }))]} onChange={setDivision} />
               <SelectMenu label={T.owner} value={owner} options={[{ value: '', label: T.allOwners }, ...owners.map(([value, label]) => ({ value, label }))]} onChange={setOwner} />
@@ -177,7 +178,7 @@ export function NotAttendedLeadsPage() {
               <span className="toolbar-count muted">{T.count(rows.length)}</span>
             </div>
             {rows.length ? (
-              <SortableTable label={T.tableLabel} rows={rows} rowKey={(r) => r.lead.id} columns={columns} initialSort={{ key: 'age', dir: 'desc' }} />
+              <DataTable label={T.tableLabel} rows={rows} rowKey={(r) => r.lead.id} columns={columns} initialSort={{ key: 'age', dir: 'desc' }} />
             ) : (
               <EmptyState icon="search" title={T.noMatchTitle} action={filtered ? <Button onClick={clear}>{T.clearFilters}</Button> : undefined}>
                 {T.noMatchBody}

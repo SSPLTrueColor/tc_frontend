@@ -11,6 +11,7 @@ import { ErrorState, InlineAlert, Skeleton, StatusChip } from '../../../componen
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import '../service.css';
 import { L } from '../../../constants/labels';
+import { Checkbox, TextField, Textarea } from '../../../components/primitives/controls';
 
 const S = L.service;
 const FB = S.pages.feedback;
@@ -113,7 +114,7 @@ export function FeedbackPage() {
             <label className="field-label" htmlFor="fb-comment">
               {FB.comments}
             </label>
-            <textarea id="fb-comment" className="input textarea" rows={3} maxLength={1000} value={comment} onChange={(e) => setComment(e.target.value)} />
+            <Textarea id="fb-comment" className="textarea" rows={3} maxLength={1000} value={comment} onChange={(e) => setComment(e.target.value)} />
           </div>
           {error && (
             <p className="field-error" role="alert">
@@ -190,7 +191,7 @@ export function PortalPage() {
             <label className="field-label" htmlFor="pt-q">
               {PT.identify} <span className="req">*</span>
             </label>
-            <input id="pt-q" className="input" value={query} onChange={(e) => setQuery(e.target.value)} aria-invalid={!!errors.query || undefined} autoFocus />
+            <TextField id="pt-q" value={query} onChange={(e) => setQuery(e.target.value)} aria-invalid={!!errors.query || undefined} autoFocus />
             {errors.query && <p className="field-error">{errors.query}</p>}
           </div>
           {errors.form && <p className="field-error">{errors.form}</p>}
@@ -223,13 +224,13 @@ export function PortalPage() {
             <SelectMenu id="pt-c" block label={PT.category} value={category} options={activeMasterValues('complaintCategory').map((v) => ({ value: v.key, label: v.label }))} onChange={setCategory} />
           </div>
           <label className="row-gap">
-            <input type="checkbox" checked={down} onChange={(e) => setDown(e.target.checked)} /> {PT.down}
+            <Checkbox checked={down} onChange={(e) => setDown(e.target.checked)} /> {PT.down}
           </label>
           <div className="form-field">
             <label className="field-label" htmlFor="pt-d">
               {PT.describe} <span className="req">*</span>
             </label>
-            <textarea id="pt-d" className="input textarea" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={!!errors.description || undefined} />
+            <Textarea id="pt-d" className="textarea" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={!!errors.description || undefined} />
             {errors.description && <p className="field-error">{errors.description}</p>}
           </div>
           {errors.form && !errors.description && <p className="field-error">{errors.form}</p>}

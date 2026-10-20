@@ -1,16 +1,18 @@
 /** Shared UI for Field Force and Targets & Recognition pages: location source, offline toggle, stat tiles, merged list pages, small formatters. */
+import { Pagination } from '../../components/primitives/Pagination';
 import { useContext, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, UNSAFE_RouteContext } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { slugOf } from '../../constants/routes';
 import { ResourcePage } from '../../pages/ResourcePage';
-import { cx, formatMoney } from '../../lib/format';
+import { formatMoney } from '../../lib/format';
 import { simulatedPoint, type LocationSource } from '../../services/field/field';
 import type { Point } from '../../services/field/rules';
 import { isOffline, pendingWrites, setOffline, subscribeOffline } from '../../services/offline';
 import { useToast } from '../../components/primitives/feedback';
 import { InfoTip } from '../../components/primitives/InfoTip';
-import { IconButton } from '../../components/primitives/Button';
+import { SearchInput, Switch } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
 
 const SOURCE_KEY = 'tc.field.locationSource';
 
@@ -66,13 +68,7 @@ export function LocationSourcePicker({ value, onChange }: { value: LocationSourc
         <span className="field-label">{LOC.label}</span>
         <InfoTip text={LOC.help} label={LOC.helpLabel} />
       </span>
-      <div className="segmented" role="radiogroup" aria-label={LOC.groupLabel}>
-        {opts.map(([k, label]) => (
-          <button key={k} type="button" role="radio" aria-checked={value === k} className={cx('seg-btn', value === k && 'is-on')} onClick={() => onChange(k)}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl label={LOC.groupLabel} value={value} onChange={onChange as (v: string) => void} options={opts.map(([k, label]) => ({ value: k, label }))} />
     </div>
   );
 }
@@ -89,24 +85,19 @@ export function OfflineSwitch() {
   const { offline, pending } = useOfflineState();
   const toast = useToast();
   return (
-    <label className="switch">
-      <input
-        type="checkbox"
-        role="switch"
-        checked={offline}
-        onChange={(e) => {
-          const r = setOffline(e.target.checked);
-          if (r) {
-            if (r.synced.length) toast(L.field.offline.synced(r.synced.length));
-            r.conflicts.forEach((c) => toast(L.field.offline.notSynced(c.label, c.message), 'danger'));
-            if (!r.synced.length && !r.conflicts.length) toast(L.field.offline.backOnline, 'info');
-          } else toast(L.field.offline.nowOffline, 'info');
-        }}
-        aria-label={L.field.offline.switchLabel}
-      />
-      <span className="switch-track" aria-hidden="true" />
-      <span className="small">{offline ? L.field.offline.offline(pending) : L.field.offline.online}</span>
-    </label>
+    <Switch
+      checked={offline}
+      label={L.field.offline.switchLabel}
+      text={offline ? L.field.offline.offline(pending) : L.field.offline.online}
+      onChange={(on) => {
+        const r = setOffline(on);
+        if (r) {
+          if (r.synced.length) toast(L.field.offline.synced(r.synced.length));
+          r.conflicts.forEach((c) => toast(L.field.offline.notSynced(c.label, c.message), 'danger'));
+          if (!r.synced.length && !r.conflicts.length) toast(L.field.offline.backOnline, 'info');
+        } else toast(L.field.offline.nowOffline, 'info');
+      }}
+    />
   );
 }
 
@@ -170,13 +161,7 @@ export function EmbeddedResourceList({ resKey }: { resKey: string }) {
 export function ModeSwitch<T extends string>({ value, options, onChange, label }: { value: T; options: { id: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
     <div className="field-mode">
-      <div className="segmented" role="radiogroup" aria-label={label}>
-        {options.map((o) => (
-          <button key={o.id} type="button" role="radio" aria-checked={value === o.id} className={cx('seg-btn', value === o.id && 'is-on')} onClick={() => onChange(o.id)}>
-            {o.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl label={label} value={value} onChange={(next) => onChange(next)} options={options.map((o) => ({ value: o.id, label: o.label }))} />
     </div>
   );
 }
@@ -191,25 +176,14 @@ export function SearchBox({ value, onChange, label, placeholder }: { value: stri
           <path d="m20 20-3.5-3.5" />
         </svg>
       </span>
-      <input type="search" className="input input-compact" placeholder={placeholder} aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+      <SearchInput dense placeholder={placeholder} aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
 
 export const PAGE_SIZE = 25;
 
-/** Simple pager for the module's own tables (25 rows a page). */
+/** Footer for the module's own tables (25 rows a page): the shared Pagination without "rows per page". */
 export function Pager({ page, total, onPage }: { page: number; total: number; onPage: (p: number) => void }) {
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (total <= PAGE_SIZE) return null;
-  const from = page * PAGE_SIZE + 1;
-  const to = Math.min(total, from + PAGE_SIZE - 1);
-  return (
-    <div className="toolbar field-pager">
-      <span className="spacer" />
-      <span className="muted small">{L.field.common.showing(from, to, total)}</span>
-      <IconButton icon="chevron-left" label={L.field.common.previousPage} onClick={() => onPage(page - 1)} disabled={page <= 0} />
-      <IconButton icon="chevron-right" label={L.field.common.nextPage} onClick={() => onPage(page + 1)} disabled={page >= pages - 1} />
-    </div>
-  );
+  return <Pagination page={page} pageSize={PAGE_SIZE} total={total} noun={L.common.table.rows} onPage={onPage} />;
 }

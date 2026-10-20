@@ -1,3 +1,4 @@
+import { SkeletonLine } from '../../components/primitives/Skeleton';
 import { Link } from 'react-router-dom';
 import '../dashboard/dashboard.css';
 import { L } from '../../constants/labels';
@@ -84,9 +85,9 @@ export function KpiRowSkeleton({ n = 4 }: { n?: number }) {
     <section className="rp-kpis" aria-busy="true" aria-label={L.common.states.loading} style={{ ['--n' as string]: n }}>
       {Array.from({ length: n }).map((_, i) => (
         <div key={i} className="kpi-card">
-          <span className="skeleton-row rp-skel-label" />
-          <span className="skeleton-row rp-skel-value" />
-          <span className="skeleton-row rp-skel-sub" />
+          <SkeletonLine size="label" />
+          <SkeletonLine size="value" />
+          <SkeletonLine size="sub" />
         </div>
       ))}
     </section>

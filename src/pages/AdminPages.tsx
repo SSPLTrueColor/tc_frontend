@@ -2,6 +2,7 @@
  * Administration & Configuration pages (BRD 4.14): Masters (ADM-03), Custom Fields & Form Layouts (ADM-05),
  * Roles & Permissions (ADM-02), Audit Trail with the System Events view (COM-09) and Demo Settings.
  */
+import { FIELD_ACCESS_TONE } from '../domain/statusTones';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { L } from '../constants/labels';
@@ -23,6 +24,7 @@ import { DataTransfer, DemoControls } from './DemoPages';
 import { useActor, useRevision } from '../services/hooks';
 import { activeMasterValues, allMasters, allResources, getMaster, getResource, getUser, masterLabel } from '../services/registry';
 import { ServiceError } from '../services/types';
+import { Switch } from '../components/primitives/controls';
 import { Button, IconButton } from '../components/primitives/Button';
 import { Icon } from '../components/primitives/Icon';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, StatusChip, Tabs, useToast } from '../components/primitives/feedback';
@@ -38,6 +40,9 @@ import { AccessSimple } from '../modules/catalog/AccessSimple';
 import { ExpiringAccess } from '../modules/catalog/ExpiringAccess';
 import { PeopleAccess } from '../modules/catalog/PeopleAccess';
 import { listActiveGrants, listPeople } from '../services/catalog/grants';
+import { Checkbox, SearchInput, TextField } from '../components/primitives/controls';
+import { SegmentedControl } from '../components/primitives/controls';
+import { Table } from '../components/primitives/Table';
 
 const A = L.admin;
 const TONES: Tone[] = ['neutral', 'info', 'success', 'warning', 'danger', 'accent'];
@@ -250,8 +255,8 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
         )}
       </div>
       {!editable && <InlineAlert tone="info">{M.readOnly}</InlineAlert>}
-      <div className="table-scroll">
-        <table className="mini-table st-masters">
+      
+        <Table className="st-masters">
           <thead>
             <tr>
               <th scope="col">{M.columns.label}</th>
@@ -268,7 +273,7 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
               .map((v) => (
                 <tr key={v.key} className={cx(!v.active && 'is-inactive')}>
                   <td>
-                    <input className="input" aria-label={M.labelFor(v.key)} value={v.label} maxLength={80} disabled={!editable} onChange={(e) => setVal(v.key, { label: e.target.value })} />
+                    <TextField aria-label={M.labelFor(v.key)} value={v.label} maxLength={80} disabled={!editable} onChange={(e) => setVal(v.key, { label: e.target.value })} />
                     <span className="field-help">
                       <code>{v.key}</code>
                       {v.parent ? ` · ${v.parent}` : ''}
@@ -278,10 +283,7 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
                     <SelectMenu label={M.toneFor(v.key)} value={v.tone ?? 'neutral'} disabled={!editable} options={TONES.map((t) => ({ value: t, label: A.tones[t] }))} onChange={(t) => setVal(v.key, { tone: t as Tone })} />
                   </td>
                   <td>
-                    <label className="switch st-switch">
-                      <input type="checkbox" role="switch" checked={v.active} disabled={!editable} onChange={(e) => setVal(v.key, { active: e.target.checked })} aria-label={M.activeFor(v.key)} />
-                      <span className="switch-track" aria-hidden="true" />
-                    </label>
+                    <Switch className="st-switch" checked={v.active} disabled={!editable} onChange={(on) => setVal(v.key, { active: on })} label={M.activeFor(v.key)} />
                   </td>
                   <td className="li-actions">
                     <IconButton icon="arrow-up" label={M.moveUp(v.key)} disabled={!editable} onClick={() => move(v.key, -1)} />
@@ -290,8 +292,8 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
                 </tr>
               ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      
       {editable && (
         <form
           className="st-add"
@@ -310,7 +312,7 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
           }}
         >
           <SettingsField label={M.newValue} htmlFor="new-master-value" error={duplicate ? M.duplicateValue : undefined}>
-            <input id="new-master-value" className="input" maxLength={80} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} aria-invalid={duplicate || undefined} />
+            <TextField id="new-master-value" maxLength={80} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} aria-invalid={duplicate || undefined} />
           </SettingsField>
           <Button type="submit" icon="plus" disabledReason={!newLabel.trim() ? M.newValue : duplicate ? M.duplicateValue : undefined}>
             {M.addValue}
@@ -427,9 +429,9 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             <label className="field-label" htmlFor="nf-label">
               {C.label} <span className="req">*</span>
             </label>
-            <input
+            <TextField
               id="nf-label"
-              className="input"
+              
               value={spec.label}
               disabled={!draft}
               onChange={(e) =>
@@ -449,7 +451,7 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             <label className="field-label" htmlFor="nf-key">
               {C.key}
             </label>
-            <input id="nf-key" className="input mono" value={spec.key} disabled={!draft} onChange={(e) => set({ key: e.target.value })} />
+            <TextField id="nf-key" className="mono" value={spec.key} disabled={!draft} onChange={(e) => set({ key: e.target.value })} />
           </div>
           <div className="form-field">
             <label className="field-label" htmlFor="nf-type">
@@ -473,7 +475,7 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
           </div>
           <div className="form-field">
             <label className="check">
-              <input type="checkbox" checked={spec.required} disabled={!draft} onChange={(e) => set({ required: e.target.checked })} /> {C.required}
+              <Checkbox checked={spec.required} disabled={!draft} onChange={(e) => set({ required: e.target.checked })} /> {C.required}
             </label>
           </div>
           <div className="form-field">
@@ -499,9 +501,9 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             ) : spec.type === 'date' ? (
               <DatePicker id="nf-default" block label={C.defaultValue} value={String(spec.defaultValue ?? '')} disabled={!draft} onChange={(v) => set({ defaultValue: v ?? undefined })} />
             ) : (
-              <input
+              <TextField
                 id="nf-default"
-                className="input"
+                
                 type={spec.type === 'number' ? 'number' : 'text'}
                 value={String(spec.defaultValue ?? '')}
                 disabled={!draft}
@@ -513,7 +515,7 @@ function FieldsEditor({ onChange }: { onChange: () => void }) {
             <label className="field-label" htmlFor="nf-help">
               {C.help} <span className="optional">{C.optional}</span>
             </label>
-            <input id="nf-help" className="input" value={spec.help ?? ''} disabled={!draft} onChange={(e) => set({ help: e.target.value })} />
+            <TextField id="nf-help" value={spec.help ?? ''} disabled={!draft} onChange={(e) => set({ help: e.target.value })} />
           </div>
           <div className="span-2">
             <Button type="submit" icon="plus" disabledReason={!draft ? C.startDraftFirst : !spec.label.trim() || !spec.key ? C.enterLabel : undefined}>
@@ -640,8 +642,8 @@ function FormLayoutsEditor() {
       <div className="cat-grid">
         <section className="panel">
           <h2 className="panel-title">{F.sectionsTitle}</h2>
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{F.position}</th>
@@ -674,11 +676,7 @@ function FormLayoutsEditor() {
                       </td>
                       <td className="num">{s.fields.length}</td>
                       <td>
-                        <label className="switch" data-tooltip={locked ? F.requiredLocked : undefined}>
-                          <input type="checkbox" role="switch" checked={!isHidden} disabled={locked} onChange={(e) => setHidden(e.target.checked ? hidden.filter((h) => h !== s.id) : [...hidden, s.id])} aria-label={F.visibleFor(title)} />
-                          <span className="switch-track" aria-hidden="true" />
-                          <span className="small">{isHidden ? F.hidden : F.shown}</span>
-                        </label>
+                        <Switch tooltip={locked ? F.requiredLocked : undefined} checked={!isHidden} disabled={locked} onChange={(on) => setHidden(on ? hidden.filter((h) => h !== s.id) : [...hidden, s.id])} label={F.visibleFor(title)} text={isHidden ? F.hidden : F.shown} />
                       </td>
                       <td className="li-actions">
                         <IconButton icon="arrow-up" label={F.moveUp(title)} disabled={i === 0} onClick={() => move(i, -1)} />
@@ -688,8 +686,8 @@ function FormLayoutsEditor() {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
           {errors.length > 0 && (
             <ul className="plain-list">
               {errors.map((e) => (
@@ -791,7 +789,7 @@ function Registry() {
   return (
     <div className="studio-split">
       <nav className="studio-list" aria-label={R.listLabel}>
-        <input type="search" className="input input-compact" placeholder={A.common.search} aria-label={R.listLabel} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <SearchInput dense placeholder={A.common.search} aria-label={R.listLabel} value={search} onChange={(e) => setSearch(e.target.value)} />
         <ul className="nav-list">
           {listed.map((r) => (
             <li key={r.key}>
@@ -809,8 +807,8 @@ function Registry() {
           {R.meta(res.id, res.module, res.fields.length, res.status)}
           {res.lifecycle ? R.lifecycle(res.lifecycle.field, res.lifecycle.transitions.length) : ''}
         </p>
-        <div className="table-scroll">
-          <table className="mini-table">
+        
+          <Table>
             <thead>
               <tr>
                 <th scope="col">{R.columns.field}</th>
@@ -857,8 +855,8 @@ function Registry() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       </section>
     </div>
   );
@@ -866,7 +864,7 @@ function Registry() {
 
 // ---------------------------------------------------------------- Roles & Permissions (ADM-02)
 
-const ACCESS_TONE: Record<FieldAccess, Tone> = { edit: 'success', view: 'info', mask: 'warning', hide: 'neutral' };
+const ACCESS_TONE = FIELD_ACCESS_TONE;
 const ACCESS_VALUES: FieldAccess[] = ['edit', 'view', 'mask', 'hide'];
 type AccessTab = 'people' | 'simple' | 'expiring' | 'edit' | 'matrix' | 'preview';
 
@@ -1002,13 +1000,12 @@ export function AccessPage() {
         ]}
       />
       {(tab === 'edit' || tab === 'matrix' || tab === 'preview') && (
-        <div className="segmented" role="group" aria-label={L.grants.tabs.advanced}>
-          {(['edit', 'matrix', 'preview'] as const).map((v) => (
-            <button key={v} type="button" className={cx('seg-btn', tab === v && 'is-on')} aria-pressed={tab === v} onClick={() => setTab(v)}>
-              {L.grants.advancedViews[v]}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={L.grants.tabs.advanced}
+          value={tab}
+          onChange={(next) => setTab(next)}
+          options={(['edit', 'matrix', 'preview'] as const).map((v) => ({ value: v, label: L.grants.advancedViews[v] }))}
+        />
       )}
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="st-stack">
         {(tab === 'simple' || tab === 'edit' || tab === 'preview') && roleCard}
@@ -1039,10 +1036,10 @@ export function AccessPage() {
             {LOCKED_ROLES.includes(role.id) && <InlineAlert tone="info">{X.adminLocked}</InlineAlert>}
             <section className="panel">
               <div className="toolbar">
-                <input type="search" className="input input-compact" placeholder={X.searchRecordTypes} aria-label={X.searchRecordTypes} value={search} onChange={(e) => setSearch(e.target.value)} />
+                <SearchInput dense placeholder={X.searchRecordTypes} aria-label={X.searchRecordTypes} value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{X.columns.recordType}</th>
@@ -1060,7 +1057,7 @@ export function AccessPage() {
                       const err = tried ? rowErrors[rs.key] : undefined;
                       const flag = (k: 'create' | 'delete' | 'export' | 'sensitive_data', label: string) => (
                         <td>
-                          <input type="checkbox" className="checkbox" checked={!!p[k]} disabled={locked} aria-label={X.flagFor(label, rs.labelPlural)} onChange={(e) => setPerm(rs.key, { [k]: e.target.checked })} />
+                          <Checkbox checked={!!p[k]} disabled={locked} aria-label={X.flagFor(label, rs.labelPlural)} onChange={(e) => setPerm(rs.key, { [k]: e.target.checked })} />
                         </td>
                       );
                       return (
@@ -1089,8 +1086,8 @@ export function AccessPage() {
                       );
                     })}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
               {paged.footer(A.common.recordType.toLowerCase())}
             </section>
             <section className="panel">
@@ -1102,8 +1099,8 @@ export function AccessPage() {
                 <SelectMenu searchable label={X.fieldsResource} value={fieldRes} options={resources.filter((r) => r.fields.some(isSensitive)).map((r) => ({ value: r.key, label: r.labelPlural }))} onChange={setFieldRes} />
               </div>
               {sensitiveFields.length ? (
-                <div className="table-scroll">
-                  <table className="mini-table">
+                
+                  <Table>
                     <thead>
                       <tr>
                         <th scope="col">{X.field}</th>
@@ -1131,8 +1128,8 @@ export function AccessPage() {
                         );
                       })}
                     </tbody>
-                  </table>
-                </div>
+                  </Table>
+                
               ) : (
                 <p className="muted">{X.noSensitiveFields}</p>
               )}
@@ -1152,8 +1149,8 @@ export function AccessPage() {
               </label>
               <SelectMenu id="ap-cmp" searchable label={X.previewResource} value={cmpRes} options={resources.map((r) => ({ value: r.key, label: r.labelPlural }))} onChange={setCmpRes} />
             </div>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{X.role}</th>
@@ -1185,8 +1182,8 @@ export function AccessPage() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
           </section>
         )}
 
@@ -1204,8 +1201,8 @@ export function AccessPage() {
                 <Badge tone="neutral">{X.noAccessBadge}</Badge> {X.previewNoAccess(preview.role.label, previewDef.labelPlural.toLowerCase())}
               </p>
             ) : (
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{X.field}</th>
@@ -1232,8 +1229,8 @@ export function AccessPage() {
                       );
                     })}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
             )}
             <p className="muted small">{X.rowScope(A.scopes[preview.role.resources[previewRes]?.read ?? 'none'].long)}</p>
           </section>
@@ -1315,7 +1312,7 @@ function AuditEntries() {
   return (
     <>
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchInput dense placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
         <SelectMenu searchable label={T.filterAction} value={action} options={[{ value: '', label: T.allActions }, ...actions.map((a) => ({ value: a, label: a }))]} onChange={setAction} />
         <SortPicker value={sort} onChange={setSort} />
       </div>
@@ -1326,8 +1323,8 @@ function AuditEntries() {
           <Skeleton rows={8} />
         ) : rows.length ? (
           <>
-            <div className="table-scroll">
-              <table className="mini-table audit-table">
+            
+              <Table className="audit-table">
                 <thead>
                   <tr>
                     <th scope="col">{T.columns.when}</th>
@@ -1385,8 +1382,8 @@ function AuditEntries() {
                     </Fragment>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer(T.entries)}
           </>
         ) : all.length ? (
@@ -1518,8 +1515,8 @@ export function DemoSettingsPage() {
       </SettingsSection>
       {can(actor, 'demo.settings') && <DemoControls />}
       <SettingsSection wide title={S.tokens} help={S.tokensTip}>
-        <div className="table-scroll">
-          <table className="mini-table">
+        
+          <Table>
             <thead>
               <tr>
                 <th scope="col">{S.tokenColumns.token}</th>
@@ -1545,8 +1542,8 @@ export function DemoSettingsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       </SettingsSection>
       <DangerZone
         title={S.reset}

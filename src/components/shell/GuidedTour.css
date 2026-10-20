@@ -1,7 +1,7 @@
 /* First-login guided tour (COM-12). Light styling built on the template tokens. */
 .tour {
   display: grid;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .tour p {
   margin: 0;
@@ -12,7 +12,7 @@
 }
 .tour-modules {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -20,8 +20,8 @@
 .tour-modules li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--s-border);
   border-radius: var(--c-radius-control);
   background: var(--s-accent-subtle);
@@ -30,8 +30,8 @@
 }
 .tour-dots {
   display: flex;
-  gap: 6px;
-  margin: 4px 0 0;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0 0;
   padding: 0;
   list-style: none;
 }

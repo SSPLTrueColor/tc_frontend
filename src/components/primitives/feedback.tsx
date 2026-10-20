@@ -83,15 +83,7 @@ export function NoAccess({ what }: { what: string }) {
   );
 }
 
-export function Skeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="skeleton" aria-busy="true" aria-label={L.common.states.loading}>
-      {Array.from({ length: rows }).map((_, i) => (
-        <span key={i} className="skeleton-row" />
-      ))}
-    </div>
-  );
-}
+export { Skeleton } from './Skeleton';
 
 export function InlineAlert({ tone = 'info', children, title }: { tone?: 'info' | 'warning' | 'danger' | 'success'; title?: string; children: ReactNode }) {
   const icon = tone === 'danger' || tone === 'warning' ? 'alert' : tone === 'success' ? 'check' : 'info';

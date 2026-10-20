@@ -10,6 +10,7 @@ import { Button, IconButton } from '../../components/primitives/Button';
 import { InlineAlert, useToast } from '../../components/primitives/feedback';
 import { Popover } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
+import { Checkbox, TextField } from '../../components/primitives/controls';
 
 const Q = L.calendar.quick;
 const C = L.calendar;
@@ -76,7 +77,7 @@ export function QuickCreate({ actor, anchor, slot, onClose, onMore }: { actor: A
         noValidate
       >
         <div className="cal-quick-head">
-          <input className="input cal-quick-title" aria-label={Q.titleLabel} placeholder={Q.titlePlaceholder} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} aria-invalid={(tried && !!errors.title) || undefined} data-autofocus />
+          <TextField className="cal-quick-title" aria-label={Q.titleLabel} placeholder={Q.titlePlaceholder} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} aria-invalid={(tried && !!errors.title) || undefined} data-autofocus />
           <IconButton icon="x" label={Q.close} onClick={onClose} />
         </div>
         {tried && errors.title && <p className="field-error">{errors.title}</p>}
@@ -88,16 +89,16 @@ export function QuickCreate({ actor, anchor, slot, onClose, onMore }: { actor: A
           <span className="cal-quick-label">{Q.date}</span>
           <span className="cal-quick-when">{when}</span>
           <label className="cal-check">
-            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+            <Checkbox checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
             {Q.allDay}
           </label>
         </div>
         {!allDay && (
           <div className="cal-quick-row">
             <span className="cal-quick-label">{Q.from}</span>
-            <input type="time" className="input cal-quick-time" aria-label={Q.from} value={from} step={300} onChange={(e) => setFrom(e.target.value)} aria-invalid={(tried && !!errors.start) || undefined} />
+            <TextField type="time" className="cal-quick-time" aria-label={Q.from} value={from} step={300} onChange={(e) => setFrom(e.target.value)} aria-invalid={(tried && !!errors.start) || undefined} />
             <span className="cal-quick-label">{Q.to}</span>
-            <input type="time" className="input cal-quick-time" aria-label={Q.to} value={to} step={300} onChange={(e) => setTo(e.target.value)} aria-invalid={(tried && !!errors.end) || undefined} />
+            <TextField type="time" className="cal-quick-time" aria-label={Q.to} value={to} step={300} onChange={(e) => setTo(e.target.value)} aria-invalid={(tried && !!errors.end) || undefined} />
           </div>
         )}
         {tried && (errors.start || errors.end) && (

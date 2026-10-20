@@ -14,6 +14,7 @@ import { Badge, EmptyState, ErrorState, NoAccess, Skeleton, useToast } from '../
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { SettingsField, SettingsPage, SettingsSection } from '../../components/settings/kit';
 import { byTime, SortPicker, type SortDir, usePaged } from './kit';
+import { Table } from '../../components/primitives/Table';
 
 const I = L.admin.integrations;
 const ACTION_LABEL: Record<string, string> = Object.fromEntries(Object.entries(I.actions).map(([k, v]) => [`integration.${k}`, v]));
@@ -107,8 +108,8 @@ export function IntegrationsPage() {
           </EmptyState>
         ) : (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{I.columns.when}</th>
@@ -131,8 +132,8 @@ export function IntegrationsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer(I.runs)}
           </>
         )}

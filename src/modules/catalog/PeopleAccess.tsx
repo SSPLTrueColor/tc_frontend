@@ -1,5 +1,5 @@
+import { ENDS_SOON_TONE } from '../../domain/statusTones';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { formatDate } from '../../lib/dates';
 import { resourcePath } from '../../lib/routes';
@@ -19,6 +19,7 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { Clip } from '../../components/settings/kit';
 import { levelOf, sentence } from './AccessSimple';
 import { GrantDialog } from './GrantDialog';
+import { LinkButton, SearchInput } from '../../components/primitives/controls';
 
 const G = L.grants;
 const S = L.admin.access.simple;
@@ -79,7 +80,7 @@ export function PeopleAccess({ actor, people, initial }: { actor: Actor; people:
   return (
     <div className="pa">
       <aside className="pa-list st-card" aria-label={G.search}>
-        <input type="search" className="input" placeholder={G.search} aria-label={G.search} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchInput placeholder={G.search} aria-label={G.search} value={q} onChange={(e) => setQ(e.target.value)} />
         <ul className="pa-people">
           {list.map((p) => (
             <li key={p.userId}>
@@ -96,9 +97,9 @@ export function PeopleAccess({ actor, people, initial }: { actor: Actor; people:
           {!list.length && <li className="muted small pa-none">{G.noPeople}</li>}
         </ul>
         {admin && (
-          <Link className="btn btn-secondary" to={`${resourcePath(actor.workspaceId, 'employees')}/new`}>
+          <LinkButton to={`${resourcePath(actor.workspaceId, 'employees')}/new`}>
             {G.addPerson}
-          </Link>
+          </LinkButton>
         )}
       </aside>
 
@@ -181,7 +182,7 @@ export function PeopleAccess({ actor, people, initial }: { actor: Actor; people:
                       <span className="muted small">
                         {g.kind === 'area' ? `${G.reachShort[g.scope]} · ` : ''}
                         {G.until('')}
-                        <DateText value={g.expiresAt} /> · <StatusChip label={G.daysLeft(g.daysLeft)} tone={g.daysLeft <= 7 ? 'warning' : 'neutral'} />
+                        <DateText value={g.expiresAt} /> · <StatusChip label={G.daysLeft(g.daysLeft)} tone={ENDS_SOON_TONE(g.daysLeft)} />
                       </span>
                       <Clip text={`${g.reason} — ${G.by(people.find((p) => p.userId === g.grantedBy)?.name ?? g.grantedBy)}`} />
                     </div>

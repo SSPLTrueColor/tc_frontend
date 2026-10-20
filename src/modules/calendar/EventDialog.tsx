@@ -15,6 +15,7 @@ import { MultiSelectMenu } from '../../components/primitives/MultiSelectMenu';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { VoiceButton } from '../../components/crm/VoiceButton';
+import { Checkbox, TextField, Textarea } from '../../components/primitives/controls';
 
 export type DialogMode =
   /** `draft`: what the quick-create popover already collected ("More options"). */
@@ -188,7 +189,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
           <label className="field-label" htmlFor="ev-title">
             {FL.title} <span className="req">*</span>
           </label>
-          <input id="ev-title" className="input" maxLength={120} value={v.title} onChange={(e) => set({ title: e.target.value })} aria-invalid={!!shown.title || undefined} data-autofocus />
+          <TextField id="ev-title" maxLength={120} value={v.title} onChange={(e) => set({ title: e.target.value })} aria-invalid={!!shown.title || undefined} data-autofocus />
           {shown.title && <p className="field-error">{shown.title}</p>}
         </div>
         <div className="form-field">
@@ -200,7 +201,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
         <div className="form-field">
           <span className="field-label">{FL.allDay}</span>
           <label className="switch">
-            <input type="checkbox" checked={v.allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
+            <Checkbox checked={v.allDay} onChange={(e) => toggleAllDay(e.target.checked)} />
             <span className="switch-track" aria-hidden="true" />
             <span>{v.allDay ? C.form.yes : C.form.no}</span>
           </label>
@@ -264,7 +265,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
           <label className="field-label" htmlFor="ev-loc">
             {FL.location}
           </label>
-          <input id="ev-loc" className="input" maxLength={160} value={v.location} onChange={(e) => set({ location: e.target.value })} />
+          <TextField id="ev-loc" maxLength={160} value={v.location} onChange={(e) => set({ location: e.target.value })} />
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="ev-rem">
@@ -287,7 +288,7 @@ export function EventDialog({ actor, mode, onClose }: { actor: Actor; mode: Dial
             </label>
             <VoiceButton onText={(t) => set({ notes: v.notes ? `${v.notes} ${t}` : t })} label={C.form.dictateNotes} />
           </span>
-          <textarea id="ev-notes" className="input textarea" rows={2} maxLength={2000} value={v.notes} onChange={(e) => set({ notes: e.target.value })} />
+          <Textarea id="ev-notes" className="textarea" rows={2} maxLength={2000} value={v.notes} onChange={(e) => set({ notes: e.target.value })} />
         </div>
         {overlaps.length > 0 && (
           <div className="span-all">

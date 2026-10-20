@@ -24,6 +24,7 @@ import { Menu, type MenuItem } from '../primitives/overlay';
 import { Icon } from '../primitives/Icon';
 import { FieldValue } from './FieldValue';
 import { L } from '../../constants/labels';
+import { FileButton, Switch, TextField, Textarea } from '../primitives/controls';
 
 type Values = Record<string, unknown>;
 
@@ -70,13 +71,13 @@ export function FieldInput({
   };
   switch (field.type) {
     case 'longtext':
-      return <textarea {...common} className={cx('input textarea')} rows={3} maxLength={field.maxLength} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />;
+      return <Textarea {...common} className="textarea" rows={3} maxLength={field.maxLength} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />;
     case 'number':
     case 'money':
       return (
         <div className={cx('input-affix', field.type === 'money' && 'has-start', field.unit && 'has-end')}>
           {field.type === 'money' && <span className="affix affix-start">₹</span>}
-          <input
+          <TextField
             {...common}
             type="number"
             inputMode="decimal"
@@ -95,11 +96,7 @@ export function FieldInput({
       return <DatePicker id={id} block withTime label={field.label} value={(value as string) || ''} onChange={onChange} invalid={invalid} describedBy={describedBy} clearable={!isRequired(field, values)} />;
     case 'boolean':
       return (
-        <label className="switch">
-          <input id={id} type="checkbox" role="switch" checked={!!value} onChange={(e) => onChange(e.target.checked)} aria-describedby={describedBy} />
-          <span className="switch-track" aria-hidden="true" />
-          <span>{value ? L.common.actions.yes : L.common.actions.no}</span>
-        </label>
+        <Switch id={id} checked={!!value} onChange={onChange} label={field.label} describedBy={describedBy} text={value ? L.common.actions.yes : L.common.actions.no} />
       );
     case 'master': {
       const parent = field.masterParentField ? values[field.masterParentField] : undefined;
@@ -182,7 +179,7 @@ export function FieldInput({
           <span className="affix affix-start">
             <Icon name={field.type === 'phone' ? 'f-phone' : 'f-email'} size={14} />
           </span>
-          <input
+          <TextField
             {...common}
             type={field.type === 'email' ? 'email' : 'tel'}
             autoComplete="off"
@@ -195,7 +192,7 @@ export function FieldInput({
       );
     default:
       return (
-        <input
+        <TextField
           {...common}
           type="text"
           autoComplete="off"
@@ -295,8 +292,8 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
   }
   if (col.type === 'number' || col.type === 'money') {
     return (
-      <input
-        className="input input-compact li-num"
+      <TextField
+        dense className="li-num"
         type="number"
         aria-label={label}
         min={col.min}
@@ -306,7 +303,7 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
       />
     );
   }
-  return <input className="input input-compact" aria-label={label} placeholder={col.key === 'description' ? L.common.form.optionalDescription : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
+  return <TextField dense aria-label={label} placeholder={col.key === 'description' ? L.common.form.optionalDescription : undefined} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />;
 }
 
 function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
@@ -441,7 +438,7 @@ export function FormSections({
     return (
       <div className="form-canvas">
         {title && (
-          <input
+          <TextField bare
             className={cx('canvas-title', errors[title.key] && 'is-invalid')}
             aria-label={title.label}
             placeholder={title.label}
@@ -519,23 +516,21 @@ function ImageInput({ id, label, value, onChange, describedBy }: { id: string; l
   return (
     <span className="image-input">
       <ImageTile src={value} name={label} size={40} />
-      <label className="btn btn-secondary btn-default image-input-btn">
-        <input
-          id={id}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          aria-describedby={describedBy}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => onChange(String(reader.result));
-            reader.readAsDataURL(file);
-          }}
-        />
+      <FileButton
+        className="image-input-btn"
+        id={id}
+        accept="image/*"
+        aria-describedby={describedBy}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => onChange(String(reader.result));
+          reader.readAsDataURL(file);
+        }}
+      >
         {value ? L.common.actions.replace : L.common.actions.upload}
-      </label>
+      </FileButton>
       {value && (
         <button type="button" className="multi-clear" onClick={() => onChange(null)}>
           {L.common.actions.remove}

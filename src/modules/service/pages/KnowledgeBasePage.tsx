@@ -13,6 +13,8 @@ import { EmptyValue } from '../../../components/primitives/display';
 import { EmptyState, ErrorState, Skeleton, StatusChip } from '../../../components/primitives/feedback';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import { PageHeader } from '../../../components/shell/PageHeader';
+import { LinkButton, SearchInput } from '../../../components/primitives/controls';
+import { Table } from '../../../components/primitives/Table';
 
 const S = L.service;
 const P = S.pages.knowledgeBase;
@@ -63,14 +65,12 @@ export function KnowledgeBasePage() {
         description={P.description}
         actions={
           perm(actor, 'knowledgeArticles').create ? (
-            <Link className="btn btn-primary" to={recordNewPath('knowledgeArticles')}>
-              <span className="btn-label">{S.actions.newArticle}</span>
-            </Link>
+            <LinkButton variant="primary" to={recordNewPath('knowledgeArticles')}>{S.actions.newArticle}</LinkButton>
           ) : undefined
         }
       />
       <div className="toolbar" style={{ flexWrap: 'wrap' }}>
-        <input type="search" className="input input-compact" placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={text} onChange={(e) => setText(e.target.value)} />
+        <SearchInput dense placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={text} onChange={(e) => setText(e.target.value)} />
         <SelectMenu label={P.categoryFilter} value={category} options={[{ value: '', label: P.allCategories }, ...categories]} onChange={(v) => update({ category: v || undefined })} />
         {reviewer || perm(actor, 'knowledgeArticles').create ? (
           <SelectMenu label={P.statusFilter} value={status} options={[{ value: '', label: P.allStatuses }, ...statuses]} onChange={(v) => update({ status: v || undefined })} />
@@ -103,8 +103,8 @@ export function KnowledgeBasePage() {
           </EmptyState>
         ) : (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{P.cols.title}</th>
@@ -135,8 +135,8 @@ export function KnowledgeBasePage() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             <div className="grid-footer">
               <span className="grid-footer-range">{S.pager.range(data.page * data.size + 1, Math.min(data.total, (data.page + 1) * data.size), data.total)}</span>
               <nav className="grid-pages" aria-label={S.pager.label}>

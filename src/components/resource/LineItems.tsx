@@ -4,6 +4,7 @@ import { masterLabel } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
 import { EmptyValue } from '../primitives/display';
 import { L } from '../../constants/labels';
+import { Table } from '../primitives/Table';
 
 /**
  * Generic line item: commercial documents (quotations, orders) use productId / listPrice /
@@ -32,7 +33,7 @@ export function LineItemsTable({ items = [], caption }: { items?: AnyLine[]; cap
   const hasDiscount = items.some((li) => discountOf(li) > 0);
   const total = items.reduce((t, li) => t + amountOf(li), 0);
   return (
-    <table className="mini-table detail-items-table">
+    <Table scroll={false} className="detail-items-table">
       <caption className="sr-only">{caption}</caption>
       <thead>
         <tr>
@@ -69,7 +70,7 @@ export function LineItemsTable({ items = [], caption }: { items?: AnyLine[]; cap
           </tr>
         </tfoot>
       )}
-    </table>
+    </Table>
   );
 }
 

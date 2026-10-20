@@ -3,6 +3,7 @@ import { formatMoney } from '../../lib/format';
 import { masterLabel } from '../../services/registry';
 import { lineAmounts, type QuoteLine, type QuoteTotals } from '../../services/quotations/pricing';
 import { EmptyValue } from '../../components/primitives/display';
+import { Table } from '../../components/primitives/Table';
 
 const T = L.quotations;
 const pct = (n: number) => `${Math.round(n * 100) / 100}%`;
@@ -12,8 +13,8 @@ export function LinesTable({ lines, showMargin, compact }: { lines: QuoteLine[];
   const H = T.lineTable;
   if (!lines.length) return <p className="muted">{H.empty}</p>;
   return (
-    <div className="table-scroll">
-      <table className="mini-table qt-lines">
+    
+      <Table className="qt-lines">
         <thead>
           <tr>
             <th scope="col" className="col-n">
@@ -64,8 +65,8 @@ export function LinesTable({ lines, showMargin, compact }: { lines: QuoteLine[];
             );
           })}
         </tbody>
-      </table>
-    </div>
+      </Table>
+    
   );
 }
 

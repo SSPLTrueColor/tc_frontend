@@ -17,6 +17,8 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { L } from '../../constants/labels';
 import { LostDialog, RenewDialog } from './components';
+import { SearchInput } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const P = L.installed.pages.renewalPipeline;
 const C = L.installed.columns;
@@ -108,7 +110,7 @@ export function RenewalsPage() {
             tabs={BUCKETS.map((b) => ({ ...b, count: count(b.id) }))}
           />
           <div className="toolbar">
-            <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), setPage(0))} />
+            <SearchInput dense placeholder={P.search} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), setPage(0))} />
             <SelectMenu label={P.divisionFilter} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setDivision(v), setPage(0))} />
             <span className="spacer" />
             <Link className="link small" to={resourcePath('tc', 'amcContracts', { view: 'v_amc_all' })}>
@@ -122,8 +124,8 @@ export function RenewalsPage() {
               </EmptyState>
             ) : (
               <>
-                <div className="table-scroll">
-                  <table className="mini-table">
+                
+                  <Table>
                     <thead>
                       <tr>
                         <th scope="col">{C.contract}</th>
@@ -180,8 +182,8 @@ export function RenewalsPage() {
                         );
                       })}
                     </tbody>
-                  </table>
-                </div>
+                  </Table>
+                
                 <div className="grid-footer">
                   <span className="grid-footer-range">
                     <strong>{P.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE))}</strong>

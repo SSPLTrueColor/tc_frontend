@@ -47,5 +47,5 @@
   color: var(--s-text-muted);
 }
 .dm-machine .cal-swatch {
-  margin-top: 3px;
+  margin-top: var(--sp-1);
 }

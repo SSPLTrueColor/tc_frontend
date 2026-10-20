@@ -24,6 +24,7 @@ const D = L.leads.dialogs;
 const B = L.leads.banners;
 const FL = L.leads.fields.leads;
 import { VoiceButton } from '../../components/crm/VoiceButton';
+import { LinkButton, TextField, Textarea } from '../../components/primitives/controls';
 
 const OPEN = ['new', 'contacted', 'nurture'];
 
@@ -35,9 +36,7 @@ export function LeadActions({ res, actor, record }: RecordExtensionProps) {
   const why = canEdit ? undefined : D.readOnlyFor(actor.role.label);
   if (status === 'qualified') {
     return record.opportunityId && hasResource('opportunities') ? (
-      <Link className="btn btn-secondary" to={recordPeekPath(actor.workspaceId, 'opportunities', String(record.opportunityId))}>
-        <span className="btn-label">{A.openOpportunity(String(record.opportunityId))}</span>
-      </Link>
+      <LinkButton to={recordPeekPath(actor.workspaceId, 'opportunities', String(record.opportunityId))}>{A.openOpportunity(String(record.opportunityId))}</LinkButton>
     ) : null;
   }
   const label = leadLabel(record, actor);
@@ -137,14 +136,14 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
             </label>
             <VoiceButton onText={(t) => set('requirement', q.requirement ? `${q.requirement} ${t}` : t)} label={D.convert.dictate} />
           </span>
-          <textarea id="q-need" className="input textarea" rows={2} maxLength={2000} value={q.requirement} onChange={(e) => set('requirement', e.target.value)} aria-invalid={!!errors.requirement || undefined} data-autofocus />
+          <Textarea id="q-need" className="textarea" rows={2} maxLength={2000} value={q.requirement} onChange={(e) => set('requirement', e.target.value)} aria-invalid={!!errors.requirement || undefined} data-autofocus />
           {errors.requirement && <p className="field-error">{errors.requirement}</p>}
         </div>
         <Field id="q-budget" label={D.convert.budget} required error={errors.budget}>
-          <input id="q-budget" className="input" type="number" min={0} value={q.budget || ''} onChange={(e) => set('budget', Number(e.target.value))} />
+          <TextField id="q-budget" type="number" min={0} value={q.budget || ''} onChange={(e) => set('budget', Number(e.target.value))} />
         </Field>
         <Field id="q-dm" label={FL.decisionMaker} required error={errors.decisionMaker}>
-          <input id="q-dm" className="input" maxLength={80} value={q.decisionMaker} onChange={(e) => set('decisionMaker', e.target.value)} />
+          <TextField id="q-dm" maxLength={80} value={q.decisionMaker} onChange={(e) => set('decisionMaker', e.target.value)} />
         </Field>
         <Field id="q-tl" label={FL.timeline} required error={errors.timeline}>
           <SelectMenu
@@ -157,17 +156,17 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
           />
         </Field>
         <Field id="q-setup" label={FL.currentSetup}>
-          <input id="q-setup" className="input" maxLength={120} value={q.currentSetup} onChange={(e) => set('currentSetup', e.target.value)} />
+          <TextField id="q-setup" maxLength={120} value={q.currentSetup} onChange={(e) => set('currentSetup', e.target.value)} />
         </Field>
         <div className="form-field span-all">
           <label className="field-label" htmlFor="q-name">
             {D.convert.opportunityName} <span className="req">*</span>
           </label>
-          <input id="q-name" className="input" maxLength={120} value={q.opportunityName} onChange={(e) => set('opportunityName', e.target.value)} />
+          <TextField id="q-name" maxLength={120} value={q.opportunityName} onChange={(e) => set('opportunityName', e.target.value)} />
           {errors.opportunityName && <p className="field-error">{errors.opportunityName}</p>}
         </div>
         <Field id="q-value" label={D.convert.value} required error={errors.value}>
-          <input id="q-value" className="input" type="number" min={0} value={q.value || ''} onChange={(e) => set('value', Number(e.target.value))} />
+          <TextField id="q-value" type="number" min={0} value={q.value || ''} onChange={(e) => set('value', Number(e.target.value))} />
         </Field>
         <Field id="q-close" label={D.convert.expectedCloseDate} required error={errors.expectedCloseDate}>
           <DatePicker id="q-close" block value={q.expectedCloseDate} onChange={(v) => set('expectedCloseDate', v ?? '')} label={D.convert.expectedCloseDate} />
@@ -224,7 +223,7 @@ function NurtureDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
           <DatePicker id="n-until" block value={until} onChange={(v) => setUntil(v ?? '')} label={FL.nurtureUntil} />
         </Field>
         <Field id="n-note" label={D.nurture.note}>
-          <textarea id="n-note" className="input textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea id="n-note" className="textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
         {error && (
           <p className="field-error" role="alert">
@@ -281,7 +280,7 @@ function DisqualifyDialog({ actor, record, onClose }: RecordExtensionProps & { o
           <SelectMenu id="d-reason" block label={D.disqualify.reason} value={reason} invalid={!!errors.reason} options={activeMasterValues('lostReason').map((v) => ({ value: v.key, label: v.label }))} onChange={setReason} />
         </Field>
         <Field id="d-note" label={D.disqualify.note} required={reason === 'other'} error={errors.note}>
-          <textarea id="d-note" className="input textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea id="d-note" className="textarea" rows={2} maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
         {errors.form && (
           <p className="field-error" role="alert">

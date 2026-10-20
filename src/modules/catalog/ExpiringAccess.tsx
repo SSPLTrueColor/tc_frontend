@@ -1,3 +1,4 @@
+import { ENDS_SOON_TONE } from '../../domain/statusTones';
 import { useState } from 'react';
 import { L } from '../../constants/labels';
 import { type Actor, can } from '../../services/authz';
@@ -13,6 +14,7 @@ import { confirmDelete } from '../../components/primitives/overlay';
 import { Clip } from '../../components/settings/kit';
 import { usePaged } from './kit';
 import { formatDate } from '../../lib/dates';
+import { Table } from '../../components/primitives/Table';
 
 const G = L.grants;
 const S = L.admin.access.simple;
@@ -46,8 +48,8 @@ export function ExpiringAccess({ actor }: { actor: Actor }) {
       </div>
       {rows.length ? (
         <>
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{G.columns.person}</th>
@@ -65,7 +67,7 @@ export function ExpiringAccess({ actor }: { actor: Actor }) {
                     <td>{g.what}</td>
                     <td>{g.kind === 'area' ? S.scopes[g.scope] : '—'}</td>
                     <td className="nowrap">
-                      <DateText value={g.expiresAt} /> <StatusChip label={G.daysLeft(g.daysLeft)} tone={g.daysLeft <= 7 ? 'warning' : 'neutral'} />
+                      <DateText value={g.expiresAt} /> <StatusChip label={G.daysLeft(g.daysLeft)} tone={ENDS_SOON_TONE(g.daysLeft)} />
                     </td>
                     <td className="st-cell-clip">
                       <Clip text={g.reason} />
@@ -81,8 +83,8 @@ export function ExpiringAccess({ actor }: { actor: Actor }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
           {paged.footer('extra access')}
         </>
       ) : (

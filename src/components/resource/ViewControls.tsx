@@ -19,6 +19,8 @@ import { InfoTip } from '../primitives/InfoTip';
 import { fieldIcon } from './fieldIcon';
 import { ServiceError } from '../../services/types';
 import { L } from '../../constants/labels';
+import { Checkbox, SegmentedControl, TextField } from '../primitives/controls';
+import { Radio } from '../primitives/controls';
 
 const C = L.common;
 const LS = L.common.list;
@@ -307,19 +309,12 @@ function SaveViewDialog({
           <label className="field-label" htmlFor="view-name">
             {V.name} <span className="req">*</span>
           </label>
-          <input id="view-name" className="input input-compact" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} data-autofocus onKeyDown={(e) => e.key === 'Enter' && name.trim() && submit()} />
+          <TextField id="view-name" dense value={name} onChange={(e) => setName(e.target.value)} maxLength={40} data-autofocus onKeyDown={(e) => e.key === 'Enter' && name.trim() && submit()} />
         </div>
         {mode !== 'rename' && (
           <fieldset className="form-field">
             <legend className="field-label">{V.layout}</legend>
-            <div className="segmented">
-              {types.map((t) => (
-                <label key={t} className={cx('seg', type === t && 'is-on')}>
-                  <input type="radio" name="vtype" value={t} checked={type === t} onChange={() => setType(t)} />
-                  <Icon name={TYPE_ICON[t]} size={14} /> {V.types[t] ?? t}
-                </label>
-              ))}
-            </div>
+            <SegmentedControl label={V.layout} value={type} onChange={(v) => setType(v as typeof type)} options={types.map((t) => ({ value: t, label: V.types[t] ?? t, icon: TYPE_ICON[t] }))} />
           </fieldset>
         )}
         <fieldset className="form-field">
@@ -331,7 +326,7 @@ function SaveViewDialog({
             const allowed = canCreateScope(actor, s);
             return (
               <label key={s} className={cx('radio', !allowed && 'is-disabled')} data-tooltip={allowed ? undefined : V.notAvailable(canCreateScopeLabel(s))}>
-                <input type="radio" name="scope" value={s} checked={scope === s} disabled={!allowed} onChange={() => setScope(s)} />
+                <Radio name="scope" value={s} checked={scope === s} disabled={!allowed} onChange={() => setScope(s)} />
                 <span>
                   {s === 'personal' ? V.onlyMe : s === 'team' ? V.myTeam : V.wholeOrg}
                 </span>
@@ -675,7 +670,7 @@ function ValueInput({ field, actor, value, onChange }: { field: FieldDefinition;
     return <DatePicker block label={LS.value} value={(value as string) || ''} onChange={(v) => onChange(v ?? '')} />;
   }
   const type = ['number', 'money', 'progress'].includes(field.type) ? 'number' : 'text';
-  return <input className={cls} aria-label={LS.value} type={type} value={String(value ?? '')} onChange={(e) => onChange(type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)} />;
+  return <TextField bare className={cls} aria-label={LS.value} type={type} value={String(value ?? '')} onChange={(e) => onChange(type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)} />;
 }
 
 // ---------------------------------------------------------------- Column manager
@@ -731,12 +726,12 @@ export function ColumnManager({
             {LS.resetColumns}
           </Button>
         </div>
-        <input className="input input-compact" placeholder={LS.searchFields} aria-label={LS.searchFields} value={q} onChange={(e) => setQ(e.target.value)} data-autofocus />
+        <TextField dense placeholder={LS.searchFields} aria-label={LS.searchFields} value={q} onChange={(e) => setQ(e.target.value)} data-autofocus />
         <ul className="col-list">
           {shown.map((c) => (
             <li key={c.key} className="col-item">
               <label className="check">
-                <input type="checkbox" checked={!c.hidden} onChange={() => onChange(all.map((x) => (x.key === c.key ? { ...x, hidden: !x.hidden } : x)))} />
+                <Checkbox checked={!c.hidden} onChange={() => onChange(all.map((x) => (x.key === c.key ? { ...x, hidden: !x.hidden } : x)))} />
                 {label(c.key)}
               </label>
               <span className="colmgr-actions">
@@ -762,13 +757,7 @@ export function ColumnManager({
         </div>
         <div className="pop-section">
           <span className="field-label">{LS.density}</span>
-          <div className="segmented">
-            {(['compact', 'comfortable'] as const).map((d) => (
-              <button key={d} type="button" className={cx('seg-btn', density === d && 'is-on')} aria-pressed={density === d} onClick={() => onDensity(d)}>
-                {d === 'compact' ? LS.compact : LS.comfortable}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl label={LS.density} value={density} onChange={onDensity} options={(['compact', 'comfortable'] as const).map((d) => ({ value: d, label: d === 'compact' ? LS.compact : LS.comfortable }))} />
         </div>
       </Popover>
     </>

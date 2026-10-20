@@ -1,3 +1,4 @@
+import { REQUEST_TONE } from '../../domain/statusTones';
 import { useState } from 'react';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
@@ -13,10 +14,12 @@ import { DateText } from '../../components/primitives/display';
 import { EmptyState, ErrorState, StatusChip, useToast } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { usePaged } from '../catalog/kit';
+import { TextField, Textarea } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const D = L.account.dataProtection;
 const title = L.nav.pages.dataProtection.title;
-const TONE = { open: 'warning', done: 'success', rejected: 'neutral' } as const;
+const TONE = REQUEST_TONE;
 const EMPTY: DpRequestInput = { type: 'correction', subject: '', details: '' };
 
 /** Data Protection (DPDP Act 2023): consent switches (instant), retention (saved with the bar) and data-subject requests. */
@@ -88,7 +91,7 @@ export function DataProtectionPage() {
 
   const retentionField = (key: keyof DataProtection['retention'], label: string, unit: string) => (
     <SettingsField label={`${label} (${unit})`} htmlFor={`dp-${key}`} error={tried ? rErr[key] : undefined}>
-      <input id={`dp-${key}`} className="input" type="number" inputMode="numeric" disabled={!admin} value={Number.isFinite(r[key]) ? r[key] : ''} onChange={(e) => retention.set({ [key]: num(e.target.value) })} aria-invalid={(tried && !!rErr[key]) || undefined} />
+      <TextField id={`dp-${key}`} type="number" inputMode="numeric" disabled={!admin} value={Number.isFinite(r[key]) ? r[key] : ''} onChange={(e) => retention.set({ [key]: num(e.target.value) })} aria-invalid={(tried && !!rErr[key]) || undefined} />
     </SettingsField>
   );
 
@@ -114,10 +117,10 @@ export function DataProtectionPage() {
             <SelectMenu id="dp-type" label={D.type} value={req.type} options={Object.entries(D.types).map(([value, label]) => ({ value, label }))} onChange={(v) => setReq({ ...req, type: v as DpRequestInput['type'] })} />
           </SettingsField>
           <SettingsField label={D.subject} htmlFor="dp-subject" help={D.subjectHelp} error={reqTried ? reqErr.subject : undefined} required>
-            <input id="dp-subject" className="input" value={req.subject} maxLength={120} onChange={(e) => setReq({ ...req, subject: e.target.value })} onBlur={() => req.subject && setReqTried(true)} aria-invalid={(reqTried && !!reqErr.subject) || undefined} />
+            <TextField id="dp-subject" value={req.subject} maxLength={120} onChange={(e) => setReq({ ...req, subject: e.target.value })} onBlur={() => req.subject && setReqTried(true)} aria-invalid={(reqTried && !!reqErr.subject) || undefined} />
           </SettingsField>
           <SettingsField label={D.details} htmlFor="dp-details" help={D.detailsHelp} error={reqTried ? reqErr.details : undefined}>
-            <textarea id="dp-details" className="input" rows={3} value={req.details} onChange={(e) => setReq({ ...req, details: e.target.value })} aria-invalid={(reqTried && !!reqErr.details) || undefined} />
+            <Textarea id="dp-details" rows={3} value={req.details} onChange={(e) => setReq({ ...req, details: e.target.value })} aria-invalid={(reqTried && !!reqErr.details) || undefined} />
           </SettingsField>
           <div>
             <Button variant="primary" loading={reqBusy} onClick={submit}>
@@ -128,8 +131,8 @@ export function DataProtectionPage() {
 
         {q.data.requests.length ? (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{D.columns.id}</th>
@@ -167,8 +170,8 @@ export function DataProtectionPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer('requests')}
           </>
         ) : (

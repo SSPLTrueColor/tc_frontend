@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useServiceQuery } from '../../../hooks/useServiceQuery';
 import { formatDateTime, nowLocal } from '../../../lib/dates';
 import { loaders, serviceApi } from '../../../services/api/service';
@@ -20,6 +20,9 @@ import { OfflineBar } from './MyJobsPage';
 import { useStep } from './useStep';
 import { L } from '../../../constants/labels';
 import { ROUTES, toPath } from '../../../constants/routes';
+import { Checkbox, LinkButton, TextField, Textarea } from '../../../components/primitives/controls';
+import { SegmentedControl } from '../../../components/primitives/controls';
+import { FileInput } from '../../../components/primitives/controls';
 
 const S = L.service;
 const P = S.pages.myJob;
@@ -227,9 +230,7 @@ export function MyJobPage() {
           <Button size="default" icon="sparkles" disabledReason={t.spottedLeadId ? P.leadCreated(s(t.spottedLeadId)) : undefined} onClick={() => setDialog('spotted')}>
             {S.actions.opportunitySpotted}
           </Button>
-          <Link className="btn btn-secondary btn-default" to={toPath(ROUTES.knowledgeBase, {}, { q: s(machine?.model) || undefined, category: machine ? undefined : s(t.category) || undefined })}>
-            <span className="btn-label">{S.actions.knowledgeBase}</span>
-          </Link>
+          <LinkButton size="default" to={toPath(ROUTES.knowledgeBase, {}, { q: s(machine?.model) || undefined, category: machine ? undefined : s(t.category) || undefined })}>{S.actions.knowledgeBase}</LinkButton>
         </div>
       </section>
 
@@ -250,14 +251,14 @@ export function MyJobPage() {
                   </label>
                   <VoiceButton onText={(x) => setWork((w) => ({ ...w, [k]: w[k] ? `${w[k]} ${x}` : x }))} />
                 </span>
-                <textarea id={`jc-${k}`} className="input textarea" rows={3} maxLength={2000} value={work[k]} onChange={(e) => setWork({ ...work, [k]: e.target.value })} />
+                <Textarea id={`jc-${k}`} className="textarea" rows={3} maxLength={2000} value={work[k]} onChange={(e) => setWork({ ...work, [k]: e.target.value })} />
               </div>
             ))}
             <div className="form-field span-all">
               <label className="field-label" htmlFor="jc-parts">
                 {S.fields.serviceVisits.partsUsed}
               </label>
-              <input id="jc-parts" className="input" maxLength={300} placeholder={P.partsPlaceholder} value={work.partsUsed} onChange={(e) => setWork({ ...work, partsUsed: e.target.value })} />
+              <TextField id="jc-parts" maxLength={300} placeholder={P.partsPlaceholder} value={work.partsUsed} onChange={(e) => setWork({ ...work, partsUsed: e.target.value })} />
             </div>
             {(
               [
@@ -269,10 +270,10 @@ export function MyJobPage() {
                 <label className="field-label" htmlFor={`jc-${k}`}>
                   {l}
                 </label>
-                <input
+                <FileInput
                   id={`jc-${k}`}
-                  className="input"
-                  type="file"
+                  
+                  
                   accept="image/*,video/*"
                   multiple
                   capture="environment"
@@ -289,13 +290,13 @@ export function MyJobPage() {
               <label className="field-label" htmlFor="jc-counter">
                 {P.counter}
               </label>
-              <input id="jc-counter" className="input" inputMode="numeric" value={work.printCounter} onChange={(e) => setWork({ ...work, printCounter: e.target.value.replace(/\D/g, '') })} />
+              <TextField id="jc-counter" inputMode="numeric" value={work.printCounter} onChange={(e) => setWork({ ...work, printCounter: e.target.value.replace(/\D/g, '') })} />
             </div>
             <div className="form-field">
               <label className="field-label" htmlFor="jc-ink">
                 {P.ink}
               </label>
-              <input id="jc-ink" className="input" inputMode="numeric" value={work.inkUsedMl} onChange={(e) => setWork({ ...work, inkUsedMl: e.target.value.replace(/\D/g, '') })} />
+              <TextField id="jc-ink" inputMode="numeric" value={work.inkUsedMl} onChange={(e) => setWork({ ...work, inkUsedMl: e.target.value.replace(/\D/g, '') })} />
             </div>
             {fileError && <p className="field-error span-all">{fileError} {P.fileNote}</p>}
             <div className="span-all">
@@ -313,13 +314,12 @@ export function MyJobPage() {
             {P.checkOutHeading}
           </h2>
           <div className="form-grid">
-            <div className="segmented" role="radiogroup" aria-label={P.signOffMethod}>
-              {(['otp', 'signature'] as const).map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={method === m} className={`seg-btn${method === m ? ' is-on' : ''}`} onClick={() => setMethod(m)}>
-                  {S.masters.signOffMethod.values[m]}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label={P.signOffMethod}
+              value={method}
+              onChange={(next) => setMethod(next)}
+              options={(['otp', 'signature'] as const).map((m) => ({ value: m, label: S.masters.signOffMethod.values[m] }))}
+            />
             {method === 'otp' ? (
               <div className="form-field">
                 {otp ? (
@@ -332,7 +332,7 @@ export function MyJobPage() {
                 <label className="field-label" htmlFor="jc-otp">
                   {P.code}
                 </label>
-                <input id="jc-otp" className="input" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+                <TextField id="jc-otp" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
               </div>
             ) : (
               <div className="form-field">
@@ -341,7 +341,7 @@ export function MyJobPage() {
               </div>
             )}
             <label className="row-gap">
-              <input type="checkbox" checked={canResolve && resolve} disabled={!canResolve} onChange={(e) => setResolve(e.target.checked)} /> {P.resolveCheck}
+              <Checkbox checked={canResolve && resolve} disabled={!canResolve} onChange={(e) => setResolve(e.target.checked)} /> {P.resolveCheck}
             </label>
             {!canResolve && <p className="muted small">{P.resolveNeedsWork(masterValue('ticketStatus', status)?.label ?? status)}</p>}
             <div>

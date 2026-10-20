@@ -1,7 +1,7 @@
 /* Field Force and Targets & Recognition: only what the template classes do not cover. Tokens only. */
 .field-page .field-checkin-body {
   display: grid;
-  gap: 12px;
+  gap: var(--sp-3);
 }
 .field-page .field-big-btn {
   width: 100%;
@@ -10,8 +10,8 @@
 }
 .field-loc {
   display: grid;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
 }
 .field-loc .segmented,
 .field-page .form-field .segmented {
@@ -36,7 +36,7 @@
 /* Merged pages (Field Visits, Beat Plan): working view ↔ full record list switch. */
 .field-mode {
   display: flex;
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-2);
 }
 .field-mode .segmented {
   flex-wrap: wrap;
@@ -48,7 +48,7 @@
   min-height: 0;
 }
 .field-merged > .field-mode {
-  padding: 8px 16px 0;
+  padding: var(--sp-2) var(--sp-4) 0;
   margin-bottom: 0;
   background: var(--s-panel);
 }
@@ -58,9 +58,9 @@
   height: auto;
 }
 .field-pager {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }
 .field-days {
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }

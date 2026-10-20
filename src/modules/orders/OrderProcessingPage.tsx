@@ -22,6 +22,7 @@ import { Icon } from '../../components/primitives/Icon';
 import { KpiStrip, SortTh, TableCard, TableFooter } from '../../components/resource/ListCard';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { chip } from './OrderTabs';
+import { Checkbox, SearchInput, TextField } from '../../components/primitives/controls';
 
 const O = L.orders;
 const P = O.pages.orderProcessing;
@@ -168,14 +169,14 @@ export function OrderProcessingPage() {
               <span className="search-icon" aria-hidden="true">
                 <Icon name="search" size={14} />
               </span>
-              <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchAria} value={search} onChange={(e) => reset(() => setSearch(e.target.value))} />
+              <SearchInput dense placeholder={P.search} aria-label={P.searchAria} value={search} onChange={(e) => reset(() => setSearch(e.target.value))} />
             </div>
             <SelectMenu label={P.statusFilter} value={status} options={[{ value: '', label: P.allStatuses }, ...SO_PROCESSING_STATUSES.map((k) => ({ value: k, label: statusText(k) }))]} onChange={(v) => reset(() => setStatus(v))} />
             <SelectMenu label={P.customsFilter} value={customs} options={[{ value: '', label: P.allCustoms }, ...CUSTOMS_STATUSES.map((k) => ({ value: k, label: masterValue('customsStatus', k)?.label ?? k }))]} onChange={(v) => reset(() => setCustoms(v))} />
             <SelectMenu label={P.typeFilter} value={kind} options={[{ value: '', label: P.allTypes }, ...activeMasterValues('orderKind').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => reset(() => setKind(v))} />
             <SelectMenu label={P.divisionFilter} value={division} options={[{ value: '', label: P.allDivisions }, ...activeMasterValues('division').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => reset(() => setDivision(v))} />
             <label className="orders-check">
-              <input type="checkbox" checked={etaOnly} onChange={(e) => reset(() => setEtaOnly(e.target.checked))} /> {P.onlyOverdueEta}
+              <Checkbox checked={etaOnly} onChange={(e) => reset(() => setEtaOnly(e.target.checked))} /> {P.onlyOverdueEta}
             </label>
               </>
             }
@@ -220,7 +221,7 @@ export function OrderProcessingPage() {
                             {isEditing ? (
                               <>
                                 <td>
-                                  <input className="input input-compact" maxLength={40} aria-label={F.poToPrincipalNo} value={draft.poToPrincipalNo} onChange={(e) => set({ poToPrincipalNo: e.target.value })} aria-invalid={!!errors.poToPrincipalNo || undefined} />
+                                  <TextField dense maxLength={40} aria-label={F.poToPrincipalNo} value={draft.poToPrincipalNo} onChange={(e) => set({ poToPrincipalNo: e.target.value })} aria-invalid={!!errors.poToPrincipalNo || undefined} />
                                   {err('poToPrincipalNo')}
                                   <DatePicker label={F.poToPrincipalDate} placeholder={P.poDate} value={draft.poToPrincipalDate} onChange={(v) => set({ poToPrincipalDate: v ?? '' })} invalid={!!errors.poToPrincipalDate} />
                                   {err('poToPrincipalDate')}
@@ -235,11 +236,11 @@ export function OrderProcessingPage() {
                                 </td>
                                 <td>
                                   <label className="orders-check">
-                                    <input type="checkbox" checked={draft.machineReady} onChange={(e) => set({ machineReady: e.target.checked, pdiDone: e.target.checked ? draft.pdiDone : false })} /> {F.machineReady}
+                                    <Checkbox checked={draft.machineReady} onChange={(e) => set({ machineReady: e.target.checked, pdiDone: e.target.checked ? draft.pdiDone : false })} /> {F.machineReady}
                                   </label>
                                   {err('machineReady')}
                                   <label className="orders-check">
-                                    <input type="checkbox" checked={draft.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} /> {F.pdiDone}
+                                    <Checkbox checked={draft.pdiDone} onChange={(e) => set({ pdiDone: e.target.checked })} /> {F.pdiDone}
                                   </label>
                                   {err('pdiDone')}
                                 </td>

@@ -17,7 +17,7 @@ import { can, canReadResource } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterValue } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
-import { SimpleTable } from './components/ListKit';
+import { DataTable } from '../../components/primitives/DataTable';
 import { RepeatOrderDialog } from './components/RepeatOrderDialog';
 
 // ---------------------------------------------------------------- Repeat Orders (CON-02, FR-099)
@@ -58,7 +58,7 @@ export function RepeatOrdersPage() {
             </EmptyState>
           </>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}
@@ -150,7 +150,7 @@ export function DealerOrdersPage() {
             {P.emptyBody}
           </EmptyState>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}

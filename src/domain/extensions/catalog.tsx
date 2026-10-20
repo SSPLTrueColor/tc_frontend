@@ -23,6 +23,7 @@ import { EmptyValue } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, useToast } from '../../components/primitives/feedback';
 import { confirmDelete } from '../../components/primitives/overlay';
 import { FormDrawer, QuickCreateDialog } from '../../components/resource/RecordForm';
+import { Table } from '../../components/primitives/Table';
 
 const GST_RATES = [0, 5, 12, 18, 28];
 
@@ -145,8 +146,8 @@ function PriceListItemsTab({ actor, record }: RecordExtensionProps) {
           {L.catalog.itemsTab.emptyBody}
         </EmptyState>
       ) : (
-        <div className="table-scroll">
-          <table className="mini-table">
+        
+          <Table>
             <thead>
               <tr>
                 <th scope="col">{L.catalog.itemsTab.columns.product}</th>
@@ -205,8 +206,8 @@ function PriceListItemsTab({ actor, record }: RecordExtensionProps) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       )}
       <QuickCreateDialog open={adding} resKey="priceListItems" initial={{ priceListId: record.id }} onClose={() => setAdding(false)} onCreated={() => toast(L.catalog.itemsTab.added)} />
       <FormDrawer open={!!editId} resKey="priceListItems" recordId={editId ?? undefined} onClose={() => setEditId(null)} />

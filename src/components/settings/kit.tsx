@@ -8,9 +8,11 @@ import { useNavigate } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { cx } from '../../lib/format';
 import { Button } from '../primitives/Button';
-import { Dialog, confirmDelete } from '../primitives/overlay';
+import { confirmDelete } from '../primitives/overlay';
+import { SkeletonBlock, SkeletonLine } from '../primitives/Skeleton';
 import { PageHeader } from '../shell/PageHeader';
 import './settings.css';
+import { Switch } from '../primitives/controls';
 
 const K = L.settingsKit;
 
@@ -35,11 +37,11 @@ export function SettingsPage({ title, description, actions, children }: { title:
 export function SettingsSkeleton({ sections = 2 }: { sections?: number }) {
   return (
     <div className="st-col" aria-busy="true" aria-label={L.common.states.loading}>
-      <div className="st-skel st-skel-line" />
+      <SkeletonLine size="title" />
       {Array.from({ length: sections }, (_, i) => (
-        <div key={i} className="st-card st-skel-card">
-          <div className="st-skel st-skel-title" />
-          <div className="st-skel st-skel-box" />
+        <div key={i} className="st-card st-section">
+          <SkeletonLine size="title" />
+          <SkeletonBlock />
         </div>
       ))}
     </div>
@@ -112,11 +114,7 @@ export function ToggleRow({ label, help, checked, onChange, disabled, busy }: { 
         </label>
         {help && <span className="field-help">{help}</span>}
       </div>
-      <label className="switch st-switch">
-        <input id={id} type="checkbox" role="switch" checked={shown} disabled={disabled || busy || pending !== null} onChange={(e) => flip(e.target.checked)} />
-        <span className="switch-track" aria-hidden="true" />
-        <span className="sr-only">{shown ? K.on : K.off}</span>
-      </label>
+      <Switch id={id} className="st-switch" checked={shown} disabled={disabled || busy || pending !== null} onChange={flip} label={label} />
     </div>
   );
 }
@@ -213,61 +211,17 @@ export function SaveBar({ dirty, busy, onSave, onCancel, saveLabel, errorCount }
 
 // ---------------------------------------------------------------- danger zone
 
-/** Destructive actions live apart from everything else and need the exact word typed to proceed. */
+/** Destructive actions live apart from everything else and need the exact word typed to proceed (shared ConfirmHost). */
 export function DangerZone({ title, description, actionLabel, confirmWord, confirmTitle, confirmBody, onConfirm, disabledReason }: { title: string; description: string; actionLabel: string; confirmWord: string; confirmTitle: string; confirmBody: string; onConfirm: () => void | Promise<void>; disabledReason?: string }) {
-  const [open, setOpen] = useState(false);
-  const [typed, setTyped] = useState('');
-  const [busy, setBusy] = useState(false);
-  const ok = typed.trim() === confirmWord;
-  const close = () => {
-    setOpen(false);
-    setTyped('');
-  };
   return (
     <section className="st-card st-danger" aria-label={K.dangerZone}>
       <div className="st-danger-text">
         <h2 className="st-section-title">{title}</h2>
         <p className="st-help">{description}</p>
       </div>
-      <Button variant="danger" onClick={() => setOpen(true)} disabledReason={disabledReason}>
+      <Button variant="danger" onClick={() => confirmDelete({ title: confirmTitle, message: confirmBody, confirmLabel: actionLabel, typedWord: confirmWord, onConfirm })} disabledReason={disabledReason}>
         {actionLabel}
       </Button>
-      <Dialog
-        open={open}
-        onClose={close}
-        title={confirmTitle}
-        size="sm"
-        role="alertdialog"
-        footer={
-          <>
-            <Button onClick={close}>{L.common.actions.cancel}</Button>
-            <Button
-              variant="danger"
-              loading={busy}
-              disabledReason={ok ? undefined : K.typeToConfirm(confirmWord)}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await onConfirm();
-                  close();
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              {actionLabel}
-            </Button>
-          </>
-        }
-      >
-        <p>{confirmBody}</p>
-        <div className="st-field">
-          <label className="field-label" htmlFor="st-danger-input">
-            {K.typeToConfirm(confirmWord)}
-          </label>
-          <input id="st-danger-input" className="input" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
-        </div>
-      </Dialog>
     </section>
   );
 }

@@ -33,6 +33,7 @@ import { QuickCreate, type Slot } from './QuickCreate';
 import { TodayAgenda, todaySummary } from './TodayAgenda';
 import { useCalendarShortcuts } from './useCalendarShortcuts';
 import './calendar.css';
+import { SearchInput, SegmentedControl } from '../../components/primitives/controls';
 
 const C = L.calendar;
 const VIEWS: { id: ViewId; label: string; key: string }[] = [
@@ -407,7 +408,7 @@ export function CalendarPage() {
             <TodayAgenda info={todayInfo} onOpen={() => go('today')} />
             <div className="cal-search">
               <Icon name="search" size={14} />
-              <input ref={searchRef} className="input" type="search" aria-label={C.page.search} placeholder={C.page.searchPlaceholder} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && (setSearch(''), e.currentTarget.blur())} />
+              <SearchInput ref={searchRef} aria-label={C.page.search} placeholder={C.page.searchPlaceholder} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && (setSearch(''), e.currentTarget.blur())} />
               {search && <IconButton icon="x" label={C.page.clearSearch} onClick={() => setSearch('')} />}
             </div>
           </div>
@@ -425,13 +426,7 @@ export function CalendarPage() {
             {!sideOpen && (
               <Button icon="plus" aria-label={C.page.createEvent} variant="primary" onClick={(e) => createFromCursor(e.currentTarget)} disabledReason={canCreate ? undefined : C.page.cannotCreate(actor.role.label)} title={C.page.shortcutHint(C.page.createEvent, 'C')} />
             )}
-            <div className="segmented" role="radiogroup" aria-label={C.page.viewGroup}>
-              {VIEWS.map((v) => (
-                <button key={v.id} type="button" role="radio" aria-checked={view === v.id} className={cx('seg-btn', view === v.id && 'is-on')} onClick={() => changeView(v.id)} title={C.page.shortcutHint(v.label, v.key)}>
-                  {v.label}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl label={C.page.viewGroup} value={view} onChange={changeView} options={VIEWS.map((v) => ({ value: v.id, label: v.label, title: C.page.shortcutHint(v.label, v.key) }))} />
           </div>
           {query.error && query.data && (
             <InlineAlert tone="danger" title={C.page.loadError}>

@@ -18,6 +18,8 @@ import { FormSections } from '../../components/resource/FormFields';
 import { initialValues } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { L } from '../../constants/labels';
+import { TextField } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
 
 const T = L.leads.pages.newLead;
 const A = L.leads.actions;
@@ -130,23 +132,15 @@ export function NewLeadPage() {
           <div className="form-grid">
             <div className="form-field span-all">
               <span className="field-label">{T.customer}</span>
-              <div className="segmented" role="radiogroup" aria-label={T.customer}>
-                {(['existing', 'new'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="radio"
-                    aria-checked={companyMode === m}
-                    className={`seg-btn${companyMode === m ? ' is-on' : ''}`}
-                    onClick={() => {
-                      setCompanyMode(m);
-                      if (m === 'new') setContactMode('new');
-                    }}
-                  >
-                    {m === 'existing' ? A.existingCustomer : A.newCustomer}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                label={T.customer}
+                value={companyMode}
+                onChange={(next) => {
+                  setCompanyMode(next);
+                  if (next === 'new') setContactMode('new');
+                }}
+                options={(['existing', 'new'] as const).map((m) => ({ value: m, label: m === 'existing' ? A.existingCustomer : A.newCustomer }))}
+              />
             </div>
             {companyMode === 'existing' ? (
               <div className="form-field">
@@ -162,14 +156,14 @@ export function NewLeadPage() {
                   <label className="field-label" htmlFor="nc-name">
                     {T.companyName} <span className="req">*</span>
                   </label>
-                  <input id="nc-name" className="input" maxLength={120} value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} aria-invalid={!!errors['company.name'] || undefined} />
+                  <TextField id="nc-name" maxLength={120} value={company.name} onChange={(e) => setCompany({ ...company, name: e.target.value })} aria-invalid={!!errors['company.name'] || undefined} />
                   {err('company.name')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nc-city">
                     {T.city} <span className="req">*</span>
                   </label>
-                  <input id="nc-city" className="input" maxLength={60} value={company.city} onChange={(e) => setCompany({ ...company, city: e.target.value })} />
+                  <TextField id="nc-city" maxLength={60} value={company.city} onChange={(e) => setCompany({ ...company, city: e.target.value })} />
                   {err('company.city')}
                 </div>
                 <div className="form-field">
@@ -198,7 +192,7 @@ export function NewLeadPage() {
                   <label className="field-label" htmlFor="nc-gstin">
                     {T.gstin} <span className="optional">{T.optional}</span>
                   </label>
-                  <input id="nc-gstin" className="input" maxLength={15} value={company.gstin} onChange={(e) => setCompany({ ...company, gstin: e.target.value.toUpperCase() })} />
+                  <TextField id="nc-gstin" maxLength={15} value={company.gstin} onChange={(e) => setCompany({ ...company, gstin: e.target.value.toUpperCase() })} />
                 </div>
                 {dupCompanies.length > 0 && (
                   <div className="span-all">
@@ -242,27 +236,27 @@ export function NewLeadPage() {
                   <label className="field-label" htmlFor="nk-name">
                     {T.contactName} <span className="req">*</span>
                   </label>
-                  <input id="nk-name" className="input" maxLength={80} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} />
+                  <TextField id="nk-name" maxLength={80} value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} />
                   {err('contact.name')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-desig">
                     {T.designation} <span className="optional">{T.optional}</span>
                   </label>
-                  <input id="nk-desig" className="input" maxLength={80} value={contact.designation} onChange={(e) => setContact({ ...contact, designation: e.target.value })} />
+                  <TextField id="nk-desig" maxLength={80} value={contact.designation} onChange={(e) => setContact({ ...contact, designation: e.target.value })} />
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-mobile">
                     {T.mobile}
                   </label>
-                  <input id="nk-mobile" className="input" inputMode="tel" maxLength={16} value={contact.mobile} onChange={(e) => setContact({ ...contact, mobile: e.target.value })} />
+                  <TextField id="nk-mobile" inputMode="tel" maxLength={16} value={contact.mobile} onChange={(e) => setContact({ ...contact, mobile: e.target.value })} />
                   {err('contact.mobile')}
                 </div>
                 <div className="form-field">
                   <label className="field-label" htmlFor="nk-email">
                     {T.email}
                   </label>
-                  <input id="nk-email" className="input" type="email" maxLength={120} value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} />
+                  <TextField id="nk-email" type="email" maxLength={120} value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} />
                   {err('contact.email')}
                 </div>
               </>

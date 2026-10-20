@@ -4,6 +4,7 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { activeMasterValues, masterLabel } from '../../services/registry';
 import type { EventType } from '../../services/calendar/events';
 import { MiniMonth } from './MiniMonth';
+import { Checkbox } from '../../components/primitives/controls';
 
 const C = L.calendar;
 const STATUSES = ['scheduled', 'completed', 'cancelled'] as const;
@@ -48,7 +49,7 @@ export function CalendarSidebar(p: SidebarProps) {
           {activeMasterValues('calEventType').map((t) => (
             <li key={t.key}>
               <label className={`cal-check ev-${t.key}`}>
-                <input type="checkbox" checked={p.types.has(t.key as EventType)} onChange={(e) => p.onTypes(toggle(p.types, t.key as EventType, e.target.checked))} />
+                <Checkbox checked={p.types.has(t.key as EventType)} onChange={(e) => p.onTypes(toggle(p.types, t.key as EventType, e.target.checked))} />
                 <span className="cal-swatch" aria-hidden="true" />
                 {t.label}
               </label>
@@ -66,14 +67,14 @@ export function CalendarSidebar(p: SidebarProps) {
           {STATUSES.map((st) => (
             <li key={st}>
               <label className="cal-check">
-                <input type="checkbox" checked={p.statuses.has(st)} onChange={(e) => p.onStatuses(toggle(p.statuses, st, e.target.checked))} />
+                <Checkbox checked={p.statuses.has(st)} onChange={(e) => p.onStatuses(toggle(p.statuses, st, e.target.checked))} />
                 {masterLabel('calEventStatus', st)}
               </label>
             </li>
           ))}
           <li>
             <label className="cal-check">
-              <input type="checkbox" checked={p.withModules} onChange={(e) => p.onWithModules(e.target.checked)} />
+              <Checkbox checked={p.withModules} onChange={(e) => p.onWithModules(e.target.checked)} />
               {C.page.withModules}
             </label>
           </li>

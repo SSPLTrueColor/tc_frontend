@@ -18,6 +18,8 @@ import { EmptyState, ErrorState, Skeleton, StatusChip, Tabs, useToast } from '..
 import { Dialog } from '../../../components/primitives/overlay';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import { PageHeader } from '../../../components/shell/PageHeader';
+import { Checkbox, LinkButton, SearchInput, Textarea } from '../../../components/primitives/controls';
+import { Table } from '../../../components/primitives/Table';
 
 const S = L.service;
 const P = S.pages.pmSchedule;
@@ -78,15 +80,13 @@ export function PmSchedulePage() {
         description={P.description}
         actions={
           perm(actor, 'pmVisits').create ? (
-            <Link className="btn btn-primary" to={recordNewPath('pmVisits')}>
-              <span className="btn-label">{S.actions.newPmVisit}</span>
-            </Link>
+            <LinkButton variant="primary" to={recordNewPath('pmVisits')}>{S.actions.newPmVisit}</LinkButton>
           ) : undefined
         }
       />
       <Tabs<PmTab> label={P.tabsLabel} value={tab} onChange={(t) => update({ tab: t })} tabs={TABS.map((t) => ({ id: t, label: tabLabel(t), count: q.data ? counts(t) : undefined }))} />
       <div className="toolbar" style={{ flexWrap: 'wrap' }}>
-        <input type="search" className="input input-compact" placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => update({ q: e.target.value || undefined })} />
+        <SearchInput dense placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => update({ q: e.target.value || undefined })} />
         <SelectMenu
           label={P.engineerFilter}
           value={engineerId}
@@ -114,8 +114,8 @@ export function PmSchedulePage() {
           <EmptyState icon="calendar-clock" title={filtered ? P.emptySearch : tab === 'all' ? P.emptyAll : P.empty(tabLabel(tab).toLowerCase())} />
         ) : (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{P.cols.due}</th>
@@ -169,8 +169,8 @@ export function PmSchedulePage() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             <div className="grid-footer">
               <span className="grid-footer-range">{S.pager.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)}</span>
               <nav className="grid-pages" aria-label={S.pager.label}>
@@ -230,7 +230,7 @@ function CompletePmDialog({ pmId, onClose }: { pmId: string; onClose: () => void
         {items.map((item, i) => (
           <li key={item}>
             <label className="row-gap">
-              <input type="checkbox" checked={ok[i]} onChange={(e) => setOk(ok.map((x, j) => (j === i ? e.target.checked : x)))} /> {item}
+              <Checkbox checked={ok[i]} onChange={(e) => setOk(ok.map((x, j) => (j === i ? e.target.checked : x)))} /> {item}
             </label>
           </li>
         ))}
@@ -239,7 +239,7 @@ function CompletePmDialog({ pmId, onClose }: { pmId: string; onClose: () => void
         <label className="field-label" htmlFor="pm-notes">
           {P.findings} {ok.some((x) => !x) && <span className="req">*</span>}
         </label>
-        <textarea id="pm-notes" className="input textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} aria-invalid={!!error.notes || undefined} />
+        <Textarea id="pm-notes" className="textarea" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} aria-invalid={!!error.notes || undefined} />
         {error.notes && <p className="field-error">{error.notes}</p>}
         {error.form && <p className="field-error">{error.form}</p>}
       </div>

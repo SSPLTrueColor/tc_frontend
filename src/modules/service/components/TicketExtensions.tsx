@@ -1,4 +1,5 @@
 /** Service ticket record extensions: warranty / AMC + SLA banner, ticket tabs (SLA Tracking, Site Visits, Remote Support, Chargeable Service, Customer Feedback), service actions and their dialogs. */
+import { CLOCK_TONE } from '../../../domain/statusTones';
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { nowLocal, formatDateTime } from '../../../lib/dates';
@@ -23,17 +24,17 @@ import { SelectMenu } from '../../../components/primitives/SelectMenu';
 import { LogActivityDialog } from '../../../components/crm/LogActivityDialog';
 import { VoiceButton } from '../../../components/crm/VoiceButton';
 import { recordTitle } from '../../../services/runtime';
-import type { Tone } from '../../../metadata/types';
 import { L } from '../../../constants/labels';
 import { ROUTES, toPath } from '../../../constants/routes';
 import { resourcePath } from '../../../lib/routes';
 import { escalationRole } from '../../../services/service/tickets';
+import { SegmentedControl, TextField, Textarea } from '../../../components/primitives/controls';
 
 const S = L.service;
 
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
-const CLOCK_TONE: Record<ClockState['status'], Tone> = { met: 'success', breached_met: 'warning', breached: 'danger', at_risk: 'warning', running: 'info', paused: 'neutral', not_applicable: 'neutral' };
+
 const chip = (c: ClockState) => ({ label: S.sla.chips[c.status], tone: CLOCK_TONE[c.status] });
 
 export function clockText(c: ClockState) {
@@ -465,31 +466,25 @@ function RemoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => 
             </label>
             <VoiceButton onText={(t) => setSteps((x) => (x ? `${x} ${t}` : t))} />
           </span>
-          <textarea id="rs-steps" className="input textarea" rows={4} maxLength={2000} value={steps} onChange={(e) => setSteps(e.target.value)} aria-invalid={!!errors.steps || undefined} data-autofocus />
+          <Textarea id="rs-steps" className="textarea" rows={4} maxLength={2000} value={steps} onChange={(e) => setSteps(e.target.value)} aria-invalid={!!errors.steps || undefined} data-autofocus />
           {errors.steps && <p className="field-error">{errors.steps}</p>}
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="rs-dur">
             {S.remote.duration} <span className="req">*</span>
           </label>
-          <input id="rs-dur" className="input" inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.durationMin || undefined} />
+          <TextField id="rs-dur" inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.durationMin || undefined} />
           {errors.durationMin && <p className="field-error">{errors.durationMin}</p>}
         </div>
         <div className="form-field">
           <label className="field-label" htmlFor="rs-ref">
             {S.remote.ref}
           </label>
-          <input id="rs-ref" className="input" maxLength={60} placeholder={S.remote.refPlaceholder} value={ref} onChange={(e) => setRef(e.target.value)} />
+          <TextField id="rs-ref" maxLength={60} placeholder={S.remote.refPlaceholder} value={ref} onChange={(e) => setRef(e.target.value)} />
         </div>
         <fieldset className="form-field span-all">
           <legend className="field-label">{S.remote.outcome}</legend>
-          <div className="segmented">
-            {(['continue', 'resolved', 'site_visit'] as const).map((k) => [k, S.remote.outcomes[k]] as const).map(([k, l]) => (
-              <button key={k} type="button" className={`seg-btn${outcome === k ? ' is-on' : ''}`} aria-pressed={outcome === k} onClick={() => setOutcome(k)}>
-                {l}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl label={S.remote.outcome} value={outcome} onChange={setOutcome} options={(['continue', 'resolved', 'site_visit'] as const).map((k) => ({ value: k, label: S.remote.outcomes[k] }))} />
         </fieldset>
         <FormError text={errors.form} />
       </div>
@@ -525,7 +520,7 @@ function QuoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => v
           </label>
           <div className="input-affix">
             <span className="affix affix-start">₹</span>
-            <input id="cq-amt" className="input" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} aria-invalid={!!errors.amount || undefined} data-autofocus />
+            <TextField id="cq-amt" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} aria-invalid={!!errors.amount || undefined} data-autofocus />
           </div>
           {amount && Number(amount) > 0 && <span className="muted small">{formatMoney(Number(amount))}</span>}
           {errors.amount && <p className="field-error">{errors.amount}</p>}
@@ -534,7 +529,7 @@ function QuoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => v
           <label className="field-label" htmlFor="cq-note">
             {S.quote.note} <span className="req">*</span>
           </label>
-          <textarea id="cq-note" className="input textarea" rows={3} maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!errors.note || undefined} />
+          <Textarea id="cq-note" className="textarea" rows={3} maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!errors.note || undefined} />
           {errors.note && <p className="field-error">{errors.note}</p>}
         </div>
         <FormError text={errors.form} />
@@ -570,7 +565,7 @@ function WaiveDialog({ ticketId, onClose }: { ticketId: string; onClose: () => v
         <label className="field-label" htmlFor="wv-reason">
           {S.waive.reason} <span className="req">*</span>
         </label>
-        <textarea id="wv-reason" className="input textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={!!errors.reason || undefined} />
+        <Textarea id="wv-reason" className="textarea" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} aria-invalid={!!errors.reason || undefined} />
         {errors.reason && <p className="field-error">{errors.reason}</p>}
         <FormError text={errors.form && !errors.reason ? errors.form : undefined} />
       </div>
@@ -623,7 +618,7 @@ export function SpottedDialog({ ticketId, onClose }: { ticketId: string; onClose
             </label>
             <VoiceButton onText={(t) => setNote((x) => (x ? `${x} ${t}` : t))} />
           </span>
-          <textarea id="os-note" className="input textarea" rows={3} maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!errors.note || undefined} data-autofocus />
+          <Textarea id="os-note" className="textarea" rows={3} maxLength={600} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={!!errors.note || undefined} data-autofocus />
           {errors.note && <p className="field-error">{errors.note}</p>}
         </div>
         {!leadsAvailable && <InlineAlert tone="warning">{S.spotted.leadsNotLoaded}</InlineAlert>}

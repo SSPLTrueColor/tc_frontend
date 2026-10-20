@@ -19,6 +19,8 @@ import { confirmDelete } from '../../components/primitives/overlay';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { Meter, metricValue, PAGE_SIZE, Pager, SearchBox, Stat } from './common';
+import { Checkbox, LinkButton } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const T = L.nav.pages;
 
@@ -80,12 +82,12 @@ export function PayrollExportPage() {
         ) : !q.data ? (
           <Skeleton rows={6} />
         ) : rows.length ? (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">
-                    <input type="checkbox" aria-label={P.selectAll} checked={selected.size === rows.length} onChange={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map((r) => r.id)))} />
+                    <Checkbox aria-label={P.selectAll} checked={selected.size === rows.length} onChange={() => setSelected(selected.size === rows.length ? new Set() : new Set(rows.map((r) => r.id)))} />
                   </th>
                   <th scope="col">{P.claim}</th>
                   <th scope="col">{P.date}</th>
@@ -99,8 +101,8 @@ export function PayrollExportPage() {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      <input
-                        type="checkbox"
+                      <Checkbox
+                        
                         aria-label={P.selectOne(r.id)}
                         checked={selected.has(r.id)}
                         onChange={() => {
@@ -123,8 +125,8 @@ export function PayrollExportPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         ) : (
           <EmptyState icon="receipt" title={P.emptyTitle}>
             {P.emptyBody}
@@ -229,9 +231,7 @@ export function TargetVsActualPage() {
                 title={P.emptyTitle}
                 action={
                   perm(actor, 'targets').create ? (
-                    <Link className="btn btn-primary" to={resourcePath(actor.workspaceId, 'targets')}>
-                      <span className="btn-label">{P.setTargets}</span>
-                    </Link>
+                    <LinkButton variant="primary" to={resourcePath(actor.workspaceId, 'targets')}>{P.setTargets}</LinkButton>
                   ) : undefined
                 }
               >
@@ -242,8 +242,8 @@ export function TargetVsActualPage() {
                 {P.noMatchBody}
               </EmptyState>
             ) : (
-              <div className="table-scroll">
-                <table className="mini-table">
+              
+                <Table>
                   <thead>
                     <tr>
                       <th scope="col">{P.colTarget}</th>
@@ -298,8 +298,8 @@ export function TargetVsActualPage() {
                       </Fragment>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              
             )}
           </div>
           <Pager page={page} total={rows.length} onPage={setPage} />
@@ -371,8 +371,8 @@ export function ActivityScorecardPage() {
             {P.noMatchBody}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{P.person}</th>
@@ -402,8 +402,8 @@ export function ActivityScorecardPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         )}
       </div>
       <Pager page={page} total={rows.length} onPage={setPage} />

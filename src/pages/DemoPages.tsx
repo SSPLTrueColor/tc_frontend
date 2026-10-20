@@ -21,6 +21,9 @@ import { Dialog } from '../components/primitives/overlay';
 import { SelectMenu } from '../components/primitives/SelectMenu';
 import { Clip, SettingsPage, SettingsSection } from '../components/settings/kit';
 import { byTime, SortPicker, type SortDir, usePaged } from '../modules/catalog/kit';
+import { SearchInput } from '../components/primitives/controls';
+import { Table } from '../components/primitives/Table';
+import { FileInput } from '../components/primitives/controls';
 
 const DC = L.admin.demoControls;
 const DT = L.admin.dataTransfer;
@@ -126,9 +129,9 @@ export function DataTransfer() {
       <Button icon="arrow-up" onClick={() => fileRef.current?.click()}>
         {DT.import}
       </Button>
-      <input
+      <FileInput
         ref={fileRef}
-        type="file"
+        
         accept="application/json,.json"
         hidden
         onChange={(e) => {
@@ -206,7 +209,7 @@ export function OutboxPage() {
     <SettingsPage title={L.nav.pages.sentMessages.title} description={O.short}>
       <SettingsSection wide title={O.sectionTitle} help={O.sectionHelp}>
       <div className="st-actions">
-        <input type="search" className="input input-compact" placeholder={O.searchPlaceholder} aria-label={O.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchInput dense placeholder={O.searchPlaceholder} aria-label={O.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
         <SelectMenu label={O.filterChannel} value={channel} options={[{ value: '', label: O.allChannels }, ...Object.entries(CHANNEL_LABEL).map(([value, label]) => ({ value, label }))]} onChange={setChannel} />
         <SortPicker value={sort} onChange={setSort} />
       </div>
@@ -219,8 +222,8 @@ export function OutboxPage() {
           <Skeleton rows={6} />
         ) : rows.length ? (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{O.columns.when}</th>
@@ -251,8 +254,8 @@ export function OutboxPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {paged.footer(O.messages)}
           </>
         ) : all.length ? (

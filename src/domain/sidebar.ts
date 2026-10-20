@@ -187,6 +187,7 @@ const SIDEBAR: Group[] = [
       { id: 'recycleBin', icon: 'trash', capability: 'recycle.manage' },
       { id: 'sentMessages', icon: 'send', capability: 'outbox.view' },
       { id: 'demoSettings', icon: 'palette' },
+      { id: 'componentGallery', icon: 'blocks', capability: 'demo.settings' },
     ],
   },
 ];

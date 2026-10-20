@@ -52,5 +52,5 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
   },
   { id: 'integrations', items: [page('integrations', 'activity', 'integrations.manage'), page('sentMessages', 'send', 'outbox.view')] },
   { id: 'governance', items: [page('auditTrail', 'scroll-text', 'audit.view'), page('dataProtection', 'shield')] },
-  { id: 'demo', items: [page('demoSettings', 'palette')] },
+  { id: 'demo', items: [page('demoSettings', 'palette'), page('componentGallery', 'blocks', 'demo.settings')] },
 ];

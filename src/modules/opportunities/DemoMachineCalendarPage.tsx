@@ -22,6 +22,8 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 import '../calendar/calendar.css';
 import './opportunities.css';
+import { Checkbox } from '../../components/primitives/controls';
+import { SegmentedControl } from '../../components/primitives/controls';
 
 const T = L.opportunities.pages.demoMachineCalendar;
 type ViewId = 'dayGridMonth' | 'timeGridWeek' | 'listMonth';
@@ -146,8 +148,8 @@ export function DemoMachineCalendarPage() {
                       return (
                         <li key={m.id}>
                           <label className={cx('cal-check dm-machine', colour.get(m.id))}>
-                            <input
-                              type="checkbox"
+                            <Checkbox
+                              
                               checked={!hidden.has(m.id)}
                               onChange={(e) => {
                                 const n = new Set(hidden);
@@ -173,7 +175,7 @@ export function DemoMachineCalendarPage() {
               </section>
               <section className="cal-filter">
                 <label className="cal-check">
-                  <input type="checkbox" checked={withCancelled} onChange={(e) => setWithCancelled(e.target.checked)} />
+                  <Checkbox checked={withCancelled} onChange={(e) => setWithCancelled(e.target.checked)} />
                   {T.showCancelled}
                 </label>
               </section>
@@ -189,13 +191,12 @@ export function DemoMachineCalendarPage() {
                 {title}
               </h2>
               <span className="spacer" />
-              <div className="segmented" role="radiogroup" aria-label={T.viewLabel}>
-                {VIEWS.map((v) => (
-                  <button key={v.id} type="button" role="radio" aria-checked={view === v.id} className={cx('seg-btn', view === v.id && 'is-on')} onClick={() => changeView(v.id)}>
-                    {v.label}
-                  </button>
-                ))}
-              </div>
+              <SegmentedControl
+                label={T.viewLabel}
+                value={view}
+                onChange={(next) => changeView(next)}
+                options={VIEWS.map((v) => ({ value: v.id, label: v.label }))}
+              />
             </div>
             {!query.data ? (
               <Skeleton rows={10} />

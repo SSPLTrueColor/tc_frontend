@@ -1,5 +1,4 @@
 import { L } from '../../constants/labels';
-import { cx } from '../../lib/format';
 import { SettingsField, SettingsPage, SettingsSection, SaveBar, ToggleRow, useDraft } from '../../components/settings/kit';
 import { Button } from '../../components/primitives/Button';
 import { useToast } from '../../components/primitives/feedback';
@@ -9,6 +8,7 @@ import { useActor, useSettings } from '../../services/hooks';
 import { masterLabel } from '../../services/registry';
 import { updateSettings } from '../../services/settings';
 import type { PersonalSettings } from '../../services/types';
+import { SegmentedControl } from '../../components/primitives/controls';
 
 const P = L.account.profile;
 
@@ -59,22 +59,20 @@ export function ProfilePage() {
 
       <SettingsSection title={P.navigation.title} help={P.navigation.help}>
         <SettingsField label={P.navigation.density}>
-          <div className="segmented" role="group" aria-label={P.navigation.density}>
-            {(['balanced', 'compact'] as const).map((d) => (
-              <button key={d} type="button" className={cx('seg-btn', s.navDensity === d && 'is-on')} aria-pressed={s.navDensity === d} onClick={() => instant({ navDensity: d })}>
-                {P.navigation[d]}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={P.navigation.density}
+            value={s.navDensity}
+            onChange={(next) => instant({ navDensity: next })}
+            options={(['balanced', 'compact'] as const).map((d) => ({ value: d, label: P.navigation[d] }))}
+          />
         </SettingsField>
         <SettingsField label={P.navigation.form}>
-          <div className="segmented" role="group" aria-label={P.navigation.form}>
-            {(['simple', 'canvas'] as const).map((d) => (
-              <button key={d} type="button" className={cx('seg-btn', s.formLayout === d && 'is-on')} aria-pressed={s.formLayout === d} onClick={() => instant({ formLayout: d })}>
-                {d === 'simple' ? P.navigation.formSimple : P.navigation.formCanvas}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            label={P.navigation.form}
+            value={s.formLayout}
+            onChange={(next) => instant({ formLayout: next })}
+            options={(['simple', 'canvas'] as const).map((d) => ({ value: d, label: d === 'simple' ? P.navigation.formSimple : P.navigation.formCanvas }))}
+          />
         </SettingsField>
         <ToggleRow label={P.navigation.sidebar} help={`${s.sidebarWidth}px`} checked={!s.sidebarCollapsed} onChange={(v) => instant({ sidebarCollapsed: !v })} />
         <div>

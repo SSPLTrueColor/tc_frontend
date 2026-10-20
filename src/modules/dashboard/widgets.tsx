@@ -1,3 +1,4 @@
+import { SkeletonLine } from '../../components/primitives/Skeleton';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, LabelList, Pie, PieChart, RadialBar, RadialBarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -13,6 +14,7 @@ import { InfoTip } from '../../components/primitives/InfoTip';
 import { compactInr } from '../../services/reports/format';
 import type { AlertItem, Board, FeedItem, Fmt, Kpi, Pipe, Share, Trend } from '../../services/reports/overview';
 import type { PlanItem } from '../../services/reports/dashboard';
+import { Table } from '../../components/primitives/Table';
 
 const COLOR: Record<string, string> = {
   success: 'var(--s-success)',
@@ -69,7 +71,7 @@ export function CardSkeleton({ className, rows = 6 }: { className?: string; rows
   return (
     <section className={cx('panel dash-card', className)} aria-busy="true" aria-label={CD.loading}>
       <div className="panel-head">
-        <span className="skeleton-row dash-skel-title" />
+        <SkeletonLine size="title" />
       </div>
       <Skeleton rows={rows} />
     </section>
@@ -79,8 +81,8 @@ export function CardSkeleton({ className, rows = 6 }: { className?: string; rows
 export function KpiSkeleton() {
   return (
     <div className="kpi-card" aria-busy="true" aria-label={CD.loading}>
-      <span className="skeleton-row dash-skel-title" />
-      <span className="skeleton-row dash-skel-value" />
+      <SkeletonLine size="title" />
+      <SkeletonLine size="value" />
       <span className="skeleton-row" />
     </div>
   );
@@ -366,8 +368,8 @@ export function BoardCard({ board }: { board: Board }) {
           {board.empty}
         </EmptyState>
       ) : (
-        <div className="table-scroll">
-          <table className="mini-table dash-table">
+        
+          <Table className="dash-table">
             <caption className="sr-only">{board.title}</caption>
             <thead>
               <tr>
@@ -397,8 +399,8 @@ export function BoardCard({ board }: { board: Board }) {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+        
       )}
     </Card>
   );

@@ -21,6 +21,7 @@ import { L } from '../../constants/labels';
 import { ROUTES, toPath } from '../../constants/routes';
 import { recordPeekPath } from '../../lib/routes';
 import { DiffAlert, Field, FilePick, LinesTable, TotalsBlock } from './components';
+import { LinkButton, SearchInput, TextField } from '../../components/primitives/controls';
 
 const O = L.orders;
 const P = O.pages.newOrder;
@@ -48,7 +49,7 @@ function SourcePicker() {
     <div className="page">
       <PageHeader title={P.title} description={P.description} />
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={P.search} aria-label={P.searchAria} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchInput dense placeholder={P.search} aria-label={P.searchAria} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {data.error ? (
         <ErrorState title={P.loadError} onRetry={data.retry}>
@@ -76,9 +77,7 @@ function SourcePicker() {
                           {P.accepted(formatMoney(Number(x.grandTotal)), x.acceptedAt ? formatDate(String(x.acceptedAt)) : formatDate(String(x.quoteDate)))}
                         </span>
                       </span>
-                      <Link className="btn btn-primary" to={toPath(ROUTES.salesOrderNew, {}, { quotation: x.id })}>
-                        <span className="btn-label">{O.actions.generateSalesOrder}</span>
-                      </Link>
+                      <LinkButton variant="primary" to={toPath(ROUTES.salesOrderNew, {}, { quotation: x.id })}>{O.actions.generateSalesOrder}</LinkButton>
                     </li>
                   ))}
               </ul>
@@ -107,9 +106,7 @@ function SourcePicker() {
                           {P.lastOrdered(formatDate(String(x.orderDate)), formatMoney(Number(x.grandTotal)))}
                         </span>
                       </span>
-                      <Link className="btn btn-secondary" to={toPath(ROUTES.salesOrderNew, {}, { repeatOf: x.id })}>
-                        <span className="btn-label">{O.actions.repeatOrder}</span>
-                      </Link>
+                      <LinkButton to={toPath(ROUTES.salesOrderNew, {}, { repeatOf: x.id })}>{O.actions.repeatOrder}</LinkButton>
                     </li>
                   ))}
               </ul>
@@ -242,7 +239,7 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
           <h2 className="panel-title">{P.poPanel}</h2>
           <div className="form-grid cols-2">
             <Field id="so-po" label={F.customerPoNo} required error={errors.customerPoNo}>
-              <input id="so-po" className="input" maxLength={40} value={po.customerPoNo} onChange={(e) => setPo({ ...po, customerPoNo: e.target.value })} aria-invalid={!!errors.customerPoNo || undefined} data-autofocus />
+              <TextField id="so-po" maxLength={40} value={po.customerPoNo} onChange={(e) => setPo({ ...po, customerPoNo: e.target.value })} aria-invalid={!!errors.customerPoNo || undefined} data-autofocus />
             </Field>
             <Field id="so-po-date" label={F.customerPoDate} required error={errors.customerPoDate}>
               <DatePicker id="so-po-date" label={F.customerPoDate} value={po.customerPoDate} onChange={(v) => setPo({ ...po, customerPoDate: v ?? '' })} invalid={!!errors.customerPoDate} />

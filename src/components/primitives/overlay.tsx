@@ -1,3 +1,4 @@
+import { TextField } from './controls';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { cx } from '../../lib/format';
@@ -142,54 +143,87 @@ export interface ConfirmOptions {
   title: string;
   message: string;
   confirmLabel?: string;
-  onConfirm: () => void;
+  /** `danger` (default) = red button for deleting / discarding; `primary` = a normal yes / no question. */
+  tone?: 'danger' | 'primary';
+  /** Irreversible actions: the confirm button stays disabled until this exact word is typed. */
+  typedWord?: string;
+  /** May be async: the button shows a spinner and the dialog closes when it finishes (it stays open if it throws). */
+  onConfirm: () => void | Promise<unknown>;
 }
 let pushConfirm: ((o: ConfirmOptions) => void) | null = null;
 
 /**
- * Owner rule: anything that deletes / removes / discards data first shows this alert box —
- * "Cancel" (focused) + a red confirm button. Call `confirmDelete({...})` from any click handler.
+ * The one confirmation dialog. Anything that deletes, removes, discards or cannot be undone asks first:
+ * "Cancel" (focused) + a confirm button. Call `confirmDelete({...})` from any click handler.
+ * Use `typedWord` for the worst cases (reset all data, sign out everywhere).
  */
 export function confirmDelete(o: ConfirmOptions) {
   if (pushConfirm) pushConfirm(o);
-  else if (window.confirm(`${o.title}\n\n${o.message}`)) o.onConfirm();
+  else if (!o.typedWord && window.confirm(`${o.title}\n\n${o.message}`)) void o.onConfirm();
 }
+export const confirmAction = confirmDelete;
 
 /** Mounted once in App (next to TooltipLayer). */
 export function ConfirmHost() {
   const [cur, setCur] = useState<ConfirmOptions | null>(null);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   useEffect(() => {
-    pushConfirm = setCur;
+    pushConfirm = (o) => {
+      setTyped('');
+      setCur(o);
+    };
     return () => {
       pushConfirm = null;
     };
   }, []);
+  const close = () => {
+    if (!inFlight.current) setCur(null);
+  };
+  const ok = !cur?.typedWord || typed.trim() === cur.typedWord;
+  const run = async () => {
+    if (!cur || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      await cur.onConfirm();
+      inFlight.current = false;
+      setCur(null);
+    } catch {
+      /* the caller reports the failure; the dialog stays open so nothing is lost */
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  };
   return (
     <Dialog
       open={!!cur}
-      onClose={() => setCur(null)}
+      onClose={close}
       title={cur?.title ?? ''}
       size="sm"
       role="alertdialog"
       footer={
         <>
-          <Button onClick={() => setCur(null)} data-autofocus>
+          <Button onClick={close} data-autofocus>
             {L.common.actions.cancel}
           </Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              const c = cur;
-              setCur(null);
-              c?.onConfirm();
-            }}
-          >
-            {cur?.confirmLabel ?? L.common.actions.delete}
+          <Button variant={cur?.tone === 'primary' ? 'primary' : 'danger'} loading={busy} disabledReason={ok ? undefined : L.common.confirm.typeToConfirm(cur?.typedWord ?? '')} onClick={run}>
+            {cur?.confirmLabel ?? (cur?.tone === 'primary' ? L.common.actions.confirm : L.common.actions.delete)}
           </Button>
         </>
       }
     >
-      <p>{cur?.message}</p>
+      {cur?.message && <p>{cur.message}</p>}
+      {cur?.typedWord && (
+        <div className="form-field">
+          <label className="field-label" htmlFor="confirm-typed">
+            {L.common.confirm.typeToConfirm(cur.typedWord)}
+          </label>
+          <TextField id="confirm-typed" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </div>
+      )}
     </Dialog>
   );
 }

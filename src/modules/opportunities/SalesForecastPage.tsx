@@ -16,6 +16,8 @@ import { BarChart } from '../../components/resource/BarChart';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { L } from '../../constants/labels';
 import { moneyShort } from './format';
+import { SegmentedControl } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const T = L.opportunities.pages.salesForecast;
 
@@ -43,23 +45,15 @@ export function SalesForecastPage() {
     <div className="page">
       <PageHeader title={L.nav.pages.salesForecast.title} description={T.description} />
       <div className="toolbar">
-        <div className="segmented" role="radiogroup" aria-label={T.period}>
-          {(['month', 'quarter'] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              role="radio"
-              aria-checked={period === p}
-              className={`seg-btn${period === p ? ' is-on' : ''}`}
-              onClick={() => {
-                setPeriod(p);
-                setHorizon(p === 'month' ? 6 : 4);
-              }}
-            >
-              {p === 'month' ? T.monthly : T.quarterly}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          label={T.period}
+          value={period}
+          onChange={(next) => {
+            setPeriod(next);
+            setHorizon(next === 'month' ? 6 : 4);
+          }}
+          options={(['month', 'quarter'] as const).map((p) => ({ value: p, label: p === 'month' ? T.monthly : T.quarterly }))}
+        />
         <SelectMenu label={T.horizon} value={horizon} options={horizons.map((n) => ({ value: n, label: T.nextN(n, period) }))} onChange={setHorizon} />
         <SelectMenu<ForecastGroup>
           label={T.groupBy}
@@ -146,8 +140,8 @@ export function SalesForecastPage() {
               {MEASURES.find((m) => m.value === measure)!.label}
               <InfoTip text={T.tableTip} label={T.tableTipLabel} />
             </h2>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{groupBy === 'owner' ? T.owner : groupBy === 'division' ? T.division : T.productType}</th>
@@ -187,8 +181,8 @@ export function SalesForecastPage() {
                     </td>
                   </tr>
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
           </section>
         </>
       )}

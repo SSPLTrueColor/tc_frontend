@@ -1,6 +1,5 @@
 /** Opportunities module: stage guards, defaults, demo double-booking check, record actions, banner and timeline. */
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { addMinutes, formatDate, overlaps, todayKey } from '../../lib/dates';
 import { nowIso } from '../../lib/clock';
 import { formatMoney } from '../../lib/format';
@@ -27,6 +26,7 @@ import { ROUTES, toPath } from '../../constants/routes';
 import { recordPeekPath } from '../../lib/routes';
 import { getDb } from '../../services/db';
 import { configureStagnationDays } from '../modules/opportunities';
+import { LinkButton } from '../../components/primitives/controls';
 
 const T = L.opportunities;
 
@@ -156,13 +156,9 @@ function OpportunityActions({ actor, res, record }: RecordExtensionProps) {
       )}
       {record.stage === 'won' &&
         (order ? (
-          <Link className="btn" to={recordPeekPath('tc', 'salesOrders', order.id)}>
-            <span className="btn-label">{T.actions.openSalesOrder(order.id)}</span>
-          </Link>
+          <LinkButton to={recordPeekPath('tc', 'salesOrders', order.id)}>{T.actions.openSalesOrder(order.id)}</LinkButton>
         ) : accepted ? (
-          <Link className="btn btn-primary" to={toPath(ROUTES.salesOrderNew, {}, { quotation: accepted.id })}>
-            <span className="btn-label">{T.actions.generateSalesOrder}</span>
-          </Link>
+          <LinkButton variant="primary" to={toPath(ROUTES.salesOrderNew, {}, { quotation: accepted.id })}>{T.actions.generateSalesOrder}</LinkButton>
         ) : (
           <Button variant="primary" disabledReason={T.messages.needsAcceptedQuotation}>
             {T.actions.generateSalesOrder}

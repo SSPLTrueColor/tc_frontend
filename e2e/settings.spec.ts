@@ -370,7 +370,7 @@ test.describe('behaviour', () => {
     await page.getByRole('option').nth(1).click();
     await expect(page.getByRole('region', { name: 'Unsaved changes' })).toBeVisible();
     await page.getByRole('tab', { name: 'Advanced' }).click();
-    await page.getByRole('button', { name: 'Compare roles' }).click();
+    await page.getByRole('radio', { name: 'Compare roles' }).click();
     await page.getByRole('tab', { name: 'Roles', exact: true }).click();
     await expect(page.getByRole('region', { name: 'Unsaved changes' })).toBeVisible();
   });

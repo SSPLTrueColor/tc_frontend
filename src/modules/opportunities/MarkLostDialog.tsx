@@ -10,6 +10,7 @@ import { Button } from '../../components/primitives/Button';
 import { useToast } from '../../components/primitives/feedback';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
+import { TextField, Textarea } from '../../components/primitives/controls';
 
 const T = L.opportunities;
 
@@ -65,7 +66,7 @@ export function MarkLostDialog({ actor, record, onClose }: { actor: Actor; recor
           <label className="field-label" htmlFor="lost-to">
             {T.markLost.competitor} <span className="req">*</span>
           </label>
-          <input id="lost-to" className="input" maxLength={80} value={competitor} onChange={(e) => setCompetitor(e.target.value)} aria-invalid={!!errors.lostToCompetitor || undefined} />
+          <TextField id="lost-to" maxLength={80} value={competitor} onChange={(e) => setCompetitor(e.target.value)} aria-invalid={!!errors.lostToCompetitor || undefined} />
           {errors.lostToCompetitor && <p className="field-error">{errors.lostToCompetitor}</p>}
         </div>
         <div className="form-field">
@@ -74,7 +75,7 @@ export function MarkLostDialog({ actor, record, onClose }: { actor: Actor; recor
           </label>
           <div className="input-affix has-start">
             <span className="affix affix-start">₹</span>
-            <input id="lost-price" className="input" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ''))} aria-invalid={!!errors.lostToPrice || undefined} />
+            <TextField id="lost-price" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ''))} aria-invalid={!!errors.lostToPrice || undefined} />
           </div>
           {errors.lostToPrice && <p className="field-error">{errors.lostToPrice}</p>}
         </div>
@@ -82,7 +83,7 @@ export function MarkLostDialog({ actor, record, onClose }: { actor: Actor; recor
           <label className="field-label" htmlFor="lost-note">
             {T.markLost.note}
           </label>
-          <textarea id="lost-note" className="input textarea" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
+          <Textarea id="lost-note" className="textarea" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
         {errors.form && (
           <p className="field-error span-all" role="alert">

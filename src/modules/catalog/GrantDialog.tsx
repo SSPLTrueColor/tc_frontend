@@ -12,8 +12,8 @@ import { DatePicker } from '../../components/primitives/DatePicker';
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { SettingsField } from '../../components/settings/kit';
-import { cx } from '../../lib/format';
 import { formatDate } from '../../lib/dates';
+import { SegmentedControl, Textarea } from '../../components/primitives/controls';
 
 const G = L.grants;
 const PRESETS = [7, 30, 90, 180];
@@ -96,18 +96,12 @@ export function GrantDialog({ actor, userId, name, open, onClose, module }: { ac
         )}
         <SettingsField label={G.endDate} htmlFor="gr-end" help={G.endHelp} error={show('expiresAt')}>
           <div className="st-actions">
-            <div className="segmented" role="group" aria-label={G.endDate}>
-              {PRESETS.map((d) => (
-                <button key={d} type="button" className={cx('seg-btn', v.expiresAt === addDays(todayKey(), d) && 'is-on')} aria-pressed={v.expiresAt === addDays(todayKey(), d)} onClick={() => setV({ ...v, expiresAt: addDays(todayKey(), d) })}>
-                  {G.presets[d]}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl label={G.endDate} value={PRESETS.map((d) => addDays(todayKey(), d)).find((d) => d === v.expiresAt) ?? ''} onChange={(d) => setV({ ...v, expiresAt: d })} options={PRESETS.map((d) => ({ value: addDays(todayKey(), d), label: G.presets[d] }))} />
             <DatePicker id="gr-end" label={G.endDate} value={v.expiresAt} clearable={false} onChange={(d) => setV({ ...v, expiresAt: d ?? '' })} invalid={!!show('expiresAt')} />
           </div>
         </SettingsField>
         <SettingsField label={G.reasonLabel} htmlFor="gr-reason" help={G.reasonHelp} error={show('reason')} required>
-          <textarea id="gr-reason" className="input" rows={2} maxLength={220} value={v.reason} placeholder={G.reasonPlaceholder} onChange={(e) => setV({ ...v, reason: e.target.value })} onBlur={() => v.reason && setTried(true)} aria-invalid={!!show('reason') || undefined} />
+          <Textarea id="gr-reason" rows={2} maxLength={220} value={v.reason} placeholder={G.reasonPlaceholder} onChange={(e) => setV({ ...v, reason: e.target.value })} onBlur={() => v.reason && setTried(true)} aria-invalid={!!show('reason') || undefined} />
         </SettingsField>
         <InlineAlert tone={risky ? 'warning' : 'info'}>
           {summary}

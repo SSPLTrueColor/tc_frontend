@@ -44,6 +44,9 @@ import { QuickCreateDialog } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { SettingsPage } from '../../components/settings/kit';
 import { ConvertDialog, convertBlockedReason } from './components';
+import { SearchInput, TextField } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
+import { FileInput, Radio } from '../../components/primitives/controls';
 
 const A = L.customers.actions;
 const PAGES = L.nav.pages;
@@ -140,7 +143,7 @@ export function ContactPoolPage() {
         <InfoTip text={L.customers.import.demoTip} label={L.customers.import.demoTipLabel} />
       </div>
       <div className="toolbar">
-        <input type="search" className="input input-compact" placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), reset())} />
+        <SearchInput dense placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => (setSearch(e.target.value), reset())} />
         <SelectMenu label={P.filterStatus} value={status} options={statusOptions} onChange={(v) => (setStatus(v as StatusFilter), reset())} />
         <SelectMenu label={P.filterSource} value={source} options={[{ value: '', label: P.sourceAll }, ...activeMasterValues('leadSource').map((v) => ({ value: v.key, label: v.label }))]} onChange={(v) => (setSource(v), reset())} />
         <span className="spacer" />
@@ -171,8 +174,8 @@ export function ContactPoolPage() {
           </EmptyState>
         ) : (
           <>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{sortBtn('name', P.cols.name)}</th>
@@ -225,8 +228,8 @@ export function ContactPoolPage() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             <div className="grid-footer">
               <span className="grid-footer-range">
                 <strong>{P.range(current * PAGE_SIZE + 1, Math.min(rows.length, (current + 1) * PAGE_SIZE), rows.length)}</strong>
@@ -273,8 +276,8 @@ export function DuplicatesPage() {
             {D.emptyText}
           </EmptyState>
         ) : (
-          <div className="table-scroll">
-            <table className="mini-table">
+          
+            <Table>
               <thead>
                 <tr>
                   <th scope="col">{D.cols.why}</th>
@@ -301,7 +304,7 @@ export function DuplicatesPage() {
                               <li key={id}>
                                 {isCustomer ? (
                                   <label className="row-gap">
-                                    <input type="radio" name={`keep-${i}`} checked={survivor === id} onChange={() => setKeep((k) => ({ ...k, [i]: id }))} />
+                                    <Radio name={`keep-${i}`} checked={survivor === id} onChange={() => setKeep((k) => ({ ...k, [i]: id }))} />
                                     <Link to={recordPeekPath(actor.workspaceId, 'customers', id)}>
                                       <span className="mono">{id}</span> {String(r?.name ?? '')}
                                     </Link>
@@ -354,8 +357,8 @@ export function DuplicatesPage() {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+            </Table>
+          
         )}
       </div>
     </SettingsPage>
@@ -425,7 +428,7 @@ export function TransferPage() {
               </label>
               <InfoTip text={X.reasonTip} label={X.reasonTipLabel} />
             </span>
-            <input id="tr-reason" className="input" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={X.reasonPlaceholder} />
+            <TextField id="tr-reason" maxLength={200} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={X.reasonPlaceholder} />
             {errors.reason && <p className="field-error">{errors.reason}</p>}
           </div>
         </div>
@@ -514,9 +517,9 @@ export function ContactImportPage() {
         <Button variant="primary" icon="arrow-up" loading={busy === 'csv'} onClick={() => fileRef.current?.click()}>
           {A.uploadExcel}
         </Button>
-        <input
+        <FileInput
           ref={fileRef}
-          type="file"
+          
           accept=".csv,text/csv"
           hidden
           onChange={(e) => {
@@ -588,8 +591,8 @@ export function ContactImportPage() {
                 {A.importN(valid.length)}
               </Button>
             </div>
-            <div className="table-scroll">
-              <table className="mini-table">
+            
+              <Table>
                 <thead>
                   <tr>
                     <th scope="col">{I.cols.line}</th>
@@ -624,8 +627,8 @@ export function ContactImportPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
           </>
         )}
       </div>

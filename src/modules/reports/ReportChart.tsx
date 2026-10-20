@@ -1,3 +1,4 @@
+import { SkeletonBlock, SkeletonLine } from '../../components/primitives/Skeleton';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { L } from '../../constants/labels';
 import { EmptyState } from '../../components/primitives/feedback';
@@ -223,9 +224,9 @@ export function ChartSkeleton() {
   return (
     <section className="panel rp-chart" aria-busy="true" aria-label={L.common.states.loading}>
       <div className="panel-head">
-        <span className="skeleton-row rp-skel-title" />
+        <SkeletonLine size="title" />
       </div>
-      <div className="rp-chart-body rp-skel-chart" />
+      <SkeletonBlock className="rp-chart-body" />
     </section>
   );
 }

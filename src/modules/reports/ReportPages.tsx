@@ -25,6 +25,7 @@ import { ChartSkeleton, ReportChart } from './ReportChart';
 import { ReportTable, TableSkeleton, useTableModel } from './ReportTable';
 import { useReportPrefs } from './usePrefs';
 import { useReportState } from './useReportState';
+import { LinkButton, SearchInput } from '../../components/primitives/controls';
 
 const P = L.reports.page;
 
@@ -70,7 +71,7 @@ export function ReportsCatalogPage({ group }: { group?: string }) {
     <div className="page rp-page">
       <PageHeader title={title} description={L.reports.catalog.description} />
       <div className="rp-landbar">
-        <input type="search" className="input input-compact rp-search" placeholder={L.reports.catalog.search} aria-label={L.reports.catalog.search} value={q} onChange={(e) => setQ(e.target.value)} />
+        <SearchInput dense className="rp-search" placeholder={L.reports.catalog.search} aria-label={L.reports.catalog.search} value={q} onChange={(e) => setQ(e.target.value)} />
         {group && (
           <Link to={ROUTES.reports} className="link small">
             {L.reports.catalog.allReports}
@@ -218,10 +219,10 @@ function ReportPage({ def }: { def: ReportDef }) {
       <div className="rp-head">
         <p className="rp-desc">{def.description}</p>
         <div className="rp-actions">
-          <Link to={reportPath(def.group)} className="btn btn-ghost" data-tooltip={P.moreInCategory}>
+          <LinkButton to={reportPath(def.group)} variant="ghost" data-tooltip={P.moreInCategory}>
             <Icon name="chevron-left" />
             <span className="btn-label">{REPORT_GROUPS.find((g) => g.id === def.group)?.label}</span>
-          </Link>
+          </LinkButton>
           <IconButton className={cx('rp-fav', fav && 'is-on')} icon="star" label={fav ? P.unfavourite(def.title) : P.favourite(def.title)} pressed={fav} variant="secondary" onClick={() => prefs.toggle(def.id)} />
           <Button
             icon="file-spreadsheet"

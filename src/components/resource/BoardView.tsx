@@ -1,3 +1,4 @@
+import { confirmDelete } from '../primitives/overlay';
 import { useRef, useState } from 'react';
 import type { RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx } from '../../lib/format';
@@ -35,13 +36,16 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
       toast(t.disabledReason, 'danger');
       return;
     }
-    if (t.confirm && !window.confirm(t.confirm)) return;
-    try {
-      transitionRecord(actor, res.key, r.id, to, r.version);
-      toast(L.common.toasts.moved(recordTitle(res.key, r.id, actor), values.find((v) => v.key === to)?.label ?? to));
-    } catch (e) {
-      toast(e instanceof ServiceError ? e.message : L.common.toasts.moveFailed, 'danger');
-    }
+    const go = () => {
+      try {
+        transitionRecord(actor, res.key, r.id, to, r.version);
+        toast(L.common.toasts.moved(recordTitle(res.key, r.id, actor), values.find((v) => v.key === to)?.label ?? to));
+      } catch (e) {
+        toast(e instanceof ServiceError ? e.message : L.common.toasts.moveFailed, 'danger');
+      }
+    };
+    if (t.confirm) confirmDelete({ title: t.confirm, message: '', tone: 'primary', confirmLabel: L.common.actions.confirm, onConfirm: go });
+    else go();
   };
 
   const shownFields = cardFields.filter((k) => k !== boardField && k !== res.titleField && access[k] && access[k] !== 'hide').slice(0, 4);

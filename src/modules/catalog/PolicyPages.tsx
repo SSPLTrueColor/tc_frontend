@@ -19,6 +19,8 @@ import { ErrorState, NoAccess, useToast } from '../../components/primitives/feed
 import { MultiSelectMenu } from '../../components/primitives/MultiSelectMenu';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { DangerZone, SaveBar, SettingsField, SettingsPage, SettingsSection, SettingsSkeleton } from '../../components/settings/kit';
+import { TextField } from '../../components/primitives/controls';
+import { Table } from '../../components/primitives/Table';
 
 const P = L.admin.policies;
 const F = P.fields;
@@ -44,9 +46,9 @@ function Num({ id, label, value, onChange, unit, error, help, step = 1 }: { id: 
   return (
     <SettingsField label={label} htmlFor={id} help={help} error={shownError}>
       <div className={unit ? 'input-affix has-end' : undefined}>
-        <input
+        <TextField
           id={id}
-          className="input"
+          
           type="number"
           step={step}
           inputMode="decimal"
@@ -181,8 +183,8 @@ export function WorkflowsPage() {
       {({ p, set, shown }) => (
         <>
           <Section wide title={P.sections.discount} help={P.sections.discountHelp}>
-            <div className="table-scroll">
-              <table className="mini-table cat-bands">
+            
+              <Table className="cat-bands">
                 <thead>
                   <tr>
                     <th scope="col">{F.upTo}</th>
@@ -197,8 +199,8 @@ export function WorkflowsPage() {
                     <tr key={i}>
                       <td>
                         <div className="input-affix has-end cat-num">
-                          <input
-                            className="input"
+                          <TextField
+                            
                             type="number"
                             aria-label={F.bandLimit(i + 1)}
                             value={Number.isFinite(b.upTo) ? b.upTo : ''}
@@ -225,8 +227,8 @@ export function WorkflowsPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             {shown('discountBands') && <p className="field-error">{shown('discountBands')}</p>}
             <Button icon="plus" onClick={() => set({ discountBands: [...p.discountBands, { upTo: 100, levels: [LEVELS[0], LEVELS[1], LEVELS[2]] }] })}>
               {F.addBand}
@@ -261,8 +263,8 @@ export function SlaMatrixPage() {
               {PRIORITY_KEYS.map((pr) => (
                 <div key={pr} className="st-sla-block">
                   <h3 className="st-subtitle">{P.priorities[pr]}</h3>
-                  <div className="table-scroll">
-                    <table className="mini-table st-sla">
+                  
+                    <Table className="st-sla">
                       <thead>
                         <tr>
                           <th scope="col">{F.coverage}</th>
@@ -283,7 +285,7 @@ export function SlaMatrixPage() {
                               <th scope="row">{P.coverages[cv]}</th>
                               {(['response', 'arrival', 'resolution'] as const).map((k) => (
                                 <td key={k}>
-                                  <input className="input" type="number" aria-label={F.slaCell(P.priorities[pr], P.coverages[cv], F.slaKinds[k])} value={Number.isFinite(s[k]) ? s[k] : ''} onChange={(e) => upd(k, num(e.target.value))} aria-invalid={!!err || undefined} />
+                                  <TextField type="number" aria-label={F.slaCell(P.priorities[pr], P.coverages[cv], F.slaKinds[k])} value={Number.isFinite(s[k]) ? s[k] : ''} onChange={(e) => upd(k, num(e.target.value))} aria-invalid={!!err || undefined} />
                                 </td>
                               ))}
                               {err && (
@@ -295,26 +297,26 @@ export function SlaMatrixPage() {
                           );
                         })}
                       </tbody>
-                    </table>
-                  </div>
+                    </Table>
+                  
                 </div>
               ))}
             </div>
           </Section>
           <Section wide title={P.sections.escalation} help={P.sections.escalationHelp}>
-            <div className="table-scroll">
-              <table className="mini-table cat-bands">
+            
+              <Table className="cat-bands">
                 <tbody>
                   {p.escalation.map((x, i) => (
                     <tr key={i}>
                       <td>
                         <div className="input-affix has-end cat-num">
-                          <input className="input" type="number" aria-label={F.escalationHours(i + 1)} value={Number.isFinite(x.afterHours) ? x.afterHours : ''} onChange={(e) => set({ escalation: p.escalation.map((y, j) => (j === i ? { ...y, afterHours: num(e.target.value) } : y)) })} />
+                          <TextField type="number" aria-label={F.escalationHours(i + 1)} value={Number.isFinite(x.afterHours) ? x.afterHours : ''} onChange={(e) => set({ escalation: p.escalation.map((y, j) => (j === i ? { ...y, afterHours: num(e.target.value) } : y)) })} />
                           <span className="affix affix-end">{U.h}</span>
                         </div>
                       </td>
                       <td>
-                        <input className="input" aria-label={F.escalationTo(i + 1)} value={x.to} maxLength={40} onChange={(e) => set({ escalation: p.escalation.map((y, j) => (j === i ? { ...y, to: e.target.value } : y)) })} />
+                        <TextField aria-label={F.escalationTo(i + 1)} value={x.to} maxLength={40} onChange={(e) => set({ escalation: p.escalation.map((y, j) => (j === i ? { ...y, to: e.target.value } : y)) })} />
                         {shown(`esc.${i}`) && <p className="field-error">{shown(`esc.${i}`)}</p>}
                       </td>
                       <td>
@@ -323,8 +325,8 @@ export function SlaMatrixPage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </Table>
+            
             <Button icon="plus" onClick={() => set({ escalation: [...p.escalation, { afterHours: (p.escalation[p.escalation.length - 1]?.afterHours ?? 0) + 24, to: '' }] })}>
               {F.addStep}
             </Button>
@@ -380,9 +382,9 @@ export function ConfigurableRulesPage() {
                 <label className="field-label" htmlFor="pol-renew">
                   {F.renewalReminders}
                 </label>
-                <input
+                <TextField
                   id="pol-renew"
-                  className="input"
+                  
                   value={renewalText}
                   onChange={(e) => {
                     setRenewalText(e.target.value);
@@ -406,14 +408,14 @@ export function ConfigurableRulesPage() {
                 <label className="field-label" htmlFor="pol-shift-start">
                   {F.shiftStart}
                 </label>
-                <input id="pol-shift-start" className="input" placeholder="09:30" value={p.shift.start} onChange={(e) => set({ shift: { ...p.shift, start: e.target.value } })} aria-invalid={!!shown('shift.start') || undefined} />
+                <TextField id="pol-shift-start" placeholder="09:30" value={p.shift.start} onChange={(e) => set({ shift: { ...p.shift, start: e.target.value } })} aria-invalid={!!shown('shift.start') || undefined} />
                 {shown('shift.start') && <p className="field-error">{shown('shift.start')}</p>}
               </div>
               <div className="form-field">
                 <label className="field-label" htmlFor="pol-shift-end">
                   {F.shiftEnd}
                 </label>
-                <input id="pol-shift-end" className="input" placeholder="18:30" value={p.shift.end} onChange={(e) => set({ shift: { ...p.shift, end: e.target.value } })} aria-invalid={!!shown('shift.end') || undefined} />
+                <TextField id="pol-shift-end" placeholder="18:30" value={p.shift.end} onChange={(e) => set({ shift: { ...p.shift, end: e.target.value } })} aria-invalid={!!shown('shift.end') || undefined} />
                 {shown('shift.end') && <p className="field-error">{shown('shift.end')}</p>}
               </div>
               <Num id="pol-grace" label={F.grace} unit={U.min} value={p.shift.graceMin} onChange={(v) => set({ shift: { ...p.shift, graceMin: v } })} error={shown('shift.graceMin')} />

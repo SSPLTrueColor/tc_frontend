@@ -182,6 +182,7 @@ export const ROUTES = {
   recycleBin: '/admin/recycle-bin',
   sentMessages: '/admin/sent-messages',
   demoSettings: '/admin/demo-settings',
+  componentGallery: '/admin/component-gallery',
 } as const;
 
 export type RouteId = keyof typeof ROUTES;

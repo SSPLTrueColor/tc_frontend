@@ -12,10 +12,11 @@ import { recordPeekPath, resourcePath } from '../../lib/routes';
 import * as api from '../../services/api/spares';
 import { can } from '../../services/authz';
 import { useActor } from '../../services/hooks';
-import type { Column } from './components/ListKit';
-import { SimpleTable } from './components/ListKit';
+import type { Column } from '../../components/primitives/DataTable';
+import { DataTable } from '../../components/primitives/DataTable';
 import { useBusy } from './components/useBusy';
 import type { EngineerPartRow, EngineerRow, StockFigures } from '../../services/spares/stock';
+import { LinkButton } from '../../components/primitives/controls';
 
 // ---------------------------------------------------------------- Main Store Stock (SPR-02, FR-093)
 
@@ -80,7 +81,7 @@ export function MainStoreStockPage() {
                 </>
               )}
             </p>
-            <SimpleTable
+            <DataTable
               label={P.tableLabel}
               rows={rows}
               rowKey={(r) => r.id}
@@ -206,7 +207,7 @@ export function EngineerStockPage() {
                 </EmptyState>
               </>
             ) : (
-              <SimpleTable
+              <DataTable
                 key={data.selected ?? 'own'}
                 label={P.tableParts}
                 rows={data.parts}
@@ -217,9 +218,7 @@ export function EngineerStockPage() {
                   <>
                     <span className="spacer" />
                     {picker}
-                    <Link className="btn btn-secondary" to={resourcePath(actor.workspaceId, 'requisitions', { view: 'v_req_all' })}>
-                      <span className="btn-label">{P.openRequisitions}</span>
-                    </Link>
+                    <LinkButton to={resourcePath(actor.workspaceId, 'requisitions', { view: 'v_req_all' })}>{P.openRequisitions}</LinkButton>
                   </>
                 }
                 columns={partCols}
@@ -231,7 +230,7 @@ export function EngineerStockPage() {
             {P.emptyBody}
           </EmptyState>
         ) : (
-          <SimpleTable
+          <DataTable
             label={P.tableEngineers}
             rows={data.engineers}
             rowKey={(r) => r.engineerId}

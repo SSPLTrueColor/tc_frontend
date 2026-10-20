@@ -16,6 +16,7 @@ import { PageHeader } from '../../components/shell/PageHeader';
 import { DiffAlert, Field, LinesTable, TotalsBlock } from './components';
 import { L } from '../../constants/labels';
 import { recordPeekPath } from '../../lib/routes';
+import { TextField, Textarea } from '../../components/primitives/controls';
 
 const O = L.orders;
 const P = O.pages.editOrder;
@@ -135,13 +136,13 @@ export function EditOrderPage() {
             />
           </Field>
           <Field id="eo-freight" label={P.freight}>
-            <input id="eo-freight" className="input" type="number" min={0} value={freight} onChange={(e) => setFreight(Math.max(0, Number(e.target.value)))} />
+            <TextField id="eo-freight" type="number" min={0} value={freight} onChange={(e) => setFreight(Math.max(0, Number(e.target.value)))} />
           </Field>
           <Field id="eo-ins" label={P.insurance}>
-            <input id="eo-ins" className="input" type="number" min={0} value={insurance} onChange={(e) => setInsurance(Math.max(0, Number(e.target.value)))} />
+            <TextField id="eo-ins" type="number" min={0} value={insurance} onChange={(e) => setInsurance(Math.max(0, Number(e.target.value)))} />
           </Field>
           <Field id="eo-note" label={P.note} wide help={P.noteHelp}>
-            <textarea id="eo-note" className="input textarea" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
+            <Textarea id="eo-note" className="textarea" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
         </div>
         <TotalsBlock t={totals} intraState={pos === getPolicies().companyGstState} />
