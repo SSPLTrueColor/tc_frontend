@@ -438,8 +438,8 @@ export function ReportChart({ chart, busy, linkFor }: { chart: ChartOut; busy?: 
           </EmptyState>
         </div>
       ) : (
-        <div className={cx('rp-chart-body', html && 'is-html', spec.type === 'donut' && 'is-donut', (spec.type === 'combo' || spec.type === 'stacked') && 'has-key')} role={html ? 'group' : 'img'} aria-label={summary}>
-          {spec.type === 'hbar' ? <RankBars spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'funnel' ? <Funnel spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'donut' ? <Donut spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'bar' ? <Columns spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'combo' ? <Combo spec={spec} points={points} /> : spec.type === 'stacked' ? <Stacked spec={spec} points={points} /> : spec.type === 'heatmap' ? <Heatmap spec={spec} points={points} /> : spec.type === 'bullet' ? <Bullet spec={spec} points={points} linkFor={linkFor} /> : <Trend spec={spec} points={points} />}
+        <div className={cx('rp-chart-body', html && 'is-html', spec.type === 'donut' && 'is-donut', (spec.type === 'combo' || spec.type === 'pareto' || spec.type === 'stacked') && 'has-key')} role={html ? 'group' : 'img'} aria-label={summary}>
+          {spec.type === 'hbar' ? <RankBars spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'funnel' ? <Funnel spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'donut' ? <Donut spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'bar' ? <Columns spec={spec} points={points} linkFor={linkFor} /> : spec.type === 'combo' || spec.type === 'pareto' ? <Combo spec={spec} points={points} /> : spec.type === 'stacked' ? <Stacked spec={spec} points={points} /> : spec.type === 'heatmap' ? <Heatmap spec={spec} points={points} /> : spec.type === 'bullet' ? <Bullet spec={spec} points={points} linkFor={linkFor} /> : <Trend spec={spec} points={points} />}
         </div>
       )}
     </section>

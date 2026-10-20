@@ -2,6 +2,7 @@ import { ImageTile } from '../../../components/primitives/People';
 import { L } from '../../../constants/labels';
 import { cx } from '../../../lib/format';
 import type { Fmt, ReportRow } from '../../../services/reports/types';
+import { LeaderVisualChart, type LeaderVisual } from './LeaderVisuals';
 import { cellText, fmtOf, Headline, hrefOf, KpiInline, NameLink, num, text, type LayoutProps } from './shared';
 
 const W = L.reports.layouts;
@@ -17,6 +18,8 @@ export interface LeaderCfg {
   extras?: { key: string; label: string; fmt: Fmt }[];
   /** A text column shown as a status dot (value equal to `good` is green). */
   status?: { key: string; good: string };
+  /** A chart drawn above the list, so each screen answers its question with the right picture. */
+  visual?: LeaderVisual;
   /** Lower is better (response time, ageing). */
   asc?: boolean;
 }
@@ -37,6 +40,7 @@ export function Leaderboard({ out, cfg }: LayoutProps & { cfg: LeaderCfg }) {
           : W.leaderTop(text(top[cfg.name]), fmtOf(num(top[cfg.value]), cfg.fmt), total > 0 && !cfg.asc ? Math.round((num(top[cfg.value]) / total) * 100) : null)}
       </Headline>
       <KpiInline kpis={out.kpis} />
+      {cfg.visual && <LeaderVisualChart out={out} rows={rows} name={cfg.name} value={cfg.value} fmt={cfg.fmt} target={cfg.target} visual={cfg.visual} />}
       <ol className="rl-rank">
         {rows.map((r: ReportRow, i) => {
           const v = num(r[cfg.value]);
