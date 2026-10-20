@@ -1467,6 +1467,7 @@ const customers = {
     statusAll: 'All statuses',
     sourceAll: 'All sources',
     count: (n: number) => `${n} ${n === 1 ? 'contact' : 'contacts'}`,
+    noun: 'contacts',
     range: (from: number, to: number, total: number) => `${from}–${to} of ${total} contacts`,
     page: (p: number, of: number) => `Page ${p} of ${of}`,
     prevPage: 'Previous page',
