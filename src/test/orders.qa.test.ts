@@ -78,14 +78,28 @@ describe('seed covers every Appendix A sales order status (demo)', () => {
 });
 
 describe('SO-01 / SO-02 Generate Sales Order', () => {
-  it('only accepted, latest, won quotations are eligible; a second live order is blocked', () => {
+  it('only approved-or-later, latest quotations are eligible; a second live order is blocked', () => {
     const d = getDb();
     const draftQ = d.records.quotations.find((q) => q.status === 'draft');
-    if (draftQ) expect(so.quotationBlocker(d, draftQ)).toMatch(/Only accepted/);
+    if (draftQ) expect(so.quotationBlocker(d, draftQ)).toMatch(/Only approved/);
     const { q, o } = newMachineOrder();
     expect(o.quotationId).toBe(q.id);
     expect(so.quotationBlocker(getDb(), q)).toBe(E.orderExists(String(o.orderNo)));
     expect(so.eligibleQuotations(admin()).some((x) => x.id === q.id)).toBe(false);
+  });
+  it('orders straight from an approved quotation: the order PO accepts the quotation and wins the opportunity', () => {
+    const d = getDb();
+    const q = d.records.quotations.find((x) => ['approved', 'sent'].includes(String(x.status)) && x.isLatest !== false && !so.quotationBlocker(d, x) && so.draftFromQuotation(admin(), x.id).siteAddresses.length);
+    expect(q, 'seed has an approved / sent quotation that can be ordered').toBeTruthy();
+    const owner = ownerActor(q!.ownerId);
+    const draft = so.draftFromQuotation(owner, q!.id);
+    expect(draft.blocker).toBeNull();
+    const o = so.createOrder(owner, { source: 'quotation', sourceId: q!.id, lines: draft.lines, customerPoNo: 'PO/DIRECT/7', customerPoDate: todayKey(), poFileName: 'po.pdf', poFileSize: 1000, siteAddressId: draft.siteAddresses[0]?.id, idempotencyKey: 'direct' });
+    const after = getDb().records.quotations.find((x) => x.id === q!.id)!;
+    expect([after.status, after.acceptanceMethod, after.customerPoNo]).toEqual(['accepted', 'po', 'PO/DIRECT/7']);
+    const opp = getDb().records.opportunities.find((x) => x.id === q!.opportunityId);
+    if (opp) expect(opp.stage).toBe('won');
+    expect(o.status).toBe('pending_approval');
   });
   it('pre-fills customer, lines, rates and terms from the quotation without re-entry', () => {
     const { q, draft, o } = newMachineOrder();

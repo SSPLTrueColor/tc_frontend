@@ -2,7 +2,7 @@ import { lastUsedValues } from '../../services/lastUsed';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { RecordData, ResourceDefinition } from '../../metadata/types';
 import { uid } from '../../lib/ids';
-import { can, fieldAccessMap } from '../../services/authz';
+import { type Actor, can, fieldAccessMap } from '../../services/authz';
 import { commit, getDb } from '../../services/db';
 import { useActor, useRevision } from '../../services/hooks';
 import { getSettings, updateSettings } from '../../services/settings';
@@ -36,6 +36,16 @@ export function initialValues(res: ResourceDefinition, initial: Values = {}): Va
 }
 
 /** Shared mutation contract for every form mode (same validation, idempotency and audit). */
+/** New records start owned by the creator and in their division (full forms behave like quick create). */
+function actorDefaults(res: ResourceDefinition, actor: Actor): Values {
+  const out: Values = {};
+  const owner = res.ownerField && res.fields.find((f) => f.key === res.ownerField);
+  if (owner && owner.type === 'relation' && owner.relation?.resource === 'employees' && actor.staffId) out[owner.key] = actor.staffId;
+  const div = res.divisionField && res.fields.find((f) => f.key === res.divisionField);
+  if (div && actor.divisionIds.length) out[div.key] = div.type === 'multimaster' ? actor.divisionIds.slice(0, 1) : actor.divisionIds[0];
+  return out;
+}
+
 export function useRecordForm({ resKey, recordId, initial }: { resKey: string; recordId?: string; initial?: Values }) {
   const actor = useActor();
   const res = getResource(resKey);
@@ -49,7 +59,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
       return null;
     }
   }, [recordId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [values, setValues] = useState<Values>(() => (loaded ? { ...loaded.record } : initialValues(res, { ...lastUsedValues(actor.user.id, resKey), ...initial })));
+  const [values, setValues] = useState<Values>(() => (loaded ? { ...loaded.record } : initialValues(res, { ...actorDefaults(res, actor), ...lastUsedValues(actor.user.id, resKey), ...initial })));
   const [baseVersion, setBaseVersion] = useState(loaded?.record.version ?? 0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [errorLinks, setErrorLinks] = useState<Record<string, { label: string; to: string }>>({});
@@ -209,13 +219,29 @@ function VersionConflict({ form }: { form: RecordFormState }) {
   );
 }
 
-/** Confirm-before-discard for dirty forms. */
-export function useUnsavedGuard(dirty: boolean, onClose: () => void) {
-  const [asking, setAsking] = useState(false);
-  const requestClose = () => (dirty ? setAsking(true) : onClose());
+/**
+ * Confirm-before-discard for dirty forms. `guardBack` (full-page editors only): BrowserRouter cannot block the
+ * browser Back button, so while dirty a same-URL history entry is pushed; Back pops it and asks first.
+ */
+export function useUnsavedGuard(dirty: boolean, onClose: () => void, opts: { guardBack?: boolean } = {}) {
+  const [asking, setAsking] = useState<false | 'close' | 'back'>(false);
+  const leaving = useRef(false);
+  const guardBack = !!opts.guardBack;
+  useEffect(() => {
+    if (!dirty || !guardBack) return;
+    window.history.pushState(window.history.state, '', window.location.href);
+    const onPop = () => {
+      if (leaving.current) return;
+      window.history.pushState(window.history.state, '', window.location.href);
+      setAsking('back');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [dirty, guardBack]);
+  const requestClose = () => (dirty ? setAsking('close') : onClose());
   const dialog = (
     <Dialog
-      open={asking}
+      open={!!asking}
       onClose={() => setAsking(false)}
       title={C.confirm.unsavedTitle}
       description={C.confirm.unsavedDescription}
@@ -229,8 +255,13 @@ export function useUnsavedGuard(dirty: boolean, onClose: () => void) {
           <Button
             variant="danger"
             onClick={() => {
+              const via = asking;
               setAsking(false);
-              onClose();
+              if (via === 'back') {
+                // Skip the guard entry and the editor entry: land where Back would have gone.
+                leaving.current = true;
+                window.history.go(-2);
+              } else onClose();
             }}
           >
             {C.actions.discard}
@@ -326,7 +357,7 @@ function QuickCreateInner({ resKey, onClose, initial, onCreated, onMoreFields }:
         open
         onClose={guard.requestClose}
         title={form.res.form.primaryLabel ?? F.newTitle(form.res.label)}
-        description={F.quickCreateDescription}
+        description={onMoreFields ? F.quickCreateDescription : F.quickCreateEssentials}
         footer={
           <>
             {onMoreFields && (

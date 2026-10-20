@@ -147,7 +147,11 @@ export const quotations: ResourceDefinition = {
     initial: 'draft',
     terminal: ['accepted', 'rejected', 'expired', 'superseded'],
     // Only the plain step is a lifecycle button; submit/send/accept/reject/new version need data and run through the quotations service.
-    transitions: [{ from: ['sent'], to: 'negotiation', action: T.lifecycle.markNegotiation }],
+    // Mark as Sent records a quotation shared outside the CRM (no message); Send Quotation still sends + logs it.
+    transitions: [
+      { from: ['approved'], to: 'sent', action: T.lifecycle.markSent },
+      { from: ['sent'], to: 'negotiation', action: T.lifecycle.markNegotiation },
+    ],
   },
   views: views([
     {

@@ -19,6 +19,7 @@ import { COMMERCIAL_FIELDS } from '../modules/orders';
 import { DispatchActions, MilestoneActions, OrderActions, OrderBanner } from '../../modules/orders/OrderActions';
 import { ApprovalTab, ContractTab, DispatchTab, ErpInvoiceTab, HoldCancelTab, LinesTab, PaymentsTab, ProcessingTab, SignDialog } from '../../modules/orders/OrderTabs';
 import { LinkButton } from '../../components/primitives/controls';
+import { DealProgress } from '../../components/crm/DealProgress';
 
 const O = L.orders;
 const E = O.errors;
@@ -77,7 +78,13 @@ registerResourceHooks('installations', {
 });
 
 registerRecordActions(SO, OrderActions);
-registerRecordBanner(SO, OrderBanner);
+// Deal progress (whole quotation → installation cycle + next step) above the status banner.
+registerRecordBanner(SO, (p) => (
+  <>
+    <DealProgress resource="salesOrders" record={p.record} />
+    <OrderBanner {...p} />
+  </>
+));
 // Sales order tabs (GLOSSARY §1.2): Details, Changes vs Quotation, Approval, Payment Schedule, Order Processing,
 // ERP Invoice, Dispatch & Delivery, Sales Contract, Hold / Cancellation, then the shared Activity tabs.
 registerRecordTab(SO, { id: 'changes', label: O.tabs.changes, component: LinesTab });

@@ -546,7 +546,7 @@ function RichCell({ res, actor, field, record, access, lines }: { res: ResourceD
     const size = lines >= 3 ? 40 : lines === 2 ? 32 : 24;
     const name = String(record[field.key] ?? record.id);
     const src = field.leadingImage === 'initials' || access[field.leadingImage] === 'hide' ? null : ((record[field.leadingImage] as string | null) ?? null);
-    leading = <ImageTile src={src} name={name} size={size} />;
+    leading = <ImageTile src={src} name={name} size={size} shape={field.leadingShape} />;
   }
   if (!leading && !subs.length) return main;
   return (

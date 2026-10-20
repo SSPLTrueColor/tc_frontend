@@ -105,6 +105,8 @@ export interface FieldDefinition {
   leadingImage?: string;
   /** Show the leading visual only from this many lines per row (e.g. 3 = only in three-line rows). Default 2. */
   leadingImageMinLines?: 2 | 3;
+  /** Shape of the leading picture: `circle` for people (same as every person avatar), `rounded` (default) for things. */
+  leadingShape?: 'circle' | 'rounded';
   /** Relation to people shown as avatar + name (multi-line views only). */
   display?: 'person';
   /** Field of the related person shown under their name (e.g. staffRole), in multi-line views and the people card. */

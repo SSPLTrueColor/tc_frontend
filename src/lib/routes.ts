@@ -38,6 +38,8 @@ export function parseDrawerParam(v: string | null): { resKey: string; id: string
 export function recordPeekPath(ws: string, resKey: string, id: string) {
   if (typeof window === 'undefined') return recordListPeekPath(ws, resKey, id);
   const { pathname, search } = window.location;
+  // Full-page create / edit forms are left behind after saving — never keep a form under the drawer.
+  if (/\/(new|edit)$/.test(pathname)) return recordListPeekPath(ws, resKey, id);
   if (pathname === `/${slugOf(resKey)}`) {
     const qs = new URLSearchParams(search);
     qs.delete(DRAWER_PARAM);

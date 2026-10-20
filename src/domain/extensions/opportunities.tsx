@@ -46,6 +46,16 @@ const OPP_TEXT = ['name', 'competitors', 'decisionMakers', 'notes'];
 const SAMPLE_TEXT = ['title', 'artwork', 'fabricDetails', 'results', 'customerFeedback'];
 
 registerResourceHooks('opportunities', {
+  // Gate stage moves up front (board drag, Move menu, record buttons) with the same rules the save enforces,
+  // so "Won" is disabled with its reason instead of asking to confirm and then refusing.
+  transitionBlocked: (actor, r, to) => {
+    try {
+      checkStageEntry({ d: getDb(), actor, correlationId: '' }, r, to);
+      return undefined;
+    } catch (e) {
+      return e instanceof ServiceError ? e.message : undefined;
+    }
+  },
   beforeCreate: (ctx, c) => {
     trimText(c, OPP_TEXT);
     applyCreateDefaults(ctx, c);

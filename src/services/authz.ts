@@ -12,7 +12,7 @@
 import type { DemoUser } from '../domain/pack';
 import type { FieldAccess, FieldDefinition, RecordData, ResourceDefinition, ResourcePermission, RoleDefinition, RowScope } from '../metadata/types';
 import { getDb, getRevision } from './db';
-import { getRole, getUser } from './registry';
+import { getResource, getRole, getUser } from './registry';
 import { L } from '../constants/labels';
 import { applyRoleOverrides } from './catalog/roleOverrides';
 import { activeGrantsFor, applyGrants } from './catalog/grantEngine';
@@ -127,7 +127,40 @@ function inScope(scope: RowScope, actor: Actor, res: ResourceDefinition, record:
   }
 }
 
-export const canReadRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).read, actor, res, record) && (hooksFor(res.key).canRead?.(actor, record) ?? true);
+/**
+ * Deal-linked read: the owner of a lead / opportunity / quotation / sales order may always see the customer,
+ * contact and lead that deal points to, even when the account itself is owned by someone else
+ * (e.g. the account manager owns the customer, the sales executive owns the opportunity).
+ */
+const DEAL_RESOURCES = ['leads', 'opportunities', 'quotations', 'salesOrders'] as const;
+const LINK_KEYS: Record<string, string> = { customers: 'customerId', contacts: 'contactId', leads: 'leadId' };
+let linkCache: { db: unknown; rev: number; byUser: Map<string, Set<string>> } | null = null;
+function dealLinkedIds(actor: Actor, resKey: string): Set<string> {
+  const db = getDb();
+  if (!linkCache || linkCache.db !== db || linkCache.rev !== getRevision()) linkCache = { db, rev: getRevision(), byUser: new Map() };
+  const key = `${actor.staffId}|${actor.role.id}|${resKey}`;
+  const hit = linkCache.byUser.get(key);
+  if (hit) return hit;
+  const ids = new Set<string>();
+  const field = LINK_KEYS[resKey];
+  for (const dk of DEAL_RESOURCES) {
+    if (dk === resKey) continue;
+    const scope = perm(actor, dk).read;
+    if (scope === 'none') continue;
+    if (!db.records[dk]) continue;
+    const dres = getResource(dk);
+    for (const r of db.records[dk] ?? []) {
+      const v = r[field];
+      if (v != null && v !== '' && inScope(scope, actor, dres, r)) ids.add(String(v));
+    }
+  }
+  linkCache.byUser.set(key, ids);
+  return ids;
+}
+
+export const canReadRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) =>
+  (inScope(perm(actor, res.key).read, actor, res, record) || (perm(actor, res.key).read !== 'none' && res.key in LINK_KEYS && record.workspaceId === actor.workspaceId && dealLinkedIds(actor, res.key).has(String(record.id)))) &&
+  (hooksFor(res.key).canRead?.(actor, record) ?? true);
 export const canUpdateRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).update, actor, res, record);
 
 export const SCOPE_LABELS: Record<RowScope, string> = L.common.scopes;

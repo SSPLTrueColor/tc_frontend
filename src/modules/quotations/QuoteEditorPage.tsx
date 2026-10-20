@@ -125,7 +125,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
   // Synchronous guard: a double click fires twice before the disabled state renders (would create two quotations).
   const inFlight = useRef(false);
   const back = existing ? recordPeekPath('tc', 'quotations', existing.id) : initialOpp ? recordPeekPath('tc', 'opportunities', initialOpp.id) : resourcePath('tc', 'quotations');
-  const guard = useUnsavedGuard(dirty, () => navigate(back));
+  const guard = useUnsavedGuard(dirty, () => navigate(back), { guardBack: true });
 
   const opp: RecordData | undefined = data.opportunities.find((o) => o.id === header.opportunityId);
   const customerId = String(opp?.customerId ?? existing?.customerId ?? '');

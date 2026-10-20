@@ -79,7 +79,7 @@ export const leads: ResourceDefinition = {
     fl('specLabelColours', F.specLabelColours, 'number', { min: 1, max: 12, visibleWhen: LABEL, clearWhenHidden: true, capabilities: FORM_ONLY }),
     fl('specOther', F.specOther, 'longtext', { maxLength: 500, visibleWhen: OTHER, clearWhenHidden: true, capabilities: FORM_ONLY }),
     fl('requirement', F.requirement, 'longtext', { maxLength: 2000, capabilities: { ...FORM_ONLY, search: true } }),
-    fl('budget', F.budget, 'money', { min: 0, width: 130 }),
+    fl('budget', F.budget, 'money', { min: 0, max: 10_000_000_000, width: 130 }),
     fl('decisionMaker', F.decisionMaker, 'text', { maxLength: 80 }),
     fl('timeline', F.timeline, 'master', { master: 'purchaseTimeline' }),
     fl('currentSetup', F.currentSetup, 'text', { maxLength: 120 }),

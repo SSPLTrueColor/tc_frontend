@@ -57,7 +57,7 @@ export function formatKpi(value: string, opts: { compact?: boolean } = {}): stri
 export function compactInr(v: number): string {
   const a = Math.abs(v);
   const sign = v < 0 ? '-' : '';
-  if (a >= 1e7) return `${sign}₹${round1(a / 1e7)} Cr`;
+  if (a >= 1e7) return `${sign}₹${Number(round1(a / 1e7)).toLocaleString('en-IN')} Cr`;
   if (a >= 1e5) return `${sign}₹${round1(a / 1e5)} L`;
   if (a >= 1e3) return `${sign}₹${round1(a / 1e3)} K`;
   return `${sign}₹${Math.round(a)}`;

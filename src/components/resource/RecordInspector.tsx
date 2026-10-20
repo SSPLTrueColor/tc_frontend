@@ -10,7 +10,7 @@ import { type Actor, canReadResource, perm } from '../../services/authz';
 import { listComments } from '../../services/collab';
 import { getDb } from '../../services/db';
 import { useActor, useRevision } from '../../services/hooks';
-import { getResource, getUser, masterValue } from '../../services/registry';
+import { getMaster, getResource, getUser, masterValue } from '../../services/registry';
 import { availableTransitions, deleteRecord, getRecord, type Projected, queryRecords, recordTitle, transitionRecord } from '../../services/runtime';
 import { togglePin, getSettings } from '../../services/settings';
 import { hooksFor } from '../../services/resourceHooks';
@@ -19,6 +19,7 @@ import { ServiceError } from '../../services/types';
 import { Button, IconButton } from '../primitives/Button';
 import { EmptyState, ErrorState, StatusChip, Tabs, useToast } from '../primitives/feedback';
 import { Dialog, Menu, useFocusReturn, useFocusTrap, useLayer } from '../primitives/overlay';
+import { RecordApprovalActions } from '../crm/ApprovalDecision';
 import { getDefaultRecordTab, getRecordActions, getRecordBanner, getRecordTabs } from './extensions';
 import { LineItemsTable, lineItemsOf } from './LineItems';
 import { FieldValue } from './FieldValue';
@@ -217,6 +218,15 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
   const [deleting, setDeleting] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const transitions = availableTransitions(actor, res, r);
+  // Primary (purple) action = the next step forward that is allowed now, not whichever transition is listed first
+  // (e.g. Proposal → "Mark Under Negotiation", never "Move to Demo").
+  const stageMaster = res.lifecycle && res.fields.find((f) => f.key === res.lifecycle!.field)?.master;
+  const stageOrder = stageMaster ? getMaster(stageMaster).values.map((v) => v.key) : [];
+  const at = (k: unknown) => stageOrder.indexOf(String(k));
+  const current = res.lifecycle ? r[res.lifecycle.field] : undefined;
+  const allowed = transitions.filter((t) => !t.disabledReason);
+  // No forward step allowed yet (e.g. Proposal without a quotation) → no purple button; never promote a step back.
+  const primaryTo = (stageOrder.length ? allowed.find((t) => at(t.to) > at(current) && !['lost', 'cancelled'].includes(t.to)) : allowed[0])?.to;
   const statusField = res.lifecycle ? res.fields.find((f) => f.key === res.lifecycle!.field) : res.fields.find((f) => f.key === 'status');
   const status = statusField ? masterValue(statusField.master!, r[statusField.key]) : undefined;
   const Actions = getRecordActions(res.key);
@@ -254,6 +264,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
         // Drawer: workflow actions are icon buttons on the same line as "ID · Updated · version"
         <div className="inspector-icon-actions">
           <MoveStageButton res={res} actor={actor} record={r} onRun={(t) => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))} />
+          <RecordApprovalActions resource={res.key} recordId={r.id} />
           {Actions && <Actions res={res} actor={actor} record={r} />}
           <IconButton ref={moreRef} icon="more" label={C.actions.moreActions} aria-haspopup="menu" onClick={() => setMenuOpen((o) => !o)} />
         </div>
@@ -261,11 +272,11 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
       </div>
       {Banner && <Banner res={res} actor={actor} record={r} />}
       {!editing && !editInFooter && (actionsSlot ? actionsSlot && createPortal(<div className="inspector-actions">
-          {transitions.map((t, i) => (
+          {transitions.map((t) => (
             <Button
               key={t.to}
               icon={actionIcon(t.action)}
-              variant={i === 0 && !t.disabledReason ? 'primary' : 'secondary'}
+              variant={t.to === primaryTo ? 'primary' : 'secondary'}
               data-tooltip={t.disabledReason ? undefined : t.action}
               disabledReason={t.disabledReason}
               onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
@@ -279,15 +290,16 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
               {C.actions.edit}
             </Button>
           )}
+          <RecordApprovalActions resource={res.key} recordId={r.id} />
           {Actions && <Actions res={res} actor={actor} record={r} />}
           <IconButton ref={moreRef} icon="more" label={C.actions.moreActions} aria-haspopup="menu" onClick={() => setMenuOpen((o) => !o)} />
         </div>, actionsSlot) : (
         <div className="inspector-actions">
-          {transitions.map((t, i) => (
+          {transitions.map((t) => (
             <Button
               key={t.to}
               icon={actionIcon(t.action)}
-              variant={i === 0 && !t.disabledReason ? 'primary' : 'secondary'}
+              variant={t.to === primaryTo ? 'primary' : 'secondary'}
               data-tooltip={t.disabledReason ? undefined : t.action}
               disabledReason={t.disabledReason}
               onClick={() => (t.confirm ? setConfirm({ to: t.to, text: t.confirm, action: t.action }) : run(t.to))}
@@ -301,6 +313,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
               {C.actions.edit}
             </Button>
           )}
+          <RecordApprovalActions resource={res.key} recordId={r.id} />
           {Actions && <Actions res={res} actor={actor} record={r} />}
           <IconButton ref={moreRef} icon="more" label={C.actions.moreActions} aria-haspopup="menu" onClick={() => setMenuOpen((o) => !o)} />
         </div>

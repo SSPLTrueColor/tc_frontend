@@ -11,15 +11,14 @@ import { useActor, useRevision } from '../services/hooks';
 import { getResource, getUser } from '../services/registry';
 import { queryRecords, transitionRecord } from '../services/runtime';
 import { ServiceError } from '../services/types';
-import { approvalTypeLabel, canDecide, decideApproval, levelHolders, listApprovals, withdrawApproval } from '../services/workflow';
+import { approvalTypeLabel, canDecide, levelHolders, listApprovals, withdrawApproval } from '../services/workflow';
 import { Button } from '../components/primitives/Button';
 import { EmptyState, ErrorState, NoAccess, Skeleton, StatusChip, Tabs, useToast } from '../components/primitives/feedback';
-import { Dialog } from '../components/primitives/overlay';
 import { ConflictPanel, FormBody, useRecordForm, useUnsavedGuard } from '../components/resource/RecordForm';
 import { PageHeader } from '../components/shell/PageHeader';
 import { InfoTip } from '../components/primitives/InfoTip';
 import { L } from '../constants/labels';
-import { Textarea } from '../components/primitives/controls';
+import { DecisionDialog } from '../components/crm/ApprovalDecision';
 
 const C = L.common;
 const I = L.common.inbox;
@@ -211,60 +210,6 @@ export function InboxPage() {
   );
 }
 
-function DecisionDialog({ approvalId, decision, onClose }: { approvalId: string; decision: 'approved' | 'rejected'; onClose: () => void }) {
-  const actor = useActor();
-  const toast = useToast();
-  const [note, setNote] = useState('');
-  const [error, setError] = useState('');
-  const a = getDb().approvals.find((x) => x.id === approvalId)!;
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      size="sm"
-      title={I.decisionTitle(decision === 'approved', approvalId)}
-      description={
-        decision === 'approved'
-          ? a.currentLevel < a.levels.length - 1
-            ? I.approveLevel(a.currentLevel + 1, a.levels[a.currentLevel + 1].label)
-            : I.approveFinal(a.summary)
-          : I.rejectBody
-      }
-      footer={
-        <>
-          <Button onClick={onClose}>{C.actions.cancel}</Button>
-          <Button
-            variant={decision === 'approved' ? 'primary' : 'danger'}
-            onClick={() => {
-              try {
-                decideApproval(actor, approvalId, decision, note, a.version);
-                toast(C.toasts.decided(approvalId, (I.status[decision] ?? decision).toLowerCase()));
-                onClose();
-              } catch (e) {
-                setError(e instanceof ServiceError ? e.message : C.toasts.failed);
-              }
-            }}
-          >
-            {decision === 'approved' ? C.actions.approve : C.actions.rejectRequest}
-          </Button>
-        </>
-      }
-    >
-      <div className="form-field">
-        <label className="field-label" htmlFor="decision-note">
-          {I.note} {decision === 'rejected' ? <span className="req">*</span> : <span className="optional">{L.common.form.optional}</span>}
-        </label>
-        <Textarea id="decision-note" className="textarea" rows={3} value={note} onChange={(e) => setNote(e.target.value)} data-autofocus />
-        {error && (
-          <p className="field-error" role="alert">
-            {error}
-          </p>
-        )}
-      </div>
-    </Dialog>
-  );
-}
-
 // ---------------------------------------------------------------- Full-page form (line-item documents)
 
 export function FullPageFormPage() {
@@ -318,7 +263,8 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
       <PageHeader
         crumbs={[{ label: form.res.labelPlural, onClick: guard.requestClose }]}
         title={recordId ? L.common.form.editTitle(form.res.label, recordId) : (form.res.form.primaryLabel ?? L.common.form.newTitle(form.res.label))}
-        description={L.common.form.fullPageDescription}
+        // The totals / payments note only applies to issuable documents (invoices), not contacts, companies etc.
+        description={canIssue ? L.common.form.fullPageDescription : undefined}
         onBack={guard.requestClose}
       />
       <div className="full-form panel">

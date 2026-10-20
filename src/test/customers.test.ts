@@ -126,8 +126,11 @@ describe('customers module', () => {
     const karan = actorFor('u_karan', 'tc');
     const rows = queryRecords(karan, 'customers').rows;
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((c) => c.ownerId === karan.staffId)).toBe(true);
-    const other = getDb().records.customers.find((c) => c.ownerId !== karan.staffId)!;
+    // Own accounts, plus (read-only) accounts on his own deals — the customer of an opportunity he owns.
+    const dealCustomers = new Set((['leads', 'opportunities', 'quotations', 'salesOrders'] as const).flatMap((k) => (getDb().records[k] ?? []).filter((r) => r.ownerId === karan.staffId).map((r) => r.customerId)));
+    expect(rows.every((c) => c.ownerId === karan.staffId || dealCustomers.has(c.id))).toBe(true);
+    expect(rows.some((c) => c.ownerId !== karan.staffId)).toBe(true);
+    const other = rows.find((c) => c.ownerId !== karan.staffId)!;
     expect(() => updateRecord(karan, 'customers', other.id, { name: 'X' }, other.version)).toThrow(ServiceError);
   });
 

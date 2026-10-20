@@ -105,13 +105,24 @@ export function orderView(actor: Actor, id: string): OrderView {
 
 // ---------------------------------------------------------------- eligibility (FR-049 / BR-20)
 
+const ORDERABLE_QUOTE = ['approved', 'sent', 'negotiation', 'accepted'];
+
 /** Why a quotation cannot become a sales order — or null when it can. */
 export function quotationBlocker(d: Db, q: RecordData | undefined): string | null {
   if (!q) return E.quotationNotFound;
-  if (q.status !== 'accepted') return E.quotationNotAccepted(String(q.status).replace(/_/g, ' '));
+  // Approved / sent / negotiating quotations can be ordered directly: the customer PO on the order is the
+  // acceptance (QUO-11), so creating the order marks the quotation Accepted and the opportunity Won.
+  if (!ORDERABLE_QUOTE.includes(String(q.status))) return E.quotationNotAccepted(String(q.status).replace(/_/g, ' '));
   if (q.isLatest === false) return E.quotationNotLatest;
   const opp = q.opportunityId ? rows(d, 'opportunities').find((o) => o.id === q.opportunityId) : undefined;
-  if (opp && opp.stage !== 'won') return E.opportunityNotWon(opp.id);
+  if (q.status === 'accepted') {
+    if (opp && opp.stage !== 'won') return E.opportunityNotWon(opp.id);
+  } else {
+    if (String(q.validUntil ?? '') && String(q.validUntil) < todayKey()) return E.quotationExpired(String(q.validUntil));
+    if (opp?.stage === 'lost') return E.opportunityLost(opp.id);
+    const other = q.opportunityId ? rows(d, 'quotations').find((x) => x.id !== q.id && x.opportunityId === q.opportunityId && x.status === 'accepted') : undefined;
+    if (other) return E.otherQuotationAccepted(String(other.quoteNo ?? other.id));
+  }
   const existing = rows(d, SO).find((o) => o.quotationId === q.id && o.status !== 'cancelled');
   if (existing) return E.orderExists(String(existing.orderNo ?? existing.id));
   // BR-20: one won opportunity → one live sales order, whichever of its quotations it came from.
@@ -120,7 +131,7 @@ export function quotationBlocker(d: Db, q: RecordData | undefined): string | nul
   return null;
 }
 
-/** Quotations the actor may convert: accepted, latest, opportunity won, no live order yet. */
+/** Quotations the actor may convert: approved or later, latest, opportunity not lost, no live order yet. */
 export function eligibleQuotations(actor: Actor): RecordData[] {
   if (!hasResource('quotations')) return [];
   const d = getDb();
@@ -494,6 +505,13 @@ export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
       financeCheck: false,
     });
     const order = patchRecordIn(ctx, SO, created.id, { lines }, N.linesCaptured(lines.length));
+    // Ordered straight from an approved / sent quotation: the order's customer PO is the acceptance.
+    const q = draft.source === 'quotation' ? rows(d, 'quotations').find((x) => x.id === draft.sourceId) : undefined;
+    if (q && q.status !== 'accepted') {
+      patchRecordIn(ctx, 'quotations', q.id, { status: 'accepted', acceptedAt: nowIso(), acceptanceMethod: 'po', customerPoNo: input.customerPoNo.trim(), customerPoDate: input.customerPoDate, poFileName: input.poFileName.trim(), acceptedByName: '' }, E.acceptedByOrder(String(order.orderNo), input.customerPoNo.trim()));
+      const opp = q.opportunityId ? rows(d, 'opportunities').find((o) => o.id === q.opportunityId) : undefined;
+      if (opp && !['won', 'lost'].includes(String(opp.stage))) patchRecordIn(ctx, 'opportunities', opp.id, { stage: 'won', wonAt: nowIso(), probability: 100 }, E.wonByOrder(String(q.quoteNo ?? q.id), String(order.orderNo)));
+    }
     writeSchedule(ctx, order, defaultSchedule(draft.orderKind, orderDate));
     d.idempotency[input.idempotencyKey] = order.id;
     appendAudit(d, actor, { action: 'salesOrder.created', resource: SO, recordId: order.id, summary: N.createdLog(String(order.orderNo), draft.source === 'quotation' ? N.fromQuotation(draft.sourceId) : N.fromPrevious(draft.sourceId), input.customerPoNo), correlationId: ctx.correlationId });

@@ -7193,6 +7193,20 @@ td.is-editable:hover > .cell {
   border: 1px solid var(--s-border-strong);
   background: var(--s-panel);
 }
+/* One main action: the primary takes a full row on top; when a module adds its own primary (e.g. "Mark Accepted")
+   the earlier lifecycle primary drops to the normal style so two purple buttons never compete. Wide labels get a row. */
+.rs-actions .inspector-actions > .btn-primary,
+.rs-actions .inspector-actions > .btn.is-wide {
+  grid-column: 1 / -1;
+}
+.rs-actions .inspector-actions > .btn-primary { order: -1; }
+.rs-actions .inspector-actions > .btn-primary:has(~ .btn-primary) {
+  order: 0;
+  background: var(--s-panel);
+  border-color: var(--s-border-strong);
+  color: var(--s-text);
+}
+.rs-actions .inspector-actions > .btn-primary:has(~ .btn-primary):hover:not(:disabled) { background: var(--s-hover); }
 
 /* ---------- Rounded pill everywhere in inline editing (owner reference) ---------- */
 /* hover on any editable cell: a pill outline hugs the value (no square cell box) */
@@ -7456,7 +7470,8 @@ td.is-editable:hover > .cell {
 .rs-card:has(#record-actions-slot) {
   position: relative;
 }
-.rs-actions .inspector-actions > .icon-btn {
+/* Only the card's own "More actions" (always last) is pinned; module menus (e.g. Quotation actions ⋮) stay in the flow. */
+.rs-actions .inspector-actions > .icon-btn:last-child {
   position: absolute;
   top: 12px;
   right: 12px;
@@ -7946,3 +7961,170 @@ td.is-dirty .cell::after {
 .row-actions .row-apply { color: var(--s-success); }
 /* Create Opportunity on cards: a single icon action (tooltip names it) */
 .board-card-actions .icon-btn { width: 30px; }
+
+/* Totals everywhere (Pricing & GST tab, full record page, PDF, editor, sales orders): one summary card — label left,
+   amount right, one row per line, Total emphasised with a rule above, amount in words on its own full-width line.
+   Selectors beat the record page's 4-column `.inspector-page .detail-list` grid. */
+.detail-list:is(.qt-totals, .orders-totals) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  width: 100%;
+  max-width: 520px;
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-sunken);
+}
+:is(.qt-totals, .orders-totals) .detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--sp-3);
+  min-height: 0;
+}
+:is(.qt-totals, .orders-totals) .detail-row dt {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--fs-supportive);
+  color: var(--s-text-secondary);
+}
+:is(.qt-totals, .orders-totals) .detail-row dd {
+  width: auto;
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+  overflow: visible;
+}
+:is(.qt-totals, .orders-totals) .detail-row:has(strong) {
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--s-border);
+}
+:is(.qt-totals, .orders-totals) .detail-row:has(strong) dt { color: var(--s-text); font-weight: var(--fw-semibold); }
+/* "In words": label above, sentence below across the card */
+:is(.qt-totals, .orders-totals) .detail-row:has(> dd:not(.num)) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+:is(.qt-totals, .orders-totals) .detail-row:has(> dd:not(.num)) dd {
+  text-align: left;
+  white-space: normal;
+  color: var(--s-text-secondary);
+}
+.detail-list.orders-totals { margin-left: auto; margin-top: var(--sp-3); }
+
+/* ---------- Deal progress strip (quotation → sales order → delivery → installation) ---------- */
+.deal-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-panel);
+}
+.deal-steps {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.deal-step {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+/* connector to the previous step */
+.deal-step + .deal-step::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: calc(50% + 8px);
+  left: calc(-50% + 8px);
+  height: 2px;
+  background: var(--s-border);
+}
+.deal-step.is-done + .deal-step::before,
+.deal-step.is-skipped + .deal-step::before { background: var(--s-success); }
+.deal-step.is-skipped .deal-dot { border-style: dashed; border-color: var(--s-success); }
+.deal-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--s-border-strong, var(--s-border));
+  background: var(--s-panel);
+}
+.deal-step.is-done .deal-dot { border-color: var(--s-success); background: var(--s-success); }
+.deal-step.is-current .deal-dot { border-color: var(--s-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-accent) 22%, transparent); }
+.deal-label { font-size: 11px; line-height: 1.25; color: var(--s-text-muted); }
+.deal-step.is-done .deal-label { color: var(--s-text-secondary); }
+.deal-step.is-current .deal-label { color: var(--s-text); font-weight: var(--fw-semibold); }
+.deal-next { margin: 0; font-size: var(--fs-supportive); color: var(--s-text-secondary); }
+.deal-next strong { color: var(--s-text); }
+.deal-next.is-stopped strong { color: var(--s-danger); }
+@media (max-width: 760px) {
+  /* Phone: the strip becomes a wrapped list of dots; labels stay readable */
+  .deal-steps { flex-wrap: wrap; row-gap: var(--sp-3); }
+  .deal-step { flex: 0 0 25%; }
+  .deal-step + .deal-step::before { display: none; }
+}
+
+/* Record tab strips that overflow show a soft edge shadow on the side that has more tabs
+   (scroll-shadow technique: panel-coloured covers scroll with the content, shadows stay at the edges). */
+:is(.inspector, .inspector-drawer, .inspector-page) > .tabs {
+  background:
+    linear-gradient(to right, var(--s-panel) 30%, transparent) left center / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--s-panel) 30%, transparent) right center / 32px 100% no-repeat local,
+    linear-gradient(to right, color-mix(in srgb, var(--s-text) 16%, transparent), transparent) left center / 14px 100% no-repeat scroll,
+    linear-gradient(to left, color-mix(in srgb, var(--s-text) 16%, transparent), transparent) right center / 14px 100% no-repeat scroll;
+  background-color: var(--s-panel);
+}
+
+/* Phone: filters and KPIs use most of the screen, so a board that only fills the leftover height shows a sliver of
+   one card. Give it a real height and let the page scroll instead. */
+@media (max-width: 760px) {
+  .board {
+    flex: none;
+    height: max(420px, 72vh);
+  }
+  .page-resource:has(.board),
+  .page-resource .page-main:has(.board),
+  .page-resource .page-main > .content-surface:has(.board) {
+    flex: none;
+    height: auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: visible !important; /* beats the desktop board rule's overflow: hidden !important */
+  }
+  .board { max-width: 100%; }
+}
+
+/* Drawer header: "ID · Updated · version" stays on one line; the workflow actions sit on their own row below and
+   wrap instead of running off the edge (labelled buttons like Change Status, Open Lead, Generate Sales Order). */
+.inspector-subrow {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  row-gap: var(--sp-2);
+}
+.inspector-subrow .inspector-sub {
+  flex: 1 1 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.inspector-subrow .inspector-icon-actions {
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.inspector-subrow .inspector-icon-actions > .btn { max-width: 100%; }
+.inspector-subrow .inspector-icon-actions > .btn-primary { order: -1; }
+/* The record ⋯ menu stays at the end of the row */
+.inspector-subrow .inspector-icon-actions > .icon-btn:last-child { margin-left: auto; }
