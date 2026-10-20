@@ -4,7 +4,7 @@ import { Button } from '../../components/primitives/Button';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { formatMoney } from '../../lib/format';
@@ -38,8 +38,7 @@ export function MainStoreStockPage() {
   );
   if (!can(actor, 'spares.stock')) return <NoAccess what={P.noAccess} />;
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.mainStoreStock.title}
         description={P.description}
         actions={
@@ -58,8 +57,7 @@ export function MainStoreStockPage() {
             </Button>
           ) : undefined
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -128,8 +126,7 @@ export function MainStoreStockPage() {
             />
           </>
         )}
-      </div>
-    </div>
+    </ListPage>
   );
 }
 
@@ -188,9 +185,8 @@ export function EngineerStockPage() {
     ...figureColumns<EngineerPartRow>(),
   ];
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.engineerStock.title} description={P.description} />
-      <div className="content-surface">
+    <ListPage title={L.nav.pages.engineerStock.title} description={P.description}
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -240,7 +236,6 @@ export function EngineerStockPage() {
             columns={engineerCols}
           />
         )}
-      </div>
-    </div>
+    </ListPage>
   );
 }

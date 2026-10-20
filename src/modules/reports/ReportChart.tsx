@@ -71,19 +71,24 @@ function RankBars({ spec, points, linkFor }: { spec: ChartSpec; points: ChartPoi
   );
 }
 
-/** Stages (funnel): bars shrink with the stage, each shows how much carried over from the one before. */
+/** Stages (funnel): one tapering funnel. Each stage's top is its own width, its bottom is the next stage's, so the sides slope; the last stage narrows into a neck. */
 function Funnel({ spec, points, linkFor }: { spec: ChartSpec; points: ChartPoint[]; linkFor?: LinkFor }) {
   const max = Math.max(...points.map((p) => p.value), 0);
+  const width = (v: number) => (max ? Math.max(4, (v / max) * 100) : 0);
   return (
     <ol className="rp-funnel">
       {points.map((p, i) => {
         const prev = i > 0 ? points[i - 1].value : null;
         const carry = spec.carry !== false && prev ? p.value / prev : null;
+        const top = width(p.value);
+        const bottom = i < points.length - 1 ? width(points[i + 1].value) : top * 0.6;
+        const clip = `polygon(${50 - top / 2}% 0, ${50 + top / 2}% 0, ${50 + bottom / 2}% 100%, ${50 - bottom / 2}% 100%)`;
+        const shade = points.length > 1 ? 30 + (70 * i) / (points.length - 1) : 100;
         return (
           <li key={p.key} className="rp-funnel-row" tabIndex={0} data-tooltip={`${p.label}: ${full(spec, p.value)}${carry !== null && carry <= 1 ? ` · ${C.carried(Math.round(carry * 100))}` : ''}`}>
             <MarkLabel point={p} linkFor={linkFor} className="rp-rank-label" />
             <span className="rp-funnel-track">
-              <span className="rp-funnel-bar" style={{ width: `${max ? Math.max(2, (p.value / max) * 100) : 0}%` }} />
+              <span className="rp-funnel-bar" style={{ clipPath: clip, background: `color-mix(in srgb, var(--rp-s1) ${Math.round(shade)}%, var(--s-panel))` }} />
             </span>
             <span className="rp-rank-value">{short(spec, p.value)}</span>
             <span className="rp-funnel-carry muted">{carry !== null && carry <= 1 ? `${Math.round(carry * 100)}%` : ''}</span>

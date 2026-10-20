@@ -38,9 +38,10 @@ import { Button, IconButton } from '../../components/primitives/Button';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { InfoTip } from '../../components/primitives/InfoTip';
-import { confirmDelete } from '../../components/primitives/overlay';
+import { Menu, confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { QuickCreateDialog } from '../../components/resource/RecordForm';
+import { ListPage } from '../../components/shell/ListPage';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { SettingsPage } from '../../components/settings/kit';
 import { ConvertDialog, convertBlockedReason } from './components';
@@ -55,6 +56,30 @@ const PAGES = L.nav.pages;
 // ---------------------------------------------------------------- Contact Pool (CUS-05)
 
 type StatusFilter = 'open' | 'all' | 'new' | 'contacted' | 'converted';
+
+/** Import sources in one menu, so the page header carries a single primary button like every other list. */
+function ImportMenu({ disabledReason, onPick }: { disabledReason?: string; onPick: (add?: 'phone' | 'card') => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button ref={ref} icon="arrow-up" iconRight="chevron-down" aria-haspopup="menu" aria-expanded={open} disabledReason={disabledReason} onClick={() => setOpen((o) => !o)}>
+        {A.importMenu}
+      </Button>
+      <Menu
+        open={open}
+        onClose={() => setOpen(false)}
+        anchor={ref}
+        label={A.importMenuLabel}
+        items={[
+          { id: 'excel', label: A.uploadExcel, icon: 'arrow-up', onSelect: () => onPick() },
+          { id: 'phone', label: A.phoneBook, icon: 'users', onSelect: () => onPick('phone') },
+          { id: 'card', label: A.visitingCard, icon: 'id-card', onSelect: () => onPick('card') },
+        ]}
+      />
+    </>
+  );
+}
 
 export function ContactPoolPage() {
   const actor = useActor();
@@ -108,24 +133,18 @@ export function ContactPoolPage() {
   ];
 
   return (
-    <div className="page">
-      <PageHeader title={PAGES.contactPool.title} description={P.description} />
-      <div className="toolbar">
-        <Button variant="primary" icon="plus" onClick={() => setAdding(true)} disabledReason={canCreate ? undefined : P.noCreate}>
-          {A.addManually}
-        </Button>
-        <Button icon="arrow-up" onClick={() => importWith()} disabledReason={canCreate ? undefined : P.noCreate}>
-          {A.uploadExcel}
-        </Button>
-        <Button icon="users" onClick={() => importWith('phone')} disabledReason={canCreate ? undefined : P.noCreate} title={A.simulatedPhoneBook}>
-          {A.phoneBook}
-        </Button>
-        <Button icon="id-card" onClick={() => importWith('card')} disabledReason={canCreate ? undefined : P.noCreate} title={A.simulatedCard}>
-          {A.visitingCard}
-        </Button>
-        <InfoTip text={L.customers.import.demoTip} label={L.customers.import.demoTipLabel} />
-      </div>
-      <div className="content-surface">
+    <ListPage
+      title={PAGES.contactPool.title}
+      description={P.description}
+      actions={
+        <>
+          <ImportMenu disabledReason={canCreate ? undefined : P.noCreate} onPick={importWith} />
+          <Button variant="primary" icon="plus" onClick={() => setAdding(true)} disabledReason={canCreate ? undefined : P.noCreate}>
+            {A.addManually}
+          </Button>
+        </>
+      }
+    >
         <DataTable<PoolContact>
           label={PAGES.contactPool.title}
           noun={P.noun}
@@ -207,10 +226,9 @@ export function ContactPoolPage() {
             },
           ]}
         />
-      </div>
       <QuickCreateDialog open={adding} resKey="contacts" initial={{ customerId: null, poolStatus: 'new', ownerId: actor.staffId, divisionIds: actor.divisionIds.slice(0, 1) }} onClose={() => setAdding(false)} onCreated={() => setAdding(false)} />
       {converting && <ConvertDialog actor={actor} contact={converting} onClose={() => setConverting(null)} />}
-    </div>
+    </ListPage>
   );
 }
 

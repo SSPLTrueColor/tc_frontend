@@ -3,6 +3,7 @@ import { L } from '../../constants/labels';
 import { addDays } from '../../lib/dates';
 import { cx } from '../../lib/format';
 import { IconButton } from '../../components/primitives/Button';
+import type { DayCounts } from './dayLoad';
 
 const MM = L.calendar.miniMonth;
 const MONTHS = MM.months;
@@ -26,10 +27,10 @@ function weeksOf(month: string): string[][] {
 }
 
 /**
- * Mini month (left panel): Monday-first, today ringed, the main calendar's date filled, a dot on days
- * that have events. Clicking a day moves the main calendar there.
+ * Mini month (left panel): Monday-first, today ringed, the main calendar's date filled, a dot on days that have activities
+ * (the exact count is on the main calendar). Clicking a day moves the main calendar there.
  */
-export function MiniMonth({ selected, today, marked, onPick }: { selected: string; today: string; marked: Set<string>; onPick: (day: string) => void }) {
+export function MiniMonth({ selected, today, counts, onPick }: { selected: string; today: string; counts: DayCounts; onPick: (day: string) => void }) {
   const [month, setMonth] = useState(ym(selected));
   const [lastSelected, setLastSelected] = useState(selected);
   if (lastSelected !== selected) {
@@ -59,12 +60,12 @@ export function MiniMonth({ selected, today, marked, onPick }: { selected: strin
               key={day}
               type="button"
               className={cx('mini-month-day', ym(day) !== month && 'is-outside', day === today && 'is-today', day === selected && 'is-selected')}
-              aria-label={`${+day.slice(8, 10)} ${MONTHS[+day.slice(5, 7) - 1]} ${day.slice(0, 4)}${marked.has(day) ? MM.hasEvents : ''}`}
+              aria-label={`${+day.slice(8, 10)} ${MONTHS[+day.slice(5, 7) - 1]} ${day.slice(0, 4)}${counts.get(day) ? MM.activitiesOn(counts.get(day)!) : ''}`}
               aria-current={day === today ? 'date' : undefined}
               onClick={() => onPick(day)}
             >
               {+day.slice(8, 10)}
-              {marked.has(day) && <span className="mini-month-dot" aria-hidden="true" />}
+              {!!counts.get(day) && <span className="mini-month-dot" aria-hidden="true" />}
             </button>
           ))}
       </div>

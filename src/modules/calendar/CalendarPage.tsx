@@ -20,28 +20,22 @@ import { findOverlaps, listCalendarItems, occurrences, validateEvent, type CalIt
 import { useActor } from '../../services/hooks';
 import { activeMasterValues } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
-import { Button, IconButton } from '../../components/primitives/Button';
+import { Button } from '../../components/primitives/Button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, useToast } from '../../components/primitives/feedback';
 import { confirmDelete, Dialog, Popover } from '../../components/primitives/overlay';
-import { Icon } from '../../components/primitives/Icon';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { CalendarSidebar } from './CalendarSidebar';
+import { CalendarHead, CalendarToolbar } from './CalendarChrome';
+import { countDays, dayLoadOptions } from './dayLoad';
 import { clock12, clockShort, fullText, hhmm, matches, minutes, toFc, wall, type ViewId } from './calendarUtils';
 import { EventDetail, type Detail } from './EventDetail';
 import { EventDialog, type DialogMode } from './EventDialog';
 import { QuickCreate, type Slot } from './QuickCreate';
-import { TodayAgenda, todaySummary } from './TodayAgenda';
+import { todaySummary } from './TodayAgenda';
 import { useCalendarShortcuts } from './useCalendarShortcuts';
 import './calendar.css';
-import { SearchInput, SegmentedControl } from '../../components/primitives/controls';
 
 const C = L.calendar;
-const VIEWS: { id: ViewId; label: string; key: string }[] = [
-  { id: 'dayGridMonth', label: C.page.views.dayGridMonth, key: 'M' },
-  { id: 'timeGridWeek', label: C.page.views.timeGridWeek, key: 'W' },
-  { id: 'timeGridDay', label: C.page.views.timeGridDay, key: 'D' },
-  { id: 'agenda', label: C.page.views.agenda, key: 'A' },
-];
 type Scope = 'this' | 'following' | 'all';
 
 type Prompt =
@@ -126,15 +120,15 @@ export function CalendarPage() {
   const events = useMemo(() => visible.map(toFc), [visible]);
   const filtering = search.trim() !== '' || visible.length !== items.length;
 
-  const marked = useMemo(() => {
-    const from = addDays(`${cursor.slice(0, 7)}-01`, -7);
-    const to = addDays(from, 50);
-    const set = new Set<string>();
-    visible.forEach((i) => occurrences(i, from, `${to}T23:59`).forEach((o) => {
-      for (let d = o.start.slice(0, 10); d <= o.end.slice(0, 10) && d <= to; d = addDays(d, 1)) set.add(d);
-    }));
-    return set;
-  }, [visible, cursor]);
+  const counts = useMemo(() => {
+    const monthStart = addDays(`${cursor.slice(0, 7)}-01`, -7);
+    const from = range && range.from < monthStart ? range.from : monthStart;
+    let to = addDays(monthStart, 50);
+    if (range && range.to > to) to = range.to;
+    const spans: { start: string; end: string }[] = [];
+    visible.forEach((i) => occurrences(i, from, `${to}T23:59`).forEach((o) => spans.push({ start: o.start, end: o.end })));
+    return countDays(spans, from, to);
+  }, [visible, cursor, range]);
 
   const countIn = useCallback((rows: CalItem[]) => (range ? rows.reduce((n, i) => n + occurrences(i, `${range.from}T00:00`, `${addDays(range.to, -1)}T23:59`).length, 0) : 1), [range]);
   const inRange = useMemo(() => countIn(visible), [countIn, visible]);
@@ -340,7 +334,6 @@ export function CalendarPage() {
     if (arg.view.type === 'dayGridMonth')
       return (
         <span className="ev-line">
-          {arg.timeText && !arg.event.allDay && <span className="ev-time">{arg.timeText}</span>}
           <span className="ev-title">{i.title}</span>
         </span>
       );
@@ -388,7 +381,7 @@ export function CalendarPage() {
               onCreate={(el) => createFromCursor(el)}
               cursor={cursor}
               today={today}
-              marked={marked}
+              counts={counts}
               onPick={(d) => api()?.gotoDate(d)}
               types={types}
               onTypes={setTypes}
@@ -404,30 +397,20 @@ export function CalendarPage() {
         )}
 
         <section className="cal-main panel" aria-label={C.page.region}>
-          <div className="cal-head">
-            <TodayAgenda info={todayInfo} onOpen={() => go('today')} />
-            <div className="cal-search">
-              <Icon name="search" size={14} />
-              <SearchInput ref={searchRef} aria-label={C.page.search} placeholder={C.page.searchPlaceholder} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && (setSearch(''), e.currentTarget.blur())} />
-              {search && <IconButton icon="x" label={C.page.clearSearch} onClick={() => setSearch('')} />}
-            </div>
-          </div>
-          <div className="cal-toolbar">
-            <IconButton icon="panel-left" label={sideOpen ? C.page.hidePanel : C.page.showPanel} aria-pressed={sideOpen} onClick={() => setSideOpen((o) => !o)} />
-            <Button onClick={() => go('today')} title={C.page.shortcutHint(C.page.today, 'T')}>
-              {C.page.today}
-            </Button>
-            <IconButton icon="chevron-left" label={C.page.shortcutHint(C.page.previous, '←')} onClick={() => go('prev')} />
-            <IconButton icon="chevron-right" label={C.page.shortcutHint(C.page.next, '→')} onClick={() => go('next')} />
-            <h2 className="cal-title" aria-live="polite">
-              {title}
-            </h2>
-            <span className="spacer" />
-            {!sideOpen && (
-              <Button icon="plus" aria-label={C.page.createEvent} variant="primary" onClick={(e) => createFromCursor(e.currentTarget)} disabledReason={canCreate ? undefined : C.page.cannotCreate(actor.role.label)} title={C.page.shortcutHint(C.page.createEvent, 'C')} />
-            )}
-            <SegmentedControl label={C.page.viewGroup} value={view} onChange={changeView} options={VIEWS.map((v) => ({ value: v.id, label: v.label, title: C.page.shortcutHint(v.label, v.key) }))} />
-          </div>
+          <CalendarHead ref={searchRef} info={todayInfo} onToday={() => go('today')} search={search} onSearch={setSearch} />
+          <CalendarToolbar
+            sideOpen={sideOpen}
+            onSide={() => setSideOpen((o) => !o)}
+            title={title}
+            onToday={() => go('today')}
+            onPrev={() => go('prev')}
+            onNext={() => go('next')}
+            view={view}
+            onView={changeView}
+            action={
+              !sideOpen && <Button icon="plus" aria-label={C.page.createEvent} variant="primary" onClick={(e) => createFromCursor(e.currentTarget)} disabledReason={canCreate ? undefined : C.page.cannotCreate(actor.role.label)} title={C.page.shortcutHint(C.page.createEvent, 'C')} />
+            }
+          />
           {query.error && query.data && (
             <InlineAlert tone="danger" title={C.page.loadError}>
               {query.error}{' '}
@@ -469,6 +452,11 @@ export function CalendarPage() {
                     setRange({ from: wall(d.view.activeStart, true), to: wall(d.view.activeEnd, true) });
                     const mid = new Date((d.start.getTime() + d.end.getTime()) / 2);
                     setCursor(d.view.type === 'dayGridMonth' || d.view.type === 'agenda' ? (wall(d.view.currentStart, true) <= today && today < wall(d.view.currentEnd, true) ? today : wall(d.view.currentStart, true)) : wall(mid, true));
+                  }}
+                  {...dayLoadOptions(counts)}
+                  navLinkDayClick={(d) => {
+                    setView('timeGridDay');
+                    api()?.changeView('timeGridDay', d);
                   }}
                   dayMaxEvents={2}
                   eventOrder="rank,start,-duration,allDay,title"

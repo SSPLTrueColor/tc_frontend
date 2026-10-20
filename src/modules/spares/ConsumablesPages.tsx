@@ -6,7 +6,7 @@ import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton, StatusC
 import { confirmDelete } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { FormDrawer } from '../../components/resource/RecordForm';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { formatMoney } from '../../lib/format';
@@ -41,9 +41,8 @@ export function RepeatOrdersPage() {
   );
   if (!can(actor, 'consumables.view')) return <NoAccess what={P.noAccess} />;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.repeatOrders.title} description={P.description} />
-      <div className="content-surface">
+    <ListPage title={L.nav.pages.repeatOrders.title} description={P.description}
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -88,7 +87,7 @@ export function RepeatOrdersPage() {
                 key: 'act',
                 label: P.cols.actions,
                 render: (r) => (
-                  <Button icon="reset" disabledReason={q.data?.canRepeat ? undefined : P.noCreate} onClick={() => setRepeat({ id: r.id, label: r.orderNo })}>
+                  <Button size="compact" icon="reset" disabledReason={q.data?.canRepeat ? undefined : P.noCreate} onClick={() => setRepeat({ id: r.id, label: r.orderNo })}>
                     {L.consumables.actions.repeatOrder}
                   </Button>
                 ),
@@ -96,9 +95,9 @@ export function RepeatOrdersPage() {
             ]}
           />
         )}
-      </div>
+      
       {repeat && <RepeatOrderDialog orderId={repeat.id} orderLabel={repeat.label} onClose={() => setRepeat(null)} />}
-    </div>
+    </ListPage>
   );
 }
 
@@ -129,8 +128,7 @@ export function DealerOrdersPage() {
     });
   const total = rows.reduce((s, r) => s + r.value, 0);
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.dealerOrders.title}
         description={P.description}
         actions={
@@ -138,8 +136,7 @@ export function DealerOrdersPage() {
             {L.consumables.actions.newDealerOrder}
           </Button>
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -201,8 +198,8 @@ export function DealerOrdersPage() {
             ]}
           />
         )}
-      </div>
+      
       <FormDrawer resKey="dealerOrders" recordId={form?.id} open={!!form} onClose={() => setForm(null)} />
-    </div>
+    </ListPage>
   );
 }

@@ -52,6 +52,7 @@ export function Pagination({ page, pageSize, total, noun, onPage, onSize, sizes 
         </strong>{' '}
         {LS.ofTotal(total.toLocaleString('en-IN'), noun)}
       </span>
+      <div className="grid-footer-right">
       {pageCount > 1 && (
         <nav className="grid-pages" aria-label={LS.pagination}>
           <IconButton icon="chevron-left" label={LS.previousPage} disabledReason={p === 0 ? LS.firstPage : undefined} onClick={() => onPage(p - 1)} />
@@ -70,6 +71,7 @@ export function Pagination({ page, pageSize, total, noun, onPage, onSize, sizes 
         </nav>
       )}
       {onSize && <SelectMenu label={LS.rowsPerPage} value={pageSize} options={sizes.map((n) => ({ value: n, label: LS.perPage(n) }))} onChange={onSize} />}
+      </div>
     </div>
   );
 }

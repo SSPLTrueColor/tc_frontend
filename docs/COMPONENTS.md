@@ -55,6 +55,9 @@ Spacing is `var(--sp-1…6)` (4 · 8 · 12 · 16 · 24 · 32 px) only. Colours c
 
 A list page is always: **filter bar → table → pagination**.
 
+The filter bar is drawn by `DataTable` in one order: **search · `filters` · "Clear filters" ………… `summary`**. Pass `filters` (the dropdowns), `activeFilters` + `onClearFilters`, and `summary` ("12 orders"). `ListPage` (`components/shell`) is the page frame around it: header → optional KPI strip / tabs (`kpis`) → table.
+Reports: every report page has `ReportSwitcher` (left rail, or a dropdown on narrow screens) plus previous / next buttons; `/reports` opens the last report used, `/reports?all=1` is the catalogue, and `/reports/<category>` opens that category's first report.
+
 ## Overlays
 
 | Component | Use it for | Rules |
@@ -78,3 +81,20 @@ Inline edit in table cells · quick-create at the top of the list · row actions
 1. Check the gallery: does one already do this?
 2. Put it in `src/components/primitives/` (generic) or `src/components/<area>/`.
 3. Add it to the gallery page in every state, and to this file.
+
+## List page layout (one rhythm for every list)
+
+Every list — menu lists (`ResourcePage`) and computed lists (`ListPage` + `DataTable`) — uses the same vertical rhythm, set once in `app.css` (`.page-resource .page-main > …`):
+
+| Block | Size |
+|---|---|
+| top padding | 12 |
+| description row (`page-intro`, actions on the right, at most one primary button) | 32 |
+| gap | 8 |
+| KPI cards (`KpiStrip`, `.rp-kpis`) | then 12 |
+| tabs / saved-views row (full width, 1 px line under it) | 44 |
+| filter row (search · Filters · page-specific tools · count · columns) | 48 |
+| table — full width, no radius, rows scroll inside | fills the page |
+| footer — count on the left, page numbers + rows per page on the right | pinned to the bottom |
+
+Build a computed list as `<ListPage title description actions kpis>` → `<DataTable …/>`. Put tabs and `KpiStrip` in `kpis`; put date / period / person pickers in `tools`; put filters in `filters`. For bulk actions pass `selection` (page-controlled, with `canSelect`). Do not wrap the table in your own `content-surface` or `page` div.

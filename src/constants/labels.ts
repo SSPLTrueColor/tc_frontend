@@ -353,6 +353,15 @@ const common = {
     noMatch: (q: string) => `No rows match “${q}”`,
     noRows: 'Nothing to show',
     clearFilters: 'Clear filters',
+    filters: 'Filters',
+    columns: 'Columns',
+    columnsAria: 'Choose columns',
+    resetColumns: 'Reset',
+    selectAll: 'Select all rows on this page',
+    selectRow: 'Select row',
+    selected: (n: number) => `${n} selected`,
+    export: 'Export CSV',
+    clearSelection: 'Clear',
   },
 
   list: {
@@ -1329,6 +1338,8 @@ const customers = {
     openLead: (id: string) => `Open ${id}`,
     reviewMerge: 'Review and merge',
     open: 'Open',
+    importMenu: 'Import contacts',
+    importMenuLabel: 'Import sources',
     simulatedPhoneBook: 'Simulated: adds sample entries, the phone book is not read',
     simulatedCard: 'Simulated OCR: adds a sample card, the camera is not used',
     simulatedErp: 'Simulated ERP read',
@@ -1458,6 +1469,7 @@ const customers = {
   },
 
   pool: {
+    noun: 'contacts',
     description: 'Prospects collected from the phone book, Excel / CSV files, visiting cards and manual entry. They are not linked to a company yet; use “Convert to Lead” when there is a real requirement (CUS-05).',
     searchPlaceholder: 'Search name, mobile, email or city',
     searchLabel: 'Search the Contact Pool',
@@ -1467,7 +1479,6 @@ const customers = {
     statusAll: 'All statuses',
     sourceAll: 'All sources',
     count: (n: number) => `${n} ${n === 1 ? 'contact' : 'contacts'}`,
-    noun: 'contacts',
     range: (from: number, to: number, total: number) => `${from}–${to} of ${total} contacts`,
     page: (p: number, of: number) => `Page ${p} of ${of}`,
     prevPage: 'Previous page',
@@ -1881,6 +1892,10 @@ const leads = {
     importLeads: {
       description: 'Exhibition leads from a CSV file (in Excel: File → Save as → CSV). Rows are checked before anything is created; existing customers and contacts are reused and lead owners are assigned by the lead assignment rules.',
       noAccess: 'lead import',
+      addRows: 'Add rows',
+      addRowsLabel: 'Ways to add rows',
+      tableLabel: 'Import preview',
+      noun: 'rows',
       cardRead: 'Card read (simulated — no OCR in the prototype)',
       fileTooLarge: 'The file is larger than 2 MB.',
       fileErrorTitle: 'Could not read the file',
@@ -1902,6 +1917,9 @@ const leads = {
       description: 'Open follow-ups on records you can see, from overdue to the next 7 days. Logging a follow-up sets the next follow-up date.',
       buckets: { overdue: 'Overdue', today: 'Today', upcoming: 'Next 7 Days' },
       periodLabel: 'Follow-up period',
+      tableLabel: 'Follow-ups',
+      noun: 'follow-ups',
+      cols: { due: 'Due', record: 'Record', type: 'Type', owner: 'Owner', action: 'Actions' },
       searchPlaceholder: 'Search record or customer',
       searchLabel: 'Search follow-ups',
       range: (from: number, to: number, total: number) => `${from}–${to} of ${total} follow-ups`,
@@ -2399,6 +2417,15 @@ const opportunities = {
       togglePanel: (open: boolean) => (open ? 'Hide filters' : 'Show filters'),
       allDay: 'All day',
       more: (n: number) => `+${n} more`,
+      book: 'Book demo',
+      cannotBook: (role: string) => `${role} cannot book demos`,
+      agenda: 'Agenda',
+      day: 'Day',
+      searchPlaceholder: 'Search machine, customer or demo…',
+      searchLabel: 'Search bookings',
+      todayCount: (n: number) => `${n} ${n === 1 ? 'booking' : 'bookings'} today`,
+      noun: (n: number) => `${n} ${n === 1 ? 'booking' : 'bookings'}`,
+      noMatch: 'No bookings match your search.',
     },
   },
 } as const;
@@ -2885,6 +2912,7 @@ const quotations = {
     noun: 'pending approvals',
     selectAll: 'Select all approvals on this page',
     selectRow: (q: string) => `Select ${q}`,
+    count: (n: number) => `${n} pending approval${n === 1 ? '' : 's'}`,
     selectedCount: (n: number) => `${n} selected`,
     clearSelection: 'Clear',
     bulkApprove: (n: number) => `Approve ${n} selected`,
@@ -4140,6 +4168,8 @@ const installed = {
 
   pages: {
     renewalPipeline: {
+      tableLabel: 'Renewals',
+      noun: 'contracts',
       description: (days: string) =>
         `AMC / CMC renewal pipeline. Reminders go to sales and service owners ${days} days before expiry; contracts move to “Due for Renewal” and a renewal opportunity is created automatically.`,
       buckets: { due: 'Due for Renewal', upcoming: 'Coming Up', lapsed: 'Lapsed', renewed: 'Renewed', lost: 'Lost' },
@@ -4920,6 +4950,15 @@ const service = {
       noCover: 'No service engineer covers this territory',
     },
     myJobs: {
+      tableLabel: 'My jobs',
+      noun: 'jobs',
+      count: (n: number) => `${n} job${n === 1 ? '' : 's'}`,
+      typeFilter: 'Type',
+      allTypes: 'All types',
+      types: { ticket: 'Service tickets', pm: 'PM visits' },
+      priorityFilter: 'Priority',
+      allPriorities: 'All priorities',
+      cols: { job: 'Job', customer: 'Customer', machine: 'Machine', priority: 'Priority', status: 'Status', due: 'Next deadline' },
       description: 'Your assigned service tickets and PM visits. Tap a job to accept, travel, check in, record work and get the customer’s sign-off.',
       loadError: 'Could not load your jobs',
       empty: 'No jobs assigned to you',
@@ -4996,6 +5035,8 @@ const service = {
       timeline: (r: string, a: string, res: string) => `Responded ${r} · on site ${a} · resolved ${res}`,
     },
     pmSchedule: {
+      tableLabel: 'PM visits',
+      noun: 'PM visits',
       description: 'Preventive Maintenance (PM) visits generated from warranties and AMC / CMC contracts. Overdue = past the due date; Missed = more than 30 days overdue.',
       tabsLabel: 'PM visit status',
       all: 'All',
@@ -5022,6 +5063,8 @@ const service = {
       findings: 'Findings',
     },
     knowledgeBase: {
+      tableLabel: 'Knowledge articles',
+      noun: 'articles',
       description: 'Known issues and solutions, searchable by machine model, error code or symptom. Service engineers contribute articles; Service Leadership approves them before they are published.',
       searchPlaceholder: 'Search title, model, error code, symptom',
       searchLabel: 'Search knowledge articles',
@@ -6236,6 +6279,9 @@ const field = {
       noMatchBody: 'Change the search or the status filter.',
     },
     exceptionDashboard: {
+      tableLabel: 'Exceptions',
+      noun: 'exceptions',
+      cols: { type: 'Exception', person: 'Person', detail: 'Detail', action: 'Actions' },
       description: 'People with no check-in, late arrival, early exit or no field visits logged on a day. Sundays are off.',
       teamLink: 'Team Attendance',
       typeLabel: 'Exception type',
@@ -6254,6 +6300,8 @@ const field = {
       emptyBody: (date: string) => `Everyone in your scope is on track for ${date}.`,
     },
     routeMap: {
+      tableLabel: 'People',
+      noun: 'people',
       description: 'Positions captured between check-in and check-out (simulated tracking: check-in, each field visit, check-out). No map tiles in the prototype — the route is drawn to scale.',
       pickerLabel: 'User',
       pickerPlaceholder: 'Choose a person',
@@ -6353,6 +6401,8 @@ const field = {
       added: 'Added to your Beat Plan',
     },
     payrollExport: {
+      tableLabel: 'Approved claims',
+      noun: 'claims',
       description: 'Approved expense claims ready for payroll. Exporting downloads a CSV and marks the claims “Exported to Payroll” (logged in the audit trail).',
       noAccess: 'Payroll Export',
       selected: (n: number, total: string) => `${n} selected · ${total}`,
@@ -6442,6 +6492,8 @@ const targets = {
 
   pages: {
     targetVsActual: {
+      tableLabel: 'Targets',
+      noun: 'targets',
       description: 'Target vs actual, calculated automatically: order value and quantity from confirmed sales orders (by order date), collections from payments received, new customers from first orders, activities from Activity History.',
       periods: { month: 'Month', quarter: 'Quarter', year: 'Financial Year' },
       periodType: 'Period type',
@@ -6484,6 +6536,8 @@ const targets = {
       setTargets: 'Set Targets',
     },
     activityScorecard: {
+      tableLabel: 'Weekly activity',
+      noun: 'people',
       description: 'Calls, visits, demos, quotations and referrals per person for the week (Monday–Sunday), generated from CRM data — no manual reporting.',
       previous: 'Previous week',
       next: 'Next week',
@@ -6529,11 +6583,73 @@ const targets = {
  * Category page titles come from L.nav.pages (reportKpis … reportFieldForce).
  */
 const reports = {
+  /** Report layouts (src/modules/reports/layouts): one visual per question instead of tiles + chart + table. */
+  layouts: {
+    viewData: (n: number) => `View data (${n} ${n === 1 ? 'row' : 'rows'})`,
+    hideData: 'Hide data',
+    noData: 'Nothing to show for this period',
+    of: (pct: number) => `${pct}% of total`,
+    leaderTop: (name: string, value: string, share: number | null) => `${name} is first with ${value}${share === null ? '' : ` — ${share}% of the total`}.`,
+    leaderTarget: (n: number, total: number) => `${n} of ${total} are at or above target.`,
+    achieved: (pct: number) => `${pct}% of target`,
+    target: (v: string) => `Target ${v}`,
+    people: (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`,
+    rank: (n: number) => `Rank ${n}`,
+    funnelHead: (pct: number, last: string) => `${pct}% of leads reach ${last}.`,
+    funnelDrop: (stage: string, pct: number) => `Biggest drop: ${stage} (${pct}% lost).`,
+    carried: (pct: number) => `${pct}% continue`,
+    groups: { sales: 'Sales', service: 'Service', money: 'Collections & orders', growth: 'Customers & adoption' },
+    boardHead: (label: string, value: string) => `Most is in ${label}: ${value}.`,
+    boardEmpty: 'Nothing here',
+    more: (n: number) => `+${n} more`,
+    weighted: 'Weighted',
+    avgDeal: 'Average deal',
+    active: 'Active',
+    inactive: 'Inactive',
+    overdue: (n: number) => `${n} overdue`,
+    ageBands: { d1: 'Up to 1 day', d3: '2–3 days', d7: '4–7 days', d14: '8–14 days', d15: 'Over 14 days' },
+    ageHead: (n: number, old: number) => `${n} leads are waiting; ${old} for more than 7 days.`,
+    backlogHead: (n: number, value: string) => `${n} orders, ${value} still to deliver.`,
+    trendHead: (label: string, value: string, dir: 'up' | 'down' | 'flat', pct: number | null, prev: string) =>
+      `${label}: ${value}${dir === 'flat' || pct === null ? '' : `, ${dir} ${Math.abs(pct)}% on ${prev}`}.`,
+    best: 'Highest',
+    lowest: 'Lowest',
+    average: 'Average',
+    latest: 'Latest',
+    total: 'Total',
+    others: 'Others',
+    shareHead: (label: string, share: number, value: string) => `${label} is the biggest at ${share}% (${value}).`,
+    heatHead: (peak: string, value: number) => `Busiest slot: ${peak} (${value}).`,
+    less: 'Fewer',
+    moreLabel: 'More',
+    attendHead: (avg: number, worst: string) => `On average ${avg} people are present each day; lowest on ${worst}.`,
+    present: 'Present',
+    halfDay: 'Half day',
+    onTour: 'On tour',
+    leave: 'Leave',
+    absent: 'Absent',
+    late: 'Late',
+    payBands: { due: 'Not yet due', d30: '1–30 days late', d60: '31–60 days late', d90: '61–90 days late', d91: 'Over 90 days late' },
+    payHead: (n: number, value: string, late: number) => `${n} payments, ${value} outstanding; ${late} already late.`,
+    ticketBands: { d1: 'Up to 1 day', d3: '2–3 days', d7: '4–7 days', d14: '8–14 days', d15: 'Over 14 days' },
+    ticketHead: (n: number, old: number) => `${n} open tickets; ${old} older than a week.`,
+  },
   /** Catalogue (/reports and /reports/<category>). */
   catalog: {
     description: 'Every report reads the records your role can see, with the same row scope as the lists. Open a report to filter, sort, chart and export it.',
     search: 'Search reports',
     allReports: 'All Reports',
+    switcher: {
+      label: 'Switch report',
+      heading: 'Reports',
+      search: 'Find a report',
+      noMatch: 'No report matches',
+      favourites: 'Favourites',
+      previous: 'Previous report',
+      next: 'Next report',
+      openNewTab: (title: string) => `Open ${title} in a new tab`,
+      current: 'Current report',
+    },
     loadError: 'Could not load reports',
     noMatchTitle: 'No reports match',
     noMatchBody: 'Try another word.',
@@ -7763,6 +7879,17 @@ const calendar = {
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     weekdays: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
     hasEvents: ', has events',
+    activitiesOn: (n: number) => `, ${n} ${n === 1 ? 'activity' : 'activities'}`,
+  },
+
+  /** Day-load cues shared by every calendar: a count on each day, the month total and the busiest day. */
+  load: {
+    activities: (n: number) => `${n} ${n === 1 ? 'activity' : 'activities'}`,
+    dayAria: (n: number) => `${n} ${n === 1 ? 'activity' : 'activities'} planned. Open this day`,
+    thisMonth: 'This month',
+    busiest: 'Busiest day',
+    quiet: 'Nothing planned this month',
+    legend: 'Busy days are shaded',
   },
 } as const;
 

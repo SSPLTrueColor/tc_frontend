@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { ROUTES } from '../../constants/routes';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
@@ -23,9 +23,12 @@ import { FilterBar } from './FilterBar';
 import { KpiRow, KpiRowSkeleton } from './KpiRow';
 import { ChartSkeleton, ReportChart } from './ReportChart';
 import { ReportTable, TableSkeleton, useTableModel } from './ReportTable';
+import { neighbours, orderedReports, ReportSwitcher } from './ReportSwitcher';
+import { getLayout, ViewData } from './layouts/registry';
+import './layouts/layouts.css';
 import { useReportPrefs } from './usePrefs';
 import { useReportState } from './useReportState';
-import { SearchInput } from '../../components/primitives/controls';
+import { LinkButton, SearchInput } from '../../components/primitives/controls';
 
 const P = L.reports.page;
 
@@ -54,8 +57,12 @@ export function ReportsCatalogPage({ group }: { group?: string }) {
   const actor = useActor();
   const prefs = useReportPrefs();
   const [q, setQ] = useState('');
+  const [sp] = useSearchParams();
   const query = useServiceQuery(() => listReports(actor).map((r) => r.id), [actor.user.id]);
   const allowed = new Set(query.data ?? []);
+  // Reports opens the report you used last (the switcher on it reaches every other report); "All reports" shows this catalogue.
+  const last = !group && !sp.has('all') ? prefs.recent.find((r) => allowed.has(r.id)) : undefined;
+  if (last) return <Navigate to={reportPath(last.id)} replace />;
   const groups = REPORT_GROUPS.filter((g) => !group || g.id === group);
   const title = group ? groups[0]?.label ?? group : L.nav.pages.reports.title;
   const needle = q.trim().toLowerCase();
@@ -138,7 +145,7 @@ export function ReportsCatalogPage({ group }: { group?: string }) {
 export function ReportRoute() {
   const { reportId = '' } = useParams();
   const loc = useLocation();
-  if (REPORT_GROUPS.some((g) => g.id === reportId)) return <ReportsCatalogPage group={reportId} />;
+  if (REPORT_GROUPS.some((g) => g.id === reportId)) return <GroupRedirect group={reportId} />;
   const moved = LEGACY_REPORTS[reportId];
   if (moved) {
     const sp = new URLSearchParams(loc.search);
@@ -146,6 +153,13 @@ export function ReportRoute() {
     return <Navigate to={`${reportPath(moved.id)}${[...sp].length ? `?${sp}` : ''}`} replace />;
   }
   return <OpenReport key={reportId} reportId={reportId} />;
+}
+
+/** A category link opens that category's first report; the switcher on it shows the rest (no separate category page). */
+function GroupRedirect({ group }: { group: string }) {
+  const actor = useActor();
+  const first = orderedReports(listReports(actor).map((r) => r.id)).find((d) => d.group === group);
+  return first ? <Navigate to={reportPath(first.id)} replace /> : <ReportsCatalogPage group={group} />;
 }
 
 /** A report that does not exist, or that this role cannot read, is "no access" — never an empty page. */
@@ -183,6 +197,8 @@ function ReportPage({ def }: { def: ReportDef }) {
   }, [reportId]);
 
   const fav = prefs.favourites.includes(def.id);
+  const all = orderedReports(listReports(actor).map((r) => r.id));
+  const { prev, next } = neighbours(all, def.id);
   const kind = view.filters.date;
   const presetLabel = kind ? presetsFor(kind, today).find((p) => p.id === state.preset)?.label : undefined;
   const filterLines = [
@@ -206,6 +222,7 @@ function ReportPage({ def }: { def: ReportDef }) {
     }
   };
 
+  const Layout = getLayout(def.id, view.id);
   const loading = !out && !result.error;
   const focusFilters = () => {
     const first = document.querySelector<HTMLElement>('.rp-filters button, .rp-filters input');
@@ -221,6 +238,7 @@ function ReportPage({ def }: { def: ReportDef }) {
         description={def.description}
         actions={
           <>
+            <LinkIconNav prev={prev} next={next} />
             <IconButton className={cx('rp-fav', fav && 'is-on')} icon="star" label={fav ? P.unfavourite(def.title) : P.favourite(def.title)} pressed={fav} variant="secondary" onClick={() => prefs.toggle(def.id)} />
             <Button
               variant="primary"
@@ -235,6 +253,9 @@ function ReportPage({ def }: { def: ReportDef }) {
         }
       />
 
+      <div className="rp-layout">
+        <ReportSwitcher reports={all} currentId={def.id} />
+        <div className="rp-main">
       {def.views.length > 1 && <Tabs label={P.views(def.title)} value={view.id} onChange={(id) => state.set({ view: id })} tabs={def.views.map((v) => ({ id: v.id, label: v.label }))} />}
       <FilterBar state={state} />
 
@@ -257,13 +278,41 @@ function ReportPage({ def }: { def: ReportDef }) {
               </ErrorState>
             )}
             <div className={cx('rp-stack', refreshing && 'is-busy')}>
-              <KpiRow out={out} label={L.reports.viewer.headlineFigures(def.title)} />
-              {out.chart && <ReportChart chart={out.chart} busy={refreshing} linkFor={(key) => { const r = out.rows.find((x) => x._key === key); const c = out.columns.find((col) => col.link); return r && c ? c.link!(r) : undefined; }} />}
-              <ReportTable model={model} title={P.table.details} busy={refreshing} onChangeFilters={focusFilters} />
+              {Layout ? (
+                <>
+                  <Layout def={def} view={view} out={out} busy={refreshing} />
+                  <ViewData rows={out.rows.length}>
+                    <ReportTable model={model} title={P.table.details} busy={refreshing} onChangeFilters={focusFilters} />
+                  </ViewData>
+                </>
+              ) : (
+                <>
+                  <KpiRow out={out} label={L.reports.viewer.headlineFigures(def.title)} />
+                  {out.chart && <ReportChart chart={out.chart} busy={refreshing} linkFor={(key) => { const r = out.rows.find((x) => x._key === key); const c = out.columns.find((col) => col.link); return r && c ? c.link!(r) : undefined; }} />}
+                  <ReportTable model={model} title={P.table.details} busy={refreshing} onChangeFilters={focusFilters} />
+                </>
+              )}
             </div>
           </div>
         )
       )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+/** Previous / next report in catalogue order, so a category can be read through without going back. */
+function LinkIconNav({ prev, next }: { prev?: ReportDef; next?: ReportDef }) {
+  const W = L.reports.catalog.switcher;
+  const loc = useLocation();
+  const keep = new URLSearchParams(loc.search);
+  ['view', 'group'].forEach((k) => keep.delete(k));
+  const qs = keep.toString() ? `?${keep}` : '';
+  return (
+    <span className="rp-stepper">
+      {prev ? <LinkButton to={`${reportPath(prev.id)}${qs}`} icon="chevron-left" aria-label={`${W.previous}: ${prev.title}`} data-tooltip={`${W.previous}: ${prev.title}`}>{''}</LinkButton> : <IconButton icon="chevron-left" label={W.previous} disabledReason={W.previous} />}
+      {next ? <LinkButton to={`${reportPath(next.id)}${qs}`} icon="chevron-right" aria-label={`${W.next}: ${next.title}`} data-tooltip={`${W.next}: ${next.title}`}>{''}</LinkButton> : <IconButton icon="chevron-right" label={W.next} disabledReason={W.next} />}
+    </span>
   );
 }

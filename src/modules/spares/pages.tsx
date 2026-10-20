@@ -5,7 +5,7 @@ import { Button } from '../../components/primitives/Button';
 import { DateText, EmptyValue } from '../../components/primitives/display';
 import { Badge, EmptyState, ErrorState, InlineAlert, NoAccess, Skeleton } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { L } from '../../constants/labels';
 import { useServiceQuery } from '../../hooks/useServiceQuery';
@@ -34,8 +34,7 @@ export function MinimumLevelAlertsPage() {
   if (!can(actor, 'spares.stock')) return <NoAccess what={P.noAccess} />;
   const rows = (q.data?.below ?? []).filter((r) => critOnly === 'all' || r.critical);
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.minimumLevelAlerts.title}
         description={P.description}
         actions={
@@ -59,8 +58,7 @@ export function MinimumLevelAlertsPage() {
             </Button>
           </div>
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -101,8 +99,7 @@ export function MinimumLevelAlertsPage() {
             ]}
           />
         )}
-      </div>
-    </div>
+    </ListPage>
   );
 }
 
@@ -117,9 +114,8 @@ export function LeakageListPage() {
   const rows = useMemo(() => (q.data?.rows ?? []).filter((r) => kind === 'all' || (kind === 'never' ? !r.lastOrderDate : !!r.lastOrderDate)), [q.data, kind]);
   if (!can(actor, 'consumables.view')) return <NoAccess what={P.noAccess} />;
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.leakageList.title} description={P.description(getPolicies().leakageDays)} />
-      <div className="content-surface">
+    <ListPage title={L.nav.pages.leakageList.title} description={P.description(getPolicies().leakageDays)}
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -151,15 +147,15 @@ export function LeakageListPage() {
                   { key: 'last', label: P.cols.last, sort: (r) => r.lastOrderDate ?? '', render: (r) => (r.lastOrderDate ? <DateText value={r.lastOrderDate} /> : <Badge tone="danger">{P.never}</Badge>) },
                   { key: 'since', label: P.cols.since, num: true, sort: (r) => r.daysSince ?? 99999, render: (r) => r.daysSince ?? <EmptyValue /> },
                   { key: 'owner', label: P.cols.owner, sort: (r) => recordTitle('employees', r.ownerId, actor), render: (r) => (r.ownerId ? recordTitle('employees', r.ownerId, actor) : <EmptyValue />) },
-                  { key: 'act', label: P.cols.actions, render: (r) => <Button onClick={() => setLogFor(r)}>{L.consumables.actions.logFollowUp}</Button> },
+                  { key: 'act', label: P.cols.actions, render: (r) => <Button size="compact" onClick={() => setLogFor(r)}>{L.consumables.actions.logFollowUp}</Button> },
                 ]}
               />
             )}
           </>
         )}
-      </div>
+      
       {logFor && <LogActivityDialog open onClose={() => setLogFor(null)} requireNextFollowUp parent={{ parentResource: 'customers', parentId: logFor.customerId, parentLabel: `${logFor.customerId} · ${logFor.customerName}`, customerId: logFor.customerId }} />}
-    </div>
+    </ListPage>
   );
 }
 
@@ -179,8 +175,7 @@ export function ReorderPredictionPage() {
   const counts = (q.data?.rows ?? []).reduce((m, r) => ({ ...m, [r.state]: (m[r.state] ?? 0) + 1 }), {} as Record<string, number>);
   const canRepeat = !!actor.role.resources.salesOrders?.create;
   return (
-    <div className="page">
-      <PageHeader
+    <ListPage
         title={L.nav.pages.reorderPrediction.title}
         description={P.description(getPolicies().missedReorderDays)}
         actions={
@@ -188,8 +183,7 @@ export function ReorderPredictionPage() {
             {L.consumables.actions.sendReminders}
           </Button>
         }
-      />
-      <div className="content-surface">
+      >
         {q.error ? (
           <ErrorState title={P.loadError} onRetry={q.retry}>
             {q.error}
@@ -240,7 +234,7 @@ export function ReorderPredictionPage() {
                     key: 'act',
                     label: P.cols.actions,
                     render: (r) => (
-                      <Button icon="reset" disabledReason={canRepeat ? undefined : L.consumables.pages.repeatOrders.noCreate} onClick={() => setRepeat({ id: r.lastOrderId, label: r.lastOrderId })}>
+                      <Button size="compact" icon="reset" disabledReason={canRepeat ? undefined : L.consumables.pages.repeatOrders.noCreate} onClick={() => setRepeat({ id: r.lastOrderId, label: r.lastOrderId })}>
                         {L.consumables.actions.repeatOrder}
                       </Button>
                     ),
@@ -250,11 +244,11 @@ export function ReorderPredictionPage() {
             )}
           </>
         )}
-      </div>
+      
       <p className="muted small">
         {P.rateContractsNote} <Link to={resourcePath(actor.workspaceId, 'rateContracts', { view: 'v_rc_valid' })}>{P.rateContractsLink}</Link>
       </p>
       {repeat && <RepeatOrderDialog orderId={repeat.id} orderLabel={repeat.label} onClose={() => setRepeat(null)} />}
-    </div>
+    </ListPage>
   );
 }

@@ -13,11 +13,11 @@ import { useActor } from '../../services/hooks';
 import { activeMasterValues, masterValue } from '../../services/registry';
 import { queryRecords, recordTitle } from '../../services/runtime';
 import { getPolicies } from '../../services/policies';
-import { Button } from '../../components/primitives/Button';
+import { Button, IconButton } from '../../components/primitives/Button';
 import { DateText } from '../../components/primitives/display';
 import { ErrorState, NoAccess, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { KpiStrip } from '../../components/resource/ListCard';
 import { DataTable } from '../../components/primitives/DataTable';
 import { ReceiptDialog } from './OrderTabs';
@@ -98,8 +98,7 @@ export function PaymentSchedulePage() {
   const kpi = (r: Range, label: string, value: number, count: number) => ({ key: r, label, value: formatMoney(value), sub: P.milestones(count), active: range === r, onClick: () => setRange(r) });
 
   return (
-    <div className="page orders-page">
-      <PageHeader
+    <ListPage className="orders-page"
         title={L.nav.pages.paymentSchedule.title}
         description={P.description(getPolicies().paymentReminderDaysBefore)}
         actions={
@@ -121,7 +120,7 @@ export function PaymentSchedulePage() {
             {O.actions.sendReminders}
           </Button>
         }
-      />
+      >
       {data.error ? (
         <ErrorState title={P.loadError} onRetry={data.retry}>
           {data.error}
@@ -144,7 +143,7 @@ export function PaymentSchedulePage() {
               ),
             ]}
           />
-          <div className="content-surface">
+          
             <DataTable
               label={P.tableTitle}
               rows={rows}
@@ -166,7 +165,7 @@ export function PaymentSchedulePage() {
               emptyText={range === 'overdue' ? P.emptyOverdue : P.emptyFiltered}
               columns={[
                 { key: 'dueDate', label: FM.dueDate, className: 'nowrap', sort: (m) => String(m.dueDate), render: (m) => <DateText value={String(m.dueDate)} /> },
-                { key: 'customer', label: FM.customerId, sort: (m) => customerNameOf(m.customerId), render: (m) => <span className="orders-clamp" data-tooltip={customerNameOf(m.customerId)}>{customerNameOf(m.customerId)}</span> },
+                { key: 'customer', label: FM.customerId, sort: (m) => customerNameOf(m.customerId), render: (m) => <span className="orders-clamp" data-tooltip={customerNameOf(m.customerId)} style={{ maxWidth: 140, display: 'inline-block', verticalAlign: 'middle' }}>{customerNameOf(m.customerId)}</span> },
                 {
                   key: 'order',
                   label: FM.salesOrderId,
@@ -180,6 +179,7 @@ export function PaymentSchedulePage() {
                 {
                   key: 'label',
                   label: FM.label,
+                  className: 'nowrap',
                   render: (m) => (
                     <Link className="rel-link" to={recordPagePath(actor.workspaceId, 'paymentMilestones', m.id)}>
                       {String(m.label)}
@@ -205,17 +205,15 @@ export function PaymentSchedulePage() {
                   className: 'nowrap',
                   render: (m) =>
                     can(actor, 'orders.receipts') && m.status !== 'received' ? (
-                      <Button size="compact" onClick={() => setReceipt(m.id)}>
-                        {O.actions.recordReceipt}
-                      </Button>
+                      <IconButton icon="receipt" label={O.actions.recordReceipt} onClick={() => setReceipt(m.id)} />
                     ) : null,
                 },
               ]}
             />
-          </div>
+          
         </>
       )}
       {receipt && <ReceiptDialog milestone={(data.data ?? []).find((m) => m.id === receipt)!} onClose={() => setReceipt(null)} />}
-    </div>
+    </ListPage>
   );
 }

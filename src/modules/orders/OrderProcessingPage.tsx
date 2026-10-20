@@ -20,7 +20,7 @@ import { ErrorState, InlineAlert, NoAccess, Skeleton, useToast } from '../../com
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { DataTable, type Column } from '../../components/primitives/DataTable';
 import { KpiStrip } from '../../components/resource/ListCard';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
 import { chip } from './OrderTabs';
 import { Checkbox, TextField } from '../../components/primitives/controls';
 
@@ -255,8 +255,8 @@ export function OrderProcessingPage() {
   ];
 
   return (
-    <div className="page orders-page">
-      <PageHeader title={L.nav.pages.orderProcessing.title} description={P.description} />
+    <ListPage className="orders-page" title={L.nav.pages.orderProcessing.title} description={P.description}
+      >
       {!canProcess && <InlineAlert tone="info">{P.viewOnly}</InlineAlert>}
       {data.error ? (
         <ErrorState title={P.loadError} onRetry={data.retry}>
@@ -275,7 +275,7 @@ export function OrderProcessingPage() {
               kpi('ready', P.readyForDispatch, all.filter((r) => r.order.status === 'ready_for_dispatch').length, status === 'ready_for_dispatch', () => reset(() => (setStatus('ready_for_dispatch'), setEtaOnly(false), setCustoms('')))),
             ]}
           />
-          <div className="content-surface">
+          
             <DataTable
               label={P.tableTitle}
               rows={rows}
@@ -301,9 +301,9 @@ export function OrderProcessingPage() {
               }
               columns={columns}
             />
-          </div>
+          
         </>
       )}
-    </div>
+    </ListPage>
   );
 }

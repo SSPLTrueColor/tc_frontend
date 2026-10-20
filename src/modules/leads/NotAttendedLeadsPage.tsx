@@ -9,14 +9,13 @@ import { useActor } from '../../services/hooks';
 import { getResource, masterLabel } from '../../services/registry';
 import type { NotAttendedRow } from '../../services/leads/rules';
 import { Button } from '../../components/primitives/Button';
-import { EmptyState, ErrorState, NoAccess, Skeleton } from '../../components/primitives/feedback';
-import { Icon } from '../../components/primitives/Icon';
+import { NoAccess } from '../../components/primitives/feedback';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
-import { PageHeader } from '../../components/shell/PageHeader';
+import { ListPage } from '../../components/shell/ListPage';
+import { KpiStrip } from '../../components/resource/ListCard';
 import { L } from '../../constants/labels';
 import { DataTable, type Column } from '../../components/primitives/DataTable';
-import { SearchInput } from '../../components/primitives/controls';
 
 const T = L.leads.pages.notAttended;
 type Escalation = '' | 'escalated' | 'pending';
@@ -28,7 +27,6 @@ type Escalation = '' | 'escalated' | 'pending';
 export function NotAttendedLeadsPage() {
   const actor = useActor();
   const query = useServiceQuery(() => leadsQueries.notAttended(actor), [actor.user.id]);
-  const [q, setQ] = useState('');
   const [division, setDivision] = useState('');
   const [owner, setOwner] = useState('');
   const [escalation, setEscalation] = useState<Escalation>('');
@@ -37,19 +35,14 @@ export function NotAttendedLeadsPage() {
   const all = useMemo(() => query.data?.rows ?? [], [query.data]);
   const divisions = useMemo(() => [...new Set(all.map((r) => r.divisionId).filter(Boolean))].sort(), [all]);
   const owners = useMemo(() => [...new Map(all.filter((r) => r.ownerId).map((r) => [r.ownerId as string, r.ownerName])).entries()].sort((a, b) => a[1].localeCompare(b[1])), [all]);
-  const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return all.filter(
-      (r) =>
-        (!division || r.divisionId === division) &&
-        (!owner || r.ownerId === owner) &&
-        (!escalation || (escalation === 'escalated' ? !!r.escalatedAt : !r.escalatedAt)) &&
-        (!needle || `${r.lead.id} ${r.customer} ${r.contact} ${r.ownerName}`.toLowerCase().includes(needle)),
-    );
-  }, [all, q, division, owner, escalation]);
-  const filtered = !!(q || division || owner || escalation);
+  const rows = useMemo(
+    () =>
+      all.filter(
+        (r) => (!division || r.divisionId === division) && (!owner || r.ownerId === owner) && (!escalation || (escalation === 'escalated' ? !!r.escalatedAt : !r.escalatedAt)),
+      ),
+    [all, division, owner, escalation],
+  );
   const clear = () => {
-    setQ('');
     setDivision('');
     setOwner('');
     setEscalation('');
@@ -123,70 +116,55 @@ export function NotAttendedLeadsPage() {
   const oldest = all.reduce((m, r) => Math.max(m, r.overHours), 0);
 
   return (
-    <div className="page">
-      <PageHeader title={L.nav.pages.notAttendedLeads.title} description={T.description(sla ?? 24)} />
-      <div className="content-surface">
-        {query.error ? (
-          <ErrorState title={T.loadError} onRetry={query.retry}>
-            {query.error}
-          </ErrorState>
-        ) : !query.data ? (
-          <Skeleton rows={8} />
-        ) : !all.length ? (
-          <EmptyState icon="check" title={T.emptyTitle}>
-            {T.emptyBody(query.data.slaHours)}
-          </EmptyState>
-        ) : (
+    <ListPage
+      title={L.nav.pages.notAttendedLeads.title}
+      description={T.description(sla ?? 24)}
+      kpis={
+        query.data && all.length > 0 ? (
+          <KpiStrip
+            label={L.nav.pages.notAttendedLeads.title}
+            items={[
+              { key: 'total', label: T.kpis.total, value: all.length, sub: T.count(all.length) },
+              { key: 'escalated', label: T.kpis.escalated, value: escalatedCount, sub: T.escalationDone },
+              { key: 'oldest', label: T.kpis.oldest, value: T.overBy(T.age(oldest)), sub: T.cols.age },
+              { key: 'sla', label: T.kpis.sla, value: T.hours(query.data.slaHours), sub: T.cols.created },
+            ]}
+          />
+        ) : undefined
+      }
+    >
+      <DataTable
+        label={T.tableLabel}
+        rows={rows}
+        rowKey={(r) => r.lead.id}
+        columns={columns}
+        loading={!query.data && !query.error}
+        error={query.error}
+        onRetry={query.retry}
+        initialSort={{ key: 'age', dir: 'desc' }}
+        search={(r) => `${r.lead.id} ${r.customer} ${r.contact} ${r.ownerName}`}
+        summary={T.count(rows.length)}
+        activeFilters={[division, owner, escalation].filter(Boolean).length}
+        onClearFilters={clear}
+        empty={query.data && !all.length ? { icon: 'check', title: T.emptyTitle, body: T.emptyBody(query.data.slaHours) } : undefined}
+        emptyText={T.noMatchTitle}
+        filters={
           <>
-            <section className="stats" aria-label={L.nav.pages.notAttendedLeads.title}>
-              <div className="stat">
-                <span className="stat-label">{T.kpis.total}</span>
-                <span className="stat-value">{all.length}</span>
-              </div>
-              <div className="stat">
-                <span className="stat-label">{T.kpis.escalated}</span>
-                <span className="stat-value">{escalatedCount}</span>
-              </div>
-              <div className="stat">
-                <span className="stat-label">{T.kpis.oldest}</span>
-                <span className="stat-value">{T.overBy(T.age(oldest))}</span>
-              </div>
-              <div className="stat">
-                <span className="stat-label">{T.kpis.sla}</span>
-                <span className="stat-value">{T.hours(query.data.slaHours)}</span>
-              </div>
-            </section>
-            <div className="toolbar">
-              <div className="search-field">
-                <span className="search-icon" aria-hidden="true">
-                  <Icon name="search" size={14} />
-                </span>
-                <SearchInput dense placeholder={T.searchPlaceholder} aria-label={T.searchLabel} value={q} onChange={(e) => setQ(e.target.value)} />
-              </div>
-              <SelectMenu label={T.division} value={division} options={[{ value: '', label: T.allDivisions }, ...divisions.map((d) => ({ value: d, label: masterLabel('division', d) }))]} onChange={setDivision} />
-              <SelectMenu label={T.owner} value={owner} options={[{ value: '', label: T.allOwners }, ...owners.map(([value, label]) => ({ value, label }))]} onChange={setOwner} />
-              <SelectMenu<Escalation>
-                label={T.escalation}
-                value={escalation}
-                options={[
-                  { value: '', label: T.escalationAll },
-                  { value: 'escalated', label: T.escalationDone },
-                  { value: 'pending', label: T.escalationPending },
-                ]}
-                onChange={setEscalation}
-              />
-              <span className="toolbar-count muted">{T.count(rows.length)}</span>
-            </div>
-            {rows.length ? (
-              <DataTable label={T.tableLabel} rows={rows} rowKey={(r) => r.lead.id} columns={columns} initialSort={{ key: 'age', dir: 'desc' }} />
-            ) : (
-              <EmptyState icon="search" title={T.noMatchTitle} action={filtered ? <Button onClick={clear}>{T.clearFilters}</Button> : undefined}>
-                {T.noMatchBody}
-              </EmptyState>
-            )}
+            <SelectMenu label={T.division} value={division} options={[{ value: '', label: T.allDivisions }, ...divisions.map((d) => ({ value: d, label: masterLabel('division', d) }))]} onChange={setDivision} />
+            <SelectMenu label={T.owner} value={owner} options={[{ value: '', label: T.allOwners }, ...owners.map(([value, label]) => ({ value, label }))]} onChange={setOwner} />
+            <SelectMenu<Escalation>
+              label={T.escalation}
+              value={escalation}
+              options={[
+                { value: '', label: T.escalationAll },
+                { value: 'escalated', label: T.escalationDone },
+                { value: 'pending', label: T.escalationPending },
+              ]}
+              onChange={setEscalation}
+            />
           </>
-        )}
-      </div>
+        }
+      />
       {logFor && (
         <LogActivityDialog
           open
@@ -196,6 +174,6 @@ export function NotAttendedLeadsPage() {
           parent={{ parentResource: 'leads', parentId: logFor.lead.id, parentLabel: `${logFor.lead.id} · ${logFor.customer}`, customerId: logFor.lead.customerId as string | undefined }}
         />
       )}
-    </div>
+    </ListPage>
   );
 }

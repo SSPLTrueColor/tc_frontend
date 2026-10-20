@@ -58,7 +58,7 @@ function Card({ k, range }: { k: KpiOut; range: string }) {
         <Delta k={k} range={range} />
       </div>
       {k.spark && <Sparkline data={k.spark} tone={k.better === 'down' ? 'var(--rp-s2)' : 'var(--rp-s1)'} label={K.sparkAria(k.label, k.spark.length)} />}
-      <span className="kpi-sub">{k.prev === undefined ? K.snapshot : k.prev === null ? K.noPrevious : K.previous(formatMetric(k.prev, k.fmt, { compact: true }))}</span>
+      {k.prev !== undefined && <span className="kpi-sub">{k.prev === null ? K.noPrevious : K.previous(formatMetric(k.prev, k.fmt, { compact: true }))}</span>}
     </>
   );
   return k.to ? (

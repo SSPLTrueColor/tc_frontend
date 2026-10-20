@@ -21,11 +21,11 @@ export function todaySummary(items: CalItem[], nowWall: string): TodayInfo {
   return { count: rows.length, next: first ? { title: first.i.title, when: formatTime(first.o.start), id: first.i.id } : null, over: rows.length > 0 && !first && rows.every((r) => r.i.allDay || r.o.end < nowWall) };
 }
 
-export function TodayAgenda({ info, onOpen }: { info: TodayInfo; onOpen: () => void }) {
+export function TodayAgenda({ info, onOpen, countText }: { info: TodayInfo; onOpen: () => void; countText?: string }) {
   return (
     <button type="button" className="cal-today-strip" onClick={onOpen} aria-label={T.open}>
       <span className="cal-today-badge">{T.heading}</span>
-      <span className="cal-today-count">{T.count(info.count)}</span>
+      <span className="cal-today-count">{countText ?? T.count(info.count)}</span>
       {info.next ? <span className="cal-today-next">{T.next(info.next.when, info.next.title)}</span> : info.over ? <span className="cal-today-next">{T.allDone}</span> : null}
     </button>
   );

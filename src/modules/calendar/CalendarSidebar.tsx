@@ -4,6 +4,8 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { activeMasterValues, masterLabel } from '../../services/registry';
 import type { EventType } from '../../services/calendar/events';
 import { MiniMonth } from './MiniMonth';
+import { PeriodSummary } from './CalendarChrome';
+import type { DayCounts } from './dayLoad';
 import { Checkbox } from '../../components/primitives/controls';
 
 const C = L.calendar;
@@ -15,7 +17,7 @@ export interface SidebarProps {
   onCreate: (anchor: HTMLElement) => void;
   cursor: string;
   today: string;
-  marked: Set<string>;
+  counts: DayCounts;
   onPick: (day: string) => void;
   types: Set<EventType>;
   onTypes: (next: Set<EventType>) => void;
@@ -42,7 +44,8 @@ export function CalendarSidebar(p: SidebarProps) {
       <Button variant="primary" size="default" icon="plus" className="cal-create" onClick={(e) => p.onCreate(e.currentTarget)} disabledReason={p.canCreate ? undefined : C.page.cannotCreate(p.roleLabel)}>
         {C.page.create}
       </Button>
-      <MiniMonth selected={p.cursor} today={p.today} marked={p.marked} onPick={p.onPick} />
+      <MiniMonth selected={p.cursor} today={p.today} counts={p.counts} onPick={p.onPick} />
+      <PeriodSummary counts={p.counts} month={p.cursor.slice(0, 7)} onPick={p.onPick} />
       <section className="cal-filter">
         <h3 className="cal-filter-title">{C.page.myCalendars}</h3>
         <ul className="cal-legend">

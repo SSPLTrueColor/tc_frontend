@@ -366,7 +366,7 @@
   --fc-today-bg-color: color-mix(in srgb, var(--s-accent) 6%, transparent);
   --fc-now-indicator-color: var(--s-danger);
   --fc-highlight-color: color-mix(in srgb, var(--s-accent) 14%, transparent);
-  --fc-non-business-color: color-mix(in srgb, var(--s-text) 2.5%, transparent);
+  --fc-non-business-color: transparent;
   --fc-event-selected-overlay-color: color-mix(in srgb, var(--s-text) 10%, transparent);
   --fc-more-link-bg-color: transparent;
   --fc-more-link-text-color: var(--s-accent-text);
@@ -402,17 +402,17 @@
   color: inherit;
   text-decoration: none;
 }
-.tc-cal .fc .fc-daygrid-day-number {
-  margin: var(--sp-1);
-  min-width: 24px;
-  height: 24px;
-  padding: 0 var(--sp-2);
-  display: inline-grid;
-  place-items: center;
-  border-radius: 12px;
-  font-variant-numeric: tabular-nums;
+.tc-cal .fc .fc-daygrid-day-top {
+  display: block;
 }
-.tc-cal .fc .fc-day-today .fc-daygrid-day-number {
+.tc-cal .fc .fc-daygrid-day-number {
+  display: block;
+  margin: 0;
+  padding: var(--sp-1);
+  width: 100%;
+  text-align: left;
+}
+.tc-cal .fc .fc-day-today .cal-daynum {
   background: var(--s-accent);
   color: var(--s-on-accent, #fff);
   font-weight: var(--fw-semibold);
@@ -663,4 +663,93 @@
 /* Month cells stay calm: lighter fills than the time grids, so the page reads at a glance. */
 .tc-cal .fc-daygrid-event:not(.is-past) {
   --ev-bg-now: color-mix(in srgb, var(--ev-bg) 60%, var(--s-panel));
+}
+
+/* ---------------------------------------------------------------- how many activities on each day (kept quiet) */
+.cal-daycell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1);
+}
+.cal-daynum {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  display: inline-grid;
+  place-items: center;
+  border-radius: 12px;
+  font-variant-numeric: tabular-nums;
+}
+/* The count is plain text in the corner: no pill, no cell tint. Only a packed day (6+) is emphasised. */
+.cal-daycount {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--s-text-muted);
+  line-height: 1;
+}
+.cal-daycount.tier-3 {
+  color: var(--s-accent-text);
+  font-weight: var(--fw-semibold);
+}
+.cal-dayhead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+/* Month chips: a colour dot and the title, no fill, no edge. Multi-day bars keep a soft fill. */
+.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end {
+  background: transparent;
+  border: 0;
+}
+.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end:hover {
+  background: var(--s-hover);
+  box-shadow: none;
+  filter: none;
+}
+.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end .ev-line::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ev-solid);
+}
+.tc-cal .fc-daygrid-event.fc-event-start.fc-event-end .ev-title {
+  font-weight: 400;
+}
+.tc-cal .fc .fc-daygrid-more-link {
+  color: var(--s-text-muted);
+  font-weight: 400;
+}
+.tc-cal .fc .fc-day-sat,
+.tc-cal .fc .fc-day-sun {
+  background: transparent;
+}
+.tc-cal .fc .fc-day-today {
+  background: transparent;
+}
+.cal-summary {
+  display: grid;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-supportive);
+}
+.cal-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.cal-summary-row.is-link {
+  cursor: pointer;
+}
+.cal-summary-row.is-link:hover strong {
+  text-decoration: underline;
 }

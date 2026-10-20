@@ -2598,27 +2598,6 @@ td.is-editing {
   align-items: center;
   gap: var(--sp-1);
 }
-.mini-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--fs-supportive);
-}
-.mini-table th {
-  text-align: left;
-  font-weight: var(--fw-medium);
-  color: var(--s-text-secondary);
-  padding: var(--sp-2) var(--sp-2);
-  border-bottom: 1px solid var(--s-border);
-  white-space: nowrap;
-}
-.mini-table td {
-  padding: var(--sp-2) var(--sp-2);
-  border-bottom: 1px solid var(--s-border);
-  vertical-align: top;
-}
-.mini-table .num {
-  text-align: right;
-}
 
 .card-list {
   list-style: none;
@@ -7628,3 +7607,133 @@ td.is-editable:hover > .cell {
   margin-left: auto;
   white-space: nowrap;
 }
+
+/* Every table (DataTable, Table, report tables) looks like the menu grid: bordered panel, quiet header, 40px rows, soft hover. */
+.mini-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-supportive);
+}
+.mini-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 34px;
+  padding: 0 var(--sp-3);
+  text-align: left;
+  font-weight: 400;
+  color: var(--s-text-muted);
+  background: var(--c-grid-header-bg);
+  border-bottom: 1px solid var(--s-border);
+  white-space: nowrap;
+}
+.mini-table td {
+  height: var(--c-grid-row-h);
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: 1px solid var(--s-border);
+  background: var(--s-panel);
+  vertical-align: middle;
+}
+.mini-table tbody tr:hover td {
+  background: var(--c-grid-row-hover-bg);
+}
+.mini-table.is-clickable tbody tr {
+  cursor: pointer;
+}
+.mini-table .num {
+  text-align: right;
+}
+.table-scroll {
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-panel);
+  background: var(--s-panel);
+}
+.table-scroll .mini-table td {
+  vertical-align: middle;
+}
+.table-scroll .mini-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+
+/* DataTable = the menu grid, content-sized: same panel, header, rows, checkbox column and pinned Actions column. */
+.grid.grid-auto {
+  width: 100%;
+  table-layout: auto;
+}
+.grid.grid-auto td {
+  overflow: visible;
+  text-overflow: clip;
+}
+.grid.grid-auto td.kb-title {
+  min-width: 280px;
+  white-space: normal;
+}
+.grid.grid-auto .th-num,
+.grid.grid-auto .td-num {
+  text-align: right;
+}
+.grid.grid-auto.is-clickable tr[data-row] {
+  cursor: pointer;
+}
+.grid.grid-auto td.col-actions,
+.grid.grid-auto th.col-actions {
+  text-align: left;
+  padding: 0 var(--sp-3);
+}
+.dt-filters {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+.grid-wrap + .grid-footer,
+.grid-wrap + * {
+  margin-top: var(--sp-2);
+}
+.orders-clamp { vertical-align: middle; }
+
+/* ---- List pages: ONE header rhythm, identical on every list (menu lists and computed lists):
+   4 top → description row (28) → [KPI cards] 8 → [tabs / views row, 40, full-width line] → filter row (40) → table → footer ---- */
+.grid-footer-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-left: auto;
+}
+.grid-footer-right .grid-pages {
+  margin-left: 0;
+}
+.page-intro {
+  min-height: 28px;
+}
+.page-resource .page-main {
+  padding-top: var(--sp-1);
+}
+.page-resource .page-main > .page-intro {
+  margin-bottom: 0;
+}
+.page-resource .page-main > .rp-kpis,
+.page-resource .page-main > .stats {
+  margin: var(--sp-1) 0 var(--sp-2);
+}
+.page-resource .page-main > .tabs,
+.page-resource .page-main > .view-tabs-row {
+  box-sizing: border-box;
+  min-height: 40px;
+  height: 40px;
+  margin: 0 calc(-1 * var(--sp-4));
+  padding: 0 var(--sp-4);
+  align-items: stretch;
+  border-bottom: 1px solid var(--s-border);
+}
+.page-resource .page-main > .list-filterbar,
+.page-resource .page-main > .view-tools-row {
+  box-sizing: border-box;
+  min-height: 40px;
+  margin: 0;
+  padding: var(--sp-1) 0;
+}
+/* import form breathing room */
+.imp-form { margin-bottom: var(--sp-3); }

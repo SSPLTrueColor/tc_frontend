@@ -10,22 +10,20 @@ import { can, perm } from '../../../services/authz';
 import { useActor } from '../../../services/hooks';
 import { activeMasterValues, masterValue } from '../../../services/registry';
 import { recordTitle } from '../../../services/runtime';
-import { filterPm, type PmSort, type PmTab } from '../../../services/service/pm';
+import { filterPm, type PmTab } from '../../../services/service/pm';
 import { ServiceError } from '../../../services/types';
 import { Button, IconButton } from '../../../components/primitives/Button';
 import { EmptyValue } from '../../../components/primitives/display';
-import { EmptyState, ErrorState, Skeleton, StatusChip, Tabs, useToast } from '../../../components/primitives/feedback';
+import { StatusChip, Tabs, useToast } from '../../../components/primitives/feedback';
 import { Dialog } from '../../../components/primitives/overlay';
 import { SelectMenu } from '../../../components/primitives/SelectMenu';
-import { PageHeader } from '../../../components/shell/PageHeader';
-import { Checkbox, LinkButton, SearchInput, Textarea } from '../../../components/primitives/controls';
-import { Table } from '../../../components/primitives/Table';
+import { ListPage } from '../../../components/shell/ListPage';
+import { DataTable, type Column } from '../../../components/primitives/DataTable';
+import { Checkbox, LinkButton, Textarea } from '../../../components/primitives/controls';
 
 const S = L.service;
 const P = S.pages.pmSchedule;
-const PAGE = 25;
 const TABS: PmTab[] = ['all', 'due', 'overdue', 'missed', 'done'];
-const SORTS: PmSort[] = ['due_asc', 'due_desc', 'customer'];
 const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 const tabLabel = (t: PmTab) => (t === 'all' ? P.all : S.masters.pmStatus.values[t]);
 
@@ -39,11 +37,8 @@ export function PmSchedulePage() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const tab = (TABS.includes(params.get('tab') as PmTab) ? params.get('tab') : 'due') as PmTab;
-  const search = params.get('q') ?? '';
   const engineerId = params.get('engineer') ?? '';
   const divisionId = params.get('division') ?? '';
-  const sort = SORTS.includes(params.get('sort') as PmSort) ? (params.get('sort') as PmSort) : undefined;
-  const page = Math.max(0, Number(params.get('page') ?? 0) || 0);
   const peek = params.get('peek');
   const [completing, setCompleting] = useState<string | null>(null);
   const q = useServiceQuery(loaders.pm(actor), [actor.user.id]);
@@ -60,11 +55,9 @@ export function PmSchedulePage() {
     setParams(next, { replace: true });
   };
   const all = q.data ?? [];
-  const rows = filterPm(all, { tab, q: search, engineerId, divisionId, sort });
+  const rows = filterPm(all, { tab, q: '', engineerId, divisionId, sort: 'due_asc' });
   const counts = (t: PmTab) => (t === 'all' ? all.length : all.filter((p) => p.status === t).length);
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  const current = Math.min(page, pages - 1);
-  const filtered = !!(search || engineerId || divisionId);
+  const filtered = !!(engineerId || divisionId);
   const act = async (p: Promise<unknown>, ok: string) => {
     try {
       await p;
@@ -73,116 +66,102 @@ export function PmSchedulePage() {
       toast(errorMessage(e), 'danger');
     }
   };
-  return (
-    <div className="page">
-      <PageHeader
-        title={L.nav.pages.pmSchedule.title}
-        description={P.description}
-        actions={
-          perm(actor, 'pmVisits').create ? (
-            <LinkButton variant="primary" to={recordNewPath('pmVisits')}>{S.actions.newPmVisit}</LinkButton>
-          ) : undefined
-        }
-      />
-      <Tabs<PmTab> label={P.tabsLabel} value={tab} onChange={(t) => update({ tab: t })} tabs={TABS.map((t) => ({ id: t, label: tabLabel(t), count: q.data ? counts(t) : undefined }))} />
-      <div className="toolbar" style={{ flexWrap: 'wrap' }}>
-        <SearchInput dense placeholder={P.searchPlaceholder} aria-label={P.searchLabel} value={search} onChange={(e) => update({ q: e.target.value || undefined })} />
-        <SelectMenu
-          label={P.engineerFilter}
-          value={engineerId}
-          options={[{ value: '', label: P.allEngineers }, { value: '__none', label: P.unassigned }, ...engineers]}
-          onChange={(v) => update({ engineer: v || undefined })}
-        />
-        <SelectMenu label={P.divisionFilter} value={divisionId} options={[{ value: '', label: P.allDivisions }, ...divisions]} onChange={(v) => update({ division: v || undefined })} />
-        <SelectMenu<PmSort> label={P.sortLabel} value={sort ?? (tab === 'done' ? 'due_desc' : 'due_asc')} options={SORTS.map((k) => ({ value: k, label: P.sorts[k] }))} onChange={(v) => update({ sort: v })} />
-        {filtered && (
-          <Button variant="ghost" onClick={() => update({ q: undefined, engineer: undefined, division: undefined })}>
-            {S.actions.clearFilters}
-          </Button>
-        )}
-        <span className="spacer" />
-        <span className="toolbar-count muted">{P.count(rows.length)}</span>
-      </div>
-      <div className="content-surface">
-        {q.error ? (
-          <ErrorState title={P.loadError} onRetry={q.retry}>
-            {q.error}
-          </ErrorState>
-        ) : !q.data ? (
-          <Skeleton rows={8} />
-        ) : !rows.length ? (
-          <EmptyState icon="calendar-clock" title={filtered ? P.emptySearch : tab === 'all' ? P.emptyAll : P.empty(tabLabel(tab).toLowerCase())} />
+  const columns: Column<(typeof all)[number]>[] = [
+    { key: 'due', label: P.cols.due, className: 'nowrap', sort: (p) => s(p.dueDate), render: (p) => formatDate(s(p.dueDate)) },
+    {
+      key: 'machine',
+      label: P.cols.machine,
+      sort: (p) => p.machineLabel,
+      render: (p) => (
+        <>
+          <Link to={recordPagePath(actor.workspaceId, 'pmVisits', p.id)}>{p.machineLabel}</Link>
+          <div className="muted small">
+            {p.id}
+            {p.model ? ` · ${p.model}` : ''}
+          </div>
+        </>
+      ),
+    },
+    { key: 'customer', label: P.cols.customer, sort: (p) => p.customerLabel, render: (p) => p.customerLabel },
+    {
+      key: 'engineer',
+      label: P.cols.engineer,
+      render: (p) =>
+        desk && p.status !== 'done' ? (
+          <SelectMenu label={P.engineerFor(p.id)} value={s(p.engineerId)} placeholder={P.assignPlaceholder} options={engineers} onChange={(v) => void act(serviceApi.assignPm(actor, p.id, v), S.toasts.pmAssigned)} />
+        ) : p.engineerId ? (
+          recordTitle('employees', p.engineerId)
         ) : (
+          <EmptyValue />
+        ),
+    },
+    {
+      key: 'status',
+      label: P.cols.status,
+      sort: (p) => s(p.status),
+      render: (p) => {
+        const st = masterValue('pmStatus', p.status);
+        return st ? <StatusChip label={st.label} tone={st.tone} /> : null;
+      },
+    },
+    {
+      key: 'act',
+      label: P.cols.actions,
+      className: 'nowrap',
+      render: (p) => {
+        const open = p.status !== 'done';
+        return (
           <>
-            
-              <Table>
-                <thead>
-                  <tr>
-                    <th scope="col">{P.cols.due}</th>
-                    <th scope="col">{P.cols.machine}</th>
-                    <th scope="col">{P.cols.customer}</th>
-                    <th scope="col">{P.cols.engineer}</th>
-                    <th scope="col">{P.cols.status}</th>
-                    <th scope="col">{P.cols.actions}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.slice(current * PAGE, current * PAGE + PAGE).map((p) => {
-                    const st = masterValue('pmStatus', p.status);
-                    const mineOrDesk = desk || p.engineerId === actor.staffId;
-                    const open = p.status !== 'done';
-                    return (
-                      <tr key={p.id}>
-                        <td className="nowrap">{formatDate(s(p.dueDate))}</td>
-                        <td>
-                          <Link to={recordPagePath(actor.workspaceId, 'pmVisits', p.id)}>{p.machineLabel}</Link>
-                          <div className="muted small">
-                            {p.id}
-                            {p.model ? ` · ${p.model}` : ''}
-                          </div>
-                        </td>
-                        <td>{p.customerLabel}</td>
-                        <td>
-                          {desk && open ? (
-                            <SelectMenu label={P.engineerFor(p.id)} value={s(p.engineerId)} placeholder={P.assignPlaceholder} options={engineers} onChange={(v) => void act(serviceApi.assignPm(actor, p.id, v), S.toasts.pmAssigned)} />
-                          ) : p.engineerId ? (
-                            recordTitle('employees', p.engineerId)
-                          ) : (
-                            <EmptyValue />
-                          )}
-                        </td>
-                        <td>{st && <StatusChip label={st.label} tone={st.tone} />}</td>
-                        <td className="nowrap">
-                          {open && (
-                            <Button disabledReason={mineOrDesk ? undefined : P.otherEngineer} onClick={() => setCompleting(p.id)}>
-                              {S.actions.complete}
-                            </Button>
-                          )}
-                          {desk && open && !p.ticketId && <IconButton icon="plus" label={S.actions.raisePmTicket} onClick={() => void act(serviceApi.raisePmTicket(actor, p.id), S.toasts.pmTicketRaised)} />}
-                          {!!p.ticketId && (
-                            <Link className="link small" to={resourcePath(actor.workspaceId, 'tickets', { peek: s(p.ticketId) })}>
-                              {s(p.ticketId)}
-                            </Link>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
-            
-            <div className="grid-footer">
-              <span className="grid-footer-range">{S.pager.range(current * PAGE + 1, Math.min(rows.length, (current + 1) * PAGE), rows.length)}</span>
-              <nav className="grid-pages" aria-label={S.pager.label}>
-                <IconButton icon="chevron-left" label={S.pager.prev} disabledReason={current === 0 ? S.pager.first : undefined} onClick={() => update({ page: String(current - 1) })} />
-                <IconButton icon="chevron-right" label={S.pager.next} disabledReason={current + 1 >= pages ? S.pager.last : undefined} onClick={() => update({ page: String(current + 1) })} />
-              </nav>
-            </div>
+            {open && (
+              <Button size="compact" disabledReason={desk || p.engineerId === actor.staffId ? undefined : P.otherEngineer} onClick={() => setCompleting(p.id)}>
+                {S.actions.complete}
+              </Button>
+            )}
+            {desk && open && !p.ticketId && <IconButton icon="plus" label={S.actions.raisePmTicket} onClick={() => void act(serviceApi.raisePmTicket(actor, p.id), S.toasts.pmTicketRaised)} />}
+            {!!p.ticketId && (
+              <Link className="link small" to={resourcePath(actor.workspaceId, 'tickets', { peek: s(p.ticketId) })}>
+                {s(p.ticketId)}
+              </Link>
+            )}
           </>
-        )}
-      </div>
+        );
+      },
+    },
+  ];
+  return (
+    <ListPage
+      title={L.nav.pages.pmSchedule.title}
+      description={P.description}
+      actions={perm(actor, 'pmVisits').create ? <LinkButton variant="primary" to={recordNewPath('pmVisits')}>{S.actions.newPmVisit}</LinkButton> : undefined}
+      kpis={<Tabs<PmTab> label={P.tabsLabel} value={tab} onChange={(t) => update({ tab: t })} tabs={TABS.map((t) => ({ id: t, label: tabLabel(t), count: q.data ? counts(t) : undefined }))} />}
+    >
+      <DataTable
+        label={P.tableLabel}
+        rows={rows}
+        rowKey={(p) => p.id}
+        noun={P.noun}
+        loading={!q.data && !q.error}
+        error={q.error}
+        onRetry={q.retry}
+        initialSort={{ key: 'due', dir: tab === 'done' ? 'desc' : 'asc' }}
+        key={tab}
+        initialSearch={params.get('q') ?? ''}
+        search={(p) => `${p.id} ${p.machineLabel} ${p.customerLabel} ${p.model ?? ''}`}
+        summary={P.count(rows.length)}
+        activeFilters={(engineerId ? 1 : 0) + (divisionId ? 1 : 0)}
+        onClearFilters={() => update({ engineer: undefined, division: undefined })}
+        empty={!all.length ? { icon: 'calendar-clock', title: P.emptyAll } : undefined}
+        emptyText={filtered ? P.emptySearch : P.empty(tabLabel(tab).toLowerCase())}
+        filters={
+          <>
+            <SelectMenu label={P.engineerFilter} value={engineerId} options={[{ value: '', label: P.allEngineers }, { value: '__none', label: P.unassigned }, ...engineers]} onChange={(v) => update({ engineer: v || undefined })} />
+            <SelectMenu label={P.divisionFilter} value={divisionId} options={[{ value: '', label: P.allDivisions }, ...divisions]} onChange={(v) => update({ division: v || undefined })} />
+          </>
+        }
+        columns={columns}
+      />
       {completing && <CompletePmDialog pmId={completing} onClose={() => setCompleting(null)} />}
-    </div>
+    </ListPage>
   );
 }
 

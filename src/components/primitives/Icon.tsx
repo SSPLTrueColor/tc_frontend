@@ -1,4 +1,5 @@
 import {
+  ExternalLink,
   Activity,
   BarChart3,
   FileText,
@@ -147,6 +148,7 @@ const ICONS: Record<string, LucideIcon> = {
   "calendar-clock": CalendarClock,
   check: Check,
   "check-square": CheckSquare,
+  "external-link": ExternalLink,
   "chevron-down": ChevronDown,
   "chevron-up": ChevronUp,
   "chevron-left": ChevronLeft,
