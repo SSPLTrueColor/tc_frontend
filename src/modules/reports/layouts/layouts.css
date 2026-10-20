@@ -597,3 +597,8 @@ a.rl-metric:hover span {
 .rl-cal-day.is-off small {
   color: var(--s-text-muted);
 }
+
+/* Stage funnel: label | funnel | value (no carry-over column: a snapshot is not a conversion). */
+.rl-funnel .rp-funnel-row {
+  grid-template-columns: minmax(80px, 22%) minmax(0, 1fr) minmax(56px, auto);
+}

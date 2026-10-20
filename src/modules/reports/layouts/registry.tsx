@@ -13,11 +13,12 @@ const leader = (cfg: LeaderCfg): ComponentType<LayoutProps> => (p) => <Leaderboa
 
 /** Pipeline by stage: one column per stage with its count, value, weighted value and average deal. */
 const PipelineStages = (p: LayoutProps) => {
-  const columns: BoardColumn[] = p.out.rows.map((r) => ({
+  const columns: BoardColumn[] = p.out.rows.map((r, i) => ({
     key: r._key,
     label: text(r.stage),
     count: num(r.opportunities),
     value: num(r.value),
+    reach: p.out.rows.slice(i).reduce((t, x) => t + num(x.opportunities), 0),
     sub: `${W.weighted} ${money(num(r.weighted))} · ${W.avgDeal} ${money(num(r.avgDeal))}`,
   }));
   const top = [...columns].sort((a, b) => b.value - a.value)[0];

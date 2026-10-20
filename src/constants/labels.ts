@@ -6599,6 +6599,7 @@ const reports = {
     funnelDrop: (stage: string, pct: number) => `Biggest drop: ${stage} (${pct}% lost).`,
     carried: (pct: number) => `${pct}% continue`,
     groups: { sales: 'Sales', service: 'Service', money: 'Collections & orders', growth: 'Customers & adoption' },
+    reached: (n: number) => `${n} ${n === 1 ? 'deal has' : 'deals have'} reached this stage`,
     boardHead: (label: string, value: string) => `Most is in ${label}: ${value}.`,
     boardEmpty: 'Nothing here',
     more: (n: number) => `+${n} more`,
