@@ -821,3 +821,25 @@ Each step ends with `npm run build` passing, no console errors, routes reachable
 | 12 ✅ | Targets & performance | FR-114–118 |
 | 13 ✅ | Dashboards & reports | FR-149 + all report FRs; 27 reports, see `docs/REPORTS-QA.md` |
 | 14 ✅ | Remaining admin (workflows, custom fields, templates, import/export, integrations, recycle bin) | FR-122–125, 141–148 |
+
+## Sales UI review — 20 October 2026
+
+The requested navigation and presentation changes override the earlier template rules for coloured links, underlines and pastel status pills. Existing BRD record boundaries, approval guards and simulation boundaries remain in force.
+
+| BRD / review item | Screen | Status and implementation |
+|---|---|---|
+| LEAD-10, OPP-01–03; consolidated sales | `/sales`, `/leads`, `/opportunities`, `/pipeline` | Simulated — shared All / Leads / Opportunities / Pipeline workspace. All uses role-scoped service queries; converted leads appear as opportunities, preserving distinct records and history. Search, stage/owner filters, sort, pagination and query states supported. |
+| LEAD-10; direct conversion | Lead board and All sales table | Simulated — visible Convert to Opportunity action opens the existing validated qualification dialog in place; duplicate submits guarded. |
+| COM-09; inline edits | Shared resource tables | Simulated — existing guarded editor retained, success confirms the field was edited; validation errors retain the editor. |
+| QUO-01; lead linkage | Quotation lists and details | Simulated — derived originating Lead relation and one-click Open Lead action; direct-customer opportunities are identified without inventing a lead. |
+| QUO-09; revision history | Quotation → Versions | Simulated — one active family entry in standard lists; version snapshots retain the existing root ID, comparison and immutable historical access. History shows v1… labels, date/time, author, active/previous marker and revision note; internal R0… identifiers retained for compatibility. |
+| QUO-10; grouping | Quotation Board | Simulated — distinct Under Revision group derived from draft revisions; approval/acceptance status machine unchanged. |
+| §3.1, SO-01–09, INS-05–07, IB-03, SRV-14 | Linked sales and service records | Simulated — existing guarded hand-offs retained and checked by lifecycle tests; machine demo remains an opportunity activity under OPP-04. |
+| COM-01, COM-06; navigation | Global sidebar | Simulated — 15 modules grouped into 8 workspaces, preserving resource URLs, role filtering, favourites and saved views. |
+| Visual review | Shared links, cards, filters and status/priority badges | Implemented — neutral default link text, no link-button underlines, muted slate status colours, quieter board borders, separate board filter summary, readable primary toolbar buttons. |
+| Reports priority | Performance | Deferred — new reporting enhancements until workflow UI acceptance; existing reports remain reachable. |
+| Design collaboration | Anish and Dhruvi review | Deferred — human layout review pending; no meeting or external message sent. |
+
+Validation evidence is recorded in `docs/SALES-UI-QA.md`. This remains a browser-local prototype; no production backend, ERP or communications are claimed.
+
+Latest visual correction: status and priority chips use light slate backgrounds with dark slate text (adapted for dark mode), replacing the initially requested saturated solid fills.

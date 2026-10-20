@@ -1,3 +1,4 @@
+import { quotationLead } from './quotationComputed';
 /**
  * Quotations module pack (FR-035 – FR-047): quotations with versions (R0, R1 …), discount approval,
  * Terms & Conditions templates. Line items (`lines`, QuoteLine[]) are stored on the record but hidden from
@@ -25,13 +26,19 @@ const masters: MasterDefinition[] = [
   master('quoteStatus', T.masters.quoteStatus.label, [
     v('draft', S.draft),
     v('pending_approval', S.pending_approval, 'warning'),
-    v('approved', S.approved, 'info'),
+    v('approved', S.approved, 'success'),
     v('sent', S.sent, 'accent'),
     v('negotiation', S.negotiation, 'warning'),
     v('accepted', S.accepted, 'success'),
     v('rejected', S.rejected, 'danger'),
     v('expired', S.expired),
     v('superseded', S.superseded),
+  ]),
+  master('quoteReviewStage', 'Quotation status', [
+    v('draft', S.draft), v('under_revision', 'Under Revision', 'warning'),
+    v('pending_approval', S.pending_approval, 'warning'), v('approved', S.approved, 'success'),
+    v('sent', S.sent, 'info'), v('negotiation', S.negotiation, 'warning'),
+    v('accepted', S.accepted, 'success'), v('rejected', S.rejected, 'danger'), v('expired', S.expired),
   ]),
   master('quoteLineType', T.masters.quoteLineType.label, [
     v('machine', LT.machine, 'accent'),
@@ -82,6 +89,8 @@ export const quotations: ResourceDefinition = {
     fq('validUntil', F.validUntil, 'date', { required: true, width: 120, compare: { op: 'gte', field: 'quoteDate', message: F.validUntilCompare } }),
     fq('placeOfSupply', F.placeOfSupply, 'master', { master: 'state', required: true, width: 150, help: F.placeOfSupplyHelp }),
     fq('status', F.status, 'master', { master: 'quoteStatus', readOnly: true, width: 150 }),
+    fq('reviewStage', 'Quotation status', 'master', { master: 'quoteReviewStage', readOnly: true, computed: (r) => r.status === 'draft' && Number(r.revision) > 0 ? 'under_revision' : r.status, width: 170 }),
+    fq('leadId', 'Lead', 'relation', { relation: { resource: 'leads' }, readOnly: true, computed: quotationLead, width: 170 }),
     fq('revision', F.revision, 'number', { readOnly: true, min: 0, width: 90 }),
     fq('isLatest', F.isLatest, 'boolean', { readOnly: true, capabilities: { filter: true, export: true } }),
     fq('rootId', F.rootId, 'text', { system: true, readOnly: true, capabilities: { filter: true } }),
@@ -127,7 +136,7 @@ export const quotations: ResourceDefinition = {
     fullPage: true,
     quickCreate: ['opportunityId', 'quoteDate', 'validUntil', 'placeOfSupply'],
     sections: [
-      { id: 'header', title: T.sections.quotations.header, fields: ['quoteNo', 'opportunityId', 'customerId', 'contactId', 'divisionId', 'ownerId', 'quoteDate', 'validUntil', 'placeOfSupply'], columns: 2 },
+      { id: 'header', title: T.sections.quotations.header, fields: ['quoteNo', 'leadId', 'opportunityId', 'customerId', 'contactId', 'divisionId', 'ownerId', 'quoteDate', 'validUntil', 'placeOfSupply'], columns: 2 },
       { id: 'value', title: T.sections.quotations.value, fields: ['subtotal', 'discountTotal', 'freight', 'insurance', 'taxable', 'cgst', 'sgst', 'igst', 'grandTotal', 'amountInWords', 'maxDiscountPct', 'landedCostTotal', 'marginPct'], columns: 2 },
       { id: 'terms', title: T.sections.quotations.terms, fields: ['termsTemplateId', 'paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'], columns: 2 },
       { id: 'outcome', title: T.sections.quotations.outcome, fields: ['sentAt', 'sentVia', 'acceptanceMethod', 'acceptedAt', 'acceptedByName', 'customerPoNo', 'customerPoDate', 'poFileName', 'rejectReason', 'rejectNote'], columns: 2 },
@@ -148,7 +157,7 @@ export const quotations: ResourceDefinition = {
       type: 'table',
       filter: group('and', [cond('isLatest', 'eq', true), cond('status', 'in', OPEN_QUOTE_STATUS)]),
       sort: [{ field: 'quoteDate', dir: 'desc' }],
-      columns: cols('quoteNo', 'customerId', 'divisionId', 'ownerId', 'quoteDate', 'validUntil', 'grandTotal', 'maxDiscountPct', 'status'),
+      columns: cols('quoteNo', 'leadId', 'customerId', 'divisionId', 'ownerId', 'quoteDate', 'validUntil', 'grandTotal', 'maxDiscountPct', 'status'),
     },
     {
       id: 'v_quotes_approval',
@@ -157,7 +166,7 @@ export const quotations: ResourceDefinition = {
       type: 'table',
       filter: group('and', [cond('status', 'eq', 'pending_approval')]),
       sort: [{ field: 'quoteDate', dir: 'asc' }],
-      columns: cols('quoteNo', 'customerId', 'ownerId', 'grandTotal', 'maxDiscountPct', 'quoteDate', 'status'),
+      columns: cols('quoteNo', 'leadId', 'customerId', 'ownerId', 'grandTotal', 'maxDiscountPct', 'quoteDate', 'status'),
     },
     {
       id: 'v_quotes_expiring',
@@ -166,24 +175,24 @@ export const quotations: ResourceDefinition = {
       type: 'table',
       filter: group('and', [cond('isLatest', 'eq', true), cond('status', 'in', ['approved', 'sent', 'negotiation']), cond('validUntil', 'next7')]),
       sort: [{ field: 'validUntil', dir: 'asc' }],
-      columns: cols('quoteNo', 'customerId', 'ownerId', 'validUntil', 'grandTotal', 'status'),
+      columns: cols('quoteNo', 'leadId', 'customerId', 'ownerId', 'validUntil', 'grandTotal', 'status'),
     },
     {
       id: 'v_quotes_board',
       resource: 'quotations',
       name: T.views.board,
       type: 'board',
-      boardField: 'status',
+      boardField: 'reviewStage',
       filter: group('and', [cond('isLatest', 'eq', true)]),
       sort: [{ field: 'quoteDate', dir: 'desc' }],
-      columns: cols('quoteNo', 'customerId', 'grandTotal', 'validUntil'),
+      columns: cols('quoteNo', 'leadId', 'customerId', 'grandTotal', 'validUntil'),
     },
     {
       id: 'v_quotes_all',
       resource: 'quotations',
-      name: T.views.allVersions,
+      name: 'All quotations',
       type: 'table',
-      filter: group('and'),
+      filter: group('and', [cond('isLatest', 'eq', true)]),
       sort: [{ field: 'quoteDate', dir: 'desc' }],
       columns: cols('quoteNo', 'revision', 'customerId', 'divisionId', 'ownerId', 'quoteDate', 'grandTotal', 'status', 'isLatest'),
     },

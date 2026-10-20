@@ -10,6 +10,8 @@ export interface RecordExtensionProps {
   res: ResourceDefinition;
   actor: Actor;
   record: RecordData;
+  /** Where card actions render: a board card has room for a labelled button, a list row only for an icon. */
+  surface?: 'board' | 'row';
 }
 
 const recordActions = new Map<string, ComponentType<RecordExtensionProps>>();
@@ -49,3 +51,21 @@ export const getRecordTabs = (resource: string) =>
     .map((t, i) => ({ t, i }))
     .sort((a, b) => (a.t.order ?? Number.MAX_SAFE_INTEGER) - (b.t.order ?? Number.MAX_SAFE_INTEGER) || a.i - b.i)
     .map(({ t }) => t);
+
+const cardActions = new Map<string, ComponentType<RecordExtensionProps>>();
+export function registerCardActions(resource: string, component: ComponentType<RecordExtensionProps>) { cardActions.set(resource, component); }
+export const getCardActions = (resource: string) => cardActions.get(resource);
+
+/**
+ * Status / stage moves that capture data (e.g. Lead → Qualified opens "Create Opportunity", Opportunity → Lost
+ * asks for the reason). Board drops and the list's Status cell offer these targets and open the dialog
+ * instead of running a plain lifecycle transition.
+ */
+export interface StageMoveHandler {
+  /** Target states this handler owns for the record (already permission-checked). */
+  targets: (props: RecordExtensionProps) => string[];
+  Dialog: ComponentType<RecordExtensionProps & { to: string; onClose: () => void }>;
+}
+const stageMoveHandlers = new Map<string, StageMoveHandler>();
+export function registerStageMoveHandler(resource: string, h: StageMoveHandler) { stageMoveHandlers.set(resource, h); }
+export const getStageMoveHandler = (resource: string) => stageMoveHandlers.get(resource);

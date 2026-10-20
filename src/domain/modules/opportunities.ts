@@ -163,7 +163,8 @@ export const opportunities: ResourceDefinition = {
       name: V.kanban,
       type: 'board',
       boardField: 'stage',
-      filter: group('and', [cond('stage', 'in', OPEN_STAGES)]),
+      // No filter by default: Won / Lost columns stay visible so cards can be dragged there.
+      filter: group('and'),
       sort: [{ field: 'expectedCloseDate', dir: 'asc' }],
       columns: cols('customerId', 'value', 'expectedCloseDate', 'ownerId'),
     },

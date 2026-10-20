@@ -1,17 +1,15 @@
-import { confirmDelete } from '../primitives/overlay';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { RecordData, ResourceDefinition } from '../../metadata/types';
 import { cx } from '../../lib/format';
 import { type Actor, fieldAccessMap } from '../../services/authz';
 import { activeMasterValues, getMaster } from '../../services/registry';
-import { availableTransitions, recordTitle, transitionRecord } from '../../services/runtime';
-import { ServiceError } from '../../services/types';
-import { Button, IconButton } from '../primitives/Button';
-import { StatusChip, useToast } from '../primitives/feedback';
-import { Menu } from '../primitives/overlay';
+import { recordTitle } from '../../services/runtime';
+import { Button } from '../primitives/Button';
+import { StatusChip } from '../primitives/feedback';
+import { useStageMove } from './MoveStageButton';
 import { FieldValue, photoOf } from './FieldValue';
-import { Icon } from '../primitives/Icon';
 import { ImageTile } from '../primitives/People';
+import { getCardActions } from './extensions';
 import { L } from '../../constants/labels';
 
 /** Board: columns are lifecycle states; moves go through the same guarded transition API. */
@@ -19,38 +17,16 @@ import { L } from '../../constants/labels';
 const CARDS_PER_COLUMN = 40;
 
 export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, activeId }: { res: ResourceDefinition; actor: Actor; rows: RecordData[]; boardField: string; cardFields: string[]; onOpen: (id: string) => void; activeId?: string }) {
+  const CardActions = getCardActions(res.key);
   const field = res.fields.find((f) => f.key === boardField)!;
   const values = getMaster(field.master!).values.filter((v) => v.active).sort((a, b) => a.order - b.order);
   const access = fieldAccessMap(actor, res);
-  const toast = useToast();
   const [dragId, setDragId] = useState<string | null>(null);
   const [cap, setCap] = useState<Record<string, number>>({});
   const [over, setOver] = useState<string | null>(null);
-  const [menu, setMenu] = useState<RecordData | null>(null);
-  const anchor = useRef<HTMLElement | null>(null);
 
-  const move = (r: RecordData, to: string) => {
-    if (r[boardField] === to) return;
-    const t = availableTransitions(actor, res, r).find((x) => x.to === to);
-    if (!t) {
-      toast(L.common.list.notAllowedStep(r.id, values.find((v) => v.key === to)?.label ?? to), 'danger');
-      return;
-    }
-    if (t.disabledReason) {
-      toast(t.disabledReason, 'danger');
-      return;
-    }
-    const go = () => {
-      try {
-        transitionRecord(actor, res.key, r.id, to, r.version);
-        toast(L.common.toasts.moved(recordTitle(res.key, r.id, actor), values.find((v) => v.key === to)?.label ?? to));
-      } catch (e) {
-        toast(e instanceof ServiceError ? e.message : L.common.toasts.moveFailed, 'danger');
-      }
-    };
-    if (t.confirm) confirmDelete({ title: t.confirm, message: '', tone: 'primary', confirmLabel: L.common.actions.confirm, onConfirm: go });
-    else go();
-  };
+  // Drag a card to another column = change status; statuses that need details open their dialog (useStageMove).
+  const { move, dialog } = useStageMove(res, actor);
 
   const shownFields = cardFields.filter((k) => k !== boardField && k !== res.titleField && access[k] && access[k] !== 'hide').slice(0, 4);
   // The first person (staff relation) becomes the avatar in the card's top-right corner; the rest are meta lines.
@@ -86,7 +62,7 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
               {items.slice(0, cap[col.key] ?? CARDS_PER_COLUMN).map((r) => (
                 <li
                   key={r.id}
-                  className={cx('board-card', activeId === r.id && 'is-active')}
+                  className={cx('board-card', `tone-${col.tone ?? 'neutral'}`, activeId === r.id && 'is-active')}
                   draggable
                   onDragStart={() => setDragId(r.id)}
                   onDragEnd={() => setDragId(null)}
@@ -105,10 +81,9 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                       <span className="card-meta">
                         {metaFields.map((k) => {
                           const f = res.fields.find((x) => x.key === k)!;
-                          const icon = f.type === 'date' || f.type === 'datetime' ? 'calendar' : f.type === 'relation' ? (f.relation?.resource === 'staff' ? 'f-person' : 'f-relation') : undefined;
+                          // FieldValue already draws the field's icon; the card only adds a label tooltip and truncation.
                           return (
-                            <span key={k} className="card-field">
-                              {icon && <Icon name={icon} size={14} className="card-field-icon" />}
+                            <span key={k} className={cx('card-field', `is-${f.type}`)} data-tooltip={f.label}>
                               <FieldValue field={f} value={r[k]} access={access[k]} actor={actor} linkRelations={false} />
                             </span>
                           );
@@ -116,16 +91,11 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
                       </span>
                     )}
                   </button>
-                  <IconButton
-                    icon="more"
-                    label={L.common.list.moveCard(r.id)}
-                    aria-haspopup="menu"
-                    className="board-card-menu"
-                    onClick={(e) => {
-                      anchor.current = e.currentTarget;
-                      setMenu((m) => (m?.id === r.id ? null : r)); // click again closes
-                    }}
-                  />
+                  {CardActions && (
+                    <div className="board-card-actions">
+                      <CardActions res={res} actor={actor} record={r} surface="board" />
+                    </div>
+                  )}
                 </li>
               ))}
               {!items.length && <li className="board-empty muted">{L.common.list.nothingHere}</li>}
@@ -141,20 +111,8 @@ export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, ac
           </section>
         );
       })}
-      {menu && (
-        <Menu
-          open
-          onClose={() => setMenu(null)}
-          anchor={anchor}
-          label={L.common.list.moveCard(menu.id)}
-          items={
-            availableTransitions(actor, res, menu).length
-              ? availableTransitions(actor, res, menu).map((t) => ({ id: t.to, label: t.action, icon: 'chevron-right', disabledReason: t.disabledReason, onSelect: () => move(menu, t.to) }))
-              : [{ id: 'none', label: L.common.list.noFurtherSteps, onSelect: () => {}, disabledReason: L.common.list.finalState }]
-          }
-        />
-      )}
       {!activeMasterValues(field.master!).length && <p className="muted">{L.common.list.noActiveStatuses}</p>}
+      {dialog}
     </div>
   );
 }

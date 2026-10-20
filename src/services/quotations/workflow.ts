@@ -632,3 +632,16 @@ export function editorData(actor: Actor, quoteId?: string, opportunityId?: strin
     opportunity: fromParam ?? current ?? null,
   };
 }
+
+/** Resolve the originating lead without exposing records outside the viewer's scope. */
+export function quotationOrigin(actor: Actor, id: string): { leadId?: string; opportunityId?: string; directCustomer: boolean } {
+  const quote = readRaw(actor, id);
+  const opportunity = byId('opportunities', quote.opportunityId);
+  if (!opportunity || !canReadRecord(actor, getResource('opportunities'), opportunity)) return { directCustomer: false };
+  const lead = byId('leads', opportunity.leadId);
+  return {
+    opportunityId: opportunity.id,
+    leadId: lead && canReadRecord(actor, getResource('leads'), lead) ? lead.id : undefined,
+    directCustomer: !opportunity.leadId,
+  };
+}

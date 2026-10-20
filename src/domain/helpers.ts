@@ -1,4 +1,5 @@
 /** Small builders shared by every resource definition. */
+import { L } from '../constants/labels';
 import type { FieldCapabilities, FieldDefinition, FilterCondition, FilterGroup, ResourceDefinition, ViewDefinition } from '../metadata/types';
 
 export const ALL: FieldCapabilities = { list: true, sort: true, filter: true, search: true, form: true, export: true };
@@ -25,6 +26,18 @@ export const group = (join: 'and' | 'or', children: FilterGroup['children'] = []
 });
 
 type ViewSeed = Omit<ViewDefinition, 'resourceVersion' | 'order' | 'scope' | 'ownerId' | 'density'> & Partial<Pick<ViewDefinition, 'density' | 'scope'>>;
-export const views = (list: ViewSeed[]): ResourceDefinition['views'] => list.map((x, i) => ({ density: 'compact', scope: 'org', ownerId: 'system', order: i, ...x }));
+/**
+ * Lists open with no filter applied: when the first preset is a filtered table, an unfiltered "All" table
+ * (same columns and sort) leads — an existing one moves to the front, else one is added; filtered presets stay one click away.
+ */
+export const views = (list: ViewSeed[]): ResourceDefinition['views'] => {
+  const first = list[0];
+  let seeds = list;
+  if (first && first.type === 'table' && first.filter.children.length > 0) {
+    const all = list.find((v) => v.type === 'table' && !v.filter.children.length && !v.groupBy);
+    seeds = all ? [all, ...list.filter((v) => v !== all)] : [{ ...first, id: `v_${first.resource}_all`, name: L.common.list.allView, filter: group('and'), groupBy: undefined }, ...list];
+  }
+  return seeds.map((x, i) => ({ density: 'compact', scope: 'org', ownerId: 'system', order: i, ...x }));
+};
 
 export const cols = (...keys: string[]) => keys.map((key) => ({ key }));

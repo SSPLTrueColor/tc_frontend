@@ -113,7 +113,7 @@ const common = {
     decided: (id: string, decision: string) => `${id} ${decision}`,
     actionDone: (id: string, action: string) => `${id}: ${action}`,
     moved: (title: string, stage: string) => `Moved ${title} to ${stage}`,
-    fieldUpdated: (id: string, field: string) => `${id}: ${field} updated`,
+    fieldUpdated: (id: string, field: string) => `${id}: ${field} edited and confirmed`,
     linked: (child: string, parent: string) => `Linked ${child} to ${parent}`,
     copiedId: (id: string) => `${id} copied`,
     linkCopied: 'Link copied — opening it still requires access',
@@ -365,6 +365,11 @@ const common = {
   },
 
   list: {
+    /** Unfiltered landing view added in front of filtered presets. */
+    allView: 'All',
+    edited: 'Edited',
+    applyRow: (id: string) => `Apply changes to ${id}`,
+    discardRow: (id: string) => `Discard changes to ${id}`,
     search: 'Search',
     shortcutHint: (key: string) => `Shortcut: ${key}`,
     showMore: (n: number) => `Show ${n} more`,
@@ -470,6 +475,7 @@ const common = {
     // board
     nothingHere: 'Nothing here',
     moveCard: (id: string) => `Move ${id}`,
+    changeField: (label: string) => `Change ${label}`,
     noFurtherSteps: 'No further steps',
     finalState: 'This item is in a final state',
     noActiveStatuses: 'No active statuses configured.',
@@ -1076,6 +1082,7 @@ const nav = {
 
   /** Static pages: sidebar label = page title unless `nav` is given. `brd` = BRD reference shown in REQUIREMENTS. */
   pages: {
+    salesWorkspace: { title: 'Leads & Opportunities', brd: '4.2 / 4.3' },
     // Dashboard (4.13)
     dashboard: { title: 'Dashboard', brd: '4.13' },
     calendar: { title: 'Tasks & Calendar', brd: 'OPP-08' },
@@ -1779,7 +1786,7 @@ const leads = {
   },
 
   actions: {
-    convertToOpportunity: 'Convert to Opportunity',
+    convertToOpportunity: 'Create Opportunity',
     disqualify: 'Disqualify',
     nurture: 'Nurture',
     logFollowUp: 'Log Follow-up',
@@ -1809,10 +1816,10 @@ const leads = {
     readOnlyFor: (role: string) => `Read-only for ${role}`,
     noOpportunities: 'Opportunities module not available yet',
     convert: {
-      title: (id: string) => `Convert ${id} to Opportunity`,
+      title: (id: string) => `Create Opportunity from ${id}`,
       description: (pct: number) =>
         `Confirms the need, budget, decision maker and timeline (BANT-lite) and creates an opportunity with this lead’s customer, contact person, lead owner and history. The lead then becomes read-only. Stage probability starts at ${pct}%.`,
-      submit: 'Convert to Opportunity',
+      submit: 'Create Opportunity',
       dictate: 'Dictate requirement',
       budget: 'Budget (₹)',
       opportunityName: 'Opportunity name',
@@ -2199,6 +2206,7 @@ const opportunities = {
     moveToNegotiation: 'Move to Negotiation',
     markWon: 'Mark Won',
     markLost: 'Mark Lost',
+    createQuotation: 'Create Quotation',
     backToNeedsAssessment: 'Back to Needs Assessment',
     reopen: 'Re-open',
     logFollowUp: 'Log Follow-up',

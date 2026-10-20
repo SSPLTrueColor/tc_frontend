@@ -18,7 +18,36 @@ export function resourcePath(_ws: string, resKey: string, params: Record<string,
   return `/${slugOf(resKey)}${qs ? `?${qs}` : ''}`;
 }
 
-export const recordPeekPath = (ws: string, resKey: string, id: string) => resourcePath(ws, resKey, { peek: id });
+/** Canonical drawer link: the resource's own list with the record peeked (pins, copied links). */
+export const recordListPeekPath = (ws: string, resKey: string, id: string) => resourcePath(ws, resKey, { peek: id });
+
+/** Query param of the record drawer that opens over any page: `?drawer=<slug>:<id>`. */
+export const DRAWER_PARAM = 'drawer';
+export function parseDrawerParam(v: string | null): { resKey: string; id: string } | null {
+  const i = v ? v.indexOf(':') : -1;
+  if (!v || i < 1) return null;
+  const slug = v.slice(0, i);
+  return { resKey: keyOfSlug(slug) ?? slug, id: v.slice(i + 1) };
+}
+
+/**
+ * In-app link to a record: opens its drawer over the page the user is on, so the page behind never changes.
+ * On the record's own list it peeks in place (row highlight, prev / next); anywhere else it adds `?drawer=`
+ * to the current URL (rendered by GlobalRecordDrawer in the shell). Reads the live location at render time.
+ */
+export function recordPeekPath(ws: string, resKey: string, id: string) {
+  if (typeof window === 'undefined') return recordListPeekPath(ws, resKey, id);
+  const { pathname, search } = window.location;
+  if (pathname === `/${slugOf(resKey)}`) {
+    const qs = new URLSearchParams(search);
+    qs.delete(DRAWER_PARAM);
+    qs.set('peek', id);
+    return `${pathname}?${qs.toString()}`;
+  }
+  const qs = new URLSearchParams(search);
+  qs.set(DRAWER_PARAM, `${slugOf(resKey)}:${id}`);
+  return `${pathname}?${qs.toString()}`;
+}
 export const recordPagePath = (_ws: string, resKey: string, id: string) => `/${slugOf(resKey)}/${encodeURIComponent(id)}`;
 /** Full-page create / edit form for a resource. */
 export const recordNewPath = (resKey: string) => `/${slugOf(resKey)}/new`;

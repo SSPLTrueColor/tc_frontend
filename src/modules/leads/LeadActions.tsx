@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { addDays, formatDate, todayKey } from '../../lib/dates';
 import { recordPeekPath } from '../../lib/routes';
@@ -11,7 +11,7 @@ import { ServiceError } from '../../services/types';
 import { hasResource, leadLabel, safeTitle, type QualifyInput } from '../../services/leads/rules';
 import { isFollowUpDue, isNotAttended } from '../../domain/modules/leads/computed';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
-import { Button } from '../../components/primitives/Button';
+import { Button, IconButton } from '../../components/primitives/Button';
 import { DatePicker } from '../../components/primitives/DatePicker';
 import { InlineAlert, useToast } from '../../components/primitives/feedback';
 import { Dialog } from '../../components/primitives/overlay';
@@ -70,6 +70,42 @@ export function LeadActions({ res, actor, record }: RecordExtensionProps) {
   );
 }
 
+/** List row / board card action: Create Opportunity (LEAD-10) — qualification stays on the current page. */
+export function LeadCardActions({ actor, record, res }: RecordExtensionProps) {
+  const [open, setOpen] = useState(false);
+  if (!['new', 'contacted'].includes(String(record.status)) || !canUpdateRecord(actor, res, record)) return null;
+  return <>
+    <IconButton icon="target" className="convert-icon-btn" label={A.convertToOpportunity} onClick={() => setOpen(true)} />
+    {open && <ConvertDialog actor={actor} record={record} res={res} onClose={() => setOpen(false)} />}
+  </>;
+}
+
+/**
+ * Status changes from the list / board that need details (LEAD-09…11): Contacted = log the first follow-up,
+ * Qualified = Create Opportunity (LEAD-10), Nurture / Disqualified = their dialogs. Same rules as the record actions.
+ */
+export function leadMoveTargets({ actor, res, record }: RecordExtensionProps): string[] {
+  if (!canUpdateRecord(actor, res, record)) return [];
+  const status = String(record.status);
+  const out: string[] = [];
+  if (status === 'new') out.push('contacted');
+  if (['new', 'contacted'].includes(status)) {
+    if (hasResource('opportunities')) out.push('qualified');
+    out.push('nurture');
+  }
+  if (OPEN.includes(status)) out.push('disqualified');
+  return out;
+}
+
+export function LeadMoveDialog({ actor, res, record, to, onClose }: RecordExtensionProps & { to: string; onClose: () => void }) {
+  if (to === 'contacted')
+    return <LogActivityDialog open onClose={onClose} title={A.logFollowUp} requireNextFollowUp parent={{ parentResource: 'leads', parentId: record.id, parentLabel: leadLabel(record, actor), customerId: record.customerId as string | undefined }} />;
+  if (to === 'qualified') return <ConvertDialog actor={actor} record={record} res={res} onClose={onClose} />;
+  if (to === 'nurture') return <NurtureDialog actor={actor} record={record} res={res} onClose={onClose} />;
+  if (to === 'disqualified') return <DisqualifyDialog actor={actor} record={record} res={res} onClose={onClose} />;
+  return null;
+}
+
 const TIMELINE_DAYS: Record<string, number> = { immediate: 30, '1_3m': 75, '3_6m': 135, '6_12m': 270, '12m_plus': 365 };
 
 function Field({ id, label, required, error, children }: { id: string; label: string; required?: boolean; error?: string; children: ReactNode }) {
@@ -100,7 +136,10 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof QualifyInput>(k: K, v: QualifyInput[K]) => setQ((x) => ({ ...x, [k]: v }));
+  const inFlight = useRef(false);
   const submit = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       const out = await leadsApi.convertToOpportunity(actor, record.id, record.version, q);
@@ -109,6 +148,7 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
     } catch (e) {
       setErrors(e instanceof ServiceError && e.fieldErrors ? e.fieldErrors : { form: errorMessage(e) });
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };

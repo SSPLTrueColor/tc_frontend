@@ -424,16 +424,15 @@ export function FilterButton({ res, actor, filter, onChange }: { res: ResourceDe
     <>
       <Button
         ref={ref}
-        icon="sliders"
-        iconRight={open ? 'chevron-up' : 'chevron-down'}
+        icon="filter"
+        title={n ? LS.filtersActive(n) : LS.filters}
         onClick={() => (open ? close() : openPanel())}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-label={n ? LS.filtersActive(n) : LS.filters}
-        className={cx(open && 'is-open')}
+        className={cx('filter-btn', 'is-icon-only', open && 'is-open', n > 0 && 'is-active')}
       >
-        {LS.filters}
-        {n > 0 && <span className="btn-dot" aria-hidden="true" />}
+        {n > 0 && <span className="filter-count" aria-hidden="true">{n}</span>}
       </Button>
       <Popover open={open} onClose={close} anchor={ref} label={LS.filters} width={mode === 'quick' ? 440 : 480} className="filter-pop" align="end">
         {mode === 'quick' ? (
