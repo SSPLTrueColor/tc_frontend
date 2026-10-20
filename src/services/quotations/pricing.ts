@@ -44,7 +44,9 @@ export interface LineAmounts {
 export function lineAmounts(l: QuoteLine): LineAmounts {
   const gross = r2((Number(l.qty) || 0) * (Number(l.listPrice) || 0));
   const amt = Number(l.discountAmt) || 0;
-  const discount = r2(amt > 0 ? Math.min(amt, gross) : (gross * Math.min(100, Math.max(0, Number(l.discountPct) || 0))) / 100);
+  // QUO-04: the chosen mode wins — amount mode ignores a stale %, % mode ignores a stale amount (same rule as the editor).
+  const byAmount = l.discountType === 'amt' || (l.discountType !== 'pct' && amt > 0);
+  const discount = r2(byAmount ? Math.min(Math.max(0, amt), gross) : (gross * Math.min(100, Math.max(0, Number(l.discountPct) || 0))) / 100);
   const net = r2(gross - discount);
   // Rounded UP to 0.01 % so an amount discount of e.g. 5.004 % still counts as "above 5 %" for BR-17 bands.
   const effectivePct = gross ? Math.max(0, Math.ceil((discount / gross) * 10000 - 1e-6) / 100) : 0;

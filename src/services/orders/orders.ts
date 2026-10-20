@@ -114,6 +114,9 @@ export function quotationBlocker(d: Db, q: RecordData | undefined): string | nul
   if (opp && opp.stage !== 'won') return E.opportunityNotWon(opp.id);
   const existing = rows(d, SO).find((o) => o.quotationId === q.id && o.status !== 'cancelled');
   if (existing) return E.orderExists(String(existing.orderNo ?? existing.id));
+  // BR-20: one won opportunity → one live sales order, whichever of its quotations it came from.
+  const forOpp = q.opportunityId ? rows(d, SO).find((o) => o.opportunityId === q.opportunityId && o.status !== 'cancelled') : undefined;
+  if (forOpp) return E.opportunityOrdered(String(forOpp.orderNo ?? forOpp.id));
   return null;
 }
 
@@ -302,10 +305,15 @@ export function validateLines(lines: QuoteLine[]): string | null {
  * price list (QUO-05: sales users cannot edit list prices).
  */
 export function sanitizeLines(input: QuoteLine[], reference: QuoteLine[]): QuoteLine[] {
-  const refBy = new Map(reference.map((l) => [l.productId, l]));
+  // SO-01 / SO-03: match each line to ONE reference line — same position first, else the first unused line with
+  // the same product (custom lines, productId null, also by description). Duplicate products and custom lines stay separate.
+  const used = new Set<number>();
+  const same = (l: QuoteLine, r: QuoteLine) => (l.productId ?? null) === (r.productId ?? null) && (l.productId ? true : String(l.description).trim() === String(r.description).trim());
   const products = rows(getDb(), 'products');
   return input.map((l, i) => {
-    const ref = refBy.get(l.productId);
+    const at = reference[i] && !used.has(i) && same(l, reference[i]) ? i : reference.findIndex((r, j) => !used.has(j) && same(l, r));
+    if (at >= 0) used.add(at);
+    const ref = at >= 0 ? reference[at] : undefined;
     const qty = Number(l.qty);
     const discountPct = Math.round((Number(l.discountPct) || 0) * 100) / 100;
     const discountAmt = Math.round((Number(l.discountAmt) || 0) * 100) / 100;

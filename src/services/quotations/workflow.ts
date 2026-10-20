@@ -78,6 +78,8 @@ function derive(ctx: HookContext, c: Record<string, unknown>, isNew: boolean) {
   if (c.opportunityId && (!opp || (isNew && !canReadRecord(ctx.actor, getResource('opportunities'), opp)))) throw new ServiceError('validation', E.opportunityMissing, { fieldErrors: { opportunityId: E.opportunityNotFound } });
   if (opp) {
     if (isNew && opp.stage === 'lost') throw new ServiceError('invalid_state', E.opportunityLost(String(opp.id)));
+    // BR-20 / §3.1: a won opportunity is closed — no new quotations on it.
+    if (isNew && opp.stage === 'won') throw new ServiceError('invalid_state', E.opportunityWon(String(opp.id)));
     c.customerId = opp.customerId ?? c.customerId;
     c.divisionId = opp.divisionId ?? c.divisionId;
     if (!c.ownerId) c.ownerId = opp.ownerId;
@@ -372,6 +374,9 @@ export function acceptQuote(actor: Actor, id: string, version: number, input: Ac
     const q = load(actor, d, id, version);
     if (!['sent', 'negotiation'].includes(String(q.status))) throw new ServiceError('invalid_state', E.onlySentAccept);
     if (String(q.validUntil) < todayKey()) throw new ServiceError('invalid_state', E.expiredAccept);
+    // BR-20: one accepted quotation per opportunity — a second open quotation cannot win it again.
+    const other = q.opportunityId ? (d.records.quotations ?? []).find((x) => x.id !== q.id && x.opportunityId === q.opportunityId && x.status === 'accepted') : undefined;
+    if (other) throw new ServiceError('invalid_state', E.otherQuoteAccepted(String(other.quoteNo ?? other.id)));
     const errors: Record<string, string> = {};
     const patch: Record<string, unknown> = { status: 'accepted', acceptedAt: nowIso(), acceptanceMethod: input.method };
     if (input.method === 'po') {

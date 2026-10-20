@@ -223,6 +223,11 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
         status: 'active',
       });
       customerId = created.id;
+      // BR-02: every company has at least one address — same billing address the inline lead path creates.
+      if (isRegistered('addresses')) {
+        const city = String(contact.city ?? '').trim() || activeMasterValues('territory').find((t) => t.key === input.territoryId)?.label || '';
+        insertRecordIn(ctx, 'addresses', { customerId, addressType: 'billing', label: L.leads.messages.newCustomerAddress, line1: city, city, state: input.billingState, pincode: '' }, { validate: false });
+      }
     }
     // Link the contact first: the lead requires a contact of its own customer.
     patchRecordIn(ctx, 'contacts', contact.id, { customerId, divisionIds: [...new Set([...((contact.divisionIds as string[]) ?? []), input.divisionId])] }, L.customers.messages.linkedOnConversion);

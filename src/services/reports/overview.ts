@@ -130,6 +130,9 @@ export interface Share {
   info: string;
   totalLabel: string;
   slices: Slice[];
+  /** Replaces the total in the donut centre (e.g. win rate on Won vs Lost). */
+  center?: { value: string; label: string };
+  to?: string;
 }
 export interface Step {
   key: string;
@@ -183,6 +186,10 @@ export interface Dashboard {
   share: Share;
   pipe: Pipe;
   board: Board;
+  /** Sales dashboards: open pipeline by current stage (BRD §12 "Pipeline value"). */
+  stagePipe?: Pipe;
+  /** Sales dashboards: opportunities won vs lost in the range (BRD §12 "Win rate"). */
+  winLoss?: Share;
   agenda: PlanItem[];
   feed: FeedItem[];
   alerts: AlertItem[];
@@ -479,7 +486,7 @@ function profilingKpis(c: Ctx): Kpi[] {
 
 // ---------------------------------------------------------------- trend, share, funnel, board
 
-type Body = Pick<Dashboard, 'trend' | 'share' | 'pipe' | 'board'>;
+type Body = Pick<Dashboard, 'trend' | 'share' | 'pipe' | 'board' | 'stagePipe' | 'winLoss'>;
 
 function bodyFor(family: string, c: Ctx): Body {
   if (family === 'service' || family === 'engineer') return serviceBody(family, c);
@@ -569,7 +576,31 @@ function salesBody(family: string, c: Ctx): Body {
       empty: B.noOrders,
     };
   }
-  return { trend, share, pipe, board };
+  // Pipeline by stage: every open opportunity the user can see, by its current stage (not limited to the range).
+  const openOpps = opps.filter(isOpenOpp);
+  const stagePipe: Pipe = {
+    title: W.pipelineByStage.title,
+    info: W.pipelineByStage.info,
+    money: true,
+    unit: W.pipelineByStage.unit,
+    steps: OPP_STAGES.filter((st) => st !== 'won').map((st) => {
+      const rows = openOpps.filter((o) => o.stage === st);
+      return { key: st, label: `${masterLabel('oppStage', st) || st} (${rows.length})`, value: sum(rows, 'value'), tone: tone('oppStage', st), to: listWith('opportunities', [['stage', 'eq', st]]) };
+    }),
+    to: ROUTES.pipeline,
+  };
+
+  // Won vs Lost: opportunities closed in the range; win rate = won ÷ (won + lost).
+  const closed = closedIn(opps, c.range.from, c.range.to);
+  const wr = winRate(closed);
+  const winLoss: Share = {
+    title: W.winLoss.title,
+    info: W.winLoss.info,
+    totalLabel: W.winLoss.total,
+    center: wr === null ? undefined : { value: `${Math.round(wr * 100)}%`, label: W.winLoss.winRate },
+    slices: (['won', 'lost'] as const).map((st) => ({ key: st, label: masterLabel('oppStage', st) || st, value: closed.filter((o) => o.stage === st).length, tone: (st === 'won' ? 'success' : 'danger') as Slice['tone'], to: listWith('opportunities', [['stage', 'eq', st], ...dateConds('stageChangedAt', c.range)]) })).filter((x) => x.value > 0),
+  };
+  return { trend, share, pipe, board, stagePipe, winLoss };
 }
 
 const actorIsExec = (c: Ctx) => c.actor.role.id === 'sales_exec';
