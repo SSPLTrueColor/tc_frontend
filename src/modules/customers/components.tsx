@@ -7,7 +7,7 @@ import { ROUTES } from '../../constants/routes';
 import { formatMoney } from '../../lib/format';
 import { recordPeekPath } from '../../lib/routes';
 import { call, errorMessage } from '../../services/api/client';
-import { convertToLead, defaultFollowUp, fuzzyCustomerMatches, isRegistered, refreshErp, territoryForCity } from '../../services/api/customers';
+import { convertToLead, defaultFollowUp, fuzzyCustomerMatches, isRegistered, refreshErp, sourceFieldsFor, territoryForCity } from '../../services/api/customers';
 import { can, canUpdateRecord, perm } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { activeMasterValues } from '../../services/registry';
@@ -110,8 +110,8 @@ export function ContactActions({ actor, record }: RecordExtensionProps) {
 
 // ---------------------------------------------------------------- Convert to Lead (CUS-05, BR-04)
 
-/** Fields the Convert dialog shows an error under; anything else goes to the message at the bottom. */
-const SHOWN = new Set(['companyName', 'territoryId', 'billingState', 'divisionId', 'productType', 'sourceId', 'ownerId', 'nextFollowUpAt', 'eventName', 'referrerType', 'referrerEmployeeId', 'referrerCustomerId']);
+/** Fields the Convert dialog always renders (an error for any other field goes to the message at the bottom); source-dependent ones (event, campaign) are added per selected source. */
+const ALWAYS_SHOWN = ['companyName', 'territoryId', 'billingState', 'divisionId', 'productType', 'sourceId', 'ownerId', 'nextFollowUpAt', 'referrerType', 'referrerEmployeeId', 'referrerCustomerId'];
 
 export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtensionProps['actor']; contact: RecordData; onClose: () => void }) {
   const toast = useToast();
@@ -135,6 +135,7 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
     nextFollowUpAt: defaultFollowUp(),
     requirement: '',
     eventName: '',
+    campaign: '',
     referrerType: '',
     referrerEmployeeId: '',
     referrerCustomerId: '',
@@ -147,6 +148,10 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
   // CUS-06 / BR-01: the inline company is checked for similar names (non-blocking warning).
   const similar = pool && v.companyName.trim().length >= 3 ? fuzzyCustomerMatches((getDb().records.customers ?? []).filter((c) => c.workspaceId === actor.workspaceId), v.companyName).slice(0, 3) : [];
   const err = (k: string) => errors[k] && <p className="field-error">{errors[k]}</p>;
+  // LEAD-02 / BR-06: fields the SELECTED lead source needs (e.g. Exhibition / Trade Show → event name).
+  const srcFields = v.sourceId ? sourceFieldsFor(v.sourceId) : [];
+  const srcField = (k: 'eventName' | 'campaign') => srcFields.find((f) => f.key === k);
+  const shown = new Set([...ALWAYS_SHOWN, ...srcFields.map((f) => f.key)]);
   const saving = useRef(false);
   const save = async () => {
     if (saving.current) return; // no double submit
@@ -154,16 +159,19 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
     setBusy(true);
     setErrors({});
     try {
-      const r = await convertToLead(actor, { contactId: contact.id, ...v });
+      const extra = Object.fromEntries((['eventName', 'campaign'] as const).map((k) => [k, srcField(k) ? v[k] : '']));
+      const r = await convertToLead(actor, { contactId: contact.id, ...v, ...extra });
       // The toast links straight to the new lead, so the user is not left hunting for it from the Contact Pool.
       toast(V.done(r.leadId, pool ? r.customerId : undefined), 'success', { label: L.common.actions.open, onClick: () => navigate(recordPeekPath(actor.workspaceId, 'leads', r.leadId)) });
       onClose();
     } catch (e) {
+      // Never fail silently: field errors show inline, anything this dialog does not show is listed at the
+      // bottom, and every failure also raises a toast.
+      const unseen = e instanceof ServiceError && e.fieldErrors ? Object.entries(e.fieldErrors).filter(([k, m]) => m && !shown.has(k)).map(([, m]) => m) : [];
       if (e instanceof ServiceError && e.fieldErrors) {
-        // Any error for a field this dialog does not show is listed at the bottom, so a save never fails silently.
-        const unseen = Object.entries(e.fieldErrors).filter(([k, m]) => m && !SHOWN.has(k)).map(([, m]) => m);
         setErrors({ ...e.fieldErrors, ...(unseen.length ? { form: `${errorMessage(e)} ${unseen.join('. ')}` } : {}) });
       } else setErrors({ form: errorMessage(e) });
+      toast(V.failed([errorMessage(e), ...unseen].join(' ')), 'danger');
     } finally {
       saving.current = false;
       setBusy(false);
@@ -302,13 +310,22 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
           <DatePicker id="cv-next" block value={v.nextFollowUpAt} onChange={(t) => set('nextFollowUpAt', t ?? '')} label={V.nextFollowUp} />
           {err('nextFollowUpAt')}
         </div>
-        {contact.source === 'exhibition' && (
+        {srcField('eventName') && (
           <div className="form-field span-all">
             <label className="field-label" htmlFor="cv-event">
-              {V.eventName} <span className="req">*</span>
+              {V.eventName} {srcField('eventName')!.required && <span className="req">*</span>}
             </label>
-            <TextField id="cv-event" maxLength={120} value={v.eventName} onChange={(e) => set('eventName', e.target.value)} placeholder={V.eventPlaceholder} />
+            <TextField id="cv-event" maxLength={80} value={v.eventName} onChange={(e) => set('eventName', e.target.value)} placeholder={V.eventPlaceholder} aria-invalid={!!errors.eventName || undefined} />
             {err('eventName')}
+          </div>
+        )}
+        {srcField('campaign') && (
+          <div className="form-field span-all">
+            <label className="field-label" htmlFor="cv-campaign">
+              {V.campaign} {srcField('campaign')!.required && <span className="req">*</span>}
+            </label>
+            <TextField id="cv-campaign" maxLength={80} value={v.campaign} onChange={(e) => set('campaign', e.target.value)} placeholder={V.campaignPlaceholder} aria-invalid={!!errors.campaign || undefined} />
+            {err('campaign')}
           </div>
         )}
         <div className="form-field span-all">

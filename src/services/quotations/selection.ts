@@ -15,6 +15,7 @@ import { masterLabel } from '../registry';
 import type { HookContext } from '../resourceHooks';
 import { patchRecordIn } from '../runtime';
 import type { Db } from '../types';
+import { reopenApprovalIn } from '../workflow';
 
 export const QUOTE_APPROVAL = 'quotation.discount';
 /** Statuses that are still open (they close as Not Selected when another quotation is selected). */
@@ -64,12 +65,14 @@ export function quoteBlockReason(d: Db, q: RecordData | undefined): string | und
 }
 
 /** Withdraws the pending discount approval(s) of a quotation (closed in the approvals store, audited). */
-export function withdrawQuoteApprovals(ctx: HookContext, id: string, why: string) {
+export function withdrawQuoteApprovals(ctx: HookContext, id: string, why: string, forSelection = false) {
   ctx.d.approvals.forEach((a) => {
     if (a.recordId === id && a.type === QUOTE_APPROVAL && a.status === 'pending') {
       a.status = 'withdrawn';
       a.decidedAt = nowIso();
       a.decisionNote = why;
+      // Withdrawn because another quotation was selected: Undo Selection re-opens it.
+      if (forSelection) a.withdrawnFor = 'selection';
       a.version++;
       appendAudit(ctx.d, ctx.actor, { action: 'approval.withdrawn', actorType: 'workflow', resource: 'quotations', recordId: id, summary: L.quotations.audit.withdrawn(a.id, why), correlationId: ctx.correlationId });
     }
@@ -88,7 +91,7 @@ export function closeOtherQuotesIn(ctx: HookContext, oppId: unknown, winnerId: s
     .map((q) => q.id);
   ids.forEach((id) => {
     const q = quotes(ctx.d).find((x) => x.id === id)!;
-    withdrawQuoteApprovals(ctx, id, S.withdrawWhy(reason));
+    withdrawQuoteApprovals(ctx, id, S.withdrawWhy(reason), true);
     patchRecordIn(ctx, 'quotations', id, { status: 'not_selected', previousStatus: q.status, notSelectedAt: at, notSelectedReason: reason, selectedQuotationId: winnerId }, S.auditNotSelected(reason));
   });
   if (ids.length) appendAudit(ctx.d, ctx.actor, { action: 'quotations.not_selected', actorType: 'workflow', resource: 'opportunities', recordId: String(oppId), summary: S.auditOppClosed(ids.length, reason), correlationId: ctx.correlationId });
@@ -113,16 +116,35 @@ export function selectQuotationIn(ctx: HookContext, q: RecordData, reason: strin
   closeOtherQuotesIn(ctx, q.opportunityId, q.id, reason);
 }
 
-/** Re-opens Not Selected quotations at their previous status (a pending request was withdrawn, so it returns as a draft). */
-function restoreQuotesIn(ctx: HookContext, list: RecordData[], summary: string) {
+/** What restoring Not Selected quotations did: which came back to Pending Approval (approval re-opened) and which as Draft. */
+export interface RestoreOutcome {
+  pending: { quoteNo: string; approvalId: string }[];
+  drafted: string[];
+}
+
+/**
+ * Re-opens Not Selected quotations at their previous status. One that was Pending Approval returns to
+ * Pending Approval with its withdrawn approval re-opened; when that is not possible it returns as a Draft.
+ */
+function restoreQuotesIn(ctx: HookContext, list: RecordData[], summary: string, why: string): RestoreOutcome {
+  const out: RestoreOutcome = { pending: [], drafted: [] };
   list.forEach((q) => {
     const prev = String(q.previousStatus ?? '');
-    patchRecordIn(ctx, 'quotations', q.id, { status: RESTORABLE.includes(prev) ? prev : 'draft', previousStatus: null, notSelectedAt: null, notSelectedReason: null, selectedQuotationId: null }, summary);
+    let status = RESTORABLE.includes(prev) ? prev : 'draft';
+    if (prev === 'pending_approval') {
+      const a = ctx.d.approvals.filter((x) => x.recordId === q.id && x.type === QUOTE_APPROVAL && x.status === 'withdrawn' && x.withdrawnFor === 'selection').sort((x, y) => String(y.decidedAt ?? '').localeCompare(String(x.decidedAt ?? '')))[0];
+      if (a && reopenApprovalIn(ctx, a, why)) {
+        status = 'pending_approval';
+        out.pending.push({ quoteNo: noOf(q), approvalId: a.id });
+      } else out.drafted.push(noOf(q));
+    }
+    patchRecordIn(ctx, 'quotations', q.id, { status, previousStatus: null, notSelectedAt: null, notSelectedReason: null, selectedQuotationId: null }, summary);
   });
+  return out;
 }
 
 /** Returns the selected quotation to its status before acceptance and re-opens its Not Selected alternatives. */
-export function unselectQuotationIn(ctx: HookContext, winner: RecordData, summary: string, siblingSummary: string) {
+export function unselectQuotationIn(ctx: HookContext, winner: RecordData, summary: string, siblingSummary: string): RestoreOutcome {
   const prev = String(winner.previousStatus ?? '');
   patchRecordIn(
     ctx,
@@ -131,7 +153,7 @@ export function unselectQuotationIn(ctx: HookContext, winner: RecordData, summar
     { status: ['approved', 'sent', 'negotiation'].includes(prev) ? prev : 'negotiation', previousStatus: null, acceptedAt: null, acceptanceMethod: null, acceptedByName: null, customerPoNo: null, customerPoDate: null, poFileName: null },
     summary,
   );
-  restoreQuotesIn(ctx, quotes(ctx.d).filter((q) => q.opportunityId === winner.opportunityId && q.status === 'not_selected' && q.selectedQuotationId === winner.id), siblingSummary);
+  return restoreQuotesIn(ctx, quotes(ctx.d).filter((q) => q.opportunityId === winner.opportunityId && q.status === 'not_selected' && q.selectedQuotationId === winner.id), siblingSummary, S.reopenWhy(noOf(winner)));
 }
 
 /** Undo the selection on the opportunity: back to the stage (and value) it had before it was won. */
@@ -162,7 +184,7 @@ export function reopenQuotesIn(ctx: HookContext, before: RecordData) {
     const winner = selectedQuoteOf(ctx.d, oppId);
     if (winner) unselectQuotationIn(ctx, winner, S.auditReopenRestored, S.auditReopenRestored);
   } else if (before.stage === 'lost') {
-    restoreQuotesIn(ctx, quotes(ctx.d).filter((q) => q.opportunityId === oppId && q.status === 'not_selected' && !q.selectedQuotationId && q.notSelectedReason === S.reasonLost), S.auditReopenRestored);
+    restoreQuotesIn(ctx, quotes(ctx.d).filter((q) => q.opportunityId === oppId && q.status === 'not_selected' && !q.selectedQuotationId && q.notSelectedReason === S.reasonLost), S.auditReopenRestored, S.auditReopenRestored);
   }
   const opp = ((ctx.d.records.opportunities ?? []) as RecordData[]).find((o) => o.id === oppId);
   if (opp?.selectedQuotationId) patchRecordIn(ctx, 'opportunities', String(oppId), { selectedQuotationId: null, preWinStage: null, preWinValue: null, preWinProbability: null });

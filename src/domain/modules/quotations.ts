@@ -36,8 +36,8 @@ const masters: MasterDefinition[] = [
     v('superseded', S.superseded),
     v('not_selected', S.not_selected),
   ]),
-  master('quoteReviewStage', 'Quotation status', [
-    v('draft', S.draft), v('under_revision', 'Under Revision', 'warning'),
+  master('quoteReviewStage', T.masters.quoteReviewStage.label, [
+    v('draft', S.draft), v('under_revision', T.masters.quoteReviewStage.underRevision, 'warning'),
     v('pending_approval', S.pending_approval, 'warning'), v('approved', S.approved, 'success'),
     v('sent', S.sent, 'info'), v('negotiation', S.negotiation, 'warning'),
     v('accepted', S.accepted, 'success'), v('rejected', S.rejected, 'danger'), v('expired', S.expired),
@@ -92,7 +92,7 @@ export const quotations: ResourceDefinition = {
     fq('validUntil', F.validUntil, 'date', { required: true, width: 120, compare: { op: 'gte', field: 'quoteDate', message: F.validUntilCompare } }),
     fq('placeOfSupply', F.placeOfSupply, 'master', { master: 'state', required: true, width: 150, help: F.placeOfSupplyHelp }),
     fq('status', F.status, 'master', { master: 'quoteStatus', readOnly: true, width: 150 }),
-    fq('reviewStage', 'Quotation status', 'master', { master: 'quoteReviewStage', readOnly: true, computed: (r) => r.status === 'draft' && Number(r.revision) > 0 ? 'under_revision' : r.status, width: 170 }),
+    fq('reviewStage', T.masters.quoteReviewStage.field, 'master', { master: 'quoteReviewStage', readOnly: true, computed: (r) => r.status === 'draft' && Number(r.revision) > 0 ? 'under_revision' : r.status, width: 170 }),
     fq('leadId', 'Lead', 'relation', { relation: { resource: 'leads' }, readOnly: true, computed: quotationLead, width: 170 }),
     fq('revision', F.revision, 'number', { readOnly: true, min: 0, width: 90 }),
     fq('isLatest', F.isLatest, 'boolean', { readOnly: true, capabilities: { filter: true, export: true } }),

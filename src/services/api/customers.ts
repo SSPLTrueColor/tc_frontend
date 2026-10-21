@@ -8,7 +8,7 @@ import { call } from './client';
 import type { Actor } from '../authz';
 import { activitiesForCustomer } from '../activities';
 import { customer360, customer360Overview, customerDocuments } from '../customers/view360';
-import { convertContactToLead, type ConvertInput, listDuplicateGroups, mergeCustomers, previewTransfer, syncFromErp, transferOwnership } from '../customers/operations';
+import { convertContactToLead, type ConvertInput, leadSourceFields, listDuplicateGroups, mergeCustomers, previewTransfer, syncFromErp, transferOwnership } from '../customers/operations';
 import { importRows, type ImportRow, rowsFromCsv, samplePhoneBook, sampleVisitingCard } from '../customers/importContacts';
 import { deletePoolContact, listPoolContacts } from '../customers/pool';
 
@@ -38,6 +38,8 @@ export const visitingCardSample = (n: number) => call(() => sampleVisitingCard(n
 export const importContacts = (actor: Actor, rows: ImportRow[]) => call(() => importRows(actor, rows));
 
 // ---- small sync helpers used by forms and banners
+/** Source-dependent lead fields (event name, campaign …) for the chosen lead source. */
+export const sourceFieldsFor = (sourceId: string) => leadSourceFields(sourceId);
 export { CONTACT_CSV_TEMPLATE } from '../customers/importContacts';
 export { defaultFollowUp, isRegistered, territoryForCity } from '../customers/operations';
 export { fuzzyCustomerMatches } from '../customers/duplicates';

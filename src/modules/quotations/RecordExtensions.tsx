@@ -58,6 +58,7 @@ export function QuoteActions({ actor, record }: Props) {
   const toast = useToast();
   const [dialog, setDialog] = useState<'' | 'submit' | 'send' | 'accept' | 'reject' | 'version' | 'pullback' | 'undo'>('');
   const [undoBusy, setUndoBusy] = useState(false);
+  const undoLock = useRef(false);
   const [menu, setMenu] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const raw = (getDb().records.quotations ?? []).find((q) => q.id === record.id);
@@ -234,15 +235,22 @@ export function QuoteActions({ actor, record }: Props) {
               variant="danger"
               loading={undoBusy}
               onClick={async () => {
-                if (undoBusy) return;
+                if (undoLock.current) return; // ref: synchronous double-click guard
+                undoLock.current = true;
                 setUndoBusy(true);
                 try {
-                  await call(() => undoSelection(actor, raw.id, raw.version));
-                  toast(SEL.undoDone(String(raw.quoteNo)));
+                  const out = await call(() => undoSelection(actor, raw.id, raw.version));
+                  // Say what happened to the alternatives that were waiting for approval.
+                  const extra = [
+                    out.pending.length ? SEL.undoBackPending(out.pending.map((p) => p.quoteNo).join(', '), out.pending.map((p) => p.approvalId).join(', ')) : '',
+                    out.drafted.length ? SEL.undoBackDraft(out.drafted.join(', ')) : '',
+                  ].filter(Boolean);
+                  toast([`${SEL.undoDone(String(raw.quoteNo))}.`, ...extra].join(' '));
                   setDialog('');
                 } catch (e) {
                   toast(errorMessage(e), 'danger');
                 } finally {
+                  undoLock.current = false;
                   setUndoBusy(false);
                 }
               }}
@@ -331,7 +339,8 @@ function SendDialog({ record, onClose }: DProps) {
   // Default to a channel the contact has consented to; with neither, the only option is "shared offline".
   const [channel, setChannel] = useState<'email' | 'whatsapp' | 'manual'>(!noEmail ? 'email' : !noWhatsapp ? 'whatsapp' : 'manual');
   const [to, setTo] = useState(String((channel === 'email' ? contact?.email : contact?.whatsapp ?? contact?.mobile) ?? ''));
-  const [message, setMessage] = useState(S.defaultMessage(String(contact?.name ?? S.sirMadam), String(record.quoteNo), formatDate(String(record.validUntil)), actor.user.name));
+  const [initialMessage] = useState(() => S.defaultMessage(String(contact?.name ?? S.sirMadam), String(record.quoteNo), formatDate(String(record.validUntil)), actor.user.name));
+  const [message, setMessage] = useState(initialMessage);
   const { busy, errors, run } = useRun(onClose);
   return (
     <Dialog
@@ -343,7 +352,7 @@ function SendDialog({ record, onClose }: DProps) {
       footer={
         <>
           <Button onClick={onClose}>{A.cancel}</Button>
-          <Button variant="primary" icon="send" loading={busy} onClick={() => run(() => quotationsApi.send(actor, record.id, record.version, { channel, to, message }), S.done(String(record.quoteNo), channel === 'email' ? S.email : channel === 'whatsapp' ? S.whatsapp : S.manual))}>
+          <Button variant="primary" icon="send" loading={busy} onClick={() => run(() => quotationsApi.send(actor, record.id, record.version, { channel, to, message, messageEdited: message.trim() !== initialMessage.trim() }), S.done(String(record.quoteNo), channel === 'email' ? S.email : channel === 'whatsapp' ? S.whatsapp : S.manual))}>
             {A.sendQuotation}
           </Button>
         </>

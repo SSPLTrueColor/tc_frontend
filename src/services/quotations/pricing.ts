@@ -206,3 +206,27 @@ export function roi(input: { investment: number; outputPerDay: number; pricePerU
   const months = monthly > 0 ? r2((Number(input.investment) || 0) / monthly) : null;
   return { contributionPerUnit: r2(perUnit), monthlyContribution: monthly, annualContribution: r2(monthly * 12), paybackMonths: months };
 }
+
+/**
+ * Decision D-1 — the one value basis for opportunities, pipeline, won value, targets and dashboards:
+ * the TAXABLE value before GST (lines net of discount + freight + insurance), i.e. exactly the
+ * "Taxable value" on the quotation and the sales order. The GST-inclusive total is only shown as
+ * secondary on quotations and orders.
+ */
+export function valueBeforeGst(r: Record<string, unknown>): number {
+  const num = (v: unknown) => Number(v) || 0;
+  const has = (v: unknown) => v !== undefined && v !== null && v !== '';
+  if (has(r.taxable)) return Math.max(0, num(r.taxable));
+  const lines = r.lines as Record<string, unknown>[] | undefined;
+  const extras = num(r.freight) + num(r.insurance);
+  if (Array.isArray(lines) && lines.length) {
+    const net = lines.reduce((s, l) => {
+      const gross = num(l.qty) * num(l.listPrice);
+      const disc = num(l.discountAmt) || (gross * num(l.discountPct)) / 100;
+      return s + Math.max(0, gross - disc);
+    }, 0);
+    return Math.max(0, Math.round((net + extras) * 100) / 100);
+  }
+  if (has(r.subtotal)) return Math.max(0, num(r.subtotal) - num(r.discountTotal) + extras);
+  return Math.max(0, num(r.grandTotal) - num(r.cgst) - num(r.sgst) - num(r.igst));
+}

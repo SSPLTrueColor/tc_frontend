@@ -45,6 +45,10 @@ export interface Approval {
   decidedAt?: string;
   decisionNote?: string;
   remindedAt?: string;
+  /** Why a request was withdrawn by the system: "selection" = another quotation was selected (it can be re-opened on Undo Selection). */
+  withdrawnFor?: 'selection';
+  /** When a withdrawn request was re-opened (Undo Selection). */
+  reopenedAt?: string;
   version: number;
 }
 
@@ -100,6 +104,12 @@ export interface AppNotification {
   kind: 'mention' | 'assignment' | 'approval_request' | 'approval_decision' | 'exception' | 'reminder' | 'escalation' | 'info';
   title: string;
   link?: { resource: string; recordId: string } | { page: string };
+  /** The record the alert is about when `link` points at a page (e.g. an approval queue); used for templates. */
+  about?: { resource: string; recordId: string };
+  /** Notification Template event for the email/WhatsApp copy (ADM-06); inferred from `kind` when omitted. */
+  templateEvent?: string;
+  /** Placeholder values for the template ({{owner}}, {{amount}}…) that override the record's own. */
+  templateVars?: Record<string, string>;
   createdAt: string;
   readAt?: string;
   snoozedUntil?: string;

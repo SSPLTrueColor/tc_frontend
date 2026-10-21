@@ -10,6 +10,7 @@ import { uid } from '../../lib/ids';
 import { normaliseMobile, validateEmail, validateMobile } from '../../lib/validators';
 import { type Actor, can, canReadRecord, canUpdateRecord, perm } from '../authz';
 import { commit, getDb } from '../db';
+import { logActivity } from '../activities';
 import { appendAudit, emitEvent, notify } from '../ledger';
 import { byId, managerOf, userOfStaff } from '../lookups';
 import { queueMessage } from '../outbox';
@@ -369,72 +370,170 @@ export function qualifyLead(actor: Actor, id: string, version: number, q: Qualif
     if (lead.status === 'new') throw new ServiceError('invalid_state', E.convertNeedsContact);
     if (lead.status !== 'contacted') throw new ServiceError('invalid_state', E.onlyOpenConvert(masterLabel('leadStatus', lead.status)));
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
-    const probability = getPolicies().stageProbability.needs_assessment ?? 10;
-    // The answers given in the dialog win over what the lead had (BANT is confirmed at conversion).
-    const merged: RecordData = { ...lead, requirement: q.requirement.trim(), budget: Number(q.budget), timeline: q.timeline };
-    const carried = Object.fromEntries(
-      Object.entries(LEAD_TO_OPP_FIELDS)
-        .map(([from, to]) => [to, merged[from]] as const)
-        .filter(([, v]) => v !== undefined && v !== null && v !== ''),
-    );
-    const opp = insertRecordIn(
-      ctx,
-      'opportunities',
-      {
-        name: q.opportunityName.trim(),
-        customerId: lead.customerId,
-        contactId: lead.contactId,
-        leadId: lead.id,
-        divisionId: lead.divisionId,
-        oppType: oppTypeForLead(d, lead),
-        productType: lead.productType ?? undefined,
-        ...carried,
-        notes: q.requirement.trim(),
-        value: Number(q.value),
-        expectedCloseDate: q.expectedCloseDate,
-        stage: 'needs_assessment',
-        probability,
-        competitors: q.currentSetup?.trim() || lead.currentSetup || undefined,
-        ownerId: lead.ownerId,
-        decisionMakers: q.decisionMaker.trim(),
-        nextFollowUpAt: lead.nextFollowUpAt && String(lead.nextFollowUpAt) >= todayKey() ? lead.nextFollowUpAt : addDays(todayKey(), 3),
-        // Conversion is itself an update: a new opportunity must not open with a stagnation alert (BR-12).
-        lastActivityAt: nowLocal(),
-      },
-      { validate: false },
-    );
-    writeStatus(
-      d,
-      actor,
-      idx,
-      lead,
-      'qualified',
-      {
-        requirement: q.requirement.trim(),
-        budget: Number(q.budget),
-        decisionMaker: q.decisionMaker.trim(),
-        timeline: q.timeline,
-        currentSetup: q.currentSetup?.trim() || lead.currentSetup,
-        opportunityId: opp.id,
-        nextFollowUpAt: null,
-        statusNote: M.convertedNote(opp.id),
-        // A contacted lead always has its first contact; older data without the stamp gets it now.
-        firstContactAt: lead.firstContactAt || nowLocal(),
-      },
-      L.leads.actions.convertToOpportunity,
-      ctx.correlationId,
-    );
-    const label = leadLabel(lead, actor);
-    // Referrer recognition (LEAD-12): employees/engineers in-app; customers/dealers by WhatsApp (simulated).
-    const refEmp = lead.referrerEmployeeId ? userOfStaff(lead.referrerEmployeeId) : undefined;
-    if (refEmp && refEmp.id !== actor.user.id) notify(d, { userId: refEmp.id, workspaceId: actor.workspaceId, kind: 'info', title: M.referrerThanks(label, opp.id), link: { resource: 'leads', recordId: lead.id } });
-    if (lead.referrerCustomerId) {
-      const refCust = byId('customers', lead.referrerCustomerId, d.records);
-      queueMessage(ctx, { channel: 'whatsapp', to: String(refCust?.name ?? lead.referrerCustomerId), body: M.referrerWhatsApp(safeTitle('customers', lead.customerId)), related: { resource: 'leads', recordId: lead.id } });
+    return qualifyIn(ctx, idx, lead, q);
+  });
+}
+
+/** Converts a Contacted lead inside an open commit (shared by qualifyLead and convertWithFirstContact). */
+function qualifyIn(ctx: HookContext, idx: number, lead: RecordData, q: QualifyInput): { leadId: string; opportunityId: string } {
+  const { d, actor } = ctx;
+  const probability = getPolicies().stageProbability.needs_assessment ?? 10;
+  // The answers given in the dialog win over what the lead had (BANT is confirmed at conversion).
+  const merged: RecordData = { ...lead, requirement: q.requirement.trim(), budget: Number(q.budget), timeline: q.timeline };
+  const carried = Object.fromEntries(
+    Object.entries(LEAD_TO_OPP_FIELDS)
+      .map(([from, to]) => [to, merged[from]] as const)
+      .filter(([, v]) => v !== undefined && v !== null && v !== ''),
+  );
+  const opp = insertRecordIn(
+    ctx,
+    'opportunities',
+    {
+      name: q.opportunityName.trim(),
+      customerId: lead.customerId,
+      contactId: lead.contactId,
+      leadId: lead.id,
+      divisionId: lead.divisionId,
+      oppType: oppTypeForLead(d, lead),
+      productType: lead.productType ?? undefined,
+      ...carried,
+      notes: q.requirement.trim(),
+      value: Number(q.value),
+      expectedCloseDate: q.expectedCloseDate,
+      stage: 'needs_assessment',
+      probability,
+      competitors: q.currentSetup?.trim() || lead.currentSetup || undefined,
+      ownerId: lead.ownerId,
+      decisionMakers: q.decisionMaker.trim(),
+      nextFollowUpAt: lead.nextFollowUpAt && String(lead.nextFollowUpAt) >= todayKey() ? lead.nextFollowUpAt : addDays(todayKey(), 3),
+      // Conversion is itself an update: a new opportunity must not open with a stagnation alert (BR-12).
+      lastActivityAt: nowLocal(),
+    },
+    { validate: false },
+  );
+  writeStatus(
+    d,
+    actor,
+    idx,
+    lead,
+    'qualified',
+    {
+      requirement: q.requirement.trim(),
+      budget: Number(q.budget),
+      decisionMaker: q.decisionMaker.trim(),
+      timeline: q.timeline,
+      currentSetup: q.currentSetup?.trim() || lead.currentSetup,
+      opportunityId: opp.id,
+      nextFollowUpAt: null,
+      statusNote: M.convertedNote(opp.id),
+      // A contacted lead always has its first contact; older data without the stamp gets it now.
+      firstContactAt: lead.firstContactAt || nowLocal(),
+    },
+    L.leads.actions.convertToOpportunity,
+    ctx.correlationId,
+  );
+  const label = leadLabel(lead, actor);
+  // Referrer recognition (LEAD-12): employees/engineers in-app; customers/dealers by WhatsApp (simulated).
+  const refEmp = lead.referrerEmployeeId ? userOfStaff(lead.referrerEmployeeId) : undefined;
+  if (refEmp && refEmp.id !== actor.user.id) notify(d, { userId: refEmp.id, workspaceId: actor.workspaceId, kind: 'info', title: M.referrerThanks(label, opp.id), link: { resource: 'leads', recordId: lead.id } });
+  if (lead.referrerCustomerId) {
+    const refCust = byId('customers', lead.referrerCustomerId, d.records);
+    queueMessage(ctx, { channel: 'whatsapp', to: String(refCust?.name ?? lead.referrerCustomerId), body: M.referrerWhatsApp(safeTitle('customers', lead.customerId)), related: { resource: 'leads', recordId: lead.id } });
+  }
+  const owner = userOfStaff(lead.ownerId);
+  if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: M.ownerConverted(label, opp.id), link: { resource: 'opportunities', recordId: opp.id } });
+  return { leadId: lead.id, opportunityId: opp.id };
+}
+
+/** First contact captured in the combined Create Opportunity flow (LEAD-09, BR-07). */
+export interface FirstContactInput {
+  activityType: string;
+  subject: string;
+  notes?: string;
+  at?: string;
+  nextFollowUpAt: string;
+}
+
+export function validateFirstContact(fc: FirstContactInput): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (!fc.activityType) e.activityType = E.activityType;
+  if (!fc.subject?.trim()) e.subject = L.common.activity.subjectRequired;
+  if (!fc.nextFollowUpAt) e.nextFollowUpAt = L.common.activity.nextRequired;
+  else if (String(fc.nextFollowUpAt).slice(0, 10) < todayKey()) e.nextFollowUpAt = L.common.activity.notPast;
+  return e;
+}
+
+/** A New lead (or a Nurture lead that was never contacted) needs its first contact logged before conversion (Appendix A). */
+export const needsFirstContact = (lead: RecordData) => lead.status === 'new' || (lead.status === 'nurture' && !lead.firstContactAt);
+
+/**
+ * LEAD-10 combined path for New / Nurture / Contacted leads, in one atomic write:
+ * log the first contact (New → Contacted via the activity hook), reactivate a Nurture lead (audited),
+ * then convert. A New lead without a first-contact payload is refused, so the BRD rule stays intact.
+ */
+export function convertWithFirstContact(actor: Actor, id: string, version: number, q: QualifyInput, firstContact?: FirstContactInput): { leadId: string; opportunityId: string; activityId?: string } {
+  const errors = { ...validateQualify(q), ...(firstContact ? validateFirstContact(firstContact) : {}) };
+  if (Object.keys(errors).length) throw new ServiceError('validation', E.completeBant, { fieldErrors: errors });
+  if (!hasResource('opportunities')) throw new ServiceError('invalid_state', E.noOpportunities);
+  return commit((d) => {
+    const first = loadForChange(d, actor, id, version);
+    if (!OPEN_STATUSES.includes(String(first.lead.status))) throw new ServiceError('invalid_state', E.onlyOpenConvert(masterLabel('leadStatus', first.lead.status)));
+    if (needsFirstContact(first.lead) && !firstContact) throw new ServiceError('invalid_state', E.convertNeedsContact);
+    const ctx: HookContext = { d, actor, correlationId: uid('cor') };
+    const current = () => {
+      const idx = d.records.leads.findIndex((r) => r.id === id);
+      return { idx, lead: d.records.leads[idx] };
+    };
+    let activityId: string | undefined;
+    if (firstContact) {
+      if (!perm(actor, 'activities').create) throw new ServiceError('forbidden', E.noUpdate);
+      const a = insertRecordIn(ctx, 'activities', {
+        parentResource: 'leads',
+        parentId: first.lead.id,
+        parentLabel: leadLabel(first.lead, actor),
+        customerId: first.lead.customerId,
+        activityType: firstContact.activityType,
+        subject: firstContact.subject.trim(),
+        notes: firstContact.notes?.trim() || undefined,
+        at: firstContact.at || nowLocal(),
+        byId: actor.staffId,
+        nextFollowUpAt: firstContact.nextFollowUpAt,
+      });
+      activityId = a.id;
     }
-    const owner = userOfStaff(lead.ownerId);
-    if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: M.ownerConverted(label, opp.id), link: { resource: 'opportunities', recordId: opp.id } });
-    return { leadId: lead.id, opportunityId: opp.id };
+    // A Nurture lead goes back to Contacted first (LEAD-11 reactivation, audited) — the activity hook already does this when a contact was logged.
+    let { idx, lead } = current();
+    if (lead.status === 'nurture') {
+      writeStatus(d, actor, idx, lead, 'contacted', { nurtureUntil: null, nextFollowUpAt: lead.nextFollowUpAt && String(lead.nextFollowUpAt) >= todayKey() ? lead.nextFollowUpAt : addDays(todayKey(), 1) }, L.leads.lifecycle.reactivate, ctx.correlationId);
+      ({ idx, lead } = current());
+    }
+    if (lead.status !== 'contacted') throw new ServiceError('invalid_state', E.convertNeedsContact);
+    return { ...qualifyIn(ctx, idx, lead, q), activityId };
+  });
+}
+
+/**
+ * Step 1 of the combined Create Opportunity flow: log the first contact on its own (the activity hook moves
+ * New / Nurture → Contacted). Returns the updated lead so step 2 converts against the current version.
+ */
+export function logLeadContact(actor: Actor, id: string, fc: FirstContactInput): RecordData {
+  const errors = validateFirstContact(fc);
+  if (Object.keys(errors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: errors });
+  const lead = (getDb().records.leads ?? []).find((r) => r.id === id);
+  if (!lead || !canReadRecord(actor, getResource('leads'), lead)) throw new ServiceError('not_found', E.notFound(id));
+  if (!OPEN_STATUSES.includes(String(lead.status))) throw new ServiceError('invalid_state', E.alreadyClosed);
+  logActivity(actor, { parentResource: 'leads', parentId: lead.id, parentLabel: leadLabel(lead, actor), customerId: lead.customerId as string | undefined, activityType: fc.activityType, subject: fc.subject.trim(), notes: fc.notes?.trim() ?? '', at: fc.at || nowLocal(), nextFollowUpAt: fc.nextFollowUpAt });
+  return getDb().records.leads.find((r) => r.id === id)!;
+}
+
+/** LEAD-11 reactivation: a Nurture lead goes back to Contacted with the next follow-up planned (BR-07). */
+export function reactivateLead(actor: Actor, id: string, version: number, nextFollowUpAt: string, note = '') {
+  if (!nextFollowUpAt) throw new ServiceError('validation', L.common.activity.nextRequired, { fieldErrors: { nextFollowUpAt: E.required } });
+  if (nextFollowUpAt < todayKey()) throw new ServiceError('validation', L.common.activity.notPast, { fieldErrors: { nextFollowUpAt: L.common.activity.notPast } });
+  return commit((d) => {
+    const { idx, lead } = loadForChange(d, actor, id, version);
+    if (lead.status !== 'nurture') throw new ServiceError('invalid_state', E.onlyNurtureReactivate);
+    return writeStatus(d, actor, idx, lead, 'contacted', { nurtureUntil: null, nextFollowUpAt, statusNote: note.trim() || null }, L.leads.lifecycle.reactivate, uid('cor'));
   });
 }
 

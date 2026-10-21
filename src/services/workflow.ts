@@ -9,6 +9,7 @@
  */
 import { appRoles, demoUsers } from '../domain/pack';
 import { nowIso } from '../lib/clock';
+import { formatMoney } from '../lib/format';
 import { uid } from '../lib/ids';
 import { type Actor, actorFor, can, canReadRecord } from './authz';
 import { commit, getDb } from './db';
@@ -64,10 +65,25 @@ export function pendingApprovalFor(recordId: string, type?: string) {
 
 function notifyApprovers(ctx: HookContext, a: Approval) {
   const level = a.levels[a.currentLevel];
+  // ADM-06: the email/WhatsApp copy comes from the "Approval requested" template; {{owner}} is the requester.
+  const requester = demoUsers.find((u) => u.id === a.requestedBy)?.name ?? ctx.actor.user.name;
+  const templateVars: Record<string, string> = { owner: requester };
+  if (typeof a.amount === 'number') templateVars.amount = formatMoney(a.amount);
   demoUsers
     .map((u) => actorFor(u.id, a.workspaceId))
     .filter((x) => canDecide(x, a))
-    .forEach((x) => notify(ctx.d, { userId: x.user.id, workspaceId: a.workspaceId, kind: 'approval_request', title: L.common.notify.approvalNeeded(level.label, a.summary), link: { page: a.resource === 'quotations' ? ROUTES.quotationPendingApprovals.slice(1) : `${ROUTES.notifications.slice(1)}?tab=approvals` } }));
+    .forEach((x) =>
+      notify(ctx.d, {
+        userId: x.user.id,
+        workspaceId: a.workspaceId,
+        kind: 'approval_request',
+        title: L.common.notify.approvalNeeded(level.label, a.summary),
+        link: { page: a.resource === 'quotations' ? ROUTES.quotationPendingApprovals.slice(1) : `${ROUTES.notifications.slice(1)}?tab=approvals` },
+        about: { resource: a.resource, recordId: a.recordId },
+        templateEvent: 'approval_requested',
+        templateVars,
+      }),
+    );
 }
 
 export interface ApprovalRequest {
@@ -159,6 +175,28 @@ export function decideApproval(actor: Actor, approvalId: string, decision: 'appr
     notify(d, { userId: a.requestedBy, workspaceId: a.workspaceId, kind: 'approval_decision', title: L.common.notify.approvalDecision(a.summary, (L.common.inbox.status[decision] ?? decision).toLowerCase()), link: { resource: a.resource, recordId: a.recordId } });
     return { ...a };
   });
+}
+
+/**
+ * Re-opens a request the system withdrew (e.g. when another quotation was selected and the selection is
+ * undone): back to Pending at the level it had reached, earlier decisions kept, approvers notified again.
+ * Refused (returns false) when it is not withdrawn, its level no longer exists or another request of the
+ * same type is already pending for the record.
+ */
+export function reopenApprovalIn(ctx: HookContext, a: Approval, why: string): boolean {
+  if (a.status !== 'withdrawn' || !a.levels[a.currentLevel]) return false;
+  if (ctx.d.approvals.some((x) => x.id !== a.id && x.recordId === a.recordId && x.type === a.type && x.status === 'pending')) return false;
+  a.status = 'pending';
+  delete a.decidedAt;
+  delete a.decidedBy;
+  delete a.decisionNote;
+  delete a.withdrawnFor;
+  a.reopenedAt = nowIso();
+  a.version++;
+  appendAudit(ctx.d, ctx.actor, { action: 'approval.reopened', actorType: 'workflow', resource: a.resource, recordId: a.recordId, summary: AU.reopened(a.id, why), correlationId: ctx.correlationId });
+  emitEvent(ctx.d, ctx.actor, { eventType: 'approval.reopened', recordId: a.recordId, correlationId: ctx.correlationId, payload: { approvalId: a.id, type: a.type } });
+  notifyApprovers(ctx, a);
+  return true;
 }
 
 /** Requester withdraws a pending request (e.g. after revising the quotation). */

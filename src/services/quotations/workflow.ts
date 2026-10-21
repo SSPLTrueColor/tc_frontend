@@ -27,11 +27,11 @@ import { customDefaults, customFieldKeys, validateCustomValues } from '../custom
 import { createRecord, insertRecordIn, patchRecordIn, type Projected, updateRecord } from '../runtime';
 import { ServiceError } from '../types';
 import { canDecide, decideApproval, requestApprovalIn } from '../workflow';
-import { cleanLines, computeTotals, type QuoteLine, validateLines } from './pricing';
+import { cleanLines, computeTotals, type QuoteLine, validateLines, valueBeforeGst } from './pricing';
 import { resolveQuoteLevels, roleMayDecideQuoteLevel } from './approvalLevels';
 import { capabilityGrants } from '../catalog/roleOverrides';
 import type { Approval, ApprovalLevel } from '../types';
-import { liveOrderForQuote, OPEN_QUOTE, QUOTE_APPROVAL, quoteBlockReason, restoreOpportunityIn, selectQuotationIn, unselectQuotationIn, withdrawQuoteApprovals } from './selection';
+import { liveOrderForQuote, OPEN_QUOTE, QUOTE_APPROVAL, quoteBlockReason, type RestoreOutcome, restoreOpportunityIn, selectQuotationIn, unselectQuotationIn, withdrawQuoteApprovals } from './selection';
 
 const E = L.quotations.errors;
 const A = L.quotations.audit;
@@ -340,6 +340,8 @@ export interface SendInput {
   channel: 'email' | 'whatsapp' | 'manual';
   to: string;
   message: string;
+  /** True when the user changed the Send dialog's pre-filled message (it is then sent as written). */
+  messageEdited?: boolean;
 }
 
 /** FR-042: send by email / WhatsApp (simulated outbox), sent date logged. */
@@ -365,8 +367,13 @@ export function sendQuote(actor: Actor, id: string, version: number, input: Send
       channel: input.channel,
       to,
       subject: A.sendSubject(String(q.quoteNo)),
-      body: `${input.message.trim() || A.sendBody(String(q.quoteNo))} ${A.attachment(String(q.quoteNo))}`,
+      body: input.message.trim() || A.sendBody(String(q.quoteNo)),
+      bodySuffix: A.attachment(String(q.quoteNo)),
       related: { resource: 'quotations', recordId: q.id },
+      // ADM-06: always the "Quotation sent" template for this channel. A message the user edited in the
+      // Send dialog is kept as written (the template still gives the subject).
+      event: 'quotation_sent',
+      keepBody: !!input.messageEdited && !!input.message.trim(),
     });
     const via = input.channel === 'email' ? L.quotations.dialogs.send.email : L.quotations.dialogs.send.whatsapp;
     patchRecordIn(ctx, 'quotations', id, { status: q.status === 'approved' ? 'sent' : q.status, sentAt: nowIso(), sentVia: `${via} · ${to}` }, A.sentBy(via, to));
@@ -415,7 +422,8 @@ export function acceptQuote(actor: Actor, id: string, version: number, input: Ac
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     patchRecordIn(ctx, 'quotations', id, patch, input.method === 'po' ? A.acceptedPo(String(input.poNo)) : A.acceptedElectronic(String(input.acceptedByName)));
     // Opportunity → Won at the accepted value; every other open quotation → Not Selected (same commit).
-    selectQuotationIn(ctx, q, SEL.reasonAccepted(String(q.quoteNo)), Number(q.grandTotal) || 0, A.oppWon(String(q.quoteNo)));
+    // D-1: the won value is the accepted quotation's taxable value (before GST), as on the sales order.
+    selectQuotationIn(ctx, q, SEL.reasonAccepted(String(q.quoteNo)), valueBeforeGst(q), A.oppWon(String(q.quoteNo)));
     const owner = userOfStaff(q.ownerId);
     if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: A.acceptedNotify(String(q.quoteNo)), link: { resource: 'quotations', recordId: q.id } });
     logActivityIn(ctx, q, 'note', A.acceptedActivity(String(q.quoteNo)));
@@ -469,18 +477,19 @@ export const canUndoSelection = (actor: Actor) => ['admin', 'sales_manager'].inc
  * Undo Selection: only while no live sales order exists. The accepted quotation returns to its previous
  * status, its Not Selected alternatives open again and the opportunity goes back to its previous stage.
  */
-export function undoSelection(actor: Actor, id: string, version: number) {
+export function undoSelection(actor: Actor, id: string, version: number): RestoreOutcome {
   if (!canUndoSelection(actor)) throw new ServiceError('forbidden', SEL.undoOnlyRoles);
-  commit((d) => {
+  return commit((d) => {
     const q = load(actor, d, id, version);
     if (q.status !== 'accepted') throw new ServiceError('invalid_state', SEL.undoOnlyAccepted);
     const so = liveOrderForQuote(d, q);
     if (so) throw new ServiceError('invalid_state', SEL.undoOrderExists(String(so.orderNo ?? so.id)));
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const no = String(q.quoteNo);
-    unselectQuotationIn(ctx, q, SEL.auditUndo(no), SEL.auditRestored(no));
+    const out = unselectQuotationIn(ctx, q, SEL.auditUndo(no), SEL.auditRestored(no));
     restoreOpportunityIn(ctx, q.opportunityId, (stage) => SEL.auditUndoOpp(no, stage));
     logActivityIn(ctx, q, 'note', SEL.auditUndo(no));
+    return out;
   });
 }
 

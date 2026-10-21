@@ -4,6 +4,7 @@
  */
 import type { ApprovalLevel } from '../../../services/types';
 import { L } from '../../../constants/labels';
+import { valueBeforeGst } from '../../../services/quotations/pricing';
 
 // ---------------------------------------------------------------- shift (BR-43)
 
@@ -171,12 +172,19 @@ const lineNet = (l: Record<string, unknown>) => {
 };
 
 /**
- * Order value used for targets, rankings and Deal of the Month: line value net of discount, before GST,
- * freight and insurance (Assumption — BR-47 does not say). The same basis is used with and without a
- * product-category filter, so category targets add up to the all-products figure.
+ * Order value used for targets, rankings and Deal of the Month (Decision D-1): the taxable value before
+ * GST — lines net of discount plus freight and insurance — the same figure as the order's "Taxable value"
+ * and the dashboards. With a product-category filter, freight and insurance are shared out in proportion
+ * to the lines' value, so category targets still add up to the all-products figure.
  */
-export const orderNetValue = (o: Record<string, unknown>, lineFilter: (l: Record<string, unknown>) => boolean = () => true) =>
-  ((o.lines as Record<string, unknown>[] | undefined) ?? []).filter(lineFilter).reduce((s, l) => s + lineNet(l), 0);
+export const orderNetValue = (o: Record<string, unknown>, lineFilter?: (l: Record<string, unknown>) => boolean) => {
+  const all = valueBeforeGst(o);
+  if (!lineFilter) return all;
+  const lines = (o.lines as Record<string, unknown>[] | undefined) ?? [];
+  const totalNet = lines.reduce((s, l) => s + lineNet(l), 0);
+  const mine = lines.filter(lineFilter).reduce((s, l) => s + lineNet(l), 0);
+  return totalNet > 0 ? (all * mine) / totalNet : 0;
+};
 
 export interface TargetLike {
   metric: string;
@@ -201,7 +209,7 @@ export function achievementFor(t: TargetLike, data: AchievementData, inScope: (o
       return Math.round(
         booked
           .filter((o) => within(o.orderDate))
-          .reduce((s, o) => s + orderNetValue(o, catOk), 0),
+          .reduce((s, o) => s + orderNetValue(o, t.productCategory ? catOk : undefined), 0),
       );
     case 'quantity':
       return booked.filter((o) => within(o.orderDate)).reduce((s, o) => s + ((o.lines as Record<string, unknown>[] | undefined) ?? []).filter(catOk).reduce((x, l) => x + (Number(l.qty) || 0), 0), 0);

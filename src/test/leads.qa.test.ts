@@ -4,7 +4,7 @@ import { createDb, getDb, __setDb } from '../services/db';
 import { appPack } from '../domain/pack';
 import { logActivity } from '../services/activities';
 import { createRecord, getRecord, queryRecords, transitionRecord, updateRecord } from '../services/runtime';
-import { createLeadWithParty, disqualifyLead, importLeads, nurtureLead, previewImport, qualifyLead, toImportRows, parseCsv } from '../services/leads/rules';
+import { createLeadWithParty, disqualifyLead, importLeads, nurtureLead, previewImport, qualifyLead, reactivateLead, toImportRows, parseCsv } from '../services/leads/rules';
 import { addDays, nowLocal, todayKey } from '../lib/dates';
 import { isStagnant } from '../domain/modules/opportunities';
 import '../domain/extensions/index';
@@ -67,9 +67,13 @@ describe('leads QA probes', () => {
     const n = nurtureLead(admin(), l.id, l.version, addDays(todayKey(), 10), '');
     getDb().records.leads.find((x) => x.id === l.id)!.nextFollowUpAt = addDays(todayKey(), -3);
     getDb().records.leads.find((x) => x.id === l.id)!.nurtureUntil = addDays(todayKey(), -3);
-    const back = transitionRecord(admin(), 'leads', l.id, 'contacted', n.version).record;
+    // Nurture → Contacted is the "Reactivate" record action (asks for the next follow-up), not a plain transition.
+    expect(() => transitionRecord(admin(), 'leads', l.id, 'contacted', n.version)).toThrow();
+    expect(() => reactivateLead(admin(), l.id, n.version, addDays(todayKey(), -1))).toThrow();
+    const back = reactivateLead(admin(), l.id, n.version, addDays(todayKey(), 2), 'Budget approved');
     expect(back.status).toBe('contacted');
-    expect(String(back.nextFollowUpAt) >= todayKey()).toBe(true);
+    expect(back.nurtureUntil).toBeNull();
+    expect(back.nextFollowUpAt).toBe(addDays(todayKey(), 2));
   });
 
   it('LEAD-11: nurture / qualify blocked from disallowed states; disqualify reason "other" needs a note', () => {

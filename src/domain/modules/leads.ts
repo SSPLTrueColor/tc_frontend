@@ -113,8 +113,8 @@ export const leads: ResourceDefinition = {
     // Convert to Opportunity / Nurture / Disqualify capture data, so they are record actions (dialogs), not plain transitions.
     // New → Contacted happens only when the first follow-up is logged (Appendix A guard "first activity logged"),
     // so there is no manual "Mark Contacted" that would stop the first-contact SLA without a logged contact.
+    // Nurture → Contacted is the visible "Reactivate" record action (asks for the next follow-up date), or logging a follow-up.
     transitions: [
-      { from: ['nurture'], to: 'contacted', action: L.leads.lifecycle.reactivate },
       { from: ['disqualified'], to: 'contacted', action: L.leads.lifecycle.reactivate, capability: 'leads.reactivate', confirm: L.leads.lifecycle.reactivateConfirm },
     ],
   },

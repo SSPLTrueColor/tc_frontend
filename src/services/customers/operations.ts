@@ -13,6 +13,7 @@ import { type Actor, can, canReadRecord, canUpdateRecord, perm } from '../authz'
 import { commit, getDb } from '../db';
 import { appendAudit, notify } from '../ledger';
 import { activeMasterValues, allResources, getResource } from '../registry';
+import { isRequired, isVisible } from '../validation';
 import { insertRecordIn, patchRecordIn } from '../runtime';
 import { userOfStaff } from '../lookups';
 import { ServiceError } from '../types';
@@ -173,8 +174,10 @@ export interface ConvertInput {
   ownerId: string;
   nextFollowUpAt: string;
   requirement?: string;
-  /** BR-06: required when the contact came from an exhibition. */
+  /** BR-06: required when the chosen lead source is Exhibition / Trade Show. */
   eventName?: string;
+  /** Campaign the lead came from (required when the lead source's rules say so). */
+  campaign?: string;
   /** Required when the lead source is Referral: who referred it (employee / engineer, or customer / dealer). */
   referrerType?: string;
   referrerEmployeeId?: string;
@@ -192,6 +195,25 @@ export function territoryForCity(city: unknown): { territoryId: string; billingS
   return t ? { territoryId: t.key, billingState: String(t.parent ?? '') } : undefined;
 }
 
+/** Lead fields whose visibility / requirement follows the lead source (from the Lead definition). */
+const SOURCE_FIELDS = ['campaign', 'eventName'] as const;
+export type SourceField = (typeof SOURCE_FIELDS)[number];
+
+/**
+ * LEAD-02 / BR-06: the source-dependent lead fields for a chosen lead source — which ones apply and
+ * which are required (e.g. Exhibition / Trade Show → event name). Read from the Lead resource's
+ * visibleWhen / requiredWhen rules so the Convert dialog and the lead form never disagree.
+ */
+export function leadSourceFields(sourceId: string): { key: SourceField; required: boolean }[] {
+  if (!isRegistered('leads')) return [];
+  const res = getResource('leads');
+  const values = { sourceId };
+  return SOURCE_FIELDS.flatMap((key) => {
+    const f = res.fields.find((x) => x.key === key);
+    return f && isVisible(f, values) ? [{ key, required: isRequired(f, values) }] : [];
+  });
+}
+
 export function convertContactToLead(actor: Actor, input: ConvertInput): { leadId: string; customerId: string } {
   if (!isRegistered('leads')) throw new ServiceError('invalid_state', L.customers.messages.leadsUnavailable);
   if (!perm(actor, 'leads').create) throw new ServiceError('forbidden', L.customers.messages.noLeadCreate);
@@ -205,11 +227,16 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
     const contact = (d.records.contacts ?? []).find((c) => c.id === input.contactId);
     if (!contact || !canReadRecord(actor, getResource('contacts'), contact)) throw new ServiceError('not_found', L.customers.messages.contactNotFound);
     if (contact.poolStatus === 'converted') throw new ServiceError('invalid_state', L.customers.messages.alreadyConverted);
-    if (contact.source === 'exhibition' && !input.eventName?.trim()) errors.eventName = L.customers.messages.eventRequired;
     // LEAD-02: every lead has a source from the Lead Source master; never a silent default.
     const sourceId = input.sourceId || (activeMasterValues('leadSource').some((m) => m.key === contact.source) ? String(contact.source) : '');
     if (!sourceId) errors.sourceId = L.customers.messages.sourceRequired;
     else if (!activeMasterValues('leadSource').some((m) => m.key === sourceId)) errors.sourceId = L.customers.messages.sourceRequired;
+    // The fields the SELECTED source needs (not the contact's own source), e.g. the event for an exhibition.
+    const srcFields = sourceId ? leadSourceFields(sourceId) : [];
+    srcFields.forEach(({ key, required }) => {
+      if (required && !input[key]?.trim()) errors[key] = key === 'eventName' ? L.customers.messages.eventRequired : L.customers.messages.campaignRequired;
+    });
+    const applies = (k: SourceField) => srcFields.some((f) => f.key === k);
     if (!contact.customerId) {
       // Pre-fill territory and billing state from the contact's city when not chosen (the lead's state follows the company).
       const guess = territoryForCity(contact.city);
@@ -252,7 +279,8 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
       contactId: contact.id,
       divisionId: input.divisionId,
       sourceId,
-      eventName: input.eventName?.trim() || null,
+      eventName: (applies('eventName') && input.eventName?.trim()) || null,
+      campaign: (applies('campaign') && input.campaign?.trim()) || null,
       referrerType: refType || null,
       referrerEmployeeId: refType && refByEmployee ? input.referrerEmployeeId : null,
       referrerCustomerId: refType && !refByEmployee ? input.referrerCustomerId : null,

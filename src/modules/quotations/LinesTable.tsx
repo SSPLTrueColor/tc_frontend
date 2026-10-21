@@ -88,7 +88,8 @@ export function TotalsBlock({ t, showMargin, interState }: { t: TotalsInput; sho
       {Number(t.discountTotal) > 0 && row(X.discount, -Number(t.discountTotal))}
       {Number(t.freight) > 0 && row(X.freight, t.freight)}
       {Number(t.insurance) > 0 && row(X.insurance, t.insurance)}
-      {row(X.taxable, t.taxable)}
+      {/* D-1: the taxable value (before GST) is the deal value used everywhere; the GST-inclusive total is secondary. */}
+      {row(X.taxable, t.taxable, true)}
       {(interState ?? Number(t.igst) > 0) ? (
         row(X.igst, t.igst)
       ) : (
@@ -97,7 +98,7 @@ export function TotalsBlock({ t, showMargin, interState }: { t: TotalsInput; sho
           {row(X.sgst, t.sgst)}
         </>
       )}
-      {row(X.total, t.grandTotal, true)}
+      {row(X.total, t.grandTotal)}
       <div className="detail-row">
         <dt>{X.inWords}</dt>
         <dd>{t.amountInWords}</dd>

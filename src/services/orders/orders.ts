@@ -26,6 +26,7 @@ import { customDefaults, customFieldKeys, validateCustomValues } from '../custom
 import { NUMBER_LIMITS, numberRangeError, type NumberRule } from '../validation';
 import { computeTotals, describeDiff, diffLines, type LineDiff, type OrderTotals, type QuoteLine } from './lines';
 import { quoteBlockReason, selectedQuoteOf, selectQuotationIn } from '../quotations/selection';
+import { valueBeforeGst } from '../quotations/pricing';
 import { CUSTOMS_STATUSES, SO_BEFORE_DISPATCH, SO_PROCESSING_STATUSES } from '../../domain/modules/orders';
 
 const E = L.orders.errors;
@@ -546,7 +547,8 @@ export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
         : patchRecordIn(ctx, 'quotations', q.id, { status: 'accepted', previousStatus: q.status, acceptedAt: nowIso(), acceptanceMethod: 'po', customerPoNo: input.customerPoNo.trim(), customerPoDate: input.customerPoDate, poFileName: input.poFileName.trim(), acceptedByName: '' }, E.acceptedByOrder(String(order.orderNo), input.customerPoNo.trim()));
       // Opportunity → Won at the ordered value with this quotation selected; every other open quotation → Not Selected.
       const reason = wasAccepted ? L.quotations.selection.reasonAccepted(no) : L.quotations.selection.reasonOrdered(no, String(order.orderNo));
-      selectQuotationIn(ctx, selected, reason, Number(order.grandTotal) || Number(q.grandTotal) || 0, E.wonByOrder(no, String(order.orderNo)));
+      // D-1: the won value is the order's taxable value (before GST, incl. freight) — the dashboards' basis.
+      selectQuotationIn(ctx, selected, reason, valueBeforeGst(order) || valueBeforeGst(q), E.wonByOrder(no, String(order.orderNo)));
     }
     writeSchedule(ctx, order, defaultSchedule(draft.orderKind, orderDate));
     d.idempotency[input.idempotencyKey] = order.id;
@@ -638,6 +640,11 @@ function activateCustomer(ctx: HookContext, order: RecordData) {
   if (c?.category === 'prospect') patchRecordIn(ctx, 'customers', c.id, { category: 'active' }, N.becameActive(String(order.orderNo ?? order.id)));
 }
 
+/** SO-09 / FR-057 (simulated): the approved order goes to the ERP for invoicing — recorded in the Integration Log. */
+function logErpPush(ctx: HookContext, order: RecordData) {
+  appendAudit(ctx.d, ctx.actor, { action: 'integration.erp_order_push', actorType: 'system', resource: SO, recordId: order.id, summary: L.admin.integrations.erpOrderPushed(String(order.orderNo ?? order.id)), correlationId: ctx.correlationId });
+}
+
 export function onOrderApproved(ctx: HookContext, a: Approval) {
   const order = rows(ctx.d, SO).find((x) => x.id === a.recordId);
   if (order && ['on_hold', 'pending_approval'].includes(String(order.status))) activateCustomer(ctx, order);
@@ -645,12 +652,14 @@ export function onOrderApproved(ctx: HookContext, a: Approval) {
   if (order?.status === 'on_hold' && order.statusBeforeHold === 'pending_approval') {
     const status = paymentStatusAfterApproval(ctx.d, order.id);
     patchRecordIn(ctx, SO, order.id, { statusBeforeHold: status, erpPushedAt: nowIso() }, N.approvedLog(a.id, statusLabel(status)));
+    logErpPush(ctx, order);
     notifyOwner(ctx, order, N.approved(String(order.orderNo)));
     return;
   }
   if (!order || order.status !== 'pending_approval') return;
   const status = paymentStatusAfterApproval(ctx.d, order.id);
   const next = patchRecordIn(ctx, SO, order.id, { status, erpPushedAt: nowIso() }, N.approvedLog(a.id, statusLabel(status)));
+  logErpPush(ctx, order);
   notifyOwner(ctx, next, N.approved(String(order.orderNo)));
   const c = customerContact(ctx.d, order.customerId);
   if (c.email) queueMessage(ctx, { channel: 'email', to: c.email, subject: N.confirmationSubject(String(order.orderNo)), body: N.confirmationBody(c.name ?? N.customer, String(order.customerPoNo), String(order.orderNo), formatMoney(Number(order.grandTotal))), related: { resource: SO, recordId: order.id } });
@@ -721,7 +730,10 @@ export function pushToErp(actor: Actor, id: string): RecordData {
       patch.invoiceDate = todayKey();
       patch.ewayBill = String(Math.floor(100000000000 + Math.abs(hash(order.id)) % 899999999999));
     }
-    return patchRecordIn(ctx, SO, id, patch, N.erpLog);
+    if (!order.erpPushedAt) logErpPush(ctx, order);
+    const out = patchRecordIn(ctx, SO, id, patch, N.erpLog);
+    if (patch.invoiceNo) appendAudit(d, actor, { action: 'integration.erp_invoice', actorType: 'system', resource: SO, recordId: id, summary: L.admin.integrations.erpInvoiceReceived(String(order.orderNo ?? id), String(patch.invoiceNo)), correlationId: ctx.correlationId });
+    return out;
   });
 }
 

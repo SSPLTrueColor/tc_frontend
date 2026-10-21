@@ -71,6 +71,13 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
   const [submitting, setSubmitting] = useState(false);
   const [dirty, setDirty] = useState(false);
   const idemKey = useRef(uid('idem'));
+  // Double-submit guard (synchronous): a ref, not state — state is stale on a second click in the same
+  // frame. A create form is finished once its record exists (the caller closes or navigates away), so
+  // it stays locked after a successful create.
+  const inFlight = useRef(false);
+  const created = useRef(false);
+  /** Values of the last successful edit: a second click with the same values saves nothing again. */
+  const lastSaved = useRef<string | null>(null);
 
   const setValue = useCallback((key: string, v: unknown) => {
     setValues((prev) => {
@@ -102,7 +109,8 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
     }, 0);
 
   const submit = async (opts: { overrideReason?: string; fieldKeys?: string[] } = {}): Promise<Projected | null> => {
-    if (submitting) return null; // no double submit
+    if (inFlight.current || (!recordId && created.current)) return null; // no double submit
+    if (recordId && lastSaved.current === JSON.stringify(values)) return null;
     const scope = opts.fieldKeys ? new Set(opts.fieldKeys.filter((k) => editable.has(k))) : editable;
     const clientErrors = validateValues(res, values, scope);
     if (Object.keys(clientErrors).length) {
@@ -125,12 +133,17 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
       const f = res.fields.find((x) => x.key === k);
       if (f && (isVisible(f, values) || f.clearWhenHidden)) payload[k] = values[k];
     });
+    inFlight.current = true;
     setSubmitting(true);
     try {
       const out = recordId
         ? updateRecord(actor, resKey, recordId, payload, baseVersion)
         : createRecord(actor, resKey, payload, { idempotencyKey: idemKey.current });
-      idemKey.current = uid('idem');
+      if (!recordId) created.current = true;
+      else {
+        idemKey.current = uid('idem');
+        lastSaved.current = JSON.stringify(values);
+      }
       setDirty(false);
       setErrors({});
       setMessage(undefined);
@@ -153,6 +166,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
       } else setMessage(C.toasts.nothingSaved);
       return null;
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };
@@ -161,6 +175,7 @@ export function useRecordForm({ resKey, recordId, initial }: { resKey: string; r
     if (!recordId) return;
     const fresh = getRecord(actor, resKey, recordId);
     setValues({ ...fresh.record });
+    lastSaved.current = null;
     setBaseVersion(fresh.record.version);
     setVersionConflict(null);
     setDirty(false);
