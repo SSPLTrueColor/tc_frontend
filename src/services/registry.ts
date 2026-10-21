@@ -2,7 +2,7 @@
  * Metadata Registry: effective (published) resource and master definitions.
  * Pack definitions + published Configuration Studio overlays.
  */
-import { appPack, demoUsers, workspaces } from '../domain/pack';
+import { appPack, type DemoUser, demoUsers, workspaces } from '../domain/pack';
 import type { FieldDefinition, MasterDefinition, MasterValue, ResourceDefinition } from '../metadata/types';
 import { getDb } from './db';
 import { L } from '../constants/labels';
@@ -71,7 +71,62 @@ export function getField(resource: ResourceDefinition, key: string): FieldDefini
   return resource.fields.find((f) => f.key === key);
 }
 
-export const getUser = (id: string) => demoUsers.find((u) => u.id === id);
+const initialsOf = (name: string) =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .map((x) => x[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+/** Sign-in id of the person behind a user record (Administration › Users): the shipped demo user, else `u_<staff id>`. */
+export function userIdForStaff(staffId: unknown, workspaceId = 'tc'): string {
+  const id = String(staffId ?? '');
+  return demoUsers.find((u) => u.staffIds[workspaceId] === id)?.id ?? `u_${id}`;
+}
+
+/** ADM-08: a person added in Administration › Users gets a sign-in identity derived from the user record. */
+function userFromEmployee(e: Record<string, unknown>): DemoUser {
+  const ws = String(e.workspaceId ?? 'tc');
+  const name = String(e.fullName ?? e.id);
+  return {
+    id: `u_${String(e.id)}`,
+    name,
+    roleId: String(e.roleId ?? 'sales_exec'),
+    staffIds: { [ws]: String(e.id) },
+    initials: initialsOf(name),
+    title: String(e.designation ?? ''),
+    divisions: Array.isArray(e.divisionIds) ? (e.divisionIds as string[]) : [],
+    managerId: e.managerId ? userIdForStaff(e.managerId, ws) : undefined,
+    territories: Array.isArray(e.territoryIds) ? (e.territoryIds as string[]) : [],
+  };
+}
+
+export const getUser = (id: string): DemoUser | undefined => {
+  const shipped = demoUsers.find((u) => u.id === id);
+  if (shipped || !id?.startsWith('u_')) return shipped;
+  const e = (getDb().records.employees ?? []).find((x) => x.id === id.slice(2));
+  return e && !demoUsers.some((u) => Object.values(u.staffIds).includes(String(e.id))) ? userFromEmployee(e) : undefined;
+};
+
+/**
+ * People who can sign in or be switched to (login screen, role switcher): every active user record,
+ * with the role, name and title as they are now in Administration › Users.
+ */
+export function signInUsers(workspaceId = 'tc'): DemoUser[] {
+  const employees = (getDb().records.employees ?? []).filter((e) => (e.workspaceId ?? workspaceId) === workspaceId);
+  const byStaff = new Map(employees.map((e) => [String(e.id), e]));
+  const shipped = demoUsers
+    .filter((u) => byStaff.get(u.staffIds[workspaceId])?.status !== 'inactive')
+    .map((u) => {
+      const e = byStaff.get(u.staffIds[workspaceId]);
+      return e ? { ...u, roleId: String(e.roleId ?? u.roleId), title: String(e.designation ?? u.title) } : u;
+    });
+  const known = new Set(demoUsers.map((u) => u.staffIds[workspaceId]));
+  const added = employees.filter((e) => !known.has(String(e.id)) && e.status !== 'inactive').map(userFromEmployee);
+  return [...shipped, ...added];
+}
 export const getRole = (id: string) => {
   const role = appPack.roles.find((r) => r.id === id);
   if (!role) throw new Error(`Unknown role ${id}`);

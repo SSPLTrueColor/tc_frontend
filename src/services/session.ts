@@ -18,7 +18,12 @@ const G = L.common.login;
 let pendingOtp: { userId: string; code: string } | null = null;
 
 export const isSignedIn = () => getDb().session.signedIn;
-export const needsOtp = (userId: string) => MFA_ROLES.includes(getUser(userId)?.roleId ?? '');
+/** MFA follows the person's current role in Administration › Users (falls back to the shipped role). */
+export const needsOtp = (userId: string) => {
+  const u = getUser(userId);
+  const staff = u ? (getDb().records.employees ?? []).find((e) => e.id === u.staffIds.tc) : undefined;
+  return MFA_ROLES.includes(String(staff?.roleId ?? u?.roleId ?? ''));
+};
 
 /** Step 1. Returns the code to display when the role needs MFA. */
 export function startSignIn(userId: string): { otp?: string } {

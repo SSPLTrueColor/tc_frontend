@@ -3,8 +3,9 @@
  * rows, so masked or hidden fields never leave in raw form.
  */
 import type { RecordData, ResourceDefinition } from '../metadata/types';
-import { type Actor, perm } from './authz';
+import { type Actor, can, perm } from './authz';
 import { commit } from './db';
+import { getResource } from './registry';
 import { appendAudit } from './ledger';
 import { displayText } from './runtime';
 import { ServiceError } from './types';
@@ -40,6 +41,34 @@ export function exportCsv(actor: Actor, res: ResourceDefinition, rows: RecordDat
   if (!perm(actor, res.key).export) throw new ServiceError('forbidden', L.common.errors.cannotExport(res.labelPlural.toLowerCase()));
   const csv = buildCsv(actor, res, rows, columns);
   commit((d) => appendAudit(d, actor, { action: 'export', resource: res.key, summary: L.common.audit.exported(rows.length, res.labelPlural.toLowerCase()), correlationId: uid('cor') }));
+  return csv;
+}
+
+/**
+ * ADM-07 / COM-08 / COM-09: may the actor export rows of this list? A list bound to a resource needs that
+ * resource's export (X) permission; a computed list with no single resource needs the Data Export capability.
+ */
+export function canExportRows(actor: Actor, resource?: string): boolean {
+  if (resource) {
+    try {
+      getResource(resource);
+    } catch {
+      return can(actor, 'data.export');
+    }
+    return perm(actor, resource).export;
+  }
+  return can(actor, 'data.export');
+}
+
+/**
+ * "Export selected" on computed tables (DataTable): the same permission check and audit entry as a list
+ * export. `cells` are already what the actor sees on screen (masked values stay masked).
+ */
+export function exportRowsCsv(actor: Actor, input: { label: string; resource?: string; header: string[]; cells: string[][] }): string {
+  const what = input.resource ? getResource(input.resource).labelPlural.toLowerCase() : input.label.toLowerCase();
+  if (!canExportRows(actor, input.resource)) throw new ServiceError('forbidden', L.common.errors.cannotExport(what));
+  const csv = [input.header.map(csvCell).join(','), ...input.cells.map((r) => r.map(csvCell).join(','))].join('\n');
+  commit((d) => appendAudit(d, actor, { action: 'export', resource: input.resource, summary: L.common.audit.exportedSelection(input.cells.length, what), correlationId: uid('cor') }));
   return csv;
 }
 

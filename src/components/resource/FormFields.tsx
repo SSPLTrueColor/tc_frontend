@@ -12,7 +12,8 @@ import { canReadRecord } from '../../services/authz';
 import { getDb } from '../../services/db';
 import { activeMasterValues, getMaster, getResource } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
-import { evalCondition, isEmpty, isRequired, isVisible } from '../../services/validation';
+import { evalCondition, fieldNumberRule, isEmpty, isRequired, isVisible } from '../../services/validation';
+import { NumberInput, useNumberText } from '../primitives/NumberInput';
 import { SelectMenu } from '../primitives/SelectMenu';
 import { MultiSelectMenu } from '../primitives/MultiSelectMenu';
 import { DatePicker } from '../primitives/DatePicker';
@@ -40,6 +41,28 @@ export function relationOptions(actor: Actor, field: FieldDefinition, values: Va
   }
   if (rel.resource === 'employees') rows = rows.filter((r) => r.status !== 'inactive');
   return rows.map((r) => ({ id: r.id, label: recordTitle(rel.resource, r.id, actor) })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Number / money field: strict parse with the message under the field until the form shows its own error. */
+function NumberFieldInput({ field, value, onChange, common, invalid }: { field: FieldDefinition; value: unknown; onChange: (v: unknown) => void; common: Record<string, unknown>; invalid?: boolean }) {
+  const rule = fieldNumberRule(field);
+  // An unparseable entry is passed on as the typed text, so validation reports the same specific message.
+  const num = typeof value === 'number' ? value : value === null || value === undefined || value === '' ? null : NaN;
+  const { text, error, onChange: change } = useNumberText(num, rule, (n, raw) => onChange(n === null ? null : Number.isNaN(n) ? raw : n));
+  return (
+    <>
+      <div className={cx('input-affix', field.type === 'money' && 'has-start', field.unit && 'has-end')}>
+        {field.type === 'money' && <span className="affix affix-start">₹</span>}
+        <TextField {...common} inputMode="decimal" autoComplete="off" value={text} aria-invalid={invalid || !!error || undefined} onChange={(e) => change(e.target.value)} />
+        {field.unit && <span className="affix affix-end">{field.unit}</span>}
+      </div>
+      {error && !invalid && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+    </>
+  );
 }
 
 export function FieldInput({
@@ -75,22 +98,7 @@ export function FieldInput({
       return <Textarea {...common} className="textarea" rows={3} maxLength={field.maxLength} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />;
     case 'number':
     case 'money':
-      return (
-        <div className={cx('input-affix', field.type === 'money' && 'has-start', field.unit && 'has-end')}>
-          {field.type === 'money' && <span className="affix affix-start">₹</span>}
-          <TextField
-            {...common}
-            type="number"
-            inputMode="decimal"
-            min={field.min}
-            max={field.max}
-            step={field.type === 'money' ? '0.01' : '1'}
-            value={value === null || value === undefined ? '' : String(value)}
-            onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
-          />
-          {field.unit && <span className="affix affix-end">{field.unit}</span>}
-        </div>
-      );
+      return <NumberFieldInput field={field} value={value} onChange={onChange} common={common} invalid={invalid} />;
     case 'date':
       return <DatePicker id={id} block label={field.label} value={(value as string) || ''} onChange={onChange} invalid={invalid} describedBy={describedBy} clearable={!isRequired(field, values)} />;
     case 'datetime':
@@ -273,15 +281,16 @@ function LineCell({ col, value, onChange, label }: { col: LineItemColumn; value:
     );
   }
   if (col.type === 'number' || col.type === 'money') {
+    // Strict parse: "-2" or "1e6" stays visible as an error (and fails validation) instead of becoming 2 / 16.
     return (
-      <TextField
-        dense className="li-num"
-        type="number"
+      <NumberInput
+        dense
+        className="li-num"
         aria-label={label}
-        min={col.min}
-        step={col.type === 'money' ? '0.01' : '1'}
-        value={value === null || value === undefined ? '' : String(value)}
-        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+        showError={false}
+        rule={{ min: col.min ?? 0, money: col.type === 'money' }}
+        value={typeof value === 'number' ? value : value === null || value === undefined || value === '' ? null : Number(value)}
+        onValueChange={(n) => onChange(n === null ? null : Number.isNaN(n) ? NaN : n)}
       />
     );
   }

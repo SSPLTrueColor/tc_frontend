@@ -16,7 +16,7 @@ import {
 } from '../leads/rules';
 
 export const leadsApi = {
-  create: (actor: Actor, lead: Record<string, unknown>, company: NewCompanyInput | null, contact: NewContactInput | null) => call(() => createLeadWithParty(actor, lead, company, contact)),
+  create: (actor: Actor, lead: Record<string, unknown>, company: NewCompanyInput | null, contact: NewContactInput | null, opts?: { duplicateReason?: string }) => call(() => createLeadWithParty(actor, lead, company, contact, opts)),
   /** LEAD-10: Convert to Opportunity. */
   convertToOpportunity: (actor: Actor, id: string, version: number, input: QualifyInput) => call(() => qualifyLead(actor, id, version, input)),
   nurture: (actor: Actor, id: string, version: number, until: string, note: string) => call(() => nurtureLead(actor, id, version, until, note)),

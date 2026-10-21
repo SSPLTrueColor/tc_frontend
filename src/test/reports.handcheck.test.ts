@@ -12,6 +12,16 @@ import { createDb, getDb, __setDb } from '../services/db';
 import { runReport } from '../services/api/reports';
 import { dashboardFor, resolveRange } from '../services/reports/overview';
 import { dayOf } from '../services/reports/kpis';
+
+/** Decision D-1: revenue is the value BEFORE GST, worked out by hand from the order lines (qty × price − discount). */
+const net = (o: RecordData) => {
+  const lines = (o.lines as RecordData[] | undefined) ?? [];
+  if (!lines.length) return (Number(o.subtotal) || 0) - (Number(o.discountTotal) || 0); // list rows carry no line items
+  return lines.reduce((t, l) => {
+    const gross = (Number(l.qty) || 0) * (Number(l.listPrice) || 0);
+    return t + Math.max(0, gross - (Number(l.discountAmt) || (gross * (Number(l.discountPct) || 0)) / 100));
+  }, 0);
+};
 import { decodeFilter, evalFilterCondition, newCondition } from '../services/filter';
 import { queryRecords } from '../services/runtime';
 import { keyOfSlug } from '../constants/routes';
@@ -52,7 +62,7 @@ function salesHand(staffIds: string[] | undefined, from: string, to: string) {
   const sent = quotes.filter((q) => inR(q.quoteDate, from, to) && q.isLatest !== false && (['sent', 'negotiation', 'accepted', 'rejected', 'expired'].includes(s(q.status)) || !!q.sentAt));
   const ordered = new Set(orders.filter((o) => o.status !== 'cancelled').map((o) => s(o.quotationId)));
   return {
-    revenue: orders.filter((o) => BOOKED(o) && inR(o.orderDate, from, to)).reduce((a, o) => a + n(o.grandTotal), 0),
+    revenue: orders.filter((o) => BOOKED(o) && inR(o.orderDate, from, to)).reduce((a, o) => a + net(o), 0),
     pipeline: opps.filter((o) => OPEN.includes(s(o.stage))).reduce((a, o) => a + n(o.value), 0),
     winrate: closed.length ? won / closed.length : null,
     leads: leads.filter((l) => inR(l.createdAt, from, to)).length,
@@ -131,7 +141,7 @@ describe('QA hand-check: dashboard KPIs = Appendix C from raw records', () => {
     close(v('weighted'), open.reduce((a, o) => a + (n(o.weightedValue) || (n(o.value) * n(o.probability)) / 100), 0));
     close(v('q2o'), h.q2o);
     const backlog = rows('salesOrders').filter((o) => ['confirmed', 'payment_pending', 'payment_received', 'processing', 'ready_for_dispatch', 'dispatched', 'delivered', 'installation'].includes(s(o.status)));
-    close(v('backlog'), backlog.reduce((a, o) => a + n(o.grandTotal), 0));
+    close(v('backlog'), backlog.reduce((a, o) => a + net(o), 0));
     const ms = rows('paymentMilestones').filter((m) => inR(m.dueDate, from, to));
     close(v('collections'), ms.reduce((a, m) => a + n(m.receivedAmount), 0));
     close(v('overdue'), ms.filter((m) => day(m.dueDate) < to).reduce((a, m) => a + Math.max(0, n(m.amount) - n(m.receivedAmount)), 0));
@@ -190,7 +200,7 @@ describe('QA hand-check: dashboard KPIs = Appendix C from raw records', () => {
         const res = queryRecords(a, key, { filter: f ? decodeFilter(f)! : undefined });
         expect(res.ignoredFields, `${u} ${k.id}`).toEqual([]);
         if (COUNT_KPIS.includes(k.id)) expect(res.rows.length, `${u} ${k.id}`).toBe(k.value);
-        if (k.id === 'revenue') expect(res.rows.reduce((t, r) => t + n(r.grandTotal), 0), `${u} revenue`).toBeCloseTo(k.value!, 2);
+        if (k.id === 'revenue') expect(res.rows.reduce((t, r) => t + net(r), 0), `${u} revenue`).toBeCloseTo(k.value!, 2);
       }
     }
   });

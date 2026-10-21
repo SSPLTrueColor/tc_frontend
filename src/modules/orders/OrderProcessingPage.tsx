@@ -67,7 +67,7 @@ export function OrderProcessingPage() {
       if (division && o.divisionId !== division) return false;
       return !etaOnly || etaPassed;
     });
-  }, [data.data, status, customs, kind, division, etaOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.data, status, customs, kind, division, etaOnly]);
 
   if (!allowed) return <NoAccess what={P.noAccess} />;
 
@@ -276,7 +276,7 @@ export function OrderProcessingPage() {
             ]}
           />
           
-            <DataTable
+            <DataTable exportResource="salesOrders"
               label={P.tableTitle}
               rows={rows}
               rowKey={(r) => r.order.id}

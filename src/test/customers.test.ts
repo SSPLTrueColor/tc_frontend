@@ -252,4 +252,19 @@ describe('customers module', () => {
     expect(co.billingState).toBe('24');
     expect(getDb().records.leads.find((l) => l.id === r.leadId)!.state).toBe('24');
   });
+
+  it('Convert to Lead with source Referral asks for the referrer and saves it (no silent failure)', () => {
+    if (!allResources().some((r) => r.key === 'leads')) return;
+    const pool = getDb().records.contacts.find((c) => !c.customerId && c.source !== 'exhibition')!;
+    const base = { contactId: pool.id, companyName: 'MS Textile', territoryId: 'surat', billingState: '24', divisionId: 'TX', productType: 'machine', sourceId: 'referral', ownerId: 'E-1011', nextFollowUpAt: '2026-10-25' };
+    expectValidation(() => convertContactToLead(admin(), base), 'referrerType');
+    expectValidation(() => convertContactToLead(admin(), { ...base, referrerType: 'customer' }), 'referrerCustomerId');
+    expectValidation(() => convertContactToLead(admin(), { ...base, referrerType: 'engineer' }), 'referrerEmployeeId');
+    const referrer = getDb().records.customers[0].id;
+    const r = convertContactToLead(admin(), { ...base, referrerType: 'customer', referrerCustomerId: referrer });
+    const lead = getDb().records.leads.find((l) => l.id === r.leadId)!;
+    expect(lead.sourceId).toBe('referral');
+    expect(lead.referrerType).toBe('customer');
+    expect(lead.referrerCustomerId).toBe(referrer);
+  });
 });

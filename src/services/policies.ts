@@ -8,6 +8,7 @@ import { uid } from '../lib/ids';
 import { type Actor, can } from './authz';
 import { commit, getDb } from './db';
 import { appendAudit } from './ledger';
+import { getMaster } from './registry';
 import { type ApprovalLevel, ServiceError } from './types';
 import { L } from '../constants/labels';
 
@@ -111,7 +112,37 @@ export const DEFAULT_POLICIES: Policies = {
 
 export function getPolicies(): Policies {
   const o = (getDb().config.policies ?? {}) as Partial<Policies>;
-  return { ...DEFAULT_POLICIES, ...o };
+  return withMasterDefaults({ ...DEFAULT_POLICIES, ...o });
+}
+
+const masterKeys = (key: string) => {
+  try {
+    return [...getMaster(key).values].sort((a, b) => a.order - b.order).map((v) => v.key);
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * ADM-04: values added to the Opportunity Stage and Ticket Priority masters take part at once.
+ * A new stage gets a probability between its neighbours (editable under Configurable Rules); a new
+ * priority gets a copy of Medium's SLA row (editable on the SLA Matrix). Saved values always win.
+ */
+function withMasterDefaults(p: Policies): Policies {
+  const stages = masterKeys('oppStage').filter((k) => k !== 'won' && k !== 'lost');
+  const missingStage = stages.filter((k) => p.stageProbability[k] === undefined);
+  const missingPriority = masterKeys('ticketPriority').filter((k) => !p.sla[k]);
+  if (!missingStage.length && !missingPriority.length) return p;
+  const stageProbability = { ...p.stageProbability };
+  missingStage.forEach((k) => {
+    const i = stages.indexOf(k);
+    const before = stages.slice(0, i).reverse().map((s) => stageProbability[s]).find((x) => x !== undefined) ?? 0;
+    const after = stages.slice(i + 1).map((s) => stageProbability[s]).find((x) => x !== undefined) ?? Math.min(100, before + 10);
+    stageProbability[k] = Math.round((before + after) / 2);
+  });
+  const sla = { ...p.sla };
+  missingPriority.forEach((k) => (sla[k] = structuredClone(p.sla.medium ?? Object.values(p.sla)[0])));
+  return { ...p, stageProbability, sla };
 }
 
 export function updatePolicies(actor: Actor, patch: Partial<Policies>) {

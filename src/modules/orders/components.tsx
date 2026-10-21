@@ -9,7 +9,8 @@ import { EmptyValue } from '../../components/primitives/display';
 import { InfoTip } from '../../components/primitives/InfoTip';
 import { InlineAlert } from '../../components/primitives/feedback';
 import { L } from '../../constants/labels';
-import { TextField } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
+import { NUMBER_LIMITS } from '../../services/validation';
 import { Table } from '../../components/primitives/Table';
 import { FileInput } from '../../components/primitives/controls';
 
@@ -124,7 +125,7 @@ export function LinesTable({
                 <td className="mono small">{l.hsnSac || <EmptyValue />}</td>
                 <td className="num">
                   {editable ? (
-                    <TextField dense className="orders-num" type="number" min={1} step={1} value={l.qty} aria-label={O.lines.qtyAria(i + 1)} onChange={(e) => onChange?.(i, { qty: Number(e.target.value) })} />
+                    <NumberInput dense className="orders-num" rule={NUMBER_LIMITS.qty} value={Number(l.qty)} aria-label={O.lines.qtyAria(i + 1)} onValueChange={(n) => onChange?.(i, { qty: n ?? NaN })} />
                   ) : (
                     l.qty
                   )}
@@ -132,15 +133,13 @@ export function LinesTable({
                 <td className="num">{formatMoney(Number(l.listPrice))}</td>
                 <td className="num">
                   {editable ? (
-                    <TextField
-                      dense className="orders-num"
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={l.discountAmt ? lineDiscountPct(l) : l.discountPct ?? 0}
+                    <NumberInput
+                      dense
+                      className="orders-num"
+                      rule={NUMBER_LIMITS.discountPct}
+                      value={l.discountAmt ? lineDiscountPct(l) : Number(l.discountPct ?? 0)}
                       aria-label={O.lines.discountAria(i + 1)}
-                      onChange={(e) => onChange?.(i, { discountPct: Number(e.target.value), discountAmt: 0 })}
+                      onValueChange={(n) => onChange?.(i, { discountPct: n ?? 0, discountAmt: 0 })}
                     />
                   ) : (
                     `${lineDiscountPct(l)}%`

@@ -118,7 +118,7 @@ export function RenewalsPage() {
         </>
       }
     >
-      <DataTable
+      <DataTable exportResource="amcContracts"
         key={tab}
         label={P.tableLabel}
         rows={rows}

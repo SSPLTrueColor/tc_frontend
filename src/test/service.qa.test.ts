@@ -122,7 +122,8 @@ describe('service QA regressions', () => {
 
   it('SRV-12: feedback ratings are whole numbers from 1 to 5', () => {
     const id = onSiteTicket({ ticketType: 'installation' });
-    updateRecord(ravi(), 'tickets', id, { resolution: 'Done' }, ver(id));
+    // A root cause is recorded so a repeat complaint on the same machine also closes on good feedback.
+    updateRecord(ravi(), 'tickets', id, { resolution: 'Done', rootCause: 'Belt worn out' }, ver(id));
     transitionRecord(ravi(), 'tickets', id, 'resolved', ver(id));
     const token = String(tk(id).feedbackToken);
     expect(() => submitFeedback(token, { rating: 3.5, comment: '', resolved: true })).toThrow(/rating/);

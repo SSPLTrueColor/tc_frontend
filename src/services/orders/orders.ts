@@ -5,6 +5,7 @@
 import { appPack } from '../../domain/pack';
 import { L } from '../../constants/labels';
 import { addDays, todayKey } from '../../lib/dates';
+import { nextNumber } from '../config';
 import { nowIso } from '../../lib/clock';
 import { fyLabel } from '../../lib/fy';
 import { uid } from '../../lib/ids';
@@ -21,7 +22,10 @@ import { getResource } from '../registry';
 import { insertRecordIn, patchRecordIn, updateRecord } from '../runtime';
 import { type Approval, type ApprovalLevel, type Db, ServiceError } from '../types';
 import { requestApprovalIn } from '../workflow';
+import { customDefaults, customFieldKeys, validateCustomValues } from '../customFields';
+import { NUMBER_LIMITS, numberRangeError, type NumberRule } from '../validation';
 import { computeTotals, describeDiff, diffLines, type LineDiff, type OrderTotals, type QuoteLine } from './lines';
+import { quoteBlockReason, selectedQuoteOf, selectQuotationIn } from '../quotations/selection';
 import { CUSTOMS_STATUSES, SO_BEFORE_DISPATCH, SO_PROCESSING_STATUSES } from '../../domain/modules/orders';
 
 const E = L.orders.errors;
@@ -110,6 +114,8 @@ const ORDERABLE_QUOTE = ['approved', 'sent', 'negotiation', 'accepted'];
 /** Why a quotation cannot become a sales order — or null when it can. */
 export function quotationBlocker(d: Db, q: RecordData | undefined): string | null {
   if (!q) return E.quotationNotFound;
+  // Not Selected quotations are read-only (another quotation was accepted, or the opportunity was lost).
+  if (q.status === 'not_selected') return quoteBlockReason(d, q) ?? E.quotationNotAccepted(L.quotations.masters.quoteStatus.values.not_selected);
   // Approved / sent / negotiating quotations can be ordered directly: the customer PO on the order is the
   // acceptance (QUO-11), so creating the order marks the quotation Accepted and the opportunity Won.
   if (!ORDERABLE_QUOTE.includes(String(q.status))) return E.quotationNotAccepted(String(q.status).replace(/_/g, ' '));
@@ -128,6 +134,8 @@ export function quotationBlocker(d: Db, q: RecordData | undefined): string | nul
   // BR-20: one won opportunity → one live sales order, whichever of its quotations it came from.
   const forOpp = q.opportunityId ? rows(d, SO).find((o) => o.opportunityId === q.opportunityId && o.status !== 'cancelled') : undefined;
   if (forOpp) return E.opportunityOrdered(String(forOpp.orderNo ?? forOpp.id));
+  // SO-01: a won opportunity orders only from its selected (accepted) quotation.
+  if (opp && ((opp.stage === 'won' && q.status !== 'accepted') || (opp.selectedQuotationId && opp.selectedQuotationId !== q.id))) return L.quotations.selection.onlyAcceptedOrder(String(selectedQuoteOf(d, opp.id)?.quoteNo ?? opp.selectedQuotationId ?? opp.id));
   return null;
 }
 
@@ -297,15 +305,32 @@ export function validatePo(po: PoInput): Record<string, string> {
   return e;
 }
 
+/** COM-05 server-side: the same bounds as the NumberInput fields (quantity 1 – 9,999, discount 0 – 100 %, ₹ amounts). */
 export function validateLines(lines: QuoteLine[]): string | null {
   if (!lines.length) return E.addLine;
+  const F = E.lineFields;
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    if (!(Number(l.qty) > 0)) return E.lineQty(i + 1);
-    if (!(Number(l.listPrice) >= 0)) return E.linePrice(i + 1);
-    const pct = Number(l.discountPct) || 0;
-    if (pct < 0 || pct > 100) return E.lineDiscountRange(i + 1);
+    const checks: [keyof typeof F, unknown, NumberRule][] = [
+      ['qty', l.qty, NUMBER_LIMITS.qty],
+      ['listPrice', l.listPrice, NUMBER_LIMITS.amount],
+      ['discountPct', l.discountPct ?? 0, NUMBER_LIMITS.discountPct],
+      ['discountAmt', l.discountAmt ?? 0, NUMBER_LIMITS.amount],
+    ];
+    for (const [key, raw, rule] of checks) {
+      const msg = numberRangeError(raw === null || raw === '' ? 0 : Number(raw), rule);
+      if (msg) return E.lineNumber(i + 1, F[key], msg);
+    }
     if ((Number(l.discountAmt) || 0) > Number(l.qty) * Number(l.listPrice)) return E.lineDiscountMax(i + 1);
+  }
+  return null;
+}
+
+/** Freight / insurance: ₹0 – ₹99,99,99,999, never negative or unparseable. */
+export function validateExtras(freight: unknown, insurance: unknown): string | null {
+  for (const [key, raw] of [['freight', freight], ['insurance', insurance]] as const) {
+    const msg = numberRangeError(Number(raw ?? 0), NUMBER_LIMITS.amount);
+    if (msg) return E.extrasNumber(E.lineFields[key], msg);
   }
   return null;
 }
@@ -409,10 +434,7 @@ function requestOrderApproval(ctx: HookContext, order: RecordData, reason: strin
 // ---------------------------------------------------------------- create (FR-049/050, CON-02)
 
 function nextOrderNo(d: Db, divisionId: string) {
-  const fy = fyLabel();
-  const k = `soNo:${divisionId}:${fy}`;
-  d.counters[k] = (d.counters[k] ?? 0) + 1;
-  return `SO/${divisionId}/${fy}/${String(d.counters[k]).padStart(4, '0')}`;
+  return nextNumber(d, 'salesOrder', divisionId); // Settings › Numbering Series
 }
 
 /** Default schedule (BR-25): machines 30 / 60 / 10, consumables 100 % on 30-day credit. Editable on the Payments tab. */
@@ -453,6 +475,8 @@ export interface CreateOrderInput extends PoInput {
   lines: QuoteLine[];
   siteAddressId?: string;
   idempotencyKey: string;
+  /** ADM-05: published custom-field values, validated (required, formats) and saved with the order in one write. */
+  custom?: Record<string, unknown>;
 }
 
 export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
@@ -471,6 +495,12 @@ export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
   if (input.siteAddressId && !draft.siteAddresses.some((a) => a.id === input.siteAddressId)) throw new ServiceError('validation', E.siteInvalid, { fieldErrors: { siteAddressId: E.siteNotCustomer } });
   // The installation job (INS-05) needs a site: machine orders must name one of the customer's addresses.
   if (draft.orderKind === 'machine' && !input.siteAddressId) throw new ServiceError('validation', E.fixFields, { fieldErrors: { siteAddressId: draft.siteAddresses.length ? E.siteRequired : E.siteNoAddresses } });
+  const customKeys = customFieldKeys(actor, getResource(SO), 'create');
+  const custom = Object.fromEntries(customKeys.filter((k) => input.custom && k in input.custom).map((k) => [k, input.custom![k]]));
+  if (customKeys.length) {
+    const customErrors = validateCustomValues(actor, SO, { ...customDefaults(getResource(SO)), ...custom, divisionId: draft.divisionId });
+    if (Object.keys(customErrors).length) throw new ServiceError('validation', L.common.form.fixHighlighted, { fieldErrors: customErrors });
+  }
 
   return commit((d) => {
     const existing = d.idempotency[input.idempotencyKey];
@@ -503,14 +533,20 @@ export function createOrder(actor: Actor, input: CreateOrderInput): RecordData {
       ...draft.terms,
       status: 'pending_approval',
       financeCheck: false,
+      ...custom,
     });
     const order = patchRecordIn(ctx, SO, created.id, { lines }, N.linesCaptured(lines.length));
     // Ordered straight from an approved / sent quotation: the order's customer PO is the acceptance.
     const q = draft.source === 'quotation' ? rows(d, 'quotations').find((x) => x.id === draft.sourceId) : undefined;
-    if (q && q.status !== 'accepted') {
-      patchRecordIn(ctx, 'quotations', q.id, { status: 'accepted', acceptedAt: nowIso(), acceptanceMethod: 'po', customerPoNo: input.customerPoNo.trim(), customerPoDate: input.customerPoDate, poFileName: input.poFileName.trim(), acceptedByName: '' }, E.acceptedByOrder(String(order.orderNo), input.customerPoNo.trim()));
-      const opp = q.opportunityId ? rows(d, 'opportunities').find((o) => o.id === q.opportunityId) : undefined;
-      if (opp && !['won', 'lost'].includes(String(opp.stage))) patchRecordIn(ctx, 'opportunities', opp.id, { stage: 'won', wonAt: nowIso(), probability: 100 }, E.wonByOrder(String(q.quoteNo ?? q.id), String(order.orderNo)));
+    if (q) {
+      const wasAccepted = q.status === 'accepted';
+      const no = String(q.quoteNo ?? q.id);
+      const selected = wasAccepted
+        ? q
+        : patchRecordIn(ctx, 'quotations', q.id, { status: 'accepted', previousStatus: q.status, acceptedAt: nowIso(), acceptanceMethod: 'po', customerPoNo: input.customerPoNo.trim(), customerPoDate: input.customerPoDate, poFileName: input.poFileName.trim(), acceptedByName: '' }, E.acceptedByOrder(String(order.orderNo), input.customerPoNo.trim()));
+      // Opportunity → Won at the ordered value with this quotation selected; every other open quotation → Not Selected.
+      const reason = wasAccepted ? L.quotations.selection.reasonAccepted(no) : L.quotations.selection.reasonOrdered(no, String(order.orderNo));
+      selectQuotationIn(ctx, selected, reason, Number(order.grandTotal) || Number(q.grandTotal) || 0, E.wonByOrder(no, String(order.orderNo)));
     }
     writeSchedule(ctx, order, defaultSchedule(draft.orderKind, orderDate));
     d.idempotency[input.idempotencyKey] = order.id;
@@ -535,6 +571,8 @@ export function submitForApproval(actor: Actor, id: string, note: string): Appro
 
 export function updateLines(actor: Actor, id: string, input: { lines: QuoteLine[]; freight: number; insurance: number; version: number; note?: string }): { reapproval: boolean; summary: string } {
   if ((Number(input.freight) || 0) < 0 || (Number(input.insurance) || 0) < 0) throw new ServiceError('validation', E.negativeExtras);
+  const extrasErr = validateExtras(input.freight, input.insurance);
+  if (extrasErr) throw new ServiceError('validation', extrasErr);
   return commit((d) => {
     const order = rows(d, SO).find((x) => x.id === id);
     if (!order || !canReadRecord(actor, getResource(SO), order)) throw new ServiceError('not_found', E.notFound(id));
@@ -796,7 +834,7 @@ export function runPaymentReminders(actor: Actor): { reminded: number; overdue: 
         const mgr = userOfStaff(managerOf(order.ownerId, d.records));
         if (mgr) notify(d, { userId: mgr.id, workspaceId: order.workspaceId, kind: 'reminder', title: N.teamOverdue(String(m.label), outstanding, String(order.orderNo)), link: { resource: SO, recordId: order.id } });
         const c = customerContact(d, order.customerId);
-        if (c.whatsapp) queueMessage(ctx, { channel: 'whatsapp', to: c.whatsapp, body: N.reminderWhatsapp(String(m.label), outstanding, String(order.orderNo), String(m.dueDate)), related: { resource: SO, recordId: order.id } });
+        if (c.whatsapp) queueMessage(ctx, { channel: 'whatsapp', to: c.whatsapp, body: N.reminderWhatsapp(String(m.label), outstanding, String(order.orderNo), String(m.dueDate)), related: { resource: SO, recordId: order.id }, event: 'payment_due', vars: { amount: outstanding, date: String(m.dueDate) } });
       }
       patchRecordIn(ctx, 'paymentMilestones', m.id, { lastReminderAt: nowIso() }, isOverdue ? N.overdueReminderLog : N.dueReminderLog);
       reminded++;
@@ -861,8 +899,8 @@ export function recordDispatch(actor: Actor, id: string, input: DispatchInput): 
     if (input.notifyCustomer) {
       const c = customerContact(d, order.customerId);
       const body = N.intimation(String(order.orderNo), input.dispatchDate, String(dsp.transporter), String(dsp.lrNumber), dsp.ewayBill ? String(dsp.ewayBill) : '', input.expectedDelivery);
-      if (c.whatsapp) queueMessage(ctx, { channel: 'whatsapp', to: c.whatsapp, body, related: { resource: SO, recordId: id } });
-      if (c.email) queueMessage(ctx, { channel: 'email', to: c.email, subject: N.intimationSubject(String(order.orderNo)), body, related: { resource: SO, recordId: id } });
+      if (c.whatsapp) queueMessage(ctx, { channel: 'whatsapp', to: c.whatsapp, body, related: { resource: SO, recordId: id }, event: 'dispatch_intimation', vars: { date: input.dispatchDate } });
+      if (c.email) queueMessage(ctx, { channel: 'email', to: c.email, subject: N.intimationSubject(String(order.orderNo)), body, related: { resource: SO, recordId: id }, event: 'dispatch_intimation', vars: { date: input.dispatchDate } });
       if (!c.whatsapp && !c.email) appendAudit(d, actor, { action: 'dispatch.intimation_skipped', resource: SO, recordId: id, summary: N.intimationSkipped, correlationId: ctx.correlationId });
     }
     return dsp;

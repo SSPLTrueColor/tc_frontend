@@ -17,7 +17,7 @@ import { FAMILY, listWith, planFor, type PlanItem, type Signal } from './dashboa
 import { loadDataset } from './dataset';
 import { compactInr } from './format';
 import { reportPath } from './helpers';
-import { collections, csat, dayOf, inRange, isBooked, isOpenOpp, isOpenTicket, isResolvedTicket, mttrHours, ms, outstandingOf, pipeline, quoteToOrder, slaCompliance, sum, winRate } from './kpis';
+import { closedAt, collections, csat, dayOf, inRange, isBooked, isLiveQuote, isOpenOpp, isOpenTicket, isResolvedTicket, mttrHours, ms, oppOutcomes, outstandingOf, pipeline, quoteToOrder, slaCompliance, sum, sumGross, sumNet, winRate, withNet } from './kpis';
 import type { Dataset } from './types';
 import type { RecordData } from '../../metadata/types';
 
@@ -318,7 +318,8 @@ const booked = (ds: Dataset, from: string, to: string) => within(ds.get('salesOr
 function revenueKpi(c: Ctx): Kpi {
   const cur = booked(c.ds, c.range.from, c.range.to);
   const prev = booked(c.ds, c.prev.from, c.prev.to);
-  return kpi({ id: 'revenue', label: K.orderValue, icon: 'receipt', fmt: 'money', value: sum(cur, 'grandTotal'), prev: sum(prev, 'grandTotal'), spark: perBucket(c.bs, c.ds.get('salesOrders').filter(isBooked), 'orderDate', 'grandTotal'), sub: KS.salesOrders(cur.length), to: listWith('salesOrders', [...BOOKED_CONDS, ...dateConds('orderDate', c.range)]) });
+  // Decision D-1: revenue before GST; the GST-inclusive total is shown underneath.
+  return kpi({ id: 'revenue', label: K.orderValue, icon: 'receipt', fmt: 'money', value: sumNet(cur), prev: sumNet(prev), spark: perBucket(c.bs, withNet(c.ds.get('salesOrders').filter(isBooked)), 'orderDate', 'netValue'), sub: KS.salesOrdersGross(cur.length, compactInr(sumGross(cur))), to: listWith('salesOrders', [...BOOKED_CONDS, ...dateConds('orderDate', c.range)]) });
 }
 
 function pipelineKpi(c: Ctx): Kpi {
@@ -329,7 +330,8 @@ function pipelineKpi(c: Ctx): Kpi {
   return kpi({ id: 'pipeline', label: K.pipeline, icon: 'bar-chart', fmt: 'money', value: c.range.to >= c.today ? open.value : val(c.range.to), delta: pctChange(val(c.range.to), val(c.prev.to)), spark: atEnds(c.bs, val), sub: KS.pipeline(open.count, compactInr(sum(added, 'value'))), to: ROUTES.pipeline });
 }
 
-const closedIn = (opps: Rows, from: string, to: string) => opps.filter((o) => ['won', 'lost'].includes(s(o.stage)) && inRange(o.wonAt || o.stageChangedAt || o.updatedAt, from, to));
+/** Closed (won or lost) in a window: the same query as the funnel and Won vs Lost (kpis.oppOutcomes). */
+const closedIn = (opps: Rows, from: string, to: string) => oppOutcomes(opps, from, to).closed;
 
 function winRateKpi(c: Ctx): Kpi {
   const opps = c.ds.get('opportunities');
@@ -337,7 +339,7 @@ function winRateKpi(c: Ctx): Kpi {
   const prev = closedIn(opps, c.prev.from, c.prev.to);
   const won = opps.filter((o) => o.stage === 'won');
   const wr = winRate(cur);
-  return kpi({ id: 'winrate', label: K.winRate, icon: 'target', fmt: 'pct', value: wr, prev: winRate(prev), spark: c.bs.map((b) => won.filter((o) => inRange(o.wonAt || o.stageChangedAt || o.updatedAt, b.from, b.to)).length), sub: KS.wonLost(cur.filter((o) => o.stage === 'won').length, cur.filter((o) => o.stage === 'lost').length), to: listWith('opportunities', [['stage', 'in', ['won', 'lost']], ...dateConds('stageChangedAt', c.range)]) });
+  return kpi({ id: 'winrate', label: K.winRate, icon: 'target', fmt: 'pct', value: wr, prev: winRate(prev), spark: c.bs.map((b) => won.filter((o) => inRange(closedAt(o), b.from, b.to)).length), sub: KS.wonLost(cur.filter((o) => o.stage === 'won').length, cur.filter((o) => o.stage === 'lost').length), to: listWith('opportunities', [['stage', 'in', ['won', 'lost']], ...dateConds('stageChangedAt', c.range)]) });
 }
 
 function leadsKpi(c: Ctx): Kpi {
@@ -351,17 +353,20 @@ function leadsKpi(c: Ctx): Kpi {
 function quoteKpi(c: Ctx): Kpi {
   const quotes = c.ds.get('quotations');
   const orders = c.ds.get('salesOrders');
-  const cur = within(quotes, 'quoteDate', c.range.from, c.range.to);
-  const prev = within(quotes, 'quoteDate', c.prev.from, c.prev.to);
-  return kpi({ id: 'q2o', label: K.quoteToOrder, icon: 'file-text', fmt: 'pct', value: quoteToOrder(cur, orders), prev: quoteToOrder(prev, orders), spark: perBucket(c.bs, quotes, 'quoteDate'), sub: KS.quotations(cur.length), to: listWith('quotations', dateConds('quoteDate', c.range)) });
+  // Superseded and not-selected quotations are not live quotes (they are excluded from counts and the %).
+  const live = quotes.filter(isLiveQuote);
+  const cur = within(live, 'quoteDate', c.range.from, c.range.to);
+  const prev = within(live, 'quoteDate', c.prev.from, c.prev.to);
+  return kpi({ id: 'q2o', label: K.quoteToOrder, icon: 'file-text', fmt: 'pct', value: quoteToOrder(cur, orders), prev: quoteToOrder(prev, orders), spark: perBucket(c.bs, live, 'quoteDate'), sub: KS.quotations(cur.length), to: listWith('quotations', dateConds('quoteDate', c.range)) });
 }
 
 function targetKpi(c: Ctx): Kpi | null {
   if (!canReadResource(c.actor, 'targets')) return null;
   try {
     const rows = achievement(c.actor, 'month', periodStartFor('month', c.range.to));
-    const mine = rows.find((r) => r.target.employeeId === c.actor.staffId) ?? rows[0];
-    if (!mine) return null;
+    // Only the viewer's own target: never someone else's (a manager without a target sees an empty tile).
+    const mine = rows.find((r) => r.target.scopeType !== 'division' && r.target.employeeId === c.actor.staffId);
+    if (!mine) return kpi({ id: 'target', label: K.targetVsActual, icon: 'target', fmt: 'pct', value: null, delta: null, spark: [], sub: KS.noTarget, to: ROUTES.targetVsActual });
     const money = /value|revenue|order/i.test(s(mine.target.metric));
     const fmt = (v: number) => (money ? compactInr(v) : String(Math.round(v)));
     return kpi({ id: 'target', label: K.targetVsActual, icon: 'target', fmt: 'pct', value: mine.pct / 100, delta: null, spark: [], sub: `${s(masterLabel('targetMetric', mine.target.metric)) || s(mine.target.metric)} · ${mine.label}`, to: ROUTES.targetVsActual, radial: { pct: mine.pct, actual: fmt(mine.actual), target: fmt(n(mine.target.targetValue)) } });
@@ -463,7 +468,7 @@ function supplyKpis(c: Ctx): Kpi[] {
   const below = c.ds.get('spareParts').filter((p) => p.belowMin || n(p.stockMain) < n(p.minLevel));
   const inProcessing = orders.filter((o) => ['payment_received', 'processing'].includes(s(o.status)));
   return [
-    kpi({ id: 'orders-in', label: K.ordersBooked, icon: 'shopping-cart', fmt: 'number', value: cur.length, prev: booked(c.ds, c.prev.from, c.prev.to).length, spark: perBucket(c.bs, orders.filter(isBooked), 'orderDate'), sub: compactInr(sum(cur, 'grandTotal')), to: listWith('salesOrders', [...BOOKED_CONDS, ...dateConds('orderDate', c.range)]) }),
+    kpi({ id: 'orders-in', label: K.ordersBooked, icon: 'shopping-cart', fmt: 'number', value: cur.length, prev: booked(c.ds, c.prev.from, c.prev.to).length, spark: perBucket(c.bs, orders.filter(isBooked), 'orderDate'), sub: KS.exclGst(compactInr(sumNet(cur))), to: listWith('salesOrders', [...BOOKED_CONDS, ...dateConds('orderDate', c.range)]) }),
     kpi({ id: 'processing', label: K.processing, icon: 'package', fmt: 'number', value: inProcessing.length, delta: null, spark: [], sub: KS.readyForDispatch(orders.filter((o) => o.status === 'ready_for_dispatch').length), to: listWith('salesOrders', [['status', 'in', ['payment_received', 'processing']]]) }),
     kpi({ id: 'delivered', label: K.delivered, icon: 'truck', fmt: 'number', value: delivered(c.range.from, c.range.to).length, prev: delivered(c.prev.from, c.prev.to).length, spark: c.bs.map((b) => delivered(b.from, b.to).length), to: listWith('dispatches', dateConds('actualDelivery', c.range)) }),
     kpi({ id: 'delayed', label: K.delayed, icon: 'alert', fmt: 'number', value: delayed.length, good: 'down', delta: null, spark: [], to: reportPath('delayed-dispatches') }),
@@ -522,12 +527,12 @@ function funnelSteps(items: { key: string; label: string; value: number; amount?
 function salesBody(family: string, c: Ctx): Body {
   const opps = c.ds.get('opportunities');
   const orders = c.ds.get('salesOrders').filter(isBooked);
-  const quotes = within(c.ds.get('quotations').filter((q) => q.isLatest !== false), 'quoteDate', c.range.from, c.range.to);
+  const quotes = within(c.ds.get('quotations').filter(isLiveQuote), 'quoteDate', c.range.from, c.range.to);
 
   const trend = makeTrend(
     c,
     { title: W.salesTrend.title, info: W.salesTrend.info, money: true, unit: '₹', series: [{ key: 'revenue', label: W.salesTrend.orderValue, tone: 'accent' }, { key: 'pipeline', label: W.salesTrend.pipelineAdded, tone: 'info' }], to: listWith('salesOrders', dateConds('orderDate', c.range)) },
-    { revenue: perBucket(c.bs, orders, 'orderDate', 'grandTotal'), pipeline: perBucket(c.bs, opps, 'createdAt', 'value') },
+    { revenue: perBucket(c.bs, withNet(orders), 'orderDate', 'netValue'), pipeline: perBucket(c.bs, opps, 'createdAt', 'value') },
   );
 
   const share: Share = {
@@ -538,7 +543,8 @@ function salesBody(family: string, c: Ctx): Body {
   };
 
   // Funnel: opportunities created in the range, by the furthest stage reached (lost opportunities count at the first stage only).
-  const cohort = within(opps, 'createdAt', c.range.from, c.range.to);
+  const outcomes = oppOutcomes(opps, c.range.from, c.range.to);
+  const cohort = outcomes.cohort;
   const rank = (o: RecordData) => (o.stage === 'lost' ? 0 : Math.max(0, OPP_STAGES.indexOf(s(o.stage))));
   const stageTone: Step['tone'][] = ['neutral', 'info', 'accent', 'warning', 'success'];
   const pipe: Pipe = {
@@ -555,15 +561,15 @@ function salesBody(family: string, c: Ctx): Body {
     to: resourcePath('tc', 'opportunities'),
   };
 
-  const inRangeOrders = within(orders, 'orderDate', c.range.from, c.range.to);
+  const inRangeOrders = withNet(within(orders, 'orderDate', c.range.from, c.range.to));
   const wins = (id: string) => closedIn(opps, c.range.from, c.range.to).filter((o) => o.stage === 'won' && o.ownerId === id).length;
   const byOwner = group(inRangeOrders, 'ownerId');
   let board: Board;
   if (actorIsExec(c)) {
-    board = customerBoard(W.topCustomers.title, W.topCustomers.info, c, inRangeOrders, 'grandTotal', B.salesOrders, B.orderValue);
+    board = customerBoard(W.topCustomers.title, W.topCustomers.info, c, inRangeOrders, 'netValue', B.salesOrders, B.orderValue);
   } else {
     const rows = [...byOwner.entries()]
-      .map(([id, os]) => ({ id, os, rev: sum(os, 'grandTotal') }))
+      .map(([id, os]) => ({ id, os, rev: sum(os, 'netValue') }))
       .sort((a, b) => b.rev - a.rev)
       .slice(0, 6)
       .map((r) => ({ id: r.id, cells: { name: c.ds.name('employees', r.id), orders: String(r.os.length), wins: String(wins(r.id)), revenue: compactInr(r.rev) }, to: listWith('salesOrders', [['ownerId', 'eq', r.id], ...dateConds('orderDate', c.range)]) }));
@@ -591,8 +597,8 @@ function salesBody(family: string, c: Ctx): Body {
   };
 
   // Won vs Lost: opportunities closed in the range; win rate = won ÷ (won + lost).
-  const closed = closedIn(opps, c.range.from, c.range.to);
-  const wr = winRate(closed);
+  const closed = outcomes.closed;
+  const wr = outcomes.winRate;
   const winLoss: Share = {
     title: W.winLoss.title,
     info: W.winLoss.info,
@@ -692,7 +698,7 @@ function supplyBody(c: Ctx): Body {
     steps: funnelSteps(steps.map(([key, label, from, t]) => ({ key, label, value: reached(from), tone: t, to: listWith('salesOrders', dateConds('orderDate', c.range)) }))),
     to: reportPath('order-backlog'),
   };
-  return { trend, share, pipe, board: customerBoard(W.topCustomersByValue.title, W.topCustomersByValue.info, c, cur, 'grandTotal', B.salesOrders, B.value) };
+  return { trend, share, pipe, board: customerBoard(W.topCustomersByValue.title, W.topCustomersByValue.info, c, withNet(cur), 'netValue', B.salesOrders, B.value) };
 }
 
 function financeBody(c: Ctx): Body {

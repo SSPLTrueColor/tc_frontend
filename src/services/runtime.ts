@@ -9,6 +9,7 @@ import type { FieldAccess, FieldDefinition, FilterGroup, RecordData, ResourceDef
 import { formatDate, formatDateTime } from '../lib/dates';
 import { nowIso } from '../lib/clock';
 import { fyCode } from '../lib/fy';
+import { docTypeForResource, nextNumber } from './config';
 export { fyCode };
 import { formatMoney, pct } from '../lib/format';
 import { uid } from '../lib/ids';
@@ -209,6 +210,8 @@ function compare(a: unknown, b: unknown): number {
 
 /** Ids come from per-series counters so deleted ids are never reused. */
 function nextId(d: Db, res: ResourceDefinition): string {
+  const doc = docTypeForResource(res.key);
+  if (doc && res.idFormat === 'fy') return nextNumber(d, doc); // Settings › Numbering Series
   if (res.idFormat === 'fy') {
     const fy = fyCode();
     const key = `${res.key}:${fy}`;
@@ -395,6 +398,7 @@ export function deleteRecord(actor: Actor, resKey: string, id: string) {
   commit((d) => {
     const current = d.records[resKey].find((r) => r.id === id);
     if (!current || !canReadRecord(actor, res, current)) throw new ServiceError('not_found', E.notFound(res.label, id));
+    if (!canUpdateRecord(actor, res, current)) throw new ServiceError('forbidden', E.cannotDelete(res.labelPlural.toLowerCase())); // ADM-02: delete uses the update scope
     // Referential integrity: refuse deletes that would orphan related records.
     const refs: string[] = [];
     for (const other of Object.keys(d.records)) {

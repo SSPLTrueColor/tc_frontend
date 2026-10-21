@@ -3,7 +3,7 @@ import { L } from '../../../constants/labels';
 import { addDays } from '../../../lib/dates';
 import { coverageFor } from '../../lookups';
 import { getPolicies } from '../../policies';
-import { dayOf, inRange, isBooked, isOpenOpp, ms, sum } from '../kpis';
+import { dayOf, inRange, isBooked, isOpenOpp, ms, sum, sumNet } from '../kpis';
 import { applyFilters, empName, groupBy, n, peek, row, s } from '../helpers';
 import { count, maxOf, mean, ratio, sum as sumOf } from '../metrics';
 import type { ReportDef, ReportRow } from '../types';
@@ -47,7 +47,7 @@ export const customerReports: ReportDef[] = [
                   id: cid,
                   customer: ds.name('customers', cid),
                   orders: os.length,
-                  value: sum(os, 'grandTotal'),
+                  value: sumNet(os),
                   lastOrder: os.map((o) => dayOf(o.orderDate)).sort().pop(),
                   pipeline: sum(opps.filter((o) => o.customerId === cid), 'value'),
                   machines: machines.filter((m) => m.customerId === cid).length,

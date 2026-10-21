@@ -160,8 +160,8 @@ describe('SO-03 customisation and re-approval', () => {
     const cur = order(o.id);
     const lines = so.linesOf(cur);
     const upd = (ls: typeof lines, extra = {}) => so.updateLines(owner, o.id, { lines: ls, freight: Number(cur.freight) || 0, insurance: Number(cur.insurance) || 0, version: order(o.id).version, ...extra });
-    expect(() => upd(lines.map((l, i) => (i ? l : { ...l, qty: 0 })))).toThrow(E.lineQty(1));
-    expect(() => upd(lines.map((l, i) => (i ? l : { ...l, discountPct: 101 })))).toThrow(E.lineDiscountRange(1));
+    expect(() => upd(lines.map((l, i) => (i ? l : { ...l, qty: 0 })))).toThrow(/^Line 1: quantity — /);
+    expect(() => upd(lines.map((l, i) => (i ? l : { ...l, discountPct: 101 })))).toThrow(/^Line 1: discount % — /);
     expect(() => upd(lines, { freight: -1 })).toThrow(E.negativeExtras);
     expect(() => upd([])).toThrow(E.addLine);
     // price change from the client is ignored → no difference, no re-approval

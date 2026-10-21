@@ -31,6 +31,12 @@ export function registerDefaultRecordTab(resource: string, tabId: string) {
 export const getDefaultRecordTab = (resource: string) => defaultTabs.get(resource);
 export const getRecordActions = (resource: string) => recordActions.get(resource);
 export const getRecordBanner = (resource: string) => recordBanners.get(resource);
+/** Compact one-line note beside the record title (e.g. "✓ Accepted on 21-10-2026 · e-accepted by …"). */
+const recordTitleNotes = new Map<string, ComponentType<RecordExtensionProps>>();
+export function registerRecordTitleNote(resource: string, c: ComponentType<RecordExtensionProps>) {
+  recordTitleNotes.set(resource, c);
+}
+export const getRecordTitleNote = (resource: string) => recordTitleNotes.get(resource);
 
 /** Extra record tabs (e.g. Customer 360 → Machines, Tickets). Rendered after "Details", in registration order. */
 export interface RecordTab {

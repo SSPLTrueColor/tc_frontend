@@ -3,7 +3,9 @@ import { listCrumb } from '../../components/shell/crumbs';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { addDays, todayKey } from '../../lib/dates';
-import { resourcePath, recordPeekPath } from '../../lib/routes';
+import { resourcePath, recordPagePath, recordPeekPath } from '../../lib/routes';
+import { applyFormLayout, divisionOf } from '../../services/formLayouts';
+import { DuplicateLeadDialog } from './DuplicateLeadDialog';
 import { errorMessage } from '../../services/api/client';
 import { leadsApi } from '../../services/api/leads';
 import { canReadRecord, fieldAccessMap, perm } from '../../services/authz';
@@ -45,6 +47,7 @@ export function NewLeadPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [askDuplicate, setAskDuplicate] = useState(false);
   // Picking a customer with exactly one contact picks that contact too (one choice fewer).
   const soleContact = (customerId: unknown) => {
     const list = (getDb().records.contacts ?? []).filter((c) => c.customerId === customerId);
@@ -66,7 +69,7 @@ export function NewLeadPage() {
 
   if (!perm(actor, 'leads').create) return <NoAccess what={T.noAccess} />;
 
-  const save = async () => {
+  const save = async (duplicateReason?: string) => {
     const newCompany = companyMode === 'new' ? company : null;
     const newContact = companyMode === 'new' || contactMode === 'new' ? contact : null;
     const editable = new Set(Object.entries(access).filter(([, a]) => a === 'edit').map(([k]) => k));
@@ -78,12 +81,19 @@ export function NewLeadPage() {
       setMessage(T.fixFields);
       return;
     }
+    // LEAD-03: open matches → confirm first (open an existing lead, or create with a reason).
+    if (duplicateReason === undefined && (dupLeads.visible.length > 0 || dupLeads.hidden > 0)) {
+      setAskDuplicate(true);
+      return;
+    }
     setBusy(true);
     setMessage('');
     try {
-      const out = await leadsApi.create(actor, values, newCompany, newContact);
+      const out = await leadsApi.create(actor, values, newCompany, newContact, duplicateReason !== undefined ? { duplicateReason } : undefined);
       toast(T.created(out.record.id));
-      navigate(recordPeekPath(actor.workspaceId, 'leads', out.record.id));
+      setAskDuplicate(false);
+      // Open the new record; replace the /new entry so Back does not return to an empty form.
+      navigate(recordPagePath(actor.workspaceId, 'leads', out.record.id), { replace: true });
     } catch (e) {
       if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
       setMessage(errorMessage(e));
@@ -94,6 +104,7 @@ export function NewLeadPage() {
   };
 
   const err = (k: string) => errors[k] && <p className="field-error">{errors[k]}</p>;
+  const laidOut = applyFormLayout(res, divisionOf(res, values));
 
   return (
     <div className="page">
@@ -104,7 +115,7 @@ export function NewLeadPage() {
         actions={
           <>
             <Button onClick={() => navigate(resourcePath(actor.workspaceId, 'leads'))}>{A.cancel}</Button>
-            <Button variant="primary" loading={busy} onClick={save} disabledReason={partyReady ? undefined : T.needsCustomers}>
+            <Button variant="primary" loading={busy} onClick={() => save()} disabledReason={partyReady ? undefined : T.needsCustomers}>
               {A.createLead}
             </Button>
           </>
@@ -290,9 +301,21 @@ export function NewLeadPage() {
           </div>
         </fieldset>
         <FormSections res={res} fieldKeys={['divisionId', 'nextFollowUpAt']} values={values} setValue={setValue} errors={errors} access={access} actor={actor} />
-        <FormSections res={res} sectionIds={['source', 'need', 'bant', 'where']} values={values} setValue={setValue} errors={errors} access={access} actor={actor} />
+        {/* Every section except the ones built above, in the division's layout order — including published custom fields (ADM-05). */}
+        <FormSections res={laidOut} sectionIds={laidOut.form.sections.map((s) => s.id).filter((id) => !['who', 'follow'].includes(id))} values={values} setValue={setValue} errors={errors} access={access} actor={actor} />
         {!!values.customerId && companyMode === 'existing' && <p className="muted small">{T.customerLine(safeTitle('customers', values.customerId, actor))}</p>}
       </div>
+      {askDuplicate && (
+        <DuplicateLeadDialog
+          actor={actor}
+          matches={dupLeads.visible}
+          hidden={dupLeads.hidden}
+          busy={busy}
+          onClose={() => setAskDuplicate(false)}
+          onOpen={(id) => navigate(recordPagePath(actor.workspaceId, 'leads', id))}
+          onProceed={(reason) => void save(reason)}
+        />
+      )}
     </div>
   );
 }

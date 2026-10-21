@@ -133,7 +133,7 @@ export function NotAttendedLeadsPage() {
         ) : undefined
       }
     >
-      <DataTable
+      <DataTable exportResource="leads"
         label={T.tableLabel}
         rows={rows}
         rowKey={(r) => r.lead.id}

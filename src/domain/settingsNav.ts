@@ -44,6 +44,7 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
       res('termsTemplates', 'termsTemplates', 'notebook'),
       page('customFields', 'columns', 'config.publish'),
       res('notificationTemplates', 'notificationTemplates', 'message'),
+      page('numberingSeries', 'layers', 'config.publish'),
     ],
   },
   {

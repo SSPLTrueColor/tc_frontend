@@ -17,6 +17,7 @@ import { getResource, masterLabel } from '../registry';
 import type { HookContext } from '../resourceHooks';
 import { queryRecords } from '../runtime';
 import { ServiceError } from '../types';
+import { closeOtherQuotesIn } from '../quotations/selection';
 import { L } from '../../constants/labels';
 
 const T = L.opportunities.messages;
@@ -90,7 +91,9 @@ export function markLost(actor: Actor, id: string, input: LostInput, expectedVer
       correlationId,
     });
     emitEvent(d, actor, { eventType: 'opportunities.status_changed', resourceId: res.id, recordId: id, correlationId, payload: { from: cur.stage, to: 'lost' } });
-    return next;
+    // Every open quotation closes as Not Selected ("Opportunity lost") and its pending approvals are withdrawn.
+    closeOtherQuotesIn({ d, actor, correlationId }, id, null, L.quotations.selection.reasonLost);
+    return d.records.opportunities[idx];
   });
 }
 

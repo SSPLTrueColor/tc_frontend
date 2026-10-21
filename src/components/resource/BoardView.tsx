@@ -19,7 +19,12 @@ const CARDS_PER_COLUMN = 40;
 export function BoardView({ res, actor, rows, boardField, cardFields, onOpen, activeId }: { res: ResourceDefinition; actor: Actor; rows: RecordData[]; boardField: string; cardFields: string[]; onOpen: (id: string) => void; activeId?: string }) {
   const CardActions = getCardActions(res.key);
   const field = res.fields.find((f) => f.key === boardField)!;
-  const values = getMaster(field.master!).values.filter((v) => v.active).sort((a, b) => a.order - b.order);
+  // Columns follow the master order; workflow end states (e.g. Won / Lost) stay last, so a stage added
+  // in Masters appears among the working stages.
+  const terminal = boardField === res.lifecycle?.field ? res.lifecycle.terminal ?? [] : [];
+  const values = getMaster(field.master!)
+    .values.filter((v) => v.active || terminal.includes(v.key))
+    .sort((a, b) => Number(terminal.includes(a.key)) - Number(terminal.includes(b.key)) || a.order - b.order);
   const access = fieldAccessMap(actor, res);
   const [dragId, setDragId] = useState<string | null>(null);
   const [cap, setCap] = useState<Record<string, number>>({});

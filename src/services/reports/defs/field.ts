@@ -1,6 +1,8 @@
 /** ATT-10 field force reports: attendance (daily · by employee · exceptions) and field visits. */
 import { L } from '../../../constants/labels';
 import { ROUTES } from '../../../constants/routes';
+import { addDays } from '../../../lib/dates';
+import { attendanceExceptions } from '../../field/field';
 import { dayOf } from '../kpis';
 import { applyFilters, empName, groupBy, n, row, s } from '../helpers';
 import { count, countIf, ratio, sum as sumOf } from '../metrics';
@@ -11,6 +13,8 @@ const C = L.reports.cols;
 const R = L.reports.rep;
 const M = L.reports.more;
 const X = D.attendanceExceptions;
+/** Exception names exactly as on the Exception Dashboard. */
+const XK = L.field.pages.exceptionDashboard.kinds;
 
 export const fieldReports: ReportDef[] = [
   {
@@ -91,16 +95,22 @@ export const fieldReports: ReportDef[] = [
         filters: { date: 'past', owner: true },
         dateLabel: X.dateLabel,
         compute: (ds, f, ctx) => {
-          const at = applyFilters(ds.get('attendance'), f, { date: 'date', owner: 'employeeId' });
-          const rows = at.flatMap((a) => {
-            const add = (kind: string, detail: string) => row(`${a.id}:${kind}`, { id: a.id, date: a.date, employee: empName(ds, a.employeeId), exception: kind, detail });
-            return [
-              ...(n(a.lateByMin) > 0 ? [add(X.kinds.late, X.details.late(n(a.lateByMin)))] : []),
-              ...(n(a.earlyByMin) > 0 ? [add(X.kinds.early, X.details.early(n(a.earlyByMin)))] : []),
-              ...(s(a.checkInAt) && !s(a.checkOutAt) && dayOf(a.date) < ctx.today ? [add(X.kinds.noCheckOut, X.details.noCheckOut)] : []),
-              ...(a.mockLocation ? [add(X.kinds.mock, X.details.mock)] : []),
-              ...(a.status === 'absent' ? [add(X.kinds.absent, X.details.absent)] : []),
-            ];
+          // ATT-10: the same rules as the live Exception Dashboard (field.attendanceExceptions), day by day,
+          // so the history includes "no check-in" and "no visits logged".
+          const to = f.to && f.to < ctx.today ? f.to : ctx.today;
+          const from = f.from ?? addDays(to, -29);
+          const days: string[] = [];
+          for (let d = from; d <= to && days.length < 370; d = addDays(d, 1)) days.push(d);
+          const rows = days.flatMap((day) => {
+            let found: ReturnType<typeof attendanceExceptions> = [];
+            try {
+              found = attendanceExceptions(ctx.actor, day);
+            } catch {
+              found = [];
+            }
+            return found
+              .filter((e) => !f.owner || e.employee.id === f.owner)
+              .map((e) => row(`${day}:${e.employee.id}:${e.kind}`, { id: `${day}:${e.employee.id}`, date: day, employee: s(e.employee.fullName) || empName(ds, e.employee.id), exception: XK[e.kind], detail: e.detail }));
           });
           return {
             columns: [
@@ -115,9 +125,10 @@ export const fieldReports: ReportDef[] = [
         },
         kpis: [
           { label: R.attendance.kpis.exceptions, fmt: 'number', value: count, better: 'down' },
-          { label: X.kinds.late, fmt: 'number', value: countIf((r) => r.exception === X.kinds.late), better: 'down' },
-          { label: X.kinds.noCheckOut, fmt: 'number', value: countIf((r) => r.exception === X.kinds.noCheckOut), better: 'down' },
-          { label: X.kinds.absent, fmt: 'number', value: countIf((r) => r.exception === X.kinds.absent), better: 'down' },
+          { label: XK.no_check_in, fmt: 'number', value: countIf((r) => r.exception === XK.no_check_in), better: 'down' },
+          { label: XK.late, fmt: 'number', value: countIf((r) => r.exception === XK.late), better: 'down' },
+          { label: XK.no_visits, fmt: 'number', value: countIf((r) => r.exception === XK.no_visits), better: 'down' },
+          { label: XK.not_checked_out, fmt: 'number', value: countIf((r) => r.exception === XK.not_checked_out), better: 'down' },
         ],
         chart: { type: 'donut', title: X.chart, x: 'exception', y: 'id', fmt: 'number', unit: X.unit },
       },

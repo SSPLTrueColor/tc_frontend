@@ -1,0 +1,314 @@
+/* ---------- Deal Journey card: stepper · next step · deal chain line ---------- */
+.deal-journey {
+  display: grid;
+  gap: var(--sp-3);
+  margin: var(--sp-1) var(--sp-4) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-panel);
+  background: var(--s-panel);
+  min-width: 0;
+}
+/* lines up with the header text on full pages and in drawers */
+.inspector-page > .deal-journey,
+.inspector-drawer > .deal-journey { margin-left: var(--sp-5); margin-right: var(--sp-5); }
+.deal-journey.is-collapsed { padding-bottom: var(--sp-3); }
+.dj-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: -4px -6px -4px 0;
+}
+.dj-title {
+  margin: 0;
+  flex: none;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--s-text-muted);
+}
+.dj-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-supportive);
+  color: var(--s-text-secondary);
+}
+.dj-summary.is-stopped { color: var(--s-danger); }
+.dj-toggle { margin-left: auto; flex: none; }
+
+/* Stepper: three phases side by side; each phase heading over its own run of steps. */
+.dj-phases {
+  display: flex;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.dj-phase {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  align-content: start; /* phases never stretch to the tallest one, so every dot sits on the same line */
+  gap: var(--sp-2);
+}
+.dj-phase-title {
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--s-text-muted);
+  padding-bottom: 4px;
+  border-bottom: 2px solid var(--s-border);
+}
+.dj-phase.is-done .dj-phase-title { color: var(--s-success); border-bottom-color: color-mix(in srgb, var(--s-success) 55%, var(--s-panel)); }
+.dj-phase.is-current .dj-phase-title { color: var(--s-accent-text); border-bottom-color: var(--s-accent); }
+.dj-steps {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dj-step {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+/* connector from this dot to the next one */
+.dj-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 22px;
+  right: 4px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--s-border);
+}
+.dj-step.is-done:not(:last-child)::after,
+.dj-step.is-skipped:not(:last-child)::after { background: var(--s-success); }
+.dj-dot {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--s-border-strong, var(--s-border));
+  background: var(--s-panel);
+  color: var(--s-on-accent, #fff);
+}
+.dj-step.is-done .dj-dot { border-color: var(--s-success); background: var(--s-success); }
+.dj-step.is-skipped .dj-dot { border-style: dashed; border-color: var(--s-success); }
+.dj-step.is-current .dj-dot {
+  border-color: var(--s-accent);
+  background: var(--s-panel);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--s-accent) 18%, transparent);
+}
+.dj-step.is-current .dj-dot::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--s-accent);
+}
+.dj-label {
+  max-width: 100%;
+  padding-right: 6px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--s-text-muted);
+}
+.dj-step.is-done .dj-label,
+.dj-step.is-skipped .dj-label { color: var(--s-text-secondary); }
+.dj-step.is-current .dj-label { color: var(--s-accent-text); font-weight: var(--fw-semibold); }
+.dj-phases.is-stopped .dj-step.is-todo .dj-dot { border-style: dotted; }
+
+/* Next step: a tinted callout naming who acts, with a button to the tab where it is done. */
+.dj-next {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 6px var(--sp-3);
+  border-radius: var(--c-radius-control);
+  border: 1px solid color-mix(in srgb, var(--s-accent) 22%, var(--s-border));
+  border-left: 3px solid var(--s-accent);
+  background: color-mix(in srgb, var(--s-accent-subtle) 55%, var(--s-panel));
+}
+.dj-next-icon { flex: none; color: var(--s-accent-text); }
+.dj-next-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.dj-next-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px var(--sp-2); font-size: var(--fs-supportive); }
+.dj-next-head strong { color: var(--s-text); }
+.dj-next-who {
+  padding: 1px var(--sp-2);
+  border-radius: 999px;
+  background: var(--s-panel);
+  border: 1px solid color-mix(in srgb, var(--s-accent) 25%, var(--s-border));
+  color: var(--s-accent-text);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+}
+.dj-next-text { font-size: var(--fs-supportive); color: var(--s-text-secondary); line-height: 1.45; }
+.dj-next > .btn { flex: none; }
+.dj-next.is-stopped { border-color: color-mix(in srgb, var(--s-danger) 30%, var(--s-border)); border-left-color: var(--s-danger); background: var(--s-danger-bg); }
+.dj-next.is-stopped .dj-next-icon,
+.dj-next.is-stopped strong { color: var(--s-danger); }
+.dj-next.is-complete { border-color: color-mix(in srgb, var(--s-success) 30%, var(--s-border)); border-left-color: var(--s-success); background: var(--s-success-bg); }
+.dj-next.is-complete .dj-next-icon { color: var(--s-success); }
+
+/* Deal chain: five aligned columns (Lead › Opportunity › Quotation › Sales Order › Contract). */
+.dj-chain {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-3) 0 0;
+  border-top: 1px solid var(--s-border);
+  list-style: none;
+  min-width: 0;
+}
+.dj-chain > li {
+  position: relative;
+  min-width: 0;
+}
+/* chevron between columns, centred in the gap */
+.dj-chain > li + li::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: calc(var(--sp-3) / -2 - 3px);
+  width: 5px;
+  height: 5px;
+  border-top: 1.5px solid var(--s-text-muted);
+  border-right: 1.5px solid var(--s-text-muted);
+  transform: rotate(45deg);
+  opacity: 0.7;
+}
+.dj-node-stack { display: grid; gap: var(--sp-2); }
+.dj-node {
+  display: grid;
+  justify-items: start;
+  gap: 3px;
+  min-width: 0;
+  font-size: var(--fs-supportive);
+}
+.dj-node-kind {
+  font-size: 11px;
+  color: var(--s-text-muted);
+}
+.dj-node-kind:empty { display: none; }
+.dj-node-id {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.dj-node.is-current .dj-node-id { font-weight: var(--fw-semibold); color: var(--s-text); }
+.dj-node-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
+.dj-node-chips > * { max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dj-node.is-muted { opacity: 0.55; }
+.dj-node .tag.is-selected { --tone-fg: var(--s-success); --tone-bg: color-mix(in srgb, var(--s-success) 12%, var(--s-panel)); }
+.dj-missing {
+  font-size: var(--fs-supportive);
+  font-style: italic;
+  color: var(--c-empty-value-fg, var(--s-text-muted));
+}
+.dj-node.is-missing .btn { margin-top: 2px; }
+.dj-older {
+  flex: none;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--s-border);
+  border-radius: 999px;
+  background: var(--s-panel);
+  color: var(--s-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.dj-older:hover,
+.dj-older[aria-expanded='true'] { background: var(--s-hover); color: var(--s-text); }
+.dj-older-list { display: grid; gap: var(--sp-2); padding: var(--sp-3); }
+.dj-older-title { margin: 0; font-size: 11px; font-weight: var(--fw-semibold); color: var(--s-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+@media (max-width: 760px) {
+  .deal-journey { margin-left: var(--sp-3); margin-right: var(--sp-3); padding: var(--sp-3); }
+  .inspector-page > .deal-journey,
+  .inspector-drawer > .deal-journey { margin-left: var(--sp-3); margin-right: var(--sp-3); }
+  /* Phone: phases stack; each phase's steps run as a vertical list */
+  .dj-phases { flex-direction: column; gap: var(--sp-3); }
+  .dj-steps { flex-direction: column; gap: var(--sp-2); }
+  .dj-step { flex-direction: row; align-items: center; }
+  .dj-step:not(:last-child)::after { top: 18px; left: 8px; right: auto; width: 2px; height: var(--sp-2); }
+  .dj-next { flex-wrap: wrap; }
+  .dj-chain { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dj-chain > li + li::before { display: none; }
+}
+
+/* ---------- Deal History tab ---------- */
+.deal-history-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.deal-history-tools .spacer { flex: 1; }
+.deal-history-day { margin-bottom: var(--sp-3); }
+.deal-history-day-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 0 var(--sp-2);
+  padding: 4px 0;
+  font-size: var(--fs-supportive);
+  font-weight: var(--fw-semibold);
+  color: var(--s-text-secondary);
+  background: var(--s-panel);
+}
+.deal-history-item {
+  position: relative;
+  display: flex;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  font-size: var(--fs-supportive);
+}
+.deal-history-item::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 30px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--s-border);
+}
+.deal-history-item:last-child::before { display: none; }
+.deal-history-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--s-text-secondary);
+  background: var(--s-sunken);
+}
+.deal-history-icon.is-activity { color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-panel)); }
+.deal-history-icon.is-approval { color: var(--s-success); background: color-mix(in srgb, var(--s-success) 10%, var(--s-panel)); }
+.deal-history-icon.is-comment { color: var(--s-info, var(--s-accent)); }
+.deal-history-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.deal-history-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp-2); }
+.deal-history-title { color: var(--s-text); overflow-wrap: anywhere; }
+.deal-history-source { text-decoration: none; }
+.deal-history-source:hover { color: var(--s-accent); text-decoration: underline; }
+.deal-history-detail { margin: 0; color: var(--s-text-secondary); white-space: pre-line; overflow-wrap: anywhere; }
+.deal-history-meta { color: var(--s-text-muted); font-variant-numeric: tabular-nums; }
+.deal-history-meta time { color: var(--s-text-secondary); }

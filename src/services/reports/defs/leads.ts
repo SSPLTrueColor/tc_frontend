@@ -2,7 +2,7 @@
 import { L } from '../../../constants/labels';
 import { ROUTES } from '../../../constants/routes';
 import { getPolicies } from '../../policies';
-import { dayOf, inRange, isBooked, isOpenOpp, leadResponseHours, ms, sum, winRate } from '../kpis';
+import { dayOf, inRange, isBooked, isOpenOpp, leadResponseHours, ms, sum, sumNet, winRate } from '../kpis';
 import { applyFilters, empName, groupBy, label, list, monthKey, n, peek, row, s } from '../helpers';
 import { count, countIf, maxOf, mean, ratio, sum as sumOf, weighted } from '../metrics';
 import { periodStartFor } from '../../../domain/modules/field/rules';
@@ -260,7 +260,7 @@ export const leadReports: ReportDef[] = [
                 const q = ls.filter(isQualified).length;
                 const closed = opps.filter((x) => x.ownerId === o && ['won', 'lost'].includes(s(x.stage)) && inRange(x.wonAt || x.stageChangedAt || x.updatedAt, f.from, f.to));
                 const mine = orders.filter((x) => x.ownerId === o);
-                return row(o, { owner: empName(ds, o), leads: ls.length, qualified: q, conversion: ls.length ? q / ls.length : null, winRate: winRate(closed), orders: mine.length, booked: sum(mine, 'grandTotal'), activities: acts.filter((a) => a.byId === o).length });
+                return row(o, { owner: empName(ds, o), leads: ls.length, qualified: q, conversion: ls.length ? q / ls.length : null, winRate: winRate(closed), orders: mine.length, booked: sumNet(mine), activities: acts.filter((a) => a.byId === o).length });
               })
               .sort((a, b) => n(b.booked) - n(a.booked)),
           };

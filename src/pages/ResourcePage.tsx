@@ -181,7 +181,7 @@ export function ResourcePage() {
   return (
     <div className={cx('page page-resource', `page-res-${res.key}`, peek && 'has-inspector')}>
       <div className="page-main">
-        <PageHeader title={isSales ? 'Leads & Opportunities' : res.labelPlural} description={res.description} />
+        <PageHeader title={isSales ? L.leads.workspace.title : res.labelPlural} description={res.description} />
         {/* Sales pages: the page switcher is the top level; this page's saved views then read as sub-views (pills) */}
         {isSales && <SalesWorkspaceTabs actor={actor} active={resource} />}
         {/* Line 1: saved views as underline tabs (+) … Export · primary action — one full-width line under it */}

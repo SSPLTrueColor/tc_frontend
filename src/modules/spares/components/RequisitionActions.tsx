@@ -13,6 +13,8 @@ import { byId } from '../../../services/lookups';
 import { activeMasterValues } from '../../../services/registry';
 import { ServiceError } from '../../../services/types';
 import { Checkbox, TextField, Textarea } from '../../../components/primitives/controls';
+import { NumberInput } from '../../../components/primitives/NumberInput';
+import { isBadNumber, NUMBER_LIMITS } from '../../../services/validation';
 
 type Mode = 'reject' | 'issue' | 'consume' | 'return' | 'claim' | null;
 
@@ -140,7 +142,7 @@ function ReasonDialog({ title, description, label, confirm, danger, onClose, onS
 function IssueDialog({ props, stock, onClose }: { props: RecordExtensionProps; stock: number; onClose: () => void }) {
   const { actor, record } = props;
   const toast = useToast();
-  const [qty, setQty] = useState(String(Math.min(Number(record.qty), stock)));
+  const [qty, setQty] = useState<number | null>(Math.min(Number(record.qty), stock));
   const [courier, setCourier] = useState('');
   const [docket, setDocket] = useState('');
   const { busy, errors, run } = useSubmit(onClose);
@@ -154,7 +156,7 @@ function IssueDialog({ props, stock, onClose }: { props: RecordExtensionProps; s
       footer={
         <>
           <Button onClick={onClose}>{A.cancel}</Button>
-          <Button variant="primary" loading={busy} onClick={() => run(() => api.issueRequisition(actor, record.id, { issuedQty: Number(qty), courier, docketNo: docket }, record.version).then(() => toast(D.issued(record.id))))}>
+          <Button variant="primary" loading={busy} onClick={() => !isBadNumber(qty, NUMBER_LIMITS.qty) && run(() => api.issueRequisition(actor, record.id, { issuedQty: Number(qty ?? 0), courier, docketNo: docket }, record.version).then(() => toast(D.issued(record.id))))}>
             {A.issue}
           </Button>
         </>
@@ -170,7 +172,7 @@ function IssueDialog({ props, stock, onClose }: { props: RecordExtensionProps; s
           <label className="field-label" htmlFor="iss-qty">
             {D.issueQty} <span className="req">*</span>
           </label>
-          <TextField id="iss-qty" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.issuedQty || undefined} data-autofocus />
+          <NumberInput id="iss-qty" value={qty} onValueChange={setQty} rule={NUMBER_LIMITS.qty} invalid={!!errors.issuedQty} data-autofocus />
           <p className="muted small">{D.issueQtyHint(String(record.qty), stock)}</p>
           <Err msg={errors.issuedQty} />
         </div>
@@ -198,7 +200,7 @@ function ConsumeDialog({ props, returnable, warrantyAllowed, onClose }: { props:
   const { actor, record } = props;
   const toast = useToast();
   const issued = Number(record.issuedQty ?? record.qty);
-  const [qty, setQty] = useState(String(issued));
+  const [qty, setQty] = useState<number | null>(issued);
   const [basis, setBasis] = useState(String(warrantyAllowed ? (record.basis ?? 'chargeable') : 'chargeable'));
   const [returned, setReturned] = useState(false);
   const { busy, errors, run } = useSubmit(onClose);
@@ -213,7 +215,7 @@ function ConsumeDialog({ props, returnable, warrantyAllowed, onClose }: { props:
       footer={
         <>
           <Button onClick={onClose}>{A.cancel}</Button>
-          <Button variant="primary" loading={busy} onClick={() => run(() => api.recordConsumption(actor, record.id, { consumedQty: Number(qty), basis, defectiveReturned: returned }, record.version).then(() => toast(D.consumed(record.id))))}>
+          <Button variant="primary" loading={busy} onClick={() => !isBadNumber(qty, NUMBER_LIMITS.qty) && run(() => api.recordConsumption(actor, record.id, { consumedQty: Number(qty ?? 0), basis, defectiveReturned: returned }, record.version).then(() => toast(D.consumed(record.id))))}>
             {A.saveConsumption}
           </Button>
         </>
@@ -224,7 +226,7 @@ function ConsumeDialog({ props, returnable, warrantyAllowed, onClose }: { props:
           <label className="field-label" htmlFor="con-qty">
             {D.consumeQty} <span className="req">*</span>
           </label>
-          <TextField id="con-qty" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.consumedQty || undefined} data-autofocus />
+          <NumberInput id="con-qty" value={qty} onValueChange={setQty} rule={NUMBER_LIMITS.qty} invalid={!!errors.consumedQty} data-autofocus />
           <p className="muted small">{D.consumeHint(issued, unitPrice ? formatMoney(unitPrice * (Number(qty) || 0)) : '')}</p>
           <Err msg={errors.consumedQty} />
         </div>

@@ -24,6 +24,7 @@ import * as spares from './spares';
 import * as field from './field';
 import * as reports from './reports';
 import * as calendar from './calendar';
+import { normaliseQuoteSelection } from '../services/quotations/normalise';
 
 const MODULES = [catalog, customers, leads, opportunities, quotations, orders, installed, service, spares, field, reports, calendar];
 
@@ -67,5 +68,7 @@ export function seedApp(seed: number, now: Date): SeedResult {
   };
   seedCore(ctx);
   MODULES.forEach((m) => m.seed(ctx));
+  // Quotation selection: Won / Lost opportunities have no open quotations (others are Not Selected).
+  normaliseQuoteSelection(ctx.records, ctx.approvals, now.toISOString());
   return { records: ctx.records, counters, notifications: ctx.notifications, approvals: ctx.approvals };
 }

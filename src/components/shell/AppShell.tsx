@@ -1,18 +1,19 @@
 import { SETTINGS_NAV, type SettingsNavItem } from '../../domain/settingsNav';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { appModules, demoUsers, organization, workspaces } from '../../domain/pack';
+import { appModules, organization, workspaces } from '../../domain/pack';
 import { cx } from '../../lib/format';
 import { pagePath, recordPeekPath, resourcePath, wsBase } from '../../lib/routes';
 import { keyOfSlug, ROUTES } from '../../constants/routes';
 import { PHONE, TABLET, useMedia } from '../../lib/useMedia';
-import { can, canReadResource } from '../../services/authz';
+import { can, canReadResource, currentActor } from '../../services/authz';
+import { resetDemoData } from '../../services/demo';
 import { listNotifications, markAllRead, markNotification, snoozeNotification } from '../../services/collab';
-import { getPersistError, resetDb } from '../../services/db';
+import { getPersistError } from '../../services/db';
 import { idleExpired, signOut, touchSession } from '../../services/session';
 import { isOffline, pendingWrites, setOffline, subscribeOffline } from '../../services/offline';
 import { useActor, useRevision } from '../../services/hooks';
-import { getResource, getRole } from '../../services/registry';
+import { getResource, getRole, signInUsers } from '../../services/registry';
 import { searchRecords } from '../../services/search';
 import { getSettings, SIDEBAR_MAX, SIDEBAR_MIN, switchSession, toggleFavorite, togglePin, updateSettings } from '../../services/settings';
 import { errorMessage } from '../../services/api/client';
@@ -934,7 +935,7 @@ function AccountMenu({ inRail = false }: { inRail?: boolean }) {
       <Popover open={open} onClose={() => setOpen(false)} anchor={ref} label={C.account.menu} width={320} align={inRail ? 'start' : 'end'} side={inRail ? 'right' : 'bottom'} className={cx(inRail && 'from-rail')}>
         <p className="pop-label">{C.account.switchUser}</p>
         <ul className="menu" style={{ maxHeight: 300, overflowY: 'auto' }}>
-          {demoUsers.map((u) => (
+          {signInUsers(actor.workspaceId).map((u) => (
             <li key={u.id}>
               <button
                 type="button"
@@ -1002,19 +1003,21 @@ function AccountMenu({ inRail = false }: { inRail?: boolean }) {
               <span className="menu-label">{C.account.help}</span>
             </button>
           </li>
-          <li>
-            <button
-              type="button"
-              className="menu-item is-danger"
-              onClick={() => {
-                setOpen(false);
-                setConfirmReset(true);
-              }}
-            >
-              <Icon name="reset" />
-              <span className="menu-label">{C.account.resetDemo}</span>
-            </button>
-          </li>
+          {can(actor, 'demo.settings') && (
+            <li>
+              <button
+                type="button"
+                className="menu-item is-danger"
+                onClick={() => {
+                  setOpen(false);
+                  setConfirmReset(true);
+                }}
+              >
+                <Icon name="reset" />
+                <span className="menu-label">{C.account.resetDemo}</span>
+              </button>
+            </li>
+          )}
           <li>
             <button
               type="button"
@@ -1054,7 +1057,13 @@ export function ResetDialog({ open, onClose }: { open: boolean; onClose: () => v
           <Button
             variant="danger"
             onClick={() => {
-              resetDb();
+              try {
+                resetDemoData(currentActor());
+              } catch (e) {
+                onClose();
+                toast(errorMessage(e), 'danger');
+                return;
+              }
               onClose();
               toast(C.toasts.demoReset, 'info');
             }}

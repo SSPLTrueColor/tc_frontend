@@ -17,7 +17,9 @@ import { getPolicies } from '../../services/policies';
 import { activeMasterValues, getUser, masterLabel, masterValue } from '../../services/registry';
 import { queryRecords, updateRecord } from '../../services/runtime';
 import { computeTotals, roi } from '../../services/quotations/pricing';
-import { getQuote, levelName, quoteApprovalChain, quotationOrigin } from '../../services/quotations/workflow';
+import { canUndoSelection, getQuote, levelName, quoteApprovalChain, quotationOrigin, undoSelection } from '../../services/quotations/workflow';
+import { liveOrderForQuote, quoteBlockReason, selectedQuoteOf } from '../../services/quotations/selection';
+import { quotationBlocker } from '../../services/orders/orders';
 import { ServiceError } from '../../services/types';
 import type { RecordExtensionProps } from '../../components/resource/extensions';
 import { Button, IconButton } from '../../components/primitives/Button';
@@ -25,10 +27,13 @@ import { DatePicker } from '../../components/primitives/DatePicker';
 import { EmptyValue } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { InfoTip } from '../../components/primitives/InfoTip';
+import { Icon } from '../../components/primitives/Icon';
 import { Dialog, Menu } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LinesTable, TaxSummary, TotalsBlock } from './LinesTable';
 import { TextField, Textarea } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
+import { isBadNumber, NUMBER_LIMITS, type NumberRule } from '../../services/validation';
 import { SegmentedControl } from '../../components/primitives/controls';
 import { FileInput } from '../../components/primitives/controls';
 
@@ -40,6 +45,7 @@ const D = T.dialogs;
 const B = T.banner;
 const C = T.tabContent;
 const F = T.fields.quotations;
+const SEL = T.selection;
 
 const quotePath = (id: string) => recordPeekPath('tc', 'quotations', id);
 const pdfPath = (id: string) => toPath(ROUTES.quotationPdf, { recordId: id });
@@ -50,7 +56,8 @@ const comparePath = (id: string, withId?: string) => toPath(ROUTES.quotationComp
 export function QuoteActions({ actor, record }: Props) {
   const navigate = useNavigate();
   const toast = useToast();
-  const [dialog, setDialog] = useState<'' | 'submit' | 'send' | 'accept' | 'reject' | 'version' | 'pullback'>('');
+  const [dialog, setDialog] = useState<'' | 'submit' | 'send' | 'accept' | 'reject' | 'version' | 'pullback' | 'undo'>('');
+  const [undoBusy, setUndoBusy] = useState(false);
   const [menu, setMenu] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const raw = (getDb().records.quotations ?? []).find((q) => q.id === record.id);
@@ -69,9 +76,23 @@ export function QuoteActions({ actor, record }: Props) {
   const ro = canUpdate ? undefined : T.common.readOnlyFor(actor.role.label);
   const expired = String(raw.validUntil) < todayKey();
   const versions = (getDb().records.quotations ?? []).filter((q) => String(q.rootId || q.id) === String(raw.rootId || raw.id)).length;
+  // Quotation selection guard: why this quotation can no longer be acted on (Not Selected, another accepted, opportunity lost).
+  const block = quoteBlockReason(getDb(), raw);
+  const soCreate = perm(actor, 'salesOrders').create;
+  const soReason = !soCreate ? C.cannotCreateSo(actor.role.label) : quotationBlocker(getDb(), raw) ?? undefined;
+  const liveSo = status === 'accepted' ? liveOrderForQuote(getDb(), raw) : undefined;
 
   const primary: JSX.Element[] = [];
-  if (!latest) {
+  if (status === 'not_selected') {
+    // Read-only: no actions, only the way to the selected quotation.
+    const sel = raw.selectedQuotationId ? (getDb().records.quotations ?? []).find((q) => q.id === raw.selectedQuotationId) : undefined;
+    if (sel)
+      primary.push(
+        <Button key="selected" icon="chevron-right" onClick={() => navigate(quotePath(sel.id))}>
+          {SEL.openSelected(String(sel.quoteNo))}
+        </Button>,
+      );
+  } else if (!latest) {
     const newest = (getDb().records.quotations ?? []).find((q) => String(q.rootId || q.id) === String(raw.rootId || raw.id) && q.isLatest);
     if (newest)
       primary.push(
@@ -81,38 +102,38 @@ export function QuoteActions({ actor, record }: Props) {
       );
   } else if (status === 'draft') {
     primary.push(
-      <Button key="submit" variant="primary" onClick={() => setDialog('submit')} disabledReason={ro}>
+      <Button key="submit" variant="primary" onClick={() => setDialog('submit')} disabledReason={ro ?? block}>
         {A.submitForApproval}
       </Button>,
-      <Button key="edit" icon="pencil" onClick={() => navigate(toPath(ROUTES.quotationEdit, { recordId: record.id }))} disabledReason={ro}>
+      <Button key="edit" icon="pencil" onClick={() => navigate(toPath(ROUTES.quotationEdit, { recordId: record.id }))} disabledReason={ro ?? block}>
         {A.editLineItems}
       </Button>,
     );
   } else if (status === 'pending_approval') {
     primary.push(
-      <Button key="pull" onClick={() => setDialog('pullback')} disabledReason={ro}>
+      <Button key="pull" onClick={() => setDialog('pullback')} disabledReason={ro ?? block}>
         {A.pullBack}
       </Button>,
     );
   } else if (status === 'approved') {
     // Send / Accept are optional: the customer PO on the sales order is the acceptance.
     primary.push(
-      <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={perm(actor, 'salesOrders').create ? (expired ? T.common.validityEnded : undefined) : C.cannotCreateSo(actor.role.label)}>
+      <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={soReason}>
         {A.generateSalesOrder}
       </Button>,
-      <Button key="send" icon="send" onClick={() => setDialog('send')} disabledReason={ro ?? (expired ? T.common.validityEnded : undefined)}>
+      <Button key="send" icon="send" onClick={() => setDialog('send')} disabledReason={ro ?? block ?? (expired ? T.common.validityEnded : undefined)}>
         {A.sendQuotation}
       </Button>,
     );
   } else if (status === 'sent' || status === 'negotiation') {
     primary.push(
-      <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={perm(actor, 'salesOrders').create ? (expired ? T.common.validityEnded : undefined) : C.cannotCreateSo(actor.role.label)}>
+      <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={soReason}>
         {A.generateSalesOrder}
       </Button>,
-      <Button key="accept" onClick={() => setDialog('accept')} disabledReason={ro ?? (expired ? T.common.validityEnded : undefined)}>
+      <Button key="accept" onClick={() => setDialog('accept')} disabledReason={ro ?? block ?? (expired ? T.common.validityEnded : undefined)}>
         {A.markAccepted}
       </Button>,
-      <Button key="reject" onClick={() => setDialog('reject')} disabledReason={ro}>
+      <Button key="reject" onClick={() => setDialog('reject')} disabledReason={ro ?? block}>
         {A.markRejected}
       </Button>,
     );
@@ -126,12 +147,26 @@ export function QuoteActions({ actor, record }: Props) {
       );
     else
       primary.push(
-        <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={perm(actor, 'salesOrders').create ? undefined : C.cannotCreateSo(actor.role.label)}>
+        <Button key="so" variant="primary" onClick={() => navigate(toPath(ROUTES.salesOrderNew, {}, { quotation: record.id }))} disabledReason={soReason}>
           {A.generateSalesOrder}
         </Button>,
       );
   }
   const canVersion = latest && ['pending_approval', 'approved', 'sent', 'negotiation', 'expired'].includes(status);
+  const readOnly = status === 'not_selected';
+  const menuItems = [
+    { id: 'pdf', label: A.quotationPdf, icon: 'download' as const, onSelect: () => navigate(pdfPath(record.id)) },
+    { id: 'compare', label: A.compareVersions, icon: 'columns' as const, disabledReason: versions > 1 ? undefined : C.onlyOneVersion, onSelect: () => navigate(comparePath(record.id)) },
+    ...(readOnly
+      ? []
+      : [
+          { id: 'send', label: A.sendQuotation, icon: 'send' as const, disabledReason: !latest || !['approved', 'sent', 'negotiation'].includes(status) ? C.onlyApprovedSend : ro ?? block ?? (expired ? T.common.validityEnded : undefined), onSelect: () => setDialog('send') },
+          { id: 'version', label: A.createVersion, icon: 'copy' as const, separatorBefore: true, disabledReason: canVersion ? ro ?? block : C.onlyOpenVersion, onSelect: () => setDialog('version') },
+        ]),
+    ...(status === 'accepted' && canUndoSelection(actor)
+      ? [{ id: 'undo', label: SEL.undo, icon: 'undo' as const, separatorBefore: true, disabledReason: liveSo ? SEL.undoOrderExists(String(liveSo.orderNo ?? liveSo.id)) : ro, onSelect: () => setDialog('undo') }]
+      : []),
+  ];
 
   return (
     <>
@@ -145,12 +180,7 @@ export function QuoteActions({ actor, record }: Props) {
         onClose={() => setMenu(false)}
         anchor={moreRef}
         label={A.menu}
-        items={[
-          { id: 'pdf', label: A.quotationPdf, icon: 'download', onSelect: () => navigate(pdfPath(record.id)) },
-          { id: 'compare', label: A.compareVersions, icon: 'columns', disabledReason: versions > 1 ? undefined : C.onlyOneVersion, onSelect: () => navigate(comparePath(record.id)) },
-          { id: 'send', label: A.sendQuotation, icon: 'send', disabledReason: !latest || !['approved', 'sent', 'negotiation'].includes(status) ? C.onlyApprovedSend : ro ?? (expired ? T.common.validityEnded : undefined), onSelect: () => setDialog('send') },
-          { id: 'version', label: A.createVersion, icon: 'copy', separatorBefore: true, disabledReason: canVersion ? ro : C.onlyOpenVersion, onSelect: () => setDialog('version') },
-        ]}
+        items={menuItems}
       />
       {dialog === 'submit' && <SubmitDialog record={raw} onClose={() => setDialog('')} />}
       {dialog === 'send' && <SendDialog record={raw} onClose={() => setDialog('')} />}
@@ -187,6 +217,42 @@ export function QuoteActions({ actor, record }: Props) {
         }
       >
         <p className="muted">{D.pullBack.body}</p>
+      </Dialog>
+      <Dialog
+        open={dialog === 'undo'}
+        onClose={() => setDialog('')}
+        size="sm"
+        role="alertdialog"
+        title={SEL.undoTitle(String(raw.quoteNo))}
+        description={SEL.undoBody}
+        footer={
+          <>
+            <Button onClick={() => setDialog('')} data-autofocus>
+              {A.cancel}
+            </Button>
+            <Button
+              variant="danger"
+              loading={undoBusy}
+              onClick={async () => {
+                if (undoBusy) return;
+                setUndoBusy(true);
+                try {
+                  await call(() => undoSelection(actor, raw.id, raw.version));
+                  toast(SEL.undoDone(String(raw.quoteNo)));
+                  setDialog('');
+                } catch (e) {
+                  toast(errorMessage(e), 'danger');
+                } finally {
+                  setUndoBusy(false);
+                }
+              }}
+            >
+              {SEL.undo}
+            </Button>
+          </>
+        }
+      >
+        <p className="muted">{SEL.undoBody}</p>
       </Dialog>
     </>
   );
@@ -530,10 +596,43 @@ function VersionDialog({ record, onClose }: DProps) {
 
 // ---------------------------------------------------------------- banner
 
-export function QuoteBanner({ actor, record }: Props) {
+/** Accepted quotation: one compact line beside the title — when, and how (PO or e-acceptance); full text on hover. */
+export function QuoteTitleNote({ record }: Props) {
+  const raw = (getDb().records.quotations ?? []).find((q) => q.id === record.id);
+  if (!raw || raw.status !== 'accepted' || raw.isLatest === false) return null;
+  const when = raw.acceptedAt ? B.acceptedOn(formatDateTime(String(raw.acceptedAt))) : B.accepted;
+  const po = raw.acceptanceMethod === 'po';
+  const how = po ? B.acceptedNotePo(String(raw.customerPoNo)) : raw.acceptedByName ? B.acceptedNoteElectronic(String(raw.acceptedByName)) : '';
+  const full = `${when}. ${po ? B.acceptedPo(String(raw.customerPoNo), String(raw.poFileName)) : B.acceptedElectronic(String(raw.acceptedByName))}`;
+  return (
+    <span className="title-note tone-success" data-tooltip={full}>
+      <Icon name="check" size={13} />
+      <span className="title-note-text">
+        {when}
+        {how && <span className="title-note-sub"> · {how}</span>}
+      </span>
+    </span>
+  );
+}
+
+export function QuoteBanner({ record }: Props) {
   const raw = (getDb().records.quotations ?? []).find((q) => q.id === record.id);
   if (!raw) return null;
   const status = String(raw.status);
+  if (status === 'not_selected') {
+    const sel = raw.selectedQuotationId ? (getDb().records.quotations ?? []).find((q) => q.id === raw.selectedQuotationId) : undefined;
+    const date = formatDate(String((sel?.acceptedAt as string | undefined) ?? raw.notSelectedAt ?? '').slice(0, 10));
+    return (
+      <InlineAlert tone="info" title={sel ? SEL.bannerTitle(String(sel.quoteNo), date) : SEL.bannerLostTitle(formatDate(String(raw.notSelectedAt ?? '').slice(0, 10)))}>
+        {SEL.bannerBody}{' '}
+        {sel && (
+          <Link className="link" to={quotePath(sel.id)}>
+            {SEL.openSelected(String(sel.quoteNo))}
+          </Link>
+        )}
+      </InlineAlert>
+    );
+  }
   if (!raw.isLatest)
     return (
       <InlineAlert tone="info" title={B.olderVersion}>
@@ -561,15 +660,8 @@ export function QuoteBanner({ actor, record }: Props) {
         {B.expiredBody}
       </InlineAlert>
     );
-  if (status === 'accepted') {
-    const ordered = (getDb().records.salesOrders ?? []).some((o) => o.quotationId === raw.id && o.status !== 'cancelled');
-    const canOrder = perm(actor, 'salesOrders').create && !ordered;
-    return (
-      <InlineAlert tone="success" title={raw.acceptedAt ? B.acceptedOn(formatDateTime(String(raw.acceptedAt))) : B.accepted}>
-        {raw.acceptanceMethod === 'po' ? B.acceptedPo(String(raw.customerPoNo), String(raw.poFileName)) : B.acceptedElectronic(String(raw.acceptedByName))} {canOrder ? B.generateHint : ''}
-      </InlineAlert>
-    );
-  }
+  // Accepted: a compact note beside the title (QuoteTitleNote); the next step is in the Deal Journey card.
+  if (status === 'accepted') return null;
   if (['approved', 'sent', 'negotiation'].includes(status)) {
     const daysLeft = Math.round((new Date(String(raw.validUntil)).getTime() - new Date(todayKey()).getTime()) / 86_400_000);
     if (daysLeft <= 3)
@@ -730,7 +822,7 @@ export function VersionsTab({ actor, record }: Props) {
         const st = masterValue('quoteStatus', r.status);
         return (
           <li key={r.id} className="flow-item">
-            <StatusChip label={`v${(Number(r.revision) || 0) + 1} · ${r.isLatest ? 'Active' : 'Previous'}`} tone={r.isLatest ? 'success' : 'neutral'} />
+            <StatusChip label={`v${(Number(r.revision) || 0) + 1} · ${r.isLatest && r.status !== 'not_selected' ? 'Active' : 'Previous'}`} tone={r.isLatest && r.status !== 'not_selected' ? 'success' : 'neutral'} />
             <Link to={quotePath(r.id)} className="flow-main">
               <span className="flow-title">
                 {String(r.quoteNo)} · {formatMoney(Number(r.grandTotal) || 0)}
@@ -786,11 +878,11 @@ export function DocumentsTab({ actor, record }: Props) {
 export function RoiTab({ actor, record }: Props) {
   const toast = useToast();
   const raw = (getDb().records.quotations ?? []).find((q) => q.id === record.id);
-  const [v, setV] = useState({
-    out: String(raw?.roiOutputPerDay ?? 500),
-    price: String(raw?.roiPricePerUnit ?? 120),
-    cost: String(raw?.roiCostPerUnit ?? 45),
-    days: String(raw?.roiWorkingDays ?? 25),
+  const [v, setV] = useState<Record<'out' | 'price' | 'cost' | 'days', number | null>>({
+    out: Number(raw?.roiOutputPerDay ?? 500),
+    price: Number(raw?.roiPricePerUnit ?? 120),
+    cost: Number(raw?.roiCostPerUnit ?? 45),
+    days: Number(raw?.roiWorkingDays ?? 25),
   });
   const [busy, setBusy] = useState(false);
   if (!raw) return null;
@@ -801,16 +893,17 @@ export function RoiTab({ actor, record }: Props) {
       return false;
     }
   })();
-  const r = roi({ investment: Number(raw.grandTotal) || 0, outputPerDay: Number(v.out), pricePerUnit: Number(v.price), costPerUnit: Number(v.cost), workingDays: Number(v.days) });
+  // COM-05: typed text is kept; "-5" or "1e3" shows why and blocks the save (the preview treats it as 0).
+  const RULES: Record<keyof typeof v, NumberRule> = { out: NUMBER_LIMITS.count, days: { min: 1, max: 31, integer: true }, price: NUMBER_LIMITS.amount, cost: NUMBER_LIMITS.amount };
+  const fin = (n: number | null) => (n !== null && Number.isFinite(n) ? n : 0);
+  const bad = (Object.keys(RULES) as (keyof typeof v)[]).some((k) => isBadNumber(v[k], RULES[k]));
+  const r = roi({ investment: Number(raw.grandTotal) || 0, outputPerDay: fin(v.out), pricePerUnit: fin(v.price), costPerUnit: fin(v.cost), workingDays: fin(v.days) });
   const field = (k: keyof typeof v, label: string, prefix?: string) => (
     <div className="form-field">
       <label className="field-label" htmlFor={`roi-${k}`}>
         {label}
       </label>
-      <div className={`input-affix${prefix ? ' has-start' : ''}`}>
-        {prefix && <span className="affix affix-start">{prefix}</span>}
-        <TextField id={`roi-${k}`} inputMode="decimal" value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value.replace(/[^\d.]/g, '') })} />
-      </div>
+      <NumberInput id={`roi-${k}`} prefix={prefix} value={v[k]} rule={RULES[k]} onValueChange={(n) => setV((cur) => ({ ...cur, [k]: n }))} />
     </div>
   );
   return (
@@ -840,12 +933,12 @@ export function RoiTab({ actor, record }: Props) {
       </dl>
       <Button
         loading={busy}
-        disabledReason={canSave ? undefined : T.common.readOnlyFor(actor.role.label)}
+        disabledReason={canSave ? (bad ? L.common.form.fixHighlighted : undefined) : T.common.readOnlyFor(actor.role.label)}
         onClick={async () => {
           setBusy(true);
           try {
             const fresh = (getDb().records.quotations ?? []).find((q) => q.id === record.id)!;
-            await call(() => updateRecord(actor, 'quotations', record.id, { roiOutputPerDay: Number(v.out) || 0, roiPricePerUnit: Number(v.price) || 0, roiCostPerUnit: Number(v.cost) || 0, roiWorkingDays: Number(v.days) || 1 }, fresh.version));
+            await call(() => updateRecord(actor, 'quotations', record.id, { roiOutputPerDay: fin(v.out), roiPricePerUnit: fin(v.price), roiCostPerUnit: fin(v.cost), roiWorkingDays: fin(v.days) || 1 }, fresh.version));
             toast(C.roiSaved);
           } catch (e) {
             toast(errorMessage(e), 'danger');
@@ -860,13 +953,19 @@ export function RoiTab({ actor, record }: Props) {
   );
 }
 
-/** Opportunity → Quotations tab (latest version of each quotation) with "New Quotation". */
+/** Opportunity → Quotations tab: every quotation and version grouped Selected / Active / Not Selected / Superseded, with "New Quotation". */
 export function OpportunityQuotesTab({ actor, record }: Props) {
   const navigate = useNavigate();
-  const q = useServiceQuery(() => (perm(actor, 'quotations').read === 'none' ? [] : queryRecords(actor, 'quotations', { where: { opportunityId: record.id, isLatest: true }, sort: [{ field: 'quoteDate', dir: 'desc' }] }).rows), [record.id, actor.user.id]);
+  const q = useServiceQuery(() => (perm(actor, 'quotations').read === 'none' ? [] : queryRecords(actor, 'quotations', { where: { opportunityId: record.id }, sort: [{ field: 'quoteDate', dir: 'desc' }] }).rows), [record.id, actor.user.id]);
   const closed = ['won', 'lost'].includes(String(record.stage));
+  const selected = selectedQuoteOf(getDb(), record.id);
   const action = (
-    <Button variant="primary" icon="plus" onClick={() => navigate(toPath(ROUTES.quotationNew, {}, { opportunity: record.id }))} disabledReason={!perm(actor, 'quotations').create ? C.cannotCreate(actor.role.label) : closed ? C.oppClosed : undefined}>
+    <Button
+      variant="primary"
+      icon="plus"
+      onClick={() => navigate(toPath(ROUTES.quotationNew, {}, { opportunity: record.id }))}
+      disabledReason={!perm(actor, 'quotations').create ? C.cannotCreate(actor.role.label) : record.stage === 'won' && selected ? SEL.oppWonNew(String(selected.quoteNo)) : closed ? C.oppClosed : undefined}
+    >
       {A.newQuotation}
     </Button>
   );
@@ -884,26 +983,41 @@ export function OpportunityQuotesTab({ actor, record }: Props) {
         {C.noQuotationsBody}
       </EmptyState>
     );
+  const G = SEL.groups;
+  const groupOf = (r: (typeof rows)[number]) => (r.status === 'accepted' ? 'selected' : r.status === 'not_selected' ? 'notSelected' : r.status === 'superseded' || !r.isLatest ? 'superseded' : ['rejected', 'expired'].includes(String(r.status)) ? 'closed' : 'active');
+  const order = ['selected', 'active', 'notSelected', 'superseded', 'closed'] as const;
   return (
     <div className="qt-tab">
-      <ul className="flow-list">
-        {rows.map((r) => {
-          const st = masterValue('quoteStatus', r.status);
-          return (
-            <li key={r.id} className="flow-item">
-              <Link to={quotePath(r.id)} className="flow-main">
-                <span className="flow-title">
-                  {String(r.quoteNo)} · {formatMoney(Number(r.grandTotal) || 0)}
-                </span>
-                <span className="muted small">
-                  {formatDate(String(r.quoteDate))} · {C.validUntilShort(formatDate(String(r.validUntil)))}
-                </span>
-              </Link>
-              {st && <StatusChip label={st.label} tone={st.tone} />}
-            </li>
-          );
-        })}
-      </ul>
+      {order.map((g) => {
+        const list = rows.filter((r) => groupOf(r) === g);
+        if (!list.length) return null;
+        return (
+          <section key={g} aria-label={G[g]}>
+            <h3 className="panel-title">
+              {G[g]} <span className="muted small">({list.length})</span>
+            </h3>
+            <ul className="flow-list">
+              {list.map((r) => {
+                const st = masterValue('quoteStatus', r.status);
+                return (
+                  <li key={r.id} className="flow-item">
+                    <Link to={quotePath(r.id)} className="flow-main">
+                      <span className="flow-title">
+                        {String(r.quoteNo)} · {formatMoney(Number(r.grandTotal) || 0)}
+                      </span>
+                      <span className="muted small">
+                        {formatDate(String(r.quoteDate))} · {g === 'notSelected' && r.notSelectedReason ? String(r.notSelectedReason) : C.validUntilShort(formatDate(String(r.validUntil)))}
+                      </span>
+                    </Link>
+                    {g === 'selected' && <StatusChip label={SEL.selectedChip} tone="success" />}
+                    {st && <StatusChip label={st.label} tone={st.tone} />}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
       {action}
     </div>
   );

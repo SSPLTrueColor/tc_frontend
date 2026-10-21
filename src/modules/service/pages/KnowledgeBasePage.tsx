@@ -79,7 +79,7 @@ export function KnowledgeBasePage() {
       description={P.description}
       actions={perm(actor, 'knowledgeArticles').create ? <LinkButton variant="primary" to={recordNewPath('knowledgeArticles')}>{S.actions.newArticle}</LinkButton> : undefined}
     >
-      <DataTable
+      <DataTable exportResource="knowledgeArticles"
         label={P.tableLabel}
         rows={data?.rows ?? []}
         rowKey={(a) => a.id}

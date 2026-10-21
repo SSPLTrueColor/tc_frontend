@@ -184,6 +184,13 @@ function productLine(p: RecordData, qty: number, discountPct = 0, discountAmt = 
   return { productId: p.id, description: String(p.name), lineType: String(p.productType), qty, listPrice: 1, discountPct, discountAmt, hsnSac: String(p.hsnSac), gstRate: Number(p.gstRate) };
 }
 
+/** Appendix A: the first contact is logged before a lead can be converted (New → Contacted). */
+function firstContact(owner: Actor, leadId: string) {
+  const l = byId('leads', leadId)!;
+  X(() => logActivity(owner, { parentResource: 'leads', parentId: l.id, parentLabel: l.id, customerId: String(l.customerId), activityType: 'call', subject: 'First call', at: nowLocal(), nextFollowUpAt: addDays(todayKey(), 2) }));
+  return byId('leads', leadId)!;
+}
+
 const bant = (value: number, name: string): QualifyInput => ({ requirement: `Needs ${name}`, budget: value, decisionMaker: 'Mr. Shah (MD)', timeline: '1_3m', opportunityName: name, value, expectedCloseDate: addDays(todayKey(), 45) });
 
 /** Contact → Lead by either Convert to Lead (pool) or inline company + contact (LEAD-01). Returns ids. */
@@ -547,7 +554,7 @@ describe('2. Negative / edge cases (BRD rules)', () => {
   it('OPP-02: illegal stage moves are refused (Needs Assessment → Won; → Negotiation without a quotation; Won without accepted quote)', () => {
     const k = A('u_karan');
     const fresh = makeLead(k, 'TX', 'machine', TERRITORIES[1], 9200 + uniq(), 'inline');
-    const l = byId('leads', fresh.leadId)!;
+    const l = firstContact(k, fresh.leadId);
     const { opportunityId } = X(() => qualifyLead(k, l.id, l.version, bant(1_000_000, 'Stage test')));
     const v = () => byId('opportunities', opportunityId)!.version;
     expect(refused(() => transitionRecord(k, 'opportunities', opportunityId, 'won', v())).code).toBe('invalid_state');
@@ -899,7 +906,7 @@ describe('3. Concurrency stress (Promise.all over the async *Api services)', () 
   it('Parallel qualify of the same lead (double click) → one opportunity', async () => {
     const k = A('u_karan');
     const L1 = makeLead(k, 'TX', 'machine', TERRITORIES[1], 8800 + uniq(), 'inline');
-    const l = byId('leads', L1.leadId)!;
+    const l = firstContact(k, L1.leadId);
     const res = await Promise.allSettled(Array.from({ length: 8 }, () => leadsApi.convertToOpportunity(k, l.id, l.version, bant(2_000_000, 'Double click'))));
     expect(res.filter((r) => r.status === 'fulfilled').length).toBe(1);
     expect(R('opportunities').filter((o) => o.leadId === l.id).length).toBe(1);
@@ -943,11 +950,19 @@ describe('4. Volume: 200 leads + 200 opportunities, list / search / filter timin
     }
     vt.create200Leads = performance.now() - t0;
     expect(new Set(created).size).toBe(200);
+    // Appendix A: each lead's first contact is logged before conversion. Timed apart from the conversion itself:
+    // every write re-serialises the whole store, so the extra commit per lead must not read as a slower conversion.
+    const tc = performance.now();
+    const contacted: RecordData[] = [];
+    for (let i = 0; i < created.length; i++) {
+      if (i % 10 === 0) await tick();
+      contacted.push(firstContact(owners[i % 5], created[i]));
+    }
+    vt.firstContact200 = performance.now() - tc;
     const t1 = performance.now();
     for (let i = 0; i < created.length; i++) {
       if (i % 10 === 0) await tick();
-      const l = byId('leads', created[i])!;
-      qualifyLead(owners[i % 5], created[i], l.version, bant(100_000 + i * 1000, `Volume deal ${i}`));
+      qualifyLead(owners[i % 5], created[i], contacted[i].version, bant(100_000 + i * 1000, `Volume deal ${i}`));
     }
     vt.convert200 = performance.now() - t1;
     const size = JSON.stringify(db()).length;

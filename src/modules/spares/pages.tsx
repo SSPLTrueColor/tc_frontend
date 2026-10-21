@@ -71,7 +71,7 @@ export function MinimumLevelAlertsPage() {
             {q.data.lastSync ? P.lastSync(formatDate(q.data.lastSync)) : ''}.
           </EmptyState>
         ) : (
-          <DataTable
+          <DataTable exportResource="spareParts"
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}

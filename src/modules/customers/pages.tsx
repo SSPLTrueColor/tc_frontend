@@ -145,7 +145,7 @@ export function ContactPoolPage() {
         </>
       }
     >
-        <DataTable<PoolContact>
+        <DataTable<PoolContact> exportResource="contacts"
           label={PAGES.contactPool.title}
           noun={P.noun}
           rows={rows}

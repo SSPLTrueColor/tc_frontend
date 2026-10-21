@@ -93,7 +93,7 @@ export function PayrollExportPage() {
         </Button>
       }
     >
-      <DataTable
+      <DataTable exportResource="expenseClaims"
         label={P.tableLabel}
         noun={P.noun}
         rows={rows}
@@ -217,7 +217,7 @@ export function TargetVsActualPage() {
         ) : undefined
       }
     >
-      <DataTable
+      <DataTable exportResource="targets"
         label={P.tableLabel}
         noun={P.noun}
         rows={rows}

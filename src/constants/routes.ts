@@ -174,6 +174,7 @@ export const ROUTES = {
   leadAssignmentRules: '/admin/lead-assignment-rules',
   leadScoringRules: '/admin/lead-scoring-rules',
   notificationTemplates: '/admin/notification-templates',
+  numberingSeries: '/admin/numbering-series',
   bulkImportExport: '/admin/bulk-import-export',
   duplicateMerge: '/admin/duplicate-merge',
   ownershipTransfer: '/admin/ownership-transfer',

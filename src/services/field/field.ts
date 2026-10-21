@@ -16,6 +16,7 @@ import type { HookContext } from '../resourceHooks';
 import { insertRecordIn, patchRecordIn, queryRecords } from '../runtime';
 import { ServiceError } from '../types';
 import { L } from '../../constants/labels';
+import { activityScorecard, scoreTotal } from '../reports/kpis';
 import { achievementFor, attendanceMetrics, BOOKED, geofenceCheck, isOfficeRole, OFFICE, orderNetValue, periodLabel, periodRange, type Point, routeDistanceKm, TERRITORY_CENTRES } from './rules';
 
 const E = L.field.errors;
@@ -608,28 +609,13 @@ export interface ScoreRow {
 export function scorecard(actor: Actor, weekStart: string): ScoreRow[] {
   if (perm(actor, 'targets').read === 'none') throw new ServiceError('forbidden', L.targets.errors.noTargetsRead);
   const ws = startOfWeek(weekStart);
-  const we = addDays(ws, 7);
-  const inWeek = (d: unknown) => typeof d === 'string' && d.slice(0, 10) >= ws && d.slice(0, 10) < we;
   const people = employeesInScope(actor).filter((e) => isFieldRole(e.roleId) || ['service_head', 'division_head', 'coordinator'].includes(String(e.roleId)) || e.id === actor.staffId);
-  const acts = recs('activities').filter((a) => inWeek(a.at));
-  const visits = recs('fieldVisits').filter((v) => v.status === 'completed' && inWeek(v.checkOutAt ?? v.checkInAt));
-  const demos = recs('demos').filter((x) => inWeek(x.scheduledAt) && ['done', 'completed'].includes(String(x.status)));
-  const quotes = recs('quotations').filter((q) => inWeek(q.quoteDate ?? q.createdAt));
-  const leads = recs('leads').filter((l) => inWeek(l.createdAt));
+  // 3.1: one calculation shared with the Business Scorecard (services/reports/kpis.activityScorecard).
+  const counts = activityScorecard({ activities: recs('activities'), fieldVisits: recs('fieldVisits'), demos: recs('demos'), quotations: recs('quotations'), leads: recs('leads'), from: ws, to: addDays(ws, 6) });
   return people
     .map((employee) => {
-      const id = employee.id;
-      const row = {
-        employee,
-        calls: acts.filter((a) => a.byId === id && a.activityType === 'call').length,
-        visits: visits.filter((v) => v.employeeId === id).length,
-        demos: demos.filter((x) => x.ownerId === id).length + acts.filter((a) => a.byId === id && a.activityType === 'demo').length,
-        quotations: quotes.filter((q) => q.ownerId === id).length,
-        referrals: leads.filter((l) => l.referrerEmployeeId === id).length,
-        total: 0,
-      };
-      row.total = row.calls + row.visits + row.demos + row.quotations + row.referrals;
-      return row;
+      const c = counts.get(String(employee.id)) ?? { calls: 0, visits: 0, demos: 0, quotations: 0, referrals: 0 };
+      return { employee, ...c, total: scoreTotal(c) };
     })
     .sort((a, b) => b.total - a.total);
 }
