@@ -6,7 +6,7 @@
 import { L } from '../../constants/labels';
 import type { RecordData } from '../../metadata/types';
 import { addDays, toDate, toDateKey } from '../../lib/dates';
-import { orderNetValue } from '../../domain/modules/field/rules';
+import { valueBeforeGst } from '../quotations/pricing';
 
 type Rows = RecordData[];
 
@@ -68,18 +68,12 @@ export function avgSalesCycleDays(opps: Rows, leads: Rows) {
 // ---------------------------------------------------------------- value basis (Decision D-1)
 
 /**
- * Sales value BEFORE GST: the one basis for targets, leaderboard, revenue KPIs and pipeline. Line net
- * (quantity × price − discount), the same figure Target vs Actual uses; records without lines fall back to
- * subtotal less discount, then taxable value less freight and insurance.
+ * Sales value BEFORE GST: the one basis for targets, leaderboard, revenue KPIs, pipeline and the won
+ * opportunity value — the taxable value (lines net of discount + freight + insurance), the same figure
+ * as the "Taxable value" on the quotation and the sales order (see valueBeforeGst).
  */
-const has = (v: unknown) => v !== undefined && v !== null && v !== '';
 export function netValue(r: RecordData): number {
-  const lines = r.lines as RecordData[] | undefined;
-  if (Array.isArray(lines) && lines.length) return orderNetValue(r);
-  // Lists and reports read projected records (no line items): subtotal less discount is the same figure.
-  if (has(r.subtotal)) return Math.max(0, n(r.subtotal) - n(r.discountTotal));
-  if (has(r.taxable)) return Math.max(0, n(r.taxable) - n(r.freight) - n(r.insurance));
-  return Math.max(0, n(r.grandTotal) - n(r.cgst) - n(r.sgst) - n(r.igst) - n(r.freight) - n(r.insurance));
+  return valueBeforeGst(r);
 }
 export const sumNet = (rows: Rows) => rows.reduce((t, r) => t + netValue(r), 0);
 /** GST-inclusive total, shown next to the net value on orders and invoices. */

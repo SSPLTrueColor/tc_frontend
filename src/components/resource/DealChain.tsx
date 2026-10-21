@@ -156,7 +156,10 @@ export function DealChain({ resKey, recordId, actor, onTab }: { resKey: string; 
   const latestQuote = [...quotations].reverse().find((q) => q.isLatest !== false);
   const quote = resKey === 'quotations' ? (self?.isLatest === false ? undefined : self) : (selected ?? latestQuote);
   const order = resKey === 'salesOrders' ? orders.find((o) => o.id === recordId) : liveOrder;
-  const model = resKey === 'quotations' && self?.isLatest === false ? null : dealProgress(quote, order);
+  // A Not Selected quotation is closed: it never shows the selected deal's progress or next step (neutral note instead).
+  const notSelected = resKey === 'quotations' && self?.status === 'not_selected';
+  const model = notSelected || (resKey === 'quotations' && self?.isLatest === false) ? null : dealProgress(quote, order);
+  const notSelectedText = notSelected ? (selected && selected.id !== self?.id ? P.notSelectedFor(String(selected.quoteNo ?? selected.id)) : P.notSelectedLost) : null;
 
   const tabId = model && model.driver.resource === resKey ? NEXT_TAB[resKey]?.[model.driver.status] : undefined;
   const tab = tabId && onTab ? getRecordTabs(resKey).find((t) => t.id === tabId) : undefined;
@@ -216,7 +219,7 @@ export function DealChain({ resKey, recordId, actor, onTab }: { resKey: string; 
   const to = showAll ? stops.length - 1 : Math.min(stops.length - 1, focus + 1);
   const hidden = from;
 
-  const summary = model ? (model.stopped ? `${P.stoppedLabel}: ${model.stopped}` : model.current ? P.pending[model.current] : P.done) : null;
+  const summary = notSelected ? P.notSelected : model ? (model.stopped ? `${P.stoppedLabel}: ${model.stopped}` : model.current ? P.pending[model.current] : P.done) : null;
   const toggleBtn = <IconButton icon={collapsed ? 'chevron-down' : 'chevron-up'} label={collapsed ? P.expand : P.collapse} aria-expanded={!collapsed} onClick={toggle} className="dj-toggle" />;
 
   if (collapsed)
@@ -258,6 +261,15 @@ export function DealChain({ resKey, recordId, actor, onTab }: { resKey: string; 
         </ol>
         {toggleBtn}
       </div>
+      {notSelectedText && (
+        <div className="dj-next">
+          <Icon name="info" size={14} className="dj-next-icon" />
+          <strong className="dj-next-label">{P.notSelected}</strong>
+          <span className="dj-next-text" data-tooltip={notSelectedText}>
+            {notSelectedText}
+          </span>
+        </div>
+      )}
       {model && (model.stopped || model.next) && (
         <div className={cx('dj-next', model.stopped && 'is-stopped', model.complete && 'is-complete')}>
           <Icon name={model.stopped ? 'alert' : model.complete ? 'check-circle' : 'arrow-right'} size={14} className="dj-next-icon" />

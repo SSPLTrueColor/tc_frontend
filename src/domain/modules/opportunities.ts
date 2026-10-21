@@ -175,7 +175,7 @@ export const opportunities: ResourceDefinition = {
     fo('oppType', F.opportunities.oppType, 'master', { master: 'oppType', required: true, defaultValue: 'new_machine', width: 170 }),
     fo('productType', F.opportunities.productType, 'master', { master: 'productType', width: 140 }),
     fo('productId', F.opportunities.productId, 'relation', { relation: { resource: 'products' }, width: 180 }),
-    fo('value', F.opportunities.value, 'money', { required: true, min: 0, max: 999_999_999, currency: 'INR', width: 140 }),
+    fo('value', F.opportunities.value, 'money', { required: true, min: 1, max: 999_999_999, currency: 'INR', help: F.opportunities.valueHelp, width: 140 }),
     fo('stage', F.opportunities.stage, 'master', { master: 'oppStage', readOnly: true, width: 170 }),
     fo('probability', F.opportunities.probability, 'number', { min: 0, max: 100, unit: L.opportunities.units.percent, width: 100, help: F.opportunities.probabilityHelp }),
     fo('weightedValue', F.opportunities.weightedValue, 'money', {

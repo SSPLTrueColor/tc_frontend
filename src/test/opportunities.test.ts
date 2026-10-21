@@ -1,7 +1,7 @@
 import { appPack } from '../domain/pack';
 import { actorFor } from '../services/authz';
 import { createDb, getDb, __setDb } from '../services/db';
-import { createRecord, queryRecords, transitionRecord } from '../services/runtime';
+import { createRecord, queryRecords, transitionRecord, updateRecord } from '../services/runtime';
 import { computeForecast, demoMachineCalendar, markLost, periodOf, pipelineFacets, pipelineRows, pipelineTotals } from '../services/opportunities';
 import { masterLabel } from '../services/registry';
 import { L } from '../constants/labels';
@@ -42,7 +42,9 @@ describe('opportunities', () => {
   });
 
   it('enforces stage entry criteria and updates probability', () => {
-    const o = newOpp(0);
+    // A legacy record without a value still cannot enter Proposal (new and edited ones need a value > 0, below).
+    const o = newOpp();
+    getDb().records.opportunities.find((x) => x.id === o.id)!.value = 0;
     expect(() => transitionRecord(karan(), 'opportunities', o.id, 'proposal', o.version)).toThrow(/value/i);
     const ok = newOpp();
     const moved = transitionRecord(karan(), 'opportunities', ok.id, 'demo', ok.version).record;
@@ -51,6 +53,17 @@ describe('opportunities', () => {
       const p = transitionRecord(karan(), 'opportunities', ok.id, 'proposal', moved.version).record;
       expect(() => transitionRecord(karan(), 'opportunities', ok.id, 'won', p.version)).toThrow(/accepted quotation/);
     }
+  });
+
+  it('value must be more than ₹0 on create and on edit (same rule as the Create Opportunity dialog)', () => {
+    const o = newOpp();
+    try {
+      updateRecord(karan(), 'opportunities', o.id, { value: 0 }, o.version);
+      expect.unreachable('value 0 was saved');
+    } catch (e) {
+      expect((e as ServiceError).fieldErrors?.value).toBeTruthy();
+    }
+    expect(getDb().records.opportunities.find((x) => x.id === o.id)!.value).toBe(2_500_000);
   });
 
   it('requires a lost reason and competitor (FR-031)', () => {

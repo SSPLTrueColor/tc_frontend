@@ -189,8 +189,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const palette = findPalette(settings.palette, settings.customPalettes);
   useEffect(
     () => applyPalette(palette),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [palette.id, palette.accent, palette.sidebar, palette.rail],
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1643,8 +1644,9 @@ function CommandPalette({
 
   const records = useMemo(
     () => (open ? searchRecords(actor, q) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [q, open, actor.user.id, actor.workspaceId],
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const needle = q.trim().toLowerCase();
   const list: Cmd[] = [
     ...records.map((h) => ({

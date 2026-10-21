@@ -3,7 +3,7 @@ import { actorFor } from '../services/authz';
 import { commit, createDb, getDb, __setDb } from '../services/db';
 import { logActivity } from '../services/activities';
 import { availableTransitions, createRecord } from '../services/runtime';
-import { createLeadWithParty, oppTypeForLead, qualifyLead } from '../services/leads/rules';
+import { convertWithFirstContact, createLeadWithParty, logLeadContact, nurtureLead, oppTypeForLead, qualifyLead } from '../services/leads/rules';
 import { convertContactToLead } from '../services/customers/operations';
 import { getPolicies } from '../services/policies';
 import { getResource } from '../services/registry';
@@ -107,6 +107,78 @@ describe('lead → opportunity conversion (1.6)', () => {
     expect(() => createLeadWithParty(admin(), lead, null, null, { duplicateReason: 'x' })).toThrow(/reason/i);
     const out = createLeadWithParty(admin(), lead, null, null, { duplicateReason: 'Separate ink requirement for plant 2' });
     expect(getDb().audit.some((a) => a.recordId === out.record.id && a.action === 'leads.duplicate_override')).toBe(true);
+  });
+});
+
+describe('combined Create Opportunity flow for New / Nurture leads', () => {
+  beforeEach(() => __setDb(createDb(new Date())));
+  const fc = { activityType: 'call', subject: 'First call — needs a 3.2 m printer', nextFollowUpAt: addDays(todayKey(), 2) };
+
+  it('New lead: refuses conversion without a first-contact payload', () => {
+    const l = newTextileLead();
+    expect(() => convertWithFirstContact(admin(), l.id, l.version, bant)).toThrow(/first contact/i);
+    expect(leadById(l.id).status).toBe('new');
+  });
+
+  it('New lead: logs the first contact, moves to Contacted and converts in one write', () => {
+    const l = newTextileLead();
+    const out = convertWithFirstContact(admin(), l.id, l.version, bant, fc);
+    const lead = leadById(l.id);
+    expect(lead.status).toBe('qualified');
+    expect(lead.opportunityId).toBe(out.opportunityId);
+    expect(lead.firstContactAt).toBeTruthy();
+    const act = getDb().records.activities.find((a) => a.id === out.activityId)!;
+    expect(act).toMatchObject({ parentResource: 'leads', parentId: l.id, subject: fc.subject });
+    const trail = getDb().audit.filter((a) => a.recordId === l.id).map((a) => a.summary);
+    expect(trail.some((t) => /New → Contacted/.test(String(t)))).toBe(true);
+  });
+
+  it('New lead: an invalid opportunity step logs nothing (atomic)', () => {
+    const l = newTextileLead();
+    const before = getDb().records.activities.length;
+    expect(() => convertWithFirstContact(admin(), l.id, l.version, { ...bant, decisionMaker: '' }, fc)).toThrow();
+    expect(() => convertWithFirstContact(admin(), l.id, l.version, bant, { ...fc, nextFollowUpAt: addDays(todayKey(), -1) })).toThrow();
+    expect(getDb().records.activities.length).toBe(before);
+    expect(leadById(l.id).status).toBe('new');
+  });
+
+  it('step 1 on its own: logging the first contact moves the lead to Contacted, then it converts', () => {
+    const l = newTextileLead();
+    const contacted = logLeadContact(admin(), l.id, fc);
+    expect(contacted.status).toBe('contacted');
+    const out = convertWithFirstContact(admin(), l.id, contacted.version, bant);
+    expect(leadById(l.id).opportunityId).toBe(out.opportunityId);
+  });
+
+  it('Nurture lead: reactivates to Contacted (audited) and converts', () => {
+    const l = contact(newTextileLead().id);
+    const n = nurtureLead(admin(), l.id, l.version, addDays(todayKey(), 30), 'Next quarter');
+    expect(() => qualifyLead(admin(), l.id, n.version, bant)).toThrow();
+    const out = convertWithFirstContact(admin(), l.id, n.version, bant);
+    const lead = leadById(l.id);
+    expect(lead.status).toBe('qualified');
+    expect(lead.opportunityId).toBe(out.opportunityId);
+    const trail = getDb().audit.filter((a) => a.recordId === l.id).map((a) => String(a.summary));
+    expect(trail.some((t) => t.includes('Reactivate') && t.includes('Nurture') && t.includes('Contacted'))).toBe(true);
+  });
+
+  it('Nurture lead never contacted: needs the first contact before conversion', () => {
+    const l = newTextileLead();
+    const n = nurtureLead(admin(), l.id, l.version, addDays(todayKey(), 30), '');
+    expect(() => convertWithFirstContact(admin(), l.id, n.version, bant)).toThrow(/first contact/i);
+    convertWithFirstContact(admin(), l.id, n.version, bant, fc);
+    expect(leadById(l.id).status).toBe('qualified');
+  });
+
+  it('logging a follow-up on a Nurture lead moves it back to Contacted and clears the re-contact date', () => {
+    const l = contact(newTextileLead().id);
+    nurtureLead(admin(), l.id, l.version, addDays(todayKey(), 30), '');
+    expect(leadById(l.id).status).toBe('nurture');
+    logActivity(admin(), { parentResource: 'leads', parentId: l.id, parentLabel: l.id, customerId: String(l.customerId), activityType: 'call', subject: 'Customer called back', at: nowLocal(), nextFollowUpAt: addDays(todayKey(), 3) });
+    const back = leadById(l.id);
+    expect(back.status).toBe('contacted');
+    expect(back.nurtureUntil).toBeNull();
+    expect(back.nextFollowUpAt).toBe(addDays(todayKey(), 3));
   });
 });
 

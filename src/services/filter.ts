@@ -172,3 +172,26 @@ export function decodeFilter(s: string): FilterGroup | null {
     return null;
   }
 }
+
+/** A condition is complete when it names a field and has something to compare (or its operator needs no value). */
+export function isConditionComplete(c: FilterCondition): boolean {
+  if (!c.field) return false;
+  if (VALUELESS.includes(c.operator)) return true;
+  const v = c.value;
+  return !(v === undefined || v === null || v === '' || (typeof v === 'number' && Number.isNaN(v)) || (Array.isArray(v) && v.length === 0));
+}
+
+/** Drop incomplete conditions (and groups left empty) — what a filter editor applies while rows are still being filled in. */
+export function pruneIncomplete(g: FilterGroup): FilterGroup {
+  const children: FilterGroup['children'] = [];
+  for (const c of g.children) {
+    if (c.kind === 'group') {
+      const sub = pruneIncomplete(c);
+      if (sub.children.length) children.push(sub);
+    } else if (isConditionComplete(c)) children.push(c);
+  }
+  return { ...g, children };
+}
+
+/** Number of complete conditions in a group (nested groups included). */
+export const countComplete = (g: FilterGroup): number => countConditions(pruneIncomplete(g));

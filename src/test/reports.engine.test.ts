@@ -237,8 +237,9 @@ describe('very large, zero and negative amounts', () => {
   it('shows ₹10,00,00,000-scale orders in full in the footer and compact on the card', () => {
     const o = getDb().records.salesOrders.find((x) => !['pending_approval', 'cancelled'].includes(String(x.status)))!;
     o.grandTotal = 1_000_000_000;
-    o.subtotal = 1_000_000_000; // value before GST (Decision D-1)
+    o.subtotal = 1_000_000_000;
     o.discountTotal = 0;
+    o.taxable = 1_000_000_000; // value before GST = the taxable value (Decision D-1)
     o.orderDate = todayKey();
     const res = runReport(admin(), 'order-value', 'value', { from: addDays(todayKey(), -400), to: todayKey(), group: 'month' });
     expect(res.totals.value!).toBeGreaterThanOrEqual(1_000_000_000);

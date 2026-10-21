@@ -340,12 +340,14 @@ export function Popover({
     // so it always stays fully inside the viewport.
     const ro = typeof ResizeObserver !== 'undefined' && ref.current ? new ResizeObserver(place) : null;
     if (ro && ref.current) ro.observe(ref.current);
+    // …and when the anchor changes size (e.g. a chip control that wraps to a second line while its list is open).
+    if (ro && anchor.current) ro.observe(anchor.current);
     return () => {
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
       ro?.disconnect();
     };
-  }, [open, place, width]);
+  }, [open, place, width, anchor]);
 
   // Keep the latest onClose in a ref: callers usually pass an inline arrow, and re-registering on every render would
   // move this popover to the end of `openPopovers` — then a click inside a child popover (opened from this one)

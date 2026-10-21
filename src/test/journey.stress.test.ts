@@ -996,5 +996,7 @@ describe('4. Volume: 200 leads + 200 opportunities, list / search / filter timin
     // a full list query should stay well under a second in local mode
     expect(vt.queryLeads_all_admin).toBeLessThan(1000);
     expect(vt.pipelineRows_open).toBeLessThan(1000);
-  });
+    // 600 full-store commits take ~4 s on an idle machine; the query timings above are the real assertions,
+    // so the overall budget is generous enough not to flake on a busy one.
+  }, 30_000);
 });

@@ -31,6 +31,13 @@ export type QueueInput = Omit<OutboxMessage, 'id' | 'workspaceId' | 'createdAt' 
   event?: string;
   /** Placeholder values that override the ones read from the related record. */
   vars?: Record<string, string>;
+  /**
+   * The user wrote their own body (e.g. edited it in the Send dialog): the template still supplies the
+   * subject, but the body is kept as written.
+   */
+  keepBody?: boolean;
+  /** Appended to the final body after rendering (e.g. the "[Attachment: …pdf]" line). */
+  bodySuffix?: string;
 };
 
 // ---------------------------------------------------------------- templates (ADM-06)
@@ -49,11 +56,7 @@ function inferEvent(d: Db, m: QueueInput): string | undefined {
   if (m.templateId && TEMPLATE_CODE_EVENT[m.templateId]) return TEMPLATE_CODE_EVENT[m.templateId];
   const res = m.related?.resource;
   if (res === 'amcContracts') return 'renewal_reminder';
-  if (res === 'quotations') {
-    // Only the default send text is replaced; a message the user typed in the Send dialog is kept as written.
-    const q = find(d, 'quotations', m.related?.recordId);
-    return q && m.body.startsWith(L.quotations.audit.sendBody(s(q.quoteNo))) ? 'quotation_sent' : undefined;
-  }
+  // Quotation sends name their event explicitly (sendQuote passes event: 'quotation_sent').
   if (res === 'installations') {
     const i = find(d, 'installations', m.related?.recordId);
     return i && m.subject === L.installed.service.scheduledSubject(s(i.id)) ? 'installation_scheduled' : undefined;
@@ -118,12 +121,13 @@ export function templateFor(d: Db, ws: string, event: string, channel: OutboxMes
 export function renderMessage(d: Db, ws: string, m: QueueInput): { subject?: string; body: string; templateId?: string; templateName?: string; event?: string } {
   const event = inferEvent(d, m);
   const tpl = event ? templateFor(d, ws, event, m.channel) : undefined;
-  if (!tpl) return { subject: m.subject, body: m.body, templateId: m.templateId, event };
+  const withSuffix = (b: string) => (m.bodySuffix ? `${b} ${m.bodySuffix}` : b);
+  if (!tpl) return { subject: m.subject, body: withSuffix(m.body), templateId: m.templateId, event };
   const own = Object.fromEntries(Object.entries(m.vars ?? {}).map(([k, v]) => [k, /^\d{4}-\d{2}-\d{2}/.test(v) ? formatDate(v.slice(0, 10)) : v]));
   const vars = { ...templateVars(d, ws, m.related), ...own };
   return {
     subject: m.channel === 'email' ? fillTemplate(s(tpl.subject) || s(m.subject), vars) || m.subject : m.subject,
-    body: fillTemplate(s(tpl.body), vars) || m.body,
+    body: withSuffix(m.keepBody ? m.body : fillTemplate(s(tpl.body), vars) || m.body),
     // A caller's template code (e.g. ticket.resolved) is kept; the record id of the template used is in the name line.
     templateId: m.templateId ?? s(tpl.id),
     templateName: s(tpl.name),
@@ -139,7 +143,7 @@ function push(d: Db, msg: OutboxMessage) {
 
 /** Customer-facing message (quotation, dispatch, ticket, renewal…), rendered from its template when one is active. */
 export function queueMessage(ctx: HookContext, m: QueueInput): OutboxMessage {
-  const { event: _e, vars: _v, ...rest } = m;
+  const { event: _e, vars: _v, keepBody: _k, bodySuffix: _s, ...rest } = m;
   const r = renderMessage(ctx.d, ctx.actor.workspaceId, m);
   const msg: OutboxMessage = {
     ...rest,
@@ -209,6 +213,24 @@ function prefsOf(d: Db, userId: string): NotificationPrefs {
   return { ...defaultSettings().notifications, ...(d.settings[userId]?.notifications ?? {}) };
 }
 
+/**
+ * ADM-06: Notification Template event used for a staff alert. The notification may name it itself
+ * (`templateEvent`); otherwise it follows from the kind and the record it is about.
+ */
+function staffTemplateEvent(n: Omit<AppNotification, 'id' | 'createdAt'>, related?: { resource: string; recordId: string }): string | undefined {
+  if (n.templateEvent) return n.templateEvent;
+  switch (n.kind) {
+    case 'approval_request':
+      return 'approval_requested';
+    case 'approval_decision':
+      return 'approval_decided';
+    case 'escalation':
+      return related?.resource === 'leads' ? 'lead_not_attended' : related?.resource === 'tickets' ? 'sla_breach' : undefined;
+    default:
+      return undefined;
+  }
+}
+
 const CHANNEL_OUT: Partial<Record<NotifChannel, OutboxMessage['channel']>> = { email: 'email', whatsapp: 'whatsapp', push: 'push' };
 
 /**
@@ -222,19 +244,33 @@ export function routeStaffAlert(d: Db, n: Omit<AppNotification, 'id' | 'createdA
   const channels = (prefs.events[event] ?? []).map((c) => CHANNEL_OUT[c]).filter((c): c is OutboxMessage['channel'] => !!c);
   const at = istNow();
   const quiet = inQuietHours(prefs.quietHours, at);
-  const related = n.link && 'resource' in n.link ? n.link : undefined;
+  const related = n.about ?? (n.link && 'resource' in n.link ? n.link : undefined);
+  const tplEvent = staffTemplateEvent(n, related);
   const out: OutboxMessage[] = [];
   for (const channel of channels) {
     const to = channel === 'email' ? s(staff.email) : channel === 'push' ? staff.userId : s(staff.mobile);
     if (!to) continue;
     const digest = channel === 'email' && prefs.dailyDigest;
+    // Rendered from the active template for the alert's event (e.g. "Approval requested"), else the default text.
+    const r = renderMessage(d, n.workspaceId, {
+      channel,
+      to,
+      subject: channel === 'email' ? O.staffSubject(n.title) : undefined,
+      body: related ? O.staffBody(n.title, related.recordId) : n.title,
+      related,
+      event: tplEvent,
+      vars: n.templateVars,
+    });
     const msg: OutboxMessage = {
       id: uid('msg'),
       workspaceId: n.workspaceId,
       channel,
       to,
-      subject: channel === 'email' ? O.staffSubject(n.title) : undefined,
-      body: related ? O.staffBody(n.title, related.recordId) : n.title,
+      subject: channel === 'email' ? r.subject : undefined,
+      body: r.body,
+      templateId: r.templateName ? r.templateId : undefined,
+      templateName: r.templateName,
+      related,
       createdAt: nowIso(),
       createdBy: 'system',
       status: digest ? 'digest' : quiet ? 'queued' : 'simulated',
@@ -245,6 +281,9 @@ export function routeStaffAlert(d: Db, n: Omit<AppNotification, 'id' | 'createdA
     };
     if (!msg.subject) delete msg.subject;
     if (!msg.deliverAt) delete msg.deliverAt;
+    if (!msg.templateId) delete msg.templateId;
+    if (!msg.templateName) delete msg.templateName;
+    if (!msg.related) delete msg.related;
     out.push(push(d, msg));
   }
   return out;

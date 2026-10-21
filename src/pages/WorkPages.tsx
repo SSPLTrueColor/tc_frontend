@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { formatDate, relativeTime, todayKey } from '../lib/dates';
 import { cx } from '../lib/format';
-import { recordPeekPath, resourceKeyFromParams, resourcePath } from '../lib/routes';
+import { recordPagePath, recordPeekPath, resourceKeyFromParams, resourcePath } from '../lib/routes';
 import { useServiceQuery } from '../hooks/useServiceQuery';
 import { canReadRecord, canUpdateRecord, perm } from '../services/authz';
 import { getDb } from '../services/db';
@@ -429,7 +429,8 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
   const form = useRecordForm({ resKey, recordId });
   const navigate = useNavigate();
   const toast = useToast();
-  const back = recordId ? recordPeekPath('tc', resKey, recordId) : resourcePath('tc', resKey);
+  // Cancel / Back from an edit returns to the record page; from a new form to the list.
+  const back = recordId ? recordPagePath('tc', resKey, recordId) : resourcePath('tc', resKey);
   const guard = useUnsavedGuard(form.dirty, () => navigate(back));
   useEffect(() => {
     if (!form.dirty) return;
@@ -453,7 +454,8 @@ function FullPageForm({ resKey, recordId }: { resKey: string; recordId?: string 
       }
     }
     toast(issue ? C.toasts.savedIssued(out.record.id) : canIssue ? C.toasts.savedDraft(out.record.id) : C.toasts.saved(out.record.id));
-    navigate(recordPeekPath('tc', resKey, out.record.id));
+    // Saving lands on the record itself (not a list drawer); the form is replaced so Back does not reopen it.
+    navigate(recordPagePath('tc', resKey, out.record.id), { replace: true });
   };
   return (
     <div className="page">

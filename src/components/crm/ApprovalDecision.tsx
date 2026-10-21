@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { getDb } from '../../services/db';
+import { recordTitle } from '../../services/runtime';
 import { useActor } from '../../services/hooks';
 import { ServiceError } from '../../services/types';
 import { canDecide, decideApproval } from '../../services/workflow';
@@ -38,12 +39,20 @@ export function DecisionDialog({ approvalId, decision, onClose }: { approvalId: 
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const a = getDb().approvals.find((x) => x.id === approvalId)!;
+  const deciding = useRef(false);
+  // The dialog names the record being decided (e.g. "Approve SO/TX/26-27/0007?"), not the approval id.
+  let subject = a.recordId;
+  try {
+    subject = recordTitle(a.resource, a.recordId) || a.recordId;
+  } catch {
+    /* unknown resource: keep the record id */
+  }
   return (
     <Dialog
       open
       onClose={onClose}
       size="sm"
-      title={I.decisionTitle(decision === 'approved', approvalId)}
+      title={I.decisionTitle(decision === 'approved', subject)}
       description={
         decision === 'approved'
           ? a.currentLevel < a.levels.length - 1
@@ -57,11 +66,14 @@ export function DecisionDialog({ approvalId, decision, onClose }: { approvalId: 
           <Button
             variant={decision === 'approved' ? 'primary' : 'danger'}
             onClick={() => {
+              if (deciding.current) return; // ref: synchronous double-click guard
+              deciding.current = true;
               try {
                 decideApproval(actor, approvalId, decision, note, a.version);
-                toast(C.toasts.decided(approvalId, (I.status[decision] ?? decision).toLowerCase()));
+                toast(C.toasts.decided(I.decisionSubject(subject, approvalId), (I.status[decision] ?? decision).toLowerCase()));
                 onClose();
               } catch (e) {
+                deciding.current = false;
                 setError(e instanceof ServiceError ? e.message : C.toasts.failed);
               }
             }}

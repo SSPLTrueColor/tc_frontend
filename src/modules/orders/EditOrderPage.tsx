@@ -15,7 +15,7 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { DiffAlert, Field, LinesTable, TotalsBlock } from './components';
 import { L } from '../../constants/labels';
-import { recordPeekPath } from '../../lib/routes';
+import { recordPagePath } from '../../lib/routes';
 import { Textarea } from '../../components/primitives/controls';
 import { NumberInput } from '../../components/primitives/NumberInput';
 import { isBadNumber, NUMBER_LIMITS } from '../../services/validation';
@@ -73,7 +73,7 @@ export function EditOrderPage() {
         <PageHeader title={P.titleFor(String(o.orderNo))} />
         <ErrorState title={P.notEditable}>{v.canEdit ? P.notEditableBody : P.roleCannot(actor.role.label)}</ErrorState>
         <p className="center">
-          <Link to={recordPeekPath(actor.workspaceId, 'salesOrders', o.id)}>{O.actions.backToOrder}</Link>
+          <Link to={recordPagePath(actor.workspaceId, 'salesOrders', o.id)}>{O.actions.backToOrder}</Link>
         </p>
       </div>
     );
@@ -103,7 +103,7 @@ export function EditOrderPage() {
     try {
       const r = await updateOrderLines(actor, o.id, { lines, freight: fin(freight), insurance: fin(insurance), version, note });
       toast(r.reapproval ? P.savedReapproval(String(o.orderNo), r.summary) : P.saved(String(o.orderNo)), r.reapproval ? 'info' : 'success');
-      navigate(recordPeekPath(actor.workspaceId, 'salesOrders', o.id));
+      navigate(recordPagePath(actor.workspaceId, 'salesOrders', o.id), { replace: true });
     } catch (e) {
       setError(errorMessage(e));
       toast(errorMessage(e), 'danger');

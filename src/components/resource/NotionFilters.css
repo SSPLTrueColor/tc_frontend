@@ -1,6 +1,7 @@
 /*
- * Notion-style filters — pill bar under the list toolbar · property list · per-filter editor.
- * Kept next to NotionFilters.tsx (imported by it) so the bar never renders unstyled.
+ * Filters — pill bar under the list toolbar · property list · per-filter editor (FilterPills.tsx),
+ * and the ClickUp-style filter panel opened by the toolbar funnel (NotionFilters.tsx, `fp-` classes, at the end).
+ * Imported by both so neither renders unstyled.
  */
 
 /* ---------- bar: one line of pills, overflow folds into "+N more" ---------- */
@@ -23,6 +24,11 @@
 /* With pills showing, the search box keeps its size instead of growing into their room (phones wrap instead). */
 @media (min-width: 761px) {
   .view-tools-row:has(> .nf-bar) > .search-field { flex: 0 1 220px; min-width: 140px; }
+}
+/* Phones: keep room for at least the "+N more" pill instead of squeezing it to a sliver. */
+@media (max-width: 760px) {
+  .view-tools-row .nf-bar { min-width: 96px; }
+  .view-tools-row:has(> .nf-bar) > .search-field { min-width: 0; }
 }
 /* hidden copies used only to measure pill widths */
 .nf-ghost {
@@ -56,19 +62,13 @@
   white-space: nowrap;
   transition: background-color 120ms ease, border-color 120ms ease;
 }
-.nf-pill.is-set {
-  border-color: color-mix(in srgb, var(--s-accent) 28%, var(--s-border));
-  background: color-mix(in srgb, var(--s-accent-subtle) 55%, var(--s-panel));
-  color: var(--s-text-secondary);
-}
-.nf-pill:hover { background: var(--s-hover); }
-.nf-pill.is-set:hover { background: var(--s-accent-subtle); }
-/* Open: a crisp accent border and a soft ring — one outline, not two. */
+/* Applied filters stay neutral (no accent tint) — the value text says what is on. */
+.nf-pill:hover,
+.nf-pill.is-set:hover { background: var(--s-hover); }
 .nf-pill.is-open,
 .nf-pill.is-set.is-open {
-  border-color: var(--s-accent);
-  background: var(--s-accent-subtle);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-accent) 16%, transparent);
+  border-color: var(--s-border-strong);
+  background: var(--s-hover);
 }
 
 .nf-pill-btn {
@@ -103,8 +103,7 @@ button.nf-pill:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-
 .nf-pill.nf-more .nf-pill-value { font-weight: var(--fw-medium); }
 .nf-pill-btn svg { flex: none; }
 .nf-pill-btn > svg:first-child { color: var(--s-text-muted); margin-right: 1px; }
-.nf-pill.is-set .nf-pill-btn > svg:first-child { color: var(--s-accent-text); opacity: 0.75; }
-/* "Priority:" quiet, the value strong in the accent colour — reads as field → value. */
+/* "Priority:" quiet, the value strong — reads as field → value. */
 .nf-pill-field { white-space: nowrap; color: var(--s-text-secondary); }
 .nf-pill-op { white-space: nowrap; color: var(--s-text-muted); }
 .nf-pill-value {
@@ -113,7 +112,7 @@ button.nf-pill:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: var(--fw-semibold);
-  color: var(--s-accent-text);
+  color: var(--s-text);
 }
 .nf-pill.nf-more .nf-pill-value { color: inherit; }
 .nf-pill-chev { opacity: 0.55; margin-left: 1px; }
@@ -256,3 +255,290 @@ button.nf-pill:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-
 @media (prefers-reduced-motion: reduce) {
   .nf-pill, .nf-pill-chev, .nf-pill-x { transition: none; }
 }
+
+/* ====================================================== ClickUp-style filter panel */
+/* ---------- panel frame: header · scrolling rows · footer ---------- */
+.popover.fp-pop {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--c-radius-panel, 12px);
+}
+.fp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
+}
+.fp-title { font-size: var(--fs-secondary); font-weight: var(--fw-semibold); color: var(--s-text); }
+.fp-clear {
+  height: 28px;
+  padding: 0 var(--sp-2);
+  margin-right: calc(-1 * var(--sp-2));
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--s-text-secondary);
+  font: inherit;
+  font-size: var(--fs-supportive);
+  cursor: pointer;
+}
+.fp-clear:hover:not(:disabled) { color: var(--s-text); background: var(--s-hover); }
+.fp-clear:disabled { color: var(--s-disabled-text); cursor: default; }
+.fp-clear:focus-visible { outline: 2px solid var(--s-focus); outline-offset: 0; }
+.fp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-4) var(--sp-2);
+}
+.fp-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+}
+.fp-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--s-text-secondary);
+  font: inherit;
+  font-size: var(--fs-supportive);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.fp-add:hover { color: var(--s-text); background: var(--s-hover); }
+.fp-add:focus-visible { outline: 2px solid var(--s-focus); outline-offset: 0; }
+
+/* ---------- one row: [Where / join] [field] [operator] [value] [trash] ---------- */
+.fp-row {
+  display: grid;
+  grid-template-columns: 76px 136px 108px minmax(0, 1fr) 32px;
+  align-items: start;
+  gap: 6px;
+}
+.fp-row > div { min-width: 0; }
+.fp-cell-join { display: flex; align-items: center; min-height: var(--c-control-h-compact); }
+.fp-where { padding-left: 2px; font-size: var(--fs-supportive); color: var(--s-text-secondary); }
+.fp-where.is-join { padding-left: var(--sp-3); color: var(--s-text-muted); }
+.fp-row .select-menu-trigger { width: 100%; min-width: 0; padding: 0 var(--sp-2) 0 10px; }
+.fp-row .select-menu-trigger .select-menu-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.fp-row .select-menu-trigger > svg { flex: none; }
+.fp-trigger-icon { color: var(--s-text-muted); }
+.fp-row .fp-join.select-menu-trigger { width: 100%; min-width: 72px; padding: 0 6px 0 10px; gap: 4px; }
+.fp-row .fp-join .select-menu-value { overflow: visible; text-overflow: clip; }
+.fp-static-op {
+  display: flex;
+  align-items: center;
+  height: var(--c-control-h-compact);
+  padding: 0 10px;
+  font-size: var(--fs-supportive);
+  color: var(--s-text-secondary);
+}
+.fp-cell-value .input,
+.fp-cell-value .input-affix { width: 100%; }
+.fp-cell-value .select-menu-trigger { width: 100%; }
+.fp-cell-x { display: flex; align-items: center; min-height: var(--c-control-h-compact); }
+.fp-remove { color: var(--s-text-muted); }
+.fp-remove:hover { color: var(--s-danger); }
+
+/* multi-value control: removable chips inside a SelectMenu-looking box */
+.select-menu-trigger.select-menu-trigger.fp-multi {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  min-height: var(--c-control-h-compact);
+  position: relative;
+  padding: 3px 28px 3px 4px;
+  cursor: pointer;
+}
+.fp-row .select-menu-trigger.select-menu-trigger.fp-multi { padding: 3px 28px 3px 4px; }
+.fp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  height: 22px;
+  box-sizing: border-box;
+  padding: 0 2px 0 8px;
+  border-radius: 5px;
+  background: var(--s-hover);
+  box-shadow: inset 0 0 0 1px var(--s-border);
+  color: var(--s-text);
+  font-size: var(--fs-supportive);
+  line-height: 1;
+}
+.fp-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-chip-x {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.fp-chip-x:hover { opacity: 1; background: color-mix(in srgb, var(--s-text) 10%, transparent); }
+.fp-chip-x:focus-visible { opacity: 1; outline: 2px solid var(--s-focus); outline-offset: -1px; }
+/* the open button fills the whole control behind the chips, so it takes no room in the chip line */
+.fp-multi-open {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.fp-multi .fp-chip { position: relative; z-index: 1; }
+.fp-multi-ph { padding-left: 6px; color: var(--s-text-muted); pointer-events: none; }
+.fp-multi-open:focus-visible { outline: none; }
+.fp-multi:has(.fp-multi-open:focus-visible) { border-color: var(--s-accent); box-shadow: var(--ctl-ring); }
+.fp-multi-chev { position: absolute; top: 8px; right: var(--sp-2); color: var(--s-text-secondary); pointer-events: none; }
+
+/* nested group: indented box with its own rows and join */
+.fp-row.fp-group-row { grid-template-columns: 76px minmax(0, 1fr) 32px; }
+.fp-group-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-1);
+  border: 1px solid var(--s-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--s-text) 2%, var(--s-panel));
+}
+.fp-group-box .fp-row { grid-template-columns: 76px minmax(0, 1.1fr) 92px minmax(0, 1fr) 28px; }
+.fp-group-foot { display: flex; margin-left: -4px; }
+.fp-group-row > .fp-cell-join,
+.fp-group-row > .fp-cell-x { margin-top: var(--sp-2); }
+
+/* ---------- option lists (field / operator / value pickers) ---------- */
+.popover.fp-menu-pop { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.fp-picklist { display: flex; flex-direction: column; min-height: 0; }
+.fp-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 36px;
+  padding: 0 var(--sp-3);
+  border-bottom: 1px solid var(--s-border);
+  color: var(--s-text-muted);
+}
+.fp-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--s-text);
+  font: inherit;
+  font-size: var(--fs-supportive);
+}
+.fp-search-input:focus,
+.fp-search-input:focus-visible { outline: none; box-shadow: none; }
+.fp-search-input::placeholder { color: var(--s-text-muted); }
+.fp-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 264px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  outline: none;
+}
+.fp-option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  padding: 0 var(--sp-2);
+  border-radius: 6px;
+  font-size: var(--fs-supportive);
+  color: var(--s-text);
+  cursor: pointer;
+}
+/* Only the hovered row (mouse) or the keyboard-highlighted row is tinted — never a default one. */
+.fp-option.is-hi { background: var(--s-hover); }
+.fp-list.is-kbd .fp-option.is-hi { outline: 2px solid var(--s-focus); outline-offset: -2px; }
+.fp-option.is-on:not(.is-hi) { background: transparent; }
+.fp-option-icon { flex: none; color: var(--s-text-secondary); }
+.fp-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-option.is-on .fp-option-label { font-weight: var(--fw-medium); }
+.fp-option-tick { flex: none; color: var(--s-accent-text); }
+.fp-check {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--s-border-strong);
+  border-radius: 4px;
+  background: var(--s-panel);
+}
+.fp-check.is-on { border-color: var(--s-accent); background: var(--s-accent); color: var(--s-on-accent); }
+.fp-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--tone-fg); }
+.fp-empty { padding: var(--sp-3) var(--sp-2); font-size: var(--fs-supportive); color: var(--s-text-muted); text-align: center; }
+
+/* ---------- phones: the panel becomes a bottom sheet; each row stacks ---------- */
+@media (max-width: 640px) {
+  .popover.fp-pop {
+    top: auto !important;
+    bottom: 0;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100%;
+    max-height: 85vh !important;
+    border-radius: 14px 14px 0 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .fp-row,
+  .fp-group-box .fp-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+    grid-template-areas: 'join join x' 'field op op' 'value value value';
+    row-gap: 6px;
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--s-border);
+  }
+  .fp-cell-join { grid-area: join; }
+  .fp-cell-field { grid-area: field; }
+  .fp-cell-op { grid-area: op; }
+  .fp-cell-value { grid-area: value; }
+  .fp-cell-value:empty { display: none; }
+  .fp-cell-x { grid-area: x; }
+  .fp-where.is-join { padding-left: 2px; }
+  .fp-row .fp-join.select-menu-trigger { width: auto; min-width: 84px; }
+  .fp-row.fp-group-row { grid-template-columns: minmax(0, 1fr) 32px; grid-template-areas: 'join x' 'box box'; border-bottom: 0; }
+  .fp-group-row > .fp-cell-join,
+  .fp-group-row > .fp-cell-x { margin-top: 0; }
+  .fp-group-row > .fp-group-box { grid-area: box; }
+  .fp-group-box .fp-row:last-of-type { border-bottom: 0; }
+  .fp-foot { flex-wrap: wrap; }
+}
+

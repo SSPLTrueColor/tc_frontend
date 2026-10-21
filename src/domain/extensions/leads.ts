@@ -64,7 +64,7 @@ registerResourceHooks('leads', {
   },
 });
 
-// LEAD-09 / BR-08: the first logged activity is the first contact; it moves New → Contacted.
+// LEAD-09 / BR-08: the first logged activity is the first contact; it moves New → Contacted (and Nurture → Contacted, LEAD-11).
 registerResourceHooks('activities', {
   // BR-07: a follow-up logged on an open lead must plan the next follow-up (today or later) — enforced on the service, not only in the dialog.
   beforeCreate: (ctx, a) => {
@@ -82,7 +82,10 @@ registerResourceHooks('activities', {
     const patch: Record<string, unknown> = {};
     if (!lead.firstContactAt) patch.firstContactAt = a.at;
     if (lead.status === 'new') patch.status = 'contacted';
-    if (Object.keys(patch).length) patchRecordIn(ctx, 'leads', lead.id, patch, L.leads.messages.firstContact(a.id, lead.status === 'new'));
+    // LEAD-11: following up on a Nurture lead re-engages it — back to Contacted, re-contact date cleared.
+    if (lead.status === 'nurture') Object.assign(patch, { status: 'contacted', nurtureUntil: null });
+    const summary = lead.status === 'nurture' ? L.leads.messages.nurtureFollowUp(a.id) : L.leads.messages.firstContact(a.id, lead.status === 'new');
+    if (Object.keys(patch).length) patchRecordIn(ctx, 'leads', lead.id, patch, summary);
   },
 });
 

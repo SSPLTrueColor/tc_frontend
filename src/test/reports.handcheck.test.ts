@@ -13,14 +13,20 @@ import { runReport } from '../services/api/reports';
 import { dashboardFor, resolveRange } from '../services/reports/overview';
 import { dayOf } from '../services/reports/kpis';
 
-/** Decision D-1: revenue is the value BEFORE GST, worked out by hand from the order lines (qty × price − discount). */
+/**
+ * Decision D-1: revenue is the value BEFORE GST — the order's taxable value — worked out by hand from the
+ * order lines (qty × price − discount) plus freight and insurance.
+ */
 const net = (o: RecordData) => {
   const lines = (o.lines as RecordData[] | undefined) ?? [];
-  if (!lines.length) return (Number(o.subtotal) || 0) - (Number(o.discountTotal) || 0); // list rows carry no line items
-  return lines.reduce((t, l) => {
-    const gross = (Number(l.qty) || 0) * (Number(l.listPrice) || 0);
-    return t + Math.max(0, gross - (Number(l.discountAmt) || (gross * (Number(l.discountPct) || 0)) / 100));
-  }, 0);
+  const extras = (Number(o.freight) || 0) + (Number(o.insurance) || 0);
+  if (!lines.length) return (Number(o.subtotal) || 0) - (Number(o.discountTotal) || 0) + extras; // list rows carry no line items
+  return (
+    lines.reduce((t, l) => {
+      const gross = (Number(l.qty) || 0) * (Number(l.listPrice) || 0);
+      return t + Math.max(0, gross - (Number(l.discountAmt) || (gross * (Number(l.discountPct) || 0)) / 100));
+    }, 0) + extras
+  );
 };
 import { decodeFilter, evalFilterCondition, newCondition } from '../services/filter';
 import { queryRecords } from '../services/runtime';

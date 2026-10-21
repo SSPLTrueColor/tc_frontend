@@ -109,14 +109,14 @@ async function qualifyLead(page: Page, leadId: string, d: RunData): Promise<stri
   await page.goto(`/leads/${leadId}`);
   await page.waitForLoadState('networkidle');
   await expect(page.getByRole('heading', { name: 'Actions', level: 2 })).toBeVisible();
-  await page.getByRole('button', { name: 'Create Opportunity', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Convert to Opportunity', exact: true }).first().click();
   const dlg = page.getByRole('dialog');
   await expect(dlg).toBeVisible();
   await shot(page, `${d.tag}-04-convert-dialog`);
   // Empty required fields → inline validation.
   await dlg.getByLabel('Customer requirement *').fill('');
   await dlg.getByLabel('Decision maker *').fill('');
-  await dlg.getByRole('button', { name: 'Create Opportunity' }).click();
+  await dlg.getByRole('button', { name: 'Convert to Opportunity' }).click();
   await expect(dlg.getByText('Name the decision maker')).toBeVisible();
   await expect(dlg.getByText('Pick the purchase timeline')).toBeVisible();
   await shot(page, `${d.tag}-04b-convert-validation`);
@@ -127,7 +127,7 @@ async function qualifyLead(page: Page, leadId: string, d: RunData): Promise<stri
   await dlg.getByLabel('Opportunity name *').fill(`${d.companyName ?? d.existingCompany} – ${d.product} (${d.tag})`);
   await dlg.getByLabel('Expected value (₹) *').fill('2500000');
   // Double click: must not create two opportunities.
-  await dlg.getByRole('button', { name: 'Create Opportunity' }).dblclick();
+  await dlg.getByRole('button', { name: 'Convert to Opportunity' }).dblclick();
   await expectToast(page, /converted to opportunity OPP-/);
   const data = await db(page);
   const lead = data.records.leads.find((l) => l.id === leadId)!;
@@ -786,7 +786,7 @@ test('Stress — lead & opportunity abuse: duplicate lead, cancel dialogs, Mark 
     const lead = (await db(page)).records.leads.find((l) => l.ownerId === 'E-1011' && ['new', 'contacted'].includes(l.status))!;
     await page.goto(`/leads/${lead.id}`);
     await page.waitForLoadState('networkidle');
-    await page.getByRole('button', { name: 'Create Opportunity', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Convert to Opportunity', exact: true }).first().click();
     const dlg = page.getByRole('dialog');
     await dlg.getByLabel('Decision maker *').fill('Will cancel');
     await page.keyboard.press('Escape');
@@ -799,14 +799,14 @@ test('Stress — lead & opportunity abuse: duplicate lead, cancel dialogs, Mark 
   await test.step('₹ extremes in conversion budget / value', async () => {
     const lead = (await db(page)).records.leads.find((l) => l.ownerId === 'E-1011' && ['new', 'contacted'].includes(l.status))!;
     await page.goto(`/leads/${lead.id}`);
-    await page.getByRole('button', { name: 'Create Opportunity', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Convert to Opportunity', exact: true }).first().click();
     const dlg = page.getByRole('dialog');
     await dlg.getByLabel('Customer requirement *').fill('Big order');
     await dlg.getByLabel('Decision maker *').fill('MD');
     await pick(page, dlg, 'Purchase timeline', '3–6 Months');
     await dlg.getByLabel('Budget (₹) *').fill('-5000');
     await dlg.getByLabel('Expected value (₹) *').fill('99999999999999');
-    await dlg.getByRole('button', { name: 'Create Opportunity' }).click();
+    await dlg.getByRole('button', { name: 'Convert to Opportunity' }).click();
     await page.waitForTimeout(1500);
     await shot(page, 'S-11-rupee-extremes');
     const converted = (await db(page)).records.leads.find((l) => l.id === lead.id)!;
@@ -815,7 +815,7 @@ test('Stress — lead & opportunity abuse: duplicate lead, cancel dialogs, Mark 
     expect.soft(budgetMsg, 'negative budget message says why (not just "Enter the budget")').toMatch(/positive|greater|negative|more than|at least/i);
     // Valid budget, absurd expected value.
     await dlg.getByLabel('Budget (₹) *').fill('100000');
-    await dlg.getByRole('button', { name: 'Create Opportunity' }).click();
+    await dlg.getByRole('button', { name: 'Convert to Opportunity' }).click();
     await page.waitForTimeout(1500);
     await shot(page, 'S-11b-absurd-value');
     const opp = (await db(page)).records.opportunities.find((o) => o.leadId === lead.id);

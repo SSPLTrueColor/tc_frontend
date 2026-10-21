@@ -27,7 +27,7 @@ export function ScorecardLayout({ out, def }: LayoutProps) {
     <div className="rl-board">
       {first > 0 && last && (
         <Headline>
-          {W.funnelHead(Math.round((last.value / first) * 100), last.label.toLowerCase())}
+          {W.funnelHead(Math.round((last.value / first) * 100), W.funnelGoal[last.key] ?? last.label.toLowerCase())}
           {drop && (drop as { pct: number }).pct > 0 ? ` ${W.funnelDrop((drop as { label: string }).label, Math.round((drop as { pct: number }).pct * 100))}` : ''}
         </Headline>
       )}

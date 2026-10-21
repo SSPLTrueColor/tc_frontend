@@ -179,7 +179,8 @@ export function TotalsBlock({ t, intraState }: { t: OrderTotals; intraState: boo
       {t.discountTotal > 0 && row(O.totals.discount, -t.discountTotal)}
       {t.freight > 0 && row(O.totals.freight, t.freight)}
       {t.insurance > 0 && row(O.totals.insurance, t.insurance)}
-      {row(O.totals.taxable, t.taxable)}
+      {/* D-1: the taxable value (before GST) is the order value on dashboards and the won opportunity. */}
+      {row(O.totals.taxable, t.taxable, true)}
       {intraState ? (
         <>
           {row(O.totals.cgst, t.cgst)}
@@ -188,7 +189,7 @@ export function TotalsBlock({ t, intraState }: { t: OrderTotals; intraState: boo
       ) : (
         row(O.totals.igst, t.igst)
       )}
-      {row(O.totals.orderValue, t.grandTotal, true)}
+      {row(O.totals.orderValue, t.grandTotal)}
       <div className="detail-row">
         <dt>{O.totals.inWords}</dt>
         <dd className="small">{amountInWords(t.grandTotal)}</dd>

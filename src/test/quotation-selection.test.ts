@@ -92,7 +92,9 @@ describe('quotation selection', () => {
     expect(getDb().audit.some((e) => e.recordId === s.pending && e.action === 'approval.withdrawn')).toBe(true);
     expect(getDb().audit.some((e) => e.recordId === s.b && e.summary.startsWith('Not Selected'))).toBe(true);
     expect(getDb().audit.some((e) => e.recordId === s.oppId && e.action === 'quotations.not_selected')).toBe(true);
-    expect(opp(s.oppId)).toMatchObject({ stage: 'won', selectedQuotationId: s.a, value: q(s.a).grandTotal });
+    // D-1: the won value is the selected quotation's taxable value (before GST), not the GST-inclusive total.
+    expect(opp(s.oppId)).toMatchObject({ stage: 'won', selectedQuotationId: s.a, value: q(s.a).taxable });
+    expect(Number(opp(s.oppId).value)).toBeLessThan(Number(q(s.a).grandTotal));
   });
 
   it('one guard refuses every action on a Not Selected quotation (edit, submit, approve, send, accept, reject, version, order, lifecycle)', () => {
@@ -129,7 +131,8 @@ describe('quotation selection', () => {
     if (!s) return;
     const order = orderFrom(s.owner, s.b, 'sel-order');
     expect(q(s.b)).toMatchObject({ status: 'accepted', previousStatus: 'sent', acceptanceMethod: 'po' });
-    expect(opp(s.oppId)).toMatchObject({ stage: 'won', selectedQuotationId: s.b, value: order.grandTotal });
+    // D-1: won value = the sales order's taxable value (before GST, incl. freight).
+    expect(opp(s.oppId)).toMatchObject({ stage: 'won', selectedQuotationId: s.b, value: order.taxable });
     for (const id of [s.a, s.pending, s.draft]) expect(q(id)).toMatchObject({ status: 'not_selected', selectedQuotationId: s.b });
     expect(pendingApproval(s.pending)).toBeUndefined();
     expect(String(q(s.a).notSelectedReason)).toContain(String(order.orderNo));
@@ -143,9 +146,10 @@ describe('quotation selection', () => {
     expect(pendingApproval(s.pending)).toBeUndefined();
     expect(refuse(() => acceptQuote(s.owner, s.a, q(s.a).version, PO))).toMatch(/Not Selected|Lost/);
     expect(so.quotationBlocker(getDb(), q(s.a))).toBeTruthy();
-    // Re-open by an administrator: the quotations open again (the withdrawn request returns as a draft).
+    // Re-open by an administrator: the quotations open again (the withdrawn request is re-opened → Pending Approval).
     transitionRecord(A('u_rahul'), 'opportunities', s.oppId, 'needs_assessment', opp(s.oppId).version);
-    expect([q(s.a).status, q(s.b).status, q(s.pending).status, q(s.draft).status]).toEqual(['sent', 'sent', 'draft', 'draft']);
+    expect([q(s.a).status, q(s.b).status, q(s.pending).status, q(s.draft).status]).toEqual(['sent', 'sent', 'pending_approval', 'draft']);
+    expect(pendingApproval(s.pending)).toBeTruthy();
   });
 
   it('re-open of a won opportunity is blocked while a live sales order exists; after cancellation a Sales Manager may re-open', () => {
@@ -178,9 +182,15 @@ describe('quotation selection', () => {
     acceptQuote(s.owner, s.a, q(s.a).version, PO);
     expect(refuse(() => undoSelection(s.owner, s.a, q(s.a).version))).toBe(S.undoOnlyRoles);
     expect(demoUsers.some((u) => u.id === 'u_rohan')).toBe(true);
-    undoSelection(A('u_rohan'), s.a, q(s.a).version);
+    const approvalId = getDb().approvals.find((x) => x.recordId === s.pending)!.id;
+    const out = undoSelection(A('u_rohan'), s.a, q(s.a).version);
     expect(q(s.a)).toMatchObject({ status: 'sent', acceptedAt: null, customerPoNo: null });
-    expect([q(s.b).status, q(s.pending).status, q(s.draft).status]).toEqual(['sent', 'draft', 'draft']);
+    // The revision that was waiting for approval is back in Pending Approval with the same request re-opened.
+    expect([q(s.b).status, q(s.pending).status, q(s.draft).status]).toEqual(['sent', 'pending_approval', 'draft']);
+    expect(out).toEqual({ pending: [{ quoteNo: String(q(s.pending).quoteNo), approvalId }], drafted: [] });
+    expect(pendingApproval(s.pending)?.id).toBe(approvalId);
+    expect(getDb().audit.some((e) => e.recordId === s.pending && e.action === 'approval.reopened')).toBe(true);
+    expect(getDb().notifications.some((n) => n.kind === 'approval_request' && n.about?.recordId === s.pending)).toBe(true);
     expect(q(s.b).selectedQuotationId).toBeNull();
     expect(opp(s.oppId)).toMatchObject({ stage: prevStage, selectedQuotationId: null, wonAt: null, value: before.value });
     expect(getDb().audit.some((e) => e.recordId === s.a && e.summary === S.auditUndo(String(q(s.a).quoteNo)))).toBe(true);
