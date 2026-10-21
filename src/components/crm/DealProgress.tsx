@@ -1,13 +1,19 @@
 import type { RecordData } from '../../metadata/types';
 import { cx } from '../../lib/format';
-import { getDb } from '../../services/db';
 import { L } from '../../constants/labels';
+import { Icon } from '../primitives/Icon';
 
 const P = L.common.dealProgress;
 
-type StepKey = (typeof STEPS)[number];
+export type StepKey = (typeof STEPS)[number];
+export type StepState = 'done' | 'skipped' | 'current' | 'todo';
 /** Quotation → order → delivery → installation, the BRD §3 sales-to-service cycle for one deal. */
 const STEPS = ['approved', 'sent', 'accepted', 'order', 'orderApproved', 'payment', 'processing', 'dispatched', 'delivered', 'installed'] as const;
+const PHASES: { key: keyof typeof P.phases; steps: readonly StepKey[] }[] = [
+  { key: 'quotation', steps: ['approved', 'sent', 'accepted'] },
+  { key: 'order', steps: ['order', 'orderApproved', 'payment'] },
+  { key: 'fulfilment', steps: ['processing', 'dispatched', 'delivered', 'installed'] },
+];
 
 const SO_STEP: Record<string, StepKey> = {
   pending_approval: 'order',
@@ -23,55 +29,91 @@ const SO_STEP: Record<string, StepKey> = {
 };
 const QUOTE_STEP: Record<string, StepKey | null> = { draft: null, pending_approval: null, approved: 'approved', sent: 'sent', negotiation: 'sent', accepted: 'accepted' };
 
-/** Index of the last completed step (-1 = none yet) and the next action, from the quotation and its sales order. */
-function progressOf(quote: RecordData | undefined, order: RecordData | undefined): { done: number; next: string | null; stopped?: string } {
-  if (order) {
-    const st = String(order.status);
-    if (st === 'cancelled') return { done: STEPS.indexOf('order'), next: null, stopped: P.stopped.cancelled };
-    if (st === 'on_hold') return { done: STEPS.indexOf('order'), next: null, stopped: P.stopped.onHold };
-    const done = STEPS.indexOf(SO_STEP[st] ?? 'order');
-    return { done, next: P.next[st as keyof typeof P.next] ?? null };
-  }
-  if (!quote) return { done: -1, next: null };
-  const st = String(quote.status);
-  if (st === 'rejected' || st === 'expired') return { done: -1, next: null, stopped: st === 'rejected' ? P.stopped.rejected : P.stopped.expired };
-  const step = QUOTE_STEP[st];
-  return { done: step ? STEPS.indexOf(step) : -1, next: P.quoteNext[st as keyof typeof P.quoteNext] ?? null };
+export interface DealProgressModel {
+  steps: { key: StepKey; state: StepState }[];
+  current?: StepKey;
+  /** The record whose status decides the next step, and that status (used to pick the tab to open). */
+  driver: { resource: 'quotations' | 'salesOrders'; status: string };
+  next?: { who?: string; text: string };
+  stopped?: string;
+  complete: boolean;
 }
 
 /**
- * Deal progress strip on quotations and sales orders: the whole quotation-to-installation cycle with the current
- * step highlighted and the next action (and who does it), so the way forward is never hidden behind tabs.
+ * Where a deal stands: every step's state (done / skipped / current / to do), the next action and who takes it.
+ * Driven by the sales order once there is one, else by the quotation. Null when there is neither.
  */
-export function DealProgress({ resource, record }: { resource: 'quotations' | 'salesOrders'; record: RecordData }) {
-  const d = getDb().records;
-  const quote = resource === 'quotations' ? record : (d.quotations ?? []).find((q) => q.id === record.quotationId);
-  const order = resource === 'salesOrders' ? record : (d.salesOrders ?? []).find((o) => o.quotationId === record.id && o.status !== 'cancelled');
-  if (resource === 'quotations' && !record.isLatest) return null;
+export function dealProgress(quote: RecordData | undefined, order: RecordData | undefined): DealProgressModel | null {
+  if (!quote && !order) return null;
   // Consumables orders have no installation; repeat orders have no quotation steps.
-  const steps = STEPS.filter((s) => (order?.orderKind === 'consumables' ? s !== 'installed' : true)).filter((s) => (quote ? true : !['approved', 'sent', 'accepted'].includes(s)));
-  const { done, next, stopped } = progressOf(quote, order);
+  const keys = STEPS.filter((s) => (order?.orderKind === 'consumables' ? s !== 'installed' : true)).filter((s) => (quote ? true : !['approved', 'sent', 'accepted'].includes(s)));
+  let done = -1;
+  let next: DealProgressModel['next'];
+  let stopped: string | undefined;
+  let driver: DealProgressModel['driver'];
+  if (order) {
+    const st = String(order.status);
+    driver = { resource: 'salesOrders', status: st };
+    if (st === 'cancelled' || st === 'on_hold') {
+      done = STEPS.indexOf('order');
+      stopped = st === 'cancelled' ? P.stopped.cancelled : P.stopped.onHold;
+    } else {
+      done = STEPS.indexOf(SO_STEP[st] ?? 'order');
+      const text = P.next[st as keyof typeof P.next];
+      if (text) next = { who: P.who[st as keyof typeof P.who], text };
+    }
+  } else {
+    const st = String(quote!.status);
+    driver = { resource: 'quotations', status: st };
+    if (st === 'rejected' || st === 'expired') stopped = st === 'rejected' ? P.stopped.rejected : P.stopped.expired;
+    else {
+      const step = QUOTE_STEP[st];
+      done = step ? STEPS.indexOf(step) : -1;
+      const text = P.quoteNext[st as keyof typeof P.quoteNext];
+      if (text) next = { who: P.quoteWho[st as keyof typeof P.quoteWho], text };
+    }
+  }
+  let current: StepKey | undefined;
+  const steps = keys.map((key) => {
+    const i = STEPS.indexOf(key);
+    // Sending is optional (the order PO is the acceptance): a quotation ordered without being sent shows it as skipped.
+    const skipped = key === 'sent' && i <= done && !!quote && !quote.sentAt;
+    let state: StepState = skipped ? 'skipped' : i <= done ? 'done' : 'todo';
+    if (state === 'todo' && !current && !stopped) {
+      state = 'current';
+      current = key;
+    }
+    return { key, state };
+  });
+  return { steps, current, driver, next, stopped, complete: !current && !stopped };
+}
+
+/** Phase-grouped stepper: Quotation · Order · Fulfilment, one-line step names, the current step as a pending state. */
+export function DealStepper({ model }: { model: DealProgressModel }) {
+  const phases = PHASES.map((ph) => ({ ...ph, steps: model.steps.filter((s) => ph.steps.includes(s.key)) })).filter((ph) => ph.steps.length);
   return (
-    <section className="deal-progress" aria-label={P.title}>
-      <ol className="deal-steps">
-        {steps.map((s) => {
-          const i = STEPS.indexOf(s);
-          // Sending is optional (the order PO is the acceptance): a quotation ordered without being sent shows it as skipped.
-          const skipped = s === 'sent' && i <= done && !!quote && !quote.sentAt;
-          const state = skipped ? 'skipped' : i <= done ? 'done' : i === done + 1 && !stopped ? 'current' : 'todo';
-          return (
-            <li key={s} className={cx('deal-step', `is-${state}`)} aria-current={state === 'current' ? 'step' : undefined}>
-              <span className="deal-dot" aria-hidden="true" />
-              <span className="deal-label">{skipped ? P.skipped(P.steps[s]) : P.steps[s]}</span>
-            </li>
-          );
-        })}
-      </ol>
-      {(stopped || next) && (
-        <p className={cx('deal-next', stopped && 'is-stopped')}>
-          <strong>{stopped ? P.stoppedLabel : P.nextLabel}</strong> {stopped ?? next}
-        </p>
-      )}
-    </section>
+    <ol className={cx('dj-phases', model.stopped && 'is-stopped')}>
+      {phases.map((ph) => {
+        const state = ph.steps.every((s) => s.state === 'done' || s.state === 'skipped') ? 'done' : ph.steps.some((s) => s.state === 'current') ? 'current' : 'todo';
+        return (
+          <li key={ph.key} className={cx('dj-phase', `is-${state}`)} style={{ flexGrow: ph.steps.length }}>
+            <span className="dj-phase-title">{P.phases[ph.key]}</span>
+            <ol className="dj-steps">
+              {ph.steps.map((s) => (
+                <li key={s.key} className={cx('dj-step', `is-${s.state}`)} aria-current={s.state === 'current' ? 'step' : undefined} data-tooltip={s.state === 'skipped' ? P.skipped(P.steps[s.key]) : P.steps[s.key]}>
+                  <span className="dj-dot" aria-hidden="true">
+                    {s.state === 'done' && <Icon name="check" size={10} />}
+                  </span>
+                  <span className="dj-label">
+                    {s.state === 'current' ? P.pending[s.key] : s.state === 'skipped' ? `${P.short[s.key]} · ${P.skippedShort}` : P.short[s.key]}
+                  </span>
+                  <span className="sr-only">{P.steps[s.key]}</span>
+                </li>
+              ))}
+            </ol>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

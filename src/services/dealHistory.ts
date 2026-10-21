@@ -25,7 +25,7 @@ export type DealResource = (typeof DEAL_RESOURCES)[number];
 export const isDealResource = (resKey: string): resKey is DealResource => (DEAL_RESOURCES as readonly string[]).includes(resKey);
 /** Resources whose record page opens on the Deal History tab and shows the Deal Chain panel. */
 export const DEAL_HISTORY_RESOURCES: readonly string[] = DEAL_RESOURCES;
-export const DEAL_CHAIN_RESOURCES: readonly string[] = ['leads', 'opportunities', 'quotations', 'salesOrders'];
+export const DEAL_CHAIN_RESOURCES: readonly string[] = ['leads', 'opportunities', 'quotations', 'salesOrders', 'salesContracts'];
 
 export interface DealChain {
   lead?: RecordData;

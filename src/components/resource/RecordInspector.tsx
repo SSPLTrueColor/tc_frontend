@@ -20,7 +20,7 @@ import { Button, IconButton } from '../primitives/Button';
 import { EmptyState, ErrorState, StatusChip, Tabs, useToast } from '../primitives/feedback';
 import { Dialog, Menu, useFocusReturn, useFocusTrap, useLayer } from '../primitives/overlay';
 import { RecordApprovalActions } from '../crm/ApprovalDecision';
-import { getDefaultRecordTab, getRecordActions, getRecordBanner, getRecordTabs } from './extensions';
+import { getDefaultRecordTab, getRecordActions, getRecordBanner, getRecordTabs, getRecordTitleNote } from './extensions';
 import { LineItemsTable, lineItemsOf } from './LineItems';
 import { FieldValue } from './FieldValue';
 import { ConflictPanel, FormBody, QuickCreateDialog, useRecordForm, useUnsavedGuard } from './RecordForm';
@@ -128,7 +128,7 @@ export function RecordInspector({
       ) : (
         <>
           <InspectorHeader res={res} actor={actor} p={projected} onEdit={() => (res.form.fullPage ? navigate(recordEditPath(resKey, recordId)) : (setTab('details'), setEditing(true)))} editing={editing} onDeleted={onClose} hideTitle={drawer} editInFooter={drawer} pageActions={variant === 'page'} />
-          {!editing && DEAL_CHAIN_RESOURCES.includes(resKey) && <DealChain resKey={resKey} recordId={recordId} actor={actor} />}
+          {!editing && DEAL_CHAIN_RESOURCES.includes(resKey) && <DealChain resKey={resKey} recordId={recordId} actor={actor} onTab={setTab} />}
           <Tabs<Tab>
             label={R.sections}
             value={tab}
@@ -239,6 +239,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
   const status = statusField ? masterValue(statusField.master!, r[statusField.key]) : undefined;
   const Actions = getRecordActions(res.key);
   const Banner = getRecordBanner(res.key);
+  const TitleNote = getRecordTitleNote(res.key);
 
   const run = (to: string, overrideReason?: string) => {
     try {
@@ -258,6 +259,7 @@ function InspectorHeader({ res, actor, p, onEdit, editing, onDeleted, hideTitle,
         <div className="inspector-title-row">
           <h2 className="inspector-title">{recordTitle(res.key, r.id, actor)}</h2>
           {status && <StatusChip label={status.label} tone={status.tone} />}
+          {TitleNote && <TitleNote res={res} actor={actor} record={r} />}
         </div>
       )}
       <div className={cx(editInFooter && 'inspector-subrow')}>
@@ -700,68 +702,54 @@ function RecordSide({ res, actor, p }: { res: ResourceDefinition; actor: Actor; 
   const when = res.fields.find((f) => (f.type === 'datetime' || f.type === 'date') && vis(f) && r[f.key]);
   const duration = res.fields.find((f) => f.type === 'number' && /^(min|mins|minutes|h|hours)$/i.test(f.unit ?? '') && vis(f));
   const people = res.fields.filter((f) => f.type === 'relation' && f.relation!.resource === 'employees' && vis(f) && r[f.key]);
-  const details = res.fields.filter((f) => vis(f) && !f.system && f !== statusField && f !== when && f !== duration && !people.includes(f) && ['master', 'relation', 'money', 'text', 'boolean'].includes(f.type) && f.key !== res.titleField).slice(0, 6);
+  const details = res.fields.filter((f) => vis(f) && !f.system && f !== statusField && !(f.master && status && masterValue(f.master, f.computed ? f.computed(r) : r[f.key])?.label === status.label) && f !== when && f !== duration && !people.includes(f) && ['master', 'relation', 'money', 'text', 'boolean'].includes(f.type) && f.key !== res.titleField).slice(0, 6);
   return (
     <div className="record-side">
       <section className="panel rs-card">
         <h2>{R.sideActions}</h2>
         <div id="record-actions-slot" className="rs-actions" />
       </section>
-      <section className="panel rs-card">
+      {/* One compact summary: status in the header, then aligned label / value rows (values wrap, never cut). */}
+      <section className="panel rs-card rs-summary">
         <div className="rs-head">
           <h2>{R.overview(res.label)}</h2>
           {status && <StatusChip label={status.label} tone={status.tone} />}
         </div>
-        {when && (
-          <div className="rs-when">
-            <Icon name="f-datetime" size={18} className="rs-icon" />
-            <span>
-              <DateText value={String(r[when.key])} showTime={when.type === 'datetime'} />
-              {when.type === 'datetime' && <span className="rs-time">{formatTime(String(r[when.key]))}</span>}
-              {duration && r[duration.key] != null && (
-                <span className="muted rs-sub">
-                  {duration.label} · {String(r[duration.key])} {duration.unit}
-                </span>
-              )}
-            </span>
-          </div>
-        )}
-      </section>
-      {people.length > 0 && (
-        <section className="panel rs-card">
-          <h2>{R.people}</h2>
-          <ul className="rs-list">
-            {people.map((f) => (
-              <li key={f.key}>
-                <Link className="rs-person" to={recordPagePath(actor.workspaceId, f.relation!.resource, String(r[f.key]))}>
-                  <Icon name={f.relation!.resource === 'employees' ? 'f-person' : 'users'} size={18} className="rs-icon" />
-                  <span>
-                    <span className="muted rs-sub">{f.label}</span>
-                    <span className="rs-link">{recordTitle(f.relation!.resource, r[f.key], actor)}</span>
+        <dl className="rs-kv">
+          {when && (
+            <div className="rs-kv-row">
+              <dt>{when.label}</dt>
+              <dd>
+                <DateText value={String(r[when.key])} showTime={when.type === 'datetime'} />
+                {duration && r[duration.key] != null && (
+                  <span className="muted rs-sub">
+                    {' '}
+                    · {String(r[duration.key])} {duration.unit}
                   </span>
-                  <Icon name="chevron-right" size={16} className="rs-chev" />
+                )}
+              </dd>
+            </div>
+          )}
+          {people.map((f) => (
+            <div key={f.key} className="rs-kv-row">
+              <dt>{f.label}</dt>
+              <dd>
+                <Link className="rs-link" to={recordPagePath(actor.workspaceId, f.relation!.resource, String(r[f.key]))}>
+                  {recordTitle(f.relation!.resource, r[f.key], actor)}
                 </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {details.length > 0 && (
-        <section className="panel rs-card">
-          <h2>{R.details}</h2>
-          <ul className="rs-list">
-            {details.map((f) => (
-              <li key={f.key} className="rs-item">
-                <Icon name={fieldIcon(f)} size={18} className="rs-icon" />
-                <span>
-                  <span className="muted rs-sub">{f.label}</span>
-                  <FieldValue field={f} value={r[f.key]} access={p.access[f.key]} actor={actor} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+              </dd>
+            </div>
+          ))}
+          {details.map((f) => (
+            <div key={f.key} className="rs-kv-row">
+              <dt>{f.label}</dt>
+              <dd>
+                <FieldValue field={f} value={r[f.key]} access={p.access[f.key]} actor={actor} />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
       <section className="panel rs-card">
         <h2>
           <Icon name="message" size={16} /> {R.internalComments}

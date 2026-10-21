@@ -1175,6 +1175,25 @@ input[type='radio'] {
   box-shadow: inset 0 0 0 2px var(--s-focus);
   border-radius: var(--c-radius-control) var(--c-radius-control) 0 0;
 }
+/* Hidden copies of the tabs, measured to decide how many fit before "More" (zero-size so they never scroll the strip) */
+.tabs { position: relative; }
+.tabs-ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: inherit;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.tabs-ghost > .tab { flex: none; }
+.tab-more { gap: 4px; flex: none; }
+.tab-more svg { opacity: 0.7; transition: transform 150ms ease; }
+.tab-more.is-open { color: var(--s-text); }
+.tab-more.is-open svg { transform: rotate(180deg); }
 .tab-count {
   min-width: 18px;
   height: 18px;
@@ -7152,46 +7171,90 @@ td.is-editable:hover > .cell {
   padding: 0 var(--sp-3);
 }
 
-/* ---------- Actions card: two buttons per line ---------- */
+/* ---------- Actions card ----------
+   Buttons pair up two per row; a label too long for half a row takes the full row on its own (flex-wrap with a 50%
+   basis: a single-line button never shrinks below its label), so labels never wrap or get cut. Equal heights. */
 .rs-actions .inspector-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
 }
 .rs-actions .inspector-actions > .btn {
+  flex: 1 1 calc(50% - var(--sp-2) / 2);
   justify-content: center;
-  min-width: 0;
+  width: auto;
+  height: 32px;
+  min-height: 0;
+  white-space: nowrap;
 }
-.rs-actions .inspector-actions > .btn {
-  height: auto;
-  min-height: var(--control-h, 32px);
-}
-/* Long action names ("Convert to Opportunity") wrap instead of being cut off. */
-.rs-actions .inspector-actions > .btn span {
-  white-space: normal;
-  text-align: center;
-  line-height: 1.25;
-}
+.rs-actions .inspector-actions > .btn span { white-space: nowrap; }
 .rs-actions .inspector-actions > .icon-btn {
-  justify-self: start;
+  flex: none;
+  align-self: center;
 }
-.rs-actions .inspector-edit-btn {
+/* Edit keeps the same outlined look as the other buttons, also when it is unavailable. */
+.rs-actions .inspector-edit-btn,
+.rs-actions .inspector-edit-btn:disabled {
   border: 1px solid var(--s-border-strong);
   background: var(--s-panel);
 }
 /* One main action: the primary takes a full row on top; when a module adds its own primary (e.g. "Mark Accepted")
-   the earlier lifecycle primary drops to the normal style so two purple buttons never compete. Wide labels get a row. */
+   the earlier lifecycle primary drops to the normal style so two purple buttons never compete. */
 .rs-actions .inspector-actions > .btn-primary,
 .rs-actions .inspector-actions > .btn.is-wide {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
 }
 .rs-actions .inspector-actions > .btn-primary { order: -1; }
 .rs-actions .inspector-actions > .btn-primary:has(~ .btn-primary) {
   order: 0;
+  flex-basis: calc(50% - var(--sp-2) / 2);
   background: var(--s-panel);
   border-color: var(--s-border-strong);
   color: var(--s-text);
 }
 .rs-actions .inspector-actions > .btn-primary:has(~ .btn-primary):hover:not(:disabled) { background: var(--s-hover); }
+
+/* ---------- Summary card: status in the header, aligned label / value rows ---------- */
+.rs-summary .rs-head { justify-content: space-between; margin-bottom: var(--sp-1); }
+.rs-summary .rs-head h2 { min-width: 0; }
+.rs-kv {
+  display: grid;
+  margin: 0;
+}
+.rs-kv-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 38%) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: 7px 0;
+  border-top: 1px solid color-mix(in srgb, var(--s-border) 70%, transparent);
+}
+.rs-kv-row:first-child { border-top: 0; }
+.rs-kv dt {
+  font-size: var(--fs-supportive);
+  color: var(--s-text-muted);
+  line-height: 1.4;
+}
+.rs-kv dd {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-supportive);
+  color: var(--s-text);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+/* values wrap instead of being cut ("FabriJet D18 Direct-to-Fabric Printer — Shree…") */
+.rs-kv dd * {
+  white-space: normal !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+  max-width: 100%;
+}
+.rs-kv dd .ref-chip,
+.rs-kv dd .chip { align-self: flex-start; }
+.rs-kv dd svg { flex: none; }
 
 /* ---------- Rounded pill everywhere in inline editing (owner reference) ---------- */
 /* hover on any editable cell: a pill outline hugs the value (no square cell box) */
@@ -8041,67 +8104,6 @@ td.is-dirty .cell::after {
 }
 .detail-list.orders-totals { margin-left: auto; margin-top: var(--sp-3); }
 
-/* ---------- Deal progress strip (quotation → sales order → delivery → installation) ---------- */
-.deal-progress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--s-border);
-  border-radius: var(--c-radius-control);
-  background: var(--s-panel);
-}
-.deal-steps {
-  display: flex;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.deal-step {
-  position: relative;
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  text-align: center;
-}
-/* connector to the previous step */
-.deal-step + .deal-step::before {
-  content: '';
-  position: absolute;
-  top: 5px;
-  right: calc(50% + 8px);
-  left: calc(-50% + 8px);
-  height: 2px;
-  background: var(--s-border);
-}
-.deal-step.is-done + .deal-step::before,
-.deal-step.is-skipped + .deal-step::before { background: var(--s-success); }
-.deal-step.is-skipped .deal-dot { border-style: dashed; border-color: var(--s-success); }
-.deal-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid var(--s-border-strong, var(--s-border));
-  background: var(--s-panel);
-}
-.deal-step.is-done .deal-dot { border-color: var(--s-success); background: var(--s-success); }
-.deal-step.is-current .deal-dot { border-color: var(--s-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--s-accent) 22%, transparent); }
-.deal-label { font-size: 11px; line-height: 1.25; color: var(--s-text-muted); }
-.deal-step.is-done .deal-label { color: var(--s-text-secondary); }
-.deal-step.is-current .deal-label { color: var(--s-text); font-weight: var(--fw-semibold); }
-.deal-next { margin: 0; font-size: var(--fs-supportive); color: var(--s-text-secondary); }
-.deal-next strong { color: var(--s-text); }
-.deal-next.is-stopped strong { color: var(--s-danger); }
-@media (max-width: 760px) {
-  /* Phone: the strip becomes a wrapped list of dots; labels stay readable */
-  .deal-steps { flex-wrap: wrap; row-gap: var(--sp-3); }
-  .deal-step { flex: 0 0 25%; }
-  .deal-step + .deal-step::before { display: none; }
-}
-
 /* Record tab strips that overflow show a soft edge shadow on the side that has more tabs
    (scroll-shadow technique: panel-coloured covers scroll with the content, shadows stay at the edges). */
 :is(.inspector, .inspector-drawer, .inspector-page) > .tabs {
@@ -8828,3 +8830,27 @@ textarea.input.input { height: auto; min-height: 72px; padding: var(--sp-2) var(
 .form-canvas .select-menu-trigger.select-menu-trigger:focus-visible { border-color: var(--s-accent); background: var(--s-panel); box-shadow: var(--ctl-ring); }
 .form-canvas .has-error .input.input,
 .form-canvas .has-error .select-menu-trigger.select-menu-trigger { border-color: var(--s-danger); }
+
+/* ---------- Title note: a compact one-line status note beside the record title (e.g. quotation accepted) ---------- */
+.title-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: 999px;
+  font-size: var(--fs-supportive);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.title-note.tone-success {
+  color: var(--chip-success-fg, var(--s-success));
+  background: var(--chip-success-bg, var(--s-success-bg));
+}
+.title-note svg { flex: none; }
+.title-note-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.title-note-sub { font-weight: 400; opacity: 0.85; }
+/* Side card comment box: tall enough for its two-line hint, so nothing is cut */
+.rs-card .qc-input { min-height: 56px; line-height: 1.45; }

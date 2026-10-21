@@ -1,10 +1,9 @@
-import { createElement, Fragment } from 'react';
-import { DealProgress } from '../../components/crm/DealProgress';
+import { createElement } from 'react';
 import { injectQuotationLeadLookup } from '../modules/quotationComputed';
 import { byId } from '../../services/lookups';
 /** quotations module: runtime hooks, approval type, record actions/tabs and the expiry/reminder job. */
 import { L } from '../../constants/labels';
-import { registerRecordActions, registerRecordBanner, registerRecordTab, registerStageMoveHandler } from '../../components/resource/extensions';
+import { registerRecordActions, registerRecordBanner, registerRecordTab, registerRecordTitleNote, registerStageMoveHandler } from '../../components/resource/extensions';
 import { canUpdateRecord } from '../../services/authz';
 import { nowIso } from '../../lib/clock';
 import { getDb, subscribe } from '../../services/db';
@@ -12,7 +11,7 @@ import { quoteBlockReason, reopenBlockReason, reopenQuotesIn } from '../../servi
 import { registerResourceHooks } from '../../services/resourceHooks';
 import { onDiscountApproved, onDiscountRejected, QUOTE_APPROVAL, quoteBeforeCreate, quoteBeforeUpdate, runQuotationSweep } from '../../services/quotations/workflow';
 import { registerApprovalType } from '../../services/workflow';
-import { AcceptDialog, RejectDialog, ApprovalTab, DocumentsTab, LinesTab, OpportunityQuotesTab, PricingTab, QuoteActions, QuoteBanner, RoiTab, TermsTab, VersionsTab } from '../../modules/quotations/RecordExtensions';
+import { AcceptDialog, RejectDialog, ApprovalTab, DocumentsTab, LinesTab, OpportunityQuotesTab, PricingTab, QuoteActions, QuoteBanner, QuoteTitleNote, RoiTab, TermsTab, VersionsTab } from '../../modules/quotations/RecordExtensions';
 
 const T = L.quotations.tabs;
 injectQuotationLeadLookup((id) => byId('opportunities', id)?.leadId ?? null);
@@ -56,7 +55,9 @@ registerApprovalType(QUOTE_APPROVAL, {
 
 registerRecordActions('quotations', QuoteActions);
 // Deal progress (whole quotation → installation cycle + next step) above the status banner.
-registerRecordBanner('quotations', (p) => createElement(Fragment, null, createElement(DealProgress, { resource: 'quotations', record: p.record }), createElement(QuoteBanner, p)));
+// Deal progress and next step live in the Deal Journey card under the header (components/resource/DealChain).
+registerRecordBanner('quotations', QuoteBanner);
+registerRecordTitleNote('quotations', QuoteTitleNote);
 // GLOSSARY §1.2 quotation record tabs, in order. "Activity History" is the shared activity tab of the record view.
 registerRecordTab('quotations', { id: 'lines', label: T.lineItems, component: LinesTab });
 registerRecordTab('quotations', { id: 'pricing', label: T.pricing, component: PricingTab });

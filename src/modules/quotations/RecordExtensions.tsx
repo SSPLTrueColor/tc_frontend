@@ -27,6 +27,7 @@ import { DatePicker } from '../../components/primitives/DatePicker';
 import { EmptyValue } from '../../components/primitives/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton, StatusChip, useToast } from '../../components/primitives/feedback';
 import { InfoTip } from '../../components/primitives/InfoTip';
+import { Icon } from '../../components/primitives/Icon';
 import { Dialog, Menu } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { LinesTable, TaxSummary, TotalsBlock } from './LinesTable';
@@ -595,7 +596,26 @@ function VersionDialog({ record, onClose }: DProps) {
 
 // ---------------------------------------------------------------- banner
 
-export function QuoteBanner({ actor, record }: Props) {
+/** Accepted quotation: one compact line beside the title — when, and how (PO or e-acceptance); full text on hover. */
+export function QuoteTitleNote({ record }: Props) {
+  const raw = (getDb().records.quotations ?? []).find((q) => q.id === record.id);
+  if (!raw || raw.status !== 'accepted' || raw.isLatest === false) return null;
+  const when = raw.acceptedAt ? B.acceptedOn(formatDateTime(String(raw.acceptedAt))) : B.accepted;
+  const po = raw.acceptanceMethod === 'po';
+  const how = po ? B.acceptedNotePo(String(raw.customerPoNo)) : raw.acceptedByName ? B.acceptedNoteElectronic(String(raw.acceptedByName)) : '';
+  const full = `${when}. ${po ? B.acceptedPo(String(raw.customerPoNo), String(raw.poFileName)) : B.acceptedElectronic(String(raw.acceptedByName))}`;
+  return (
+    <span className="title-note tone-success" data-tooltip={full}>
+      <Icon name="check" size={13} />
+      <span className="title-note-text">
+        {when}
+        {how && <span className="title-note-sub"> · {how}</span>}
+      </span>
+    </span>
+  );
+}
+
+export function QuoteBanner({ record }: Props) {
   const raw = (getDb().records.quotations ?? []).find((q) => q.id === record.id);
   if (!raw) return null;
   const status = String(raw.status);
@@ -640,15 +660,8 @@ export function QuoteBanner({ actor, record }: Props) {
         {B.expiredBody}
       </InlineAlert>
     );
-  if (status === 'accepted') {
-    const ordered = (getDb().records.salesOrders ?? []).some((o) => o.quotationId === raw.id && o.status !== 'cancelled');
-    const canOrder = perm(actor, 'salesOrders').create && !ordered;
-    return (
-      <InlineAlert tone="success" title={raw.acceptedAt ? B.acceptedOn(formatDateTime(String(raw.acceptedAt))) : B.accepted}>
-        {raw.acceptanceMethod === 'po' ? B.acceptedPo(String(raw.customerPoNo), String(raw.poFileName)) : B.acceptedElectronic(String(raw.acceptedByName))} {canOrder ? B.generateHint : ''}
-      </InlineAlert>
-    );
-  }
+  // Accepted: a compact note beside the title (QuoteTitleNote); the next step is in the Deal Journey card.
+  if (status === 'accepted') return null;
   if (['approved', 'sent', 'negotiation'].includes(status)) {
     const daysLeft = Math.round((new Date(String(raw.validUntil)).getTime() - new Date(todayKey()).getTime()) / 86_400_000);
     if (daysLeft <= 3)

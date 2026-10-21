@@ -1,6 +1,6 @@
 import { PageHeader } from '../shell/PageHeader';
 import { pageTitleForPath } from '../../lib/pageTitle';
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import type { Tone } from '../../metadata/types';
@@ -8,6 +8,7 @@ import { cx } from '../../lib/format';
 import { isMasked, maskSensitive, type SensitiveFieldType } from '../../lib/phiMask';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { Menu } from './overlay';
 import { EmptyValue } from './display';
 import { L } from '../../constants/labels';
 
@@ -195,10 +196,72 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 // ---------------------------------------------------------------- tabs
 
+/**
+ * Tab strip. Tabs that do not fit go into a "More ▾" menu instead of being cut off; the active tab is always
+ * on the strip (it takes the last visible place when it would otherwise be hidden).
+ */
 export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; label: string; count?: number }[]; value: T; onChange: (v: T) => void; label: string }) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const [fit, setFit] = useState(tabs.length);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [, setWidth] = useState(0);
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Runs after every render (labels and counts change the widths); it only sets state when the fit changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    const ghost = ghostRef.current;
+    if (!strip || !ghost || !strip.clientWidth) return;
+    const gap = parseFloat(getComputedStyle(strip).columnGap) || 0;
+    const pad = parseFloat(getComputedStyle(strip).paddingLeft) + parseFloat(getComputedStyle(strip).paddingRight);
+    const items = [...ghost.querySelectorAll<HTMLElement>('[data-ghost-tab]')];
+    const ws = items.map((x) => x.offsetWidth);
+    const moreW = ghost.querySelector<HTMLElement>('[data-ghost-more]')?.offsetWidth ?? 80;
+    const room = strip.clientWidth - pad;
+    const total = ws.reduce((a, w) => a + w + gap, -gap);
+    let k = ws.length;
+    if (total > room) {
+      let used = 0;
+      for (k = 0; k < ws.length; k++) {
+        if (used + ws[k] + gap + moreW > room) break;
+        used += ws[k] + gap;
+      }
+      k = Math.max(1, k);
+    }
+    if (k !== fit) setFit(k);
+  });
+  const activeIndex = tabs.findIndex((t) => t.id === value);
+  let shown = tabs.slice(0, fit);
+  if (fit < tabs.length && activeIndex >= fit) shown = [...tabs.slice(0, Math.max(0, fit - 1)), tabs[activeIndex]];
+  const hidden = tabs.filter((t) => !shown.includes(t));
+  const renderInner = (t: { label: string; count?: number }) => (
+    <>
+      {t.label}
+      {t.count !== undefined && <span className="tab-count">{t.count}</span>}
+    </>
+  );
   return (
-    <div role="tablist" aria-label={label} className="tabs">
-      {tabs.map((t, i) => (
+    <div ref={stripRef} role="tablist" aria-label={label} className={cx('tabs', hidden.length > 0 && 'has-more')}>
+      {/* Hidden copies, only to measure how many tabs fit */}
+      <div ref={ghostRef} className="tabs-ghost" aria-hidden="true">
+        {tabs.map((t) => (
+          <span key={t.id} data-ghost-tab className="tab">
+            {renderInner(t)}
+          </span>
+        ))}
+        <span data-ghost-more className="tab tab-more">
+          {L.common.actions.moreTabs} <Icon name="chevron-down" size={12} />
+        </span>
+      </div>
+      {shown.map((t) => (
         <button
           key={t.id}
           role="tab"
@@ -211,16 +274,32 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
           onClick={() => onChange(t.id)}
           onKeyDown={(e) => {
             if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+              const i = tabs.indexOf(t);
               const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
               onChange(next.id);
-              (e.currentTarget.parentElement?.querySelector(`#tab-${next.id}`) as HTMLElement | null)?.focus();
+              const strip = e.currentTarget.parentElement;
+              requestAnimationFrame(() => (strip?.querySelector(`#tab-${next.id}`) as HTMLElement | null)?.focus());
             }
           }}
         >
-          {t.label}
-          {t.count !== undefined && <span className="tab-count">{t.count}</span>}
+          {renderInner(t)}
         </button>
       ))}
+      {hidden.length > 0 && (
+        <>
+          <button ref={moreRef} type="button" className={cx('tab tab-more', menuOpen && 'is-open')} aria-haspopup="menu" aria-expanded={menuOpen} aria-label={L.common.actions.moreTabsLabel} onClick={() => setMenuOpen((o) => !o)}>
+            {L.common.actions.moreTabs}
+            <Icon name="chevron-down" size={12} />
+          </button>
+          <Menu
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            anchor={moreRef}
+            label={L.common.actions.moreTabsLabel}
+            items={hidden.map((t) => ({ id: t.id, label: t.count !== undefined ? `${t.label} (${t.count})` : t.label, onSelect: () => onChange(t.id) }))}
+          />
+        </>
+      )}
     </div>
   );
 }
