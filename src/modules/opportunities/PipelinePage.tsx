@@ -1,4 +1,3 @@
-import { SalesWorkspaceTabs } from '../leads/SalesWorkspaceTabs';
 import { Pagination } from '../../components/primitives/Pagination';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -125,8 +124,7 @@ export function PipelinePage() {
   return (
     <div className={cx('page page-resource', peek && 'has-inspector')}>
       <div className="page-main">
-        <PageHeader title={L.leads.workspace.title} description={T.description} />
-        <SalesWorkspaceTabs actor={actor} active="pipeline" />
+        <PageHeader title={L.nav.pages.pipeline.title} description={T.description} />
         <div className="view-toolbar view-tabs-row is-subviews pipeline-bar">
           <SegmentedControl
             label={T.layout}

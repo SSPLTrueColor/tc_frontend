@@ -1,4 +1,3 @@
-import { SalesWorkspaceTabs } from '../modules/leads/SalesWorkspaceTabs';
 import { useShortcuts } from '../hooks/useShortcuts';
 import { listCrumb } from '../components/shell/crumbs';
 import { Pagination } from '../components/primitives/Pagination';
@@ -175,17 +174,14 @@ export function ResourcePage() {
     return sets[0].filter((t) => sets.every((s) => s.some((x) => x.to === t.to)));
   })();
 
-  const isSales = ['leads', 'opportunities'].includes(resource);
   const exportReason = perm(actor, resource).export ? undefined : LS.cannotExport(actor.role.label, res.labelPlural.toLowerCase());
 
   return (
     <div className={cx('page page-resource', `page-res-${res.key}`, peek && 'has-inspector')}>
       <div className="page-main">
-        <PageHeader title={isSales ? L.leads.workspace.title : res.labelPlural} description={res.description} />
-        {/* Sales pages: the page switcher is the top level; this page's saved views then read as sub-views (pills) */}
-        {isSales && <SalesWorkspaceTabs actor={actor} active={resource} />}
+        <PageHeader title={res.labelPlural} description={res.description} />
         {/* Line 1: saved views as underline tabs (+) … Export · primary action — one full-width line under it */}
-        <div className={cx('view-toolbar view-tabs-row', isSales && 'is-subviews')}>
+        <div className="view-toolbar view-tabs-row">
           <ViewBar
             res={res}
             views={views}
