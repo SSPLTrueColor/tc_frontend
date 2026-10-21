@@ -248,6 +248,11 @@ export function OutboxPage() {
                       </td>
                       <td className="st-cell-clip">
                         <Clip text={`${m.subject ? `${m.subject} · ` : ''}${m.body}`} />
+                        {(m.templateName || m.status !== 'simulated' || m.audience === 'staff') && (
+                          <span className="field-help">
+                            {[m.audience === 'staff' ? O.staffAlert : '', m.templateName ? O.template(m.templateName) : '', m.status === 'queued' && m.deliverAt ? O.statusQueued(formatDateTime(m.deliverAt)) : '', m.status === 'digest' ? O.statusDigest : ''].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
                       </td>
                       <td>{m.related ? <Link to={recordPeekPath(actor.workspaceId, m.related.resource, m.related.recordId)}>{m.related.recordId}</Link> : <EmptyValue />}</td>
                       <td>{getUser(m.createdBy)?.name ?? m.createdBy}</td>

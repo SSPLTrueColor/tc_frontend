@@ -110,6 +110,9 @@ export function ContactActions({ actor, record }: RecordExtensionProps) {
 
 // ---------------------------------------------------------------- Convert to Lead (CUS-05, BR-04)
 
+/** Fields the Convert dialog shows an error under; anything else goes to the message at the bottom. */
+const SHOWN = new Set(['companyName', 'territoryId', 'billingState', 'divisionId', 'productType', 'sourceId', 'ownerId', 'nextFollowUpAt', 'eventName', 'referrerType', 'referrerEmployeeId', 'referrerCustomerId']);
+
 export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtensionProps['actor']; contact: RecordData; onClose: () => void }) {
   const toast = useToast();
   const navigate = useNavigate();
@@ -125,11 +128,19 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
     billingState: guess?.billingState ?? '',
     divisionId: ((contact.divisionIds as string[]) ?? [])[0] ?? actor.divisionIds[0] ?? '',
     productType: 'machine',
-    ownerId: String(contact.ownerId ?? actor.staffId),
+    // LEAD-02: pre-filled from the contact's source when it is a lead source; otherwise the user picks one.
+    sourceId: activeMasterValues('leadSource').some((m) => m.key === contact.source) ? String(contact.source) : '',
+    // Only pre-select an owner who is in the list below; otherwise the field would show "Select…" while holding a hidden value.
+    ownerId: [contact.ownerId, actor.staffId].map((x) => String(x ?? '')).find((id) => sales.some((e) => e.id === id)) ?? '',
     nextFollowUpAt: defaultFollowUp(),
     requirement: '',
     eventName: '',
+    referrerType: '',
+    referrerEmployeeId: '',
+    referrerCustomerId: '',
   });
+  const employees = (getDb().records.employees ?? []).filter((e) => e.status !== 'inactive');
+  const customers = (getDb().records.customers ?? []).filter((c) => c.workspaceId === actor.workspaceId && c.status !== 'inactive');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof v, val: string) => setV((x) => ({ ...x, [k]: val }));
@@ -148,8 +159,11 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
       toast(V.done(r.leadId, pool ? r.customerId : undefined), 'success', { label: L.common.actions.open, onClick: () => navigate(recordPeekPath(actor.workspaceId, 'leads', r.leadId)) });
       onClose();
     } catch (e) {
-      if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
-      else setErrors({ form: errorMessage(e) });
+      if (e instanceof ServiceError && e.fieldErrors) {
+        // Any error for a field this dialog does not show is listed at the bottom, so a save never fails silently.
+        const unseen = Object.entries(e.fieldErrors).filter(([k, m]) => m && !SHOWN.has(k)).map(([, m]) => m);
+        setErrors({ ...e.fieldErrors, ...(unseen.length ? { form: `${errorMessage(e)} ${unseen.join('. ')}` } : {}) });
+      } else setErrors({ form: errorMessage(e) });
     } finally {
       saving.current = false;
       setBusy(false);
@@ -230,10 +244,55 @@ export function ConvertDialog({ actor, contact, onClose }: { actor: RecordExtens
           {err('productType')}
         </div>
         <div className="form-field">
+          <label className="field-label" htmlFor="cv-source">
+            {V.sourceId} <span className="req">*</span>
+          </label>
+          <SelectMenu id="cv-source" block label={V.sourceId} value={v.sourceId} invalid={!!errors.sourceId} placeholder={L.common.form.select} options={activeMasterValues('leadSource').map((d) => ({ value: d.key, label: d.label }))} onChange={(t) => set('sourceId', t)} />
+          {err('sourceId')}
+        </div>
+        {v.sourceId === 'referral' && (
+          <>
+            <div className="form-field">
+              <label className="field-label" htmlFor="cv-ref-type">
+                {V.referrerType} <span className="req">*</span>
+              </label>
+              <SelectMenu
+                id="cv-ref-type"
+                block
+                label={V.referrerType}
+                value={v.referrerType}
+                invalid={!!errors.referrerType}
+                placeholder={L.common.form.select}
+                options={activeMasterValues('referrerType').map((d) => ({ value: d.key, label: d.label }))}
+                onChange={(t) => setV((x) => ({ ...x, referrerType: t, referrerEmployeeId: '', referrerCustomerId: '' }))}
+              />
+              {err('referrerType')}
+            </div>
+            {(v.referrerType === 'engineer' || v.referrerType === 'employee') && (
+              <div className="form-field">
+                <label className="field-label" htmlFor="cv-ref-emp">
+                  {V.referrerEmployee} <span className="req">*</span>
+                </label>
+                <SelectMenu id="cv-ref-emp" block label={V.referrerEmployee} value={v.referrerEmployeeId} invalid={!!errors.referrerEmployeeId} placeholder={L.common.form.select} options={employees.map((e) => ({ value: e.id, label: `${String(e.fullName)} — ${String(e.designation)}` }))} onChange={(t) => set('referrerEmployeeId', t)} />
+                {err('referrerEmployeeId')}
+              </div>
+            )}
+            {(v.referrerType === 'customer' || v.referrerType === 'dealer') && (
+              <div className="form-field">
+                <label className="field-label" htmlFor="cv-ref-cust">
+                  {V.referrerCustomer} <span className="req">*</span>
+                </label>
+                <SelectMenu id="cv-ref-cust" block label={V.referrerCustomer} value={v.referrerCustomerId} invalid={!!errors.referrerCustomerId} placeholder={L.common.form.select} options={customers.map((c) => ({ value: c.id, label: String(c.name) }))} onChange={(t) => set('referrerCustomerId', t)} />
+                {err('referrerCustomerId')}
+              </div>
+            )}
+          </>
+        )}
+        <div className="form-field">
           <label className="field-label" htmlFor="cv-owner">
             {V.ownerId} <span className="req">*</span>
           </label>
-          <SelectMenu id="cv-owner" block label={V.ownerId} value={v.ownerId} options={sales.map((e) => ({ value: e.id, label: `${String(e.fullName)} — ${String(e.designation)}` }))} onChange={(t) => set('ownerId', t)} />
+          <SelectMenu id="cv-owner" block label={V.ownerId} value={v.ownerId} invalid={!!errors.ownerId} placeholder={L.common.form.select} options={sales.map((e) => ({ value: e.id, label: `${String(e.fullName)} — ${String(e.designation)}` }))} onChange={(t) => set('ownerId', t)} />
           {err('ownerId')}
         </div>
         <div className="form-field">

@@ -6,7 +6,7 @@ import { recordPeekPath } from '../../../lib/routes';
 import { perm } from '../../authz';
 import { staffOfUser } from '../../lookups';
 import { getPolicies } from '../../policies';
-import { activityScorecard, amcRenewalRate, attachRate, avgSalesCycleDays, collections, csat, dayOf, firstTimeFix, inRange, isBooked, isOpenOpp, leadConversion, leadResponseHours, mttrHours, orderBacklog, overdueFollowUps, pipeline, pmCompliance, quoteToOrder, repeatRate, slaCompliance, sum, winRate } from '../kpis';
+import { activityScorecard, amcRenewalRate, attachRate, avgSalesCycleDays, collections, csat, dayOf, firstTimeFix, inRange, isBooked, isLiveQuote, isOpenOpp, leadConversion, leadFunnel, leadResponseHours, mttrHours, oppOutcomes, orderBacklog, overdueFollowUps, pipeline, pmCompliance, quoteToOrder, repeatRate, scoreTotal, slaCompliance, sum, sumNet, winRate } from '../kpis';
 import { applyFilters, empName, groupBy, label, list, monthKey, n, reportPath, row, s } from '../helpers';
 import { count, countIf, sum as sumOf, ratio } from '../metrics';
 import type { RecordData } from '../../../metadata/types';
@@ -53,8 +53,9 @@ export const overviewReports: ReportDef[] = [
         compute: (ds, f, ctx) => {
           const leads = applyFilters(ds.get('leads'), f, { date: 'createdAt' });
           const oppsAll = applyFilters(ds.get('opportunities'), f);
-          const closed = oppsAll.filter((o) => ['won', 'lost'].includes(s(o.stage)) && inRange(o.wonAt || o.stageChangedAt || o.updatedAt, f.from, f.to));
-          const quotes = applyFilters(ds.get('quotations'), f, { date: 'quoteDate' });
+          // Same query as the dashboard Win Rate tile and funnel (kpis.oppOutcomes).
+          const closed = oppOutcomes(oppsAll, f.from, f.to).closed;
+          const quotes = applyFilters(ds.get('quotations'), f, { date: 'quoteDate' }).filter(isLiveQuote);
           const orders = applyFilters(ds.get('salesOrders'), f);
           const booked = orders.filter((o) => isBooked(o) && inRange(o.orderDate, f.from, f.to));
           const tickets = applyFilters(ds.get('tickets'), f, { date: 'reportedAt' });
@@ -64,11 +65,15 @@ export const overviewReports: ReportDef[] = [
           const p = pipeline(oppsAll);
           const c = csat(tickets);
           const attach = attachRate(applyFilters(ds.get('machines'), f), ds.get('salesOrders'), addDays(ctx.today, -365));
-          const sc = activityScorecard({ activities: ds.get('activities'), fieldVisits: ds.get('fieldVisits'), demos: ds.get('demos'), quotations: ds.get('quotations'), leads: ds.get('leads'), from: addDays(ctx.today, -6), to: ctx.today });
-          const scTotal = [...sc.values()].reduce((t, x) => t + x.calls + x.visits + x.demos + x.quotations + x.referrals, 0);
+          // TGT-03: the same calculation as /activity-scorecard, for the report's dates and division (people in the division).
+          const scFrom = f.from ?? addDays(ctx.today, -6);
+          const scTo = f.to ?? ctx.today;
+          const sc = activityScorecard({ activities: ds.get('activities'), fieldVisits: ds.get('fieldVisits'), demos: ds.get('demos'), quotations: ds.get('quotations'), leads: ds.get('leads'), from: scFrom, to: scTo });
+          const inDivision = f.division ? new Set(ds.get('employees').filter((e) => ((e.divisionIds as string[] | undefined) ?? []).includes(f.division!)).map((e) => String(e.id))) : null;
+          const scTotal = [...sc.entries()].filter(([id]) => !inDivision || inDivision.has(id)).reduce((t, [, x]) => t + scoreTotal(x), 0);
           const k = (key: string, kpi: string, value: string, definition: string, link?: string) => row(key, { kpi, value, definition, _href: link });
-          const qualified = leads.filter((l) => l.status === 'qualified' || l.opportunityId).length;
-          const sent = quotes.filter((q) => q.isLatest !== false && s(q.sentAt)).length;
+          // Lead → order funnel on the leads of the period: every stage is a subset of the one before (never above 100 %).
+          const funnel = leadFunnel(leads, ds.get('quotations'), ds.get('salesOrders'));
           return {
             columns: [
               { key: 'kpi', label: D.kpiSummary.cols.kpi, link: (r) => (r._href ? String(r._href) : undefined) },
@@ -76,7 +81,7 @@ export const overviewReports: ReportDef[] = [
               { key: 'definition', label: D.kpiSummary.cols.definition },
             ],
             rows: [
-              k('booked', R.scorecard.booked, fmt.money(sum(booked, 'grandTotal')), R.scorecard.bookedDef, reportPath('order-value')),
+              k('booked', R.scorecard.booked, fmt.money(sumNet(booked)), R.scorecard.bookedDef, reportPath('order-value')),
               k('lead-response', K.leadResponse, fmt.hours(leadResponseHours(leads)), KD.leadResponse, reportPath('lead-speed')),
               k('lead-conversion', K.leadConversion, fmt.pct(leadConversion(leads)), KD.leadConversion, reportPath('lead-conversion')),
               k('win-rate', K.winRate, fmt.pct(winRate(closed)), KD.winRate, list('opportunities')),
@@ -99,10 +104,10 @@ export const overviewReports: ReportDef[] = [
               k('adoption', K.adoption, '', KD.adoption, reportPath('crm-adoption')),
             ],
             points: [
-              { key: 'leads', label: R.scorecard.stages.leads, value: leads.length },
-              { key: 'qualified', label: R.scorecard.stages.qualified, value: qualified },
-              { key: 'quotes', label: R.scorecard.stages.quotes, value: sent },
-              { key: 'orders', label: R.scorecard.stages.orders, value: booked.length },
+              { key: 'leads', label: R.scorecard.stages.leads, value: funnel.leads },
+              { key: 'qualified', label: R.scorecard.stages.qualified, value: funnel.qualified },
+              { key: 'quotes', label: R.scorecard.stages.quotes, value: funnel.quoted },
+              { key: 'orders', label: R.scorecard.stages.orders, value: funnel.ordered },
             ],
           };
         },

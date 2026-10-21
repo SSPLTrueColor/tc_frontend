@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { appRoles, demoUsers, organization } from '../domain/pack';
 import { call, errorMessage } from '../services/api/client';
 import { useRevision } from '../services/hooks';
+import { signInUsers } from '../services/registry';
 import { isSignedIn, needsOtp, startSignIn, verifyOtp } from '../services/session';
 import { Button } from '../components/primitives/Button';
 import { Avatar, InlineAlert } from '../components/primitives/feedback';
@@ -26,7 +27,8 @@ export function LoginPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const user = demoUsers.find((u) => u.id === userId)!;
+  const people = signInUsers();
+  const user = people.find((u) => u.id === userId) ?? people[0];
   const role = appRoles.find((r) => r.id === user.roleId)!;
 
   useEffect(() => {
@@ -85,7 +87,7 @@ export function LoginPage() {
                 block
                 label={G.demoUser}
                 value={userId}
-                options={demoUsers.map((u) => ({ value: u.id, label: G.option(u.name, rolePosition(appRoles.find((r) => r.id === u.roleId)?.label ?? u.roleId, u.title)) }))}
+                options={people.map((u) => ({ value: u.id, label: G.option(u.name, rolePosition(appRoles.find((r) => r.id === u.roleId)?.label ?? u.roleId, u.title)) }))}
                 onChange={(v) => {
                   setUserId(v);
                   setError('');

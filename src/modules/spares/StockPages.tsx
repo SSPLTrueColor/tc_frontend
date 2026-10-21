@@ -79,7 +79,7 @@ export function MainStoreStockPage() {
                 </>
               )}
             </p>
-            <DataTable
+            <DataTable exportResource="spareParts"
               label={P.tableLabel}
               rows={rows}
               rowKey={(r) => r.id}

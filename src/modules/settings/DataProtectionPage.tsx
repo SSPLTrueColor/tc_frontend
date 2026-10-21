@@ -15,6 +15,7 @@ import { EmptyState, ErrorState, StatusChip, useToast } from '../../components/p
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { usePaged } from '../catalog/kit';
 import { TextField, Textarea } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
 import { Table } from '../../components/primitives/Table';
 
 const D = L.account.dataProtection;
@@ -54,7 +55,6 @@ export function DataProtectionPage() {
   const r = retention.draft;
   const rErr = validateRetention(r);
   const reqErr = validateDpRequest(req);
-  const num = (v: string) => (v.trim() === '' ? NaN : Number(v));
 
   const run = async (op: () => Promise<unknown>, ok: string) => {
     try {
@@ -91,7 +91,7 @@ export function DataProtectionPage() {
 
   const retentionField = (key: keyof DataProtection['retention'], label: string, unit: string) => (
     <SettingsField label={`${label} (${unit})`} htmlFor={`dp-${key}`} error={tried ? rErr[key] : undefined}>
-      <TextField id={`dp-${key}`} type="number" inputMode="numeric" disabled={!admin} value={Number.isFinite(r[key]) ? r[key] : ''} onChange={(e) => retention.set({ [key]: num(e.target.value) })} aria-invalid={(tried && !!rErr[key]) || undefined} />
+      <NumberInput id={`dp-${key}`} disabled={!admin} rule={{ integer: true }} value={r[key]} onValueChange={(n) => retention.set({ [key]: n ?? NaN })} invalid={tried && !!rErr[key]} />
     </SettingsField>
   );
 

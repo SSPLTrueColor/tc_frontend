@@ -106,7 +106,8 @@ export function saveRolePermissions(actor: Actor, roleId: string, changes: RoleC
       else fieldOverrides[key] = next;
     }
     if (!audit.length) return 0;
-    if (Object.keys(resources).length || Object.keys(fieldOverrides).length) all[roleId] = { resources, fieldOverrides, updatedAt: nowIso(), updatedBy: actor.user.id };
+    const capabilities = all[roleId]?.capabilities;
+    if (Object.keys(resources).length || Object.keys(fieldOverrides).length || capabilities) all[roleId] = { resources, fieldOverrides, capabilities, updatedAt: nowIso(), updatedBy: actor.user.id };
     else delete all[roleId];
     cfg.rolePermissions = all;
     const correlationId = uid('cor');
@@ -128,5 +129,37 @@ export function resetRolePermissions(actor: Actor, roleId: string) {
     const correlationId = uid('cor');
     appendAudit(d, actor, { action: 'access.role_reset', summary: L.admin.access.auditReset(base.label), correlationId });
     emitEvent(d, actor, { eventType: 'access.role_reset', correlationId, payload: { roleId } });
+  });
+}
+
+/** Capabilities an administrator may give to or take from a role in Roles & Permissions (ADM-02). */
+export const EDITABLE_CAPABILITIES = ['approve.l1', 'approve.l2', 'approve.l3', 'approve.finance', 'approve.service', 'data.export', 'data.import', 'audit.view', 'outbox.view', 'views.share.team', 'views.share.org'] as const;
+
+/** Saves which editable capabilities a role holds. Only differences from the shipped role are stored; audited with before/after. */
+export function saveRoleCapabilities(actor: Actor, roleId: string, held: string[]): number {
+  requireManager(actor, roleId);
+  const base = shipped(roleId)!;
+  const editable = new Set<string>(EDITABLE_CAPABILITIES);
+  const want = new Set(held.filter((c) => editable.has(c)));
+  return commit((d) => {
+    const cfg = d.config as ConfigWithRoles;
+    const all = { ...(cfg.rolePermissions ?? {}) };
+    const before = new Set(applyRoleOverrides(base, all).capabilities.filter((c) => editable.has(c)));
+    const add = [...want].filter((c) => !base.capabilities.includes(c));
+    const remove = base.capabilities.filter((c) => editable.has(c) && !want.has(c));
+    const name = (c: string) => (L.admin.access.capabilities as Record<string, string>)[c] ?? c;
+    const audit = [...EDITABLE_CAPABILITIES]
+      .filter((c) => before.has(c) !== want.has(c))
+      .map((c) => ({ field: `capability.${c}`, label: name(c), before: before.has(c) ? L.admin.access.capabilityOn : L.admin.access.capabilityOff, after: want.has(c) ? L.admin.access.capabilityOn : L.admin.access.capabilityOff }));
+    if (!audit.length) return 0;
+    const cur = all[roleId] ?? { resources: {}, fieldOverrides: {}, updatedAt: nowIso(), updatedBy: actor.user.id };
+    const capabilities = add.length || remove.length ? { add, remove } : undefined;
+    if (Object.keys(cur.resources).length || Object.keys(cur.fieldOverrides).length || capabilities) all[roleId] = { ...cur, capabilities, updatedAt: nowIso(), updatedBy: actor.user.id };
+    else delete all[roleId];
+    cfg.rolePermissions = all;
+    const correlationId = uid('cor');
+    appendAudit(d, actor, { action: 'access.role_changed', summary: L.admin.access.auditSummary(base.label, audit.length), changes: audit, correlationId });
+    emitEvent(d, actor, { eventType: 'access.role_changed', correlationId, payload: { roleId, changes: audit.length } });
+    return audit.length;
   });
 }

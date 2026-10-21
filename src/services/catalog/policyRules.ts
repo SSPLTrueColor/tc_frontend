@@ -7,6 +7,7 @@
  */
 import { L } from '../../constants/labels';
 import type { Policies } from '../policies';
+import { activeMasterValues, getMaster } from '../registry';
 
 export type PolicyGroup = 'workflows' | 'sla' | 'rules';
 
@@ -36,8 +37,10 @@ export const POLICY_GROUPS: Record<PolicyGroup, (keyof Policies)[]> = {
   ],
 };
 
-export const STAGE_KEYS = ['needs_assessment', 'demo', 'proposal', 'negotiation', 'won', 'lost'] as const;
-export const PRIORITY_KEYS = ['critical', 'high', 'medium', 'low'] as const;
+/** Stage probability rows: every Opportunity Stage master value, in master order (ADM-04). */
+export const stageKeys = (): string[] => [...getMaster('oppStage').values].filter((v) => v.active || ['won', 'lost'].includes(v.key)).sort((a, b) => a.order - b.order).map((v) => v.key);
+/** SLA rows: every active Ticket Priority master value (a new priority starts with Medium's hours). */
+export const priorityKeys = (): string[] => activeMasterValues('ticketPriority').map((v) => v.key);
 export const COVERAGE_KEYS = ['cmc', 'amc', 'warranty', 'none'] as const;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -76,7 +79,7 @@ export function validatePolicies(p: Policies): PolicyErrors {
   positive('maxFileMb', p.maxFileMb);
   nonNeg('conveyance.twoWheeler', p.conveyance.twoWheeler);
   nonNeg('conveyance.car', p.conveyance.car);
-  STAGE_KEYS.forEach((k) => nonNeg(`stage.${k}`, p.stageProbability[k] ?? NaN, 100));
+  stageKeys().forEach((k) => nonNeg(`stage.${k}`, p.stageProbability[k] ?? NaN, 100));
   if (!p.renewalReminderDays.length || p.renewalReminderDays.some((d) => !Number.isInteger(d) || d <= 0)) e.renewalReminderDays = E.renewal;
   if (!TIME.test(p.shift.start)) e['shift.start'] = E.time;
   if (!TIME.test(p.shift.end)) e['shift.end'] = E.time;
@@ -88,7 +91,7 @@ export function validatePolicies(p: Policies): PolicyErrors {
     else if (i > 0 && b.upTo <= p.discountBands[i - 1].upTo) e[`band.${i}`] = E.bandOrder;
   });
   if (!p.discountBands.length || p.discountBands[p.discountBands.length - 1].upTo !== 100) e.discountBands = E.lastBand;
-  PRIORITY_KEYS.forEach((pr) =>
+  priorityKeys().forEach((pr) =>
     COVERAGE_KEYS.forEach((cv) => {
       const s = p.sla[pr]?.[cv];
       const k = `sla.${pr}.${cv}`;

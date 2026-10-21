@@ -2,7 +2,7 @@
 import { getClockOffset, nowIso, setClockOffset } from '../lib/clock';
 import { uid } from '../lib/ids';
 import { type Actor, can } from './authz';
-import { commit } from './db';
+import { commit, resetDb } from './db';
 import { appendAudit } from './ledger';
 import { type DemoSettings, ServiceError } from './types';
 import { L } from '../constants/labels';
@@ -27,4 +27,10 @@ export function shiftClock(actor: Actor, days: number) {
     d.session.lastActiveAt = nowIso();
     appendAudit(d, actor, { action: 'demo.clock', summary: days === 0 ? L.common.audit.clockReset : L.common.audit.clockMoved(days), correlationId: uid('cor') });
   });
+}
+
+/** "Reset demo data" (Demo Settings, account menu): System Administrator only; wipes every change in this browser. */
+export function resetDemoData(actor: Actor) {
+  requireDemo(actor);
+  resetDb();
 }

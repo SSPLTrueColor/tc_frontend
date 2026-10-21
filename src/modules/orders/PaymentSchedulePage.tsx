@@ -85,7 +85,7 @@ export function PaymentSchedulePage() {
         (!division || m.divisionId === division),
     );
     return list;
-  }, [data.data, range, status, division, today]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.data, range, status, division, today]);
 
   if (!allowed) return <NoAccess what={P.noAccess} />;
 
@@ -144,7 +144,7 @@ export function PaymentSchedulePage() {
             ]}
           />
           
-            <DataTable
+            <DataTable exportResource="paymentMilestones"
               label={P.tableTitle}
               rows={rows}
               rowKey={(m) => m.id}

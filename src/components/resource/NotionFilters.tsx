@@ -433,6 +433,7 @@ export function FilterBar({ res, actor, filter, onChange }: { res: ResourceDefin
   const [width, setWidth] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
+  const layoutKey = JSON.stringify(pills.map((c) => [c.id, c.field, c.operator, c.value]));
   useEffect(() => {
     const el = barRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -460,14 +461,15 @@ export function FilterBar({ res, actor, filter, onChange }: { res: ResourceDefin
       used = next;
     }
     if (k !== fit) setFit(k);
-  });
+    // Re-measure when the pills, the bar width or the editing state change. `fit` is a dependency too, but the
+    // guard above only sets it when the measured split differs, so this settles after at most one extra pass.
+  }, [editing, moreOpen, fit, width, layoutKey, filter.children.length]);
   const shown = pills.slice(0, fit);
   const hidden = pills.slice(fit);
   // A pill opened for editing (e.g. just added) that sits in the overflow opens the "+N more" list.
   useEffect(() => {
     if (editing && hidden.some((c) => c.id === editing)) setMoreOpen(true);
   }, [editing, hidden.length]); // eslint-disable-line react-hooks/exhaustive-deps
-  void width;
 
   useEffect(() => {
     const take = () => {

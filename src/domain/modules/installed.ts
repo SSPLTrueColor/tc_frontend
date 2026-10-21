@@ -33,7 +33,7 @@ export const installedPack: ModulePack = {
       machineComponents: p('division', 'division', true),
     }),
     coordinator: same(p('division', 'division', true, false, true), { machineMoves: p('division') }),
-    scm: same(p('all'), { amcContracts: p('none'), trainingRecords: p('none') }),
+    scm: same(p('all'), { trainingRecords: p('none') }), // App. B: Import / SCM views the installed base and AMC contracts
     store: same(p('none'), { machines: p('all'), machineComponents: p('all') }),
     accounts: same(p('all', 'none', false, false, true)),
     profiling: same(p('none')),

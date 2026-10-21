@@ -9,8 +9,10 @@ import { cx } from '../../lib/format';
 import { Button, IconButton } from './Button';
 import { Checkbox, SearchInput } from './controls';
 import { Popover } from './overlay';
-import { csvCell, downloadText } from '../../services/exporter';
-import { EmptyState, ErrorState, Skeleton } from './feedback';
+import { canExportRows, downloadText, exportRowsCsv } from '../../services/exporter';
+import { useActor } from '../../services/hooks';
+import { errorMessage } from '../../services/api/client';
+import { EmptyState, ErrorState, Skeleton, useToast } from './feedback';
 import { Icon } from './Icon';
 import { Pagination } from './Pagination';
 import { FilterPanelButton } from './FilterPanel';
@@ -95,6 +97,8 @@ export interface DataTableProps<R> {
   selectable?: boolean;
   /** Replaces the default selection (export) with page-controlled bulk selection. */
   selection?: DataTableSelection<R>;
+  /** Resource the rows belong to: "Export selected" then needs that resource's export permission (else the Data Export capability). */
+  exportResource?: string;
   /** Page-filling layout used by the menu lists: full width, no radius, footer pinned to the bottom (the page needs `page page-resource` + `page-main`). */
   fill?: boolean;
   /** Text of the row shown when filters leave nothing (default: "Nothing to show"). */
@@ -129,8 +133,12 @@ export function DataTable<R>({
   emptyText,
   selectable: selectableProp = true,
   selection,
+  exportResource,
   fill: fillProp,
 }: DataTableProps<R>) {
+  const actor = useActor();
+  const toast = useToast();
+  const mayExport = canExportRows(actor, exportResource);
   const inFillPage = useContext(FillContext);
   const listActions = useContext(ListActionsContext);
   const tableId = useId();
@@ -179,8 +187,14 @@ export function DataTable<R>({
   const exportSelected = () => {
     const cols = visible.filter((c) => c.sort);
     const picked = rows.filter((r) => selected.has(rowKey(r)));
-    const lines = [cols.map((c) => csvCell(c.label)).join(','), ...picked.map((r) => cols.map((c) => csvCell(String(c.sort!(r)))).join(','))];
-    downloadText(`${label.toLowerCase().replace(/\W+/g, '-')}.csv`, lines.join('\n'));
+    // Same permission check and audit entry as a list export (ADM-07, COM-09).
+    try {
+      const csv = exportRowsCsv(actor, { label, resource: exportResource, header: cols.map((c) => c.label), cells: picked.map((r) => cols.map((c) => String(c.sort!(r)))) });
+      downloadText(`${label.toLowerCase().replace(/\W+/g, '-')}.csv`, csv);
+      toast(CK.exportedSelection(picked.length));
+    } catch (e) {
+      toast(errorMessage(e), 'danger');
+    }
   };
 
   const toolbar = (search || tools || filters || summary || leading || toolbarActions) && (
@@ -223,10 +237,14 @@ export function DataTable<R>({
       ) : selected.size > 0 ? (
         <span className="toolbar-count">
           {CK.selected(selected.size)} ·{' '}
-          <button type="button" className="link small" onClick={exportSelected}>
-            {CK.export}
-          </button>{' '}
-          ·{' '}
+          {mayExport && (
+            <>
+              <button type="button" className="link small" onClick={exportSelected}>
+                {CK.export}
+              </button>{' '}
+              ·{' '}
+            </>
+          )}
           <button type="button" className="link small" onClick={() => setSelected(() => new Set<string>())}>
             {CK.clearSelection}
           </button>

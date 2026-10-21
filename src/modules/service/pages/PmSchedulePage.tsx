@@ -135,7 +135,7 @@ export function PmSchedulePage() {
       actions={perm(actor, 'pmVisits').create ? <LinkButton variant="primary" to={recordNewPath('pmVisits')}>{S.actions.newPmVisit}</LinkButton> : undefined}
       kpis={<Tabs<PmTab> label={P.tabsLabel} value={tab} onChange={(t) => update({ tab: t })} tabs={TABS.map((t) => ({ id: t, label: tabLabel(t), count: q.data ? counts(t) : undefined }))} />}
     >
-      <DataTable
+      <DataTable exportResource="pmVisits"
         label={P.tableLabel}
         rows={rows}
         rowKey={(p) => p.id}

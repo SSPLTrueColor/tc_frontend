@@ -25,6 +25,8 @@ const B = L.leads.banners;
 const FL = L.leads.fields.leads;
 import { VoiceButton } from '../../components/crm/VoiceButton';
 import { LinkButton, TextField, Textarea } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
+import { NUMBER_LIMITS } from '../../services/validation';
 
 const OPEN = ['new', 'contacted', 'nurture'];
 
@@ -40,16 +42,19 @@ export function LeadActions({ res, actor, record }: RecordExtensionProps) {
     ) : null;
   }
   const label = leadLabel(record, actor);
+  // Appendix A: New → Contacted → Qualified. On a New lead the next step is logging the first contact,
+  // so Log Follow-up is the primary action and Create Opportunity explains why it is not available yet.
+  const isNew = status === 'new';
   return (
     <>
       {OPEN.includes(status) && (
-        <Button icon="message" onClick={() => setDialog('log')}>
+        <Button icon="message" variant={isNew ? 'primary' : undefined} onClick={() => setDialog('log')}>
           {A.logFollowUp}
         </Button>
       )}
       {['new', 'contacted'].includes(status) && (
         <>
-          <Button variant="primary" onClick={() => setDialog('convert')} disabledReason={why ?? (hasResource('opportunities') ? undefined : D.noOpportunities)}>
+          <Button variant={isNew ? undefined : 'primary'} onClick={() => setDialog('convert')} disabledReason={why ?? (!hasResource('opportunities') ? D.noOpportunities : isNew ? L.leads.errors.convertNeedsContact : undefined)}>
             {A.convertToOpportunity}
           </Button>
           <Button onClick={() => setDialog('nurture')} disabledReason={why}>
@@ -73,7 +78,8 @@ export function LeadActions({ res, actor, record }: RecordExtensionProps) {
 /** List row / board card action: Create Opportunity (LEAD-10) — qualification stays on the current page. */
 export function LeadCardActions({ actor, record, res }: RecordExtensionProps) {
   const [open, setOpen] = useState(false);
-  if (!['new', 'contacted'].includes(String(record.status)) || !canUpdateRecord(actor, res, record)) return null;
+  // Only Contacted leads can be converted (the first contact must be logged first, Appendix A).
+  if (String(record.status) !== 'contacted' || !canUpdateRecord(actor, res, record)) return null;
   return <>
     <IconButton icon="target" className="convert-icon-btn" label={A.convertToOpportunity} onClick={() => setOpen(true)} />
     {open && <ConvertDialog actor={actor} record={record} res={res} onClose={() => setOpen(false)} />}
@@ -90,6 +96,7 @@ export function leadMoveTargets({ actor, res, record }: RecordExtensionProps): s
   const out: string[] = [];
   if (status === 'new') out.push('contacted');
   if (['new', 'contacted'].includes(status)) {
+    // Dropping a New lead on Qualified opens Log Follow-up first (the first contact comes before conversion).
     if (hasResource('opportunities')) out.push('qualified');
     out.push('nurture');
   }
@@ -99,6 +106,8 @@ export function leadMoveTargets({ actor, res, record }: RecordExtensionProps): s
 
 export function LeadMoveDialog({ actor, res, record, to, onClose }: RecordExtensionProps & { to: string; onClose: () => void }) {
   if (to === 'contacted')
+    return <LogActivityDialog open onClose={onClose} title={A.logFollowUp} requireNextFollowUp parent={{ parentResource: 'leads', parentId: record.id, parentLabel: leadLabel(record, actor), customerId: record.customerId as string | undefined }} />;
+  if (to === 'qualified' && String(record.status) === 'new')
     return <LogActivityDialog open onClose={onClose} title={A.logFollowUp} requireNextFollowUp parent={{ parentResource: 'leads', parentId: record.id, parentLabel: leadLabel(record, actor), customerId: record.customerId as string | undefined }} />;
   if (to === 'qualified') return <ConvertDialog actor={actor} record={record} res={res} onClose={onClose} />;
   if (to === 'nurture') return <NurtureDialog actor={actor} record={record} res={res} onClose={onClose} />;
@@ -182,7 +191,7 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
           {errors.requirement && <p className="field-error">{errors.requirement}</p>}
         </div>
         <Field id="q-budget" label={D.convert.budget} required error={errors.budget}>
-          <TextField id="q-budget" type="number" min={0} value={q.budget || ''} onChange={(e) => set('budget', Number(e.target.value))} />
+          <NumberInput id="q-budget" rule={NUMBER_LIMITS.amount} invalid={!!errors.budget} value={q.budget || null} onValueChange={(n) => set('budget', n ?? 0)} />
         </Field>
         <Field id="q-dm" label={FL.decisionMaker} required error={errors.decisionMaker}>
           <TextField id="q-dm" maxLength={80} value={q.decisionMaker} onChange={(e) => set('decisionMaker', e.target.value)} />
@@ -208,7 +217,7 @@ function ConvertDialog({ actor, record, onClose }: RecordExtensionProps & { onCl
           {errors.opportunityName && <p className="field-error">{errors.opportunityName}</p>}
         </div>
         <Field id="q-value" label={D.convert.value} required error={errors.value}>
-          <TextField id="q-value" type="number" min={0} value={q.value || ''} onChange={(e) => set('value', Number(e.target.value))} />
+          <NumberInput id="q-value" rule={NUMBER_LIMITS.amount} invalid={!!errors.value} value={q.value || null} onValueChange={(n) => set('value', n ?? 0)} />
         </Field>
         <Field id="q-close" label={D.convert.expectedCloseDate} required error={errors.expectedCloseDate}>
           <DatePicker id="q-close" block value={q.expectedCloseDate} onChange={(v) => {
@@ -369,6 +378,12 @@ export function LeadBanner({ actor, record }: RecordExtensionProps) {
     return (
       <InlineAlert tone="warning" title={B.overdueTitle}>
         {B.overdueBody(formatDate(String(record.nextFollowUpAt)))}
+      </InlineAlert>
+    );
+  if (status === 'new')
+    return (
+      <InlineAlert tone="info" title={B.newLeadTitle}>
+        {B.newLeadBody}
       </InlineAlert>
     );
   return null;

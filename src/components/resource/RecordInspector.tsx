@@ -25,6 +25,9 @@ import { LineItemsTable, lineItemsOf } from './LineItems';
 import { FieldValue } from './FieldValue';
 import { ConflictPanel, FormBody, QuickCreateDialog, useRecordForm, useUnsavedGuard } from './RecordForm';
 import { QuickComment } from './QuickComment';
+import { DealHistoryTab } from './DealHistory';
+import { DealChain } from './DealChain';
+import { DEAL_CHAIN_RESOURCES, DEAL_HISTORY_RESOURCES } from '../../services/dealHistory';
 import { InfoTip } from '../primitives/InfoTip';
 import { DateText } from '../primitives/display';
 import { Icon } from '../primitives/Icon';
@@ -54,7 +57,9 @@ export function RecordInspector({
   useRevision();
   const actor = useActor();
   const res = getResource(resKey);
-  const [tab, setTab] = useState<Tab>(() => getDefaultRecordTab(resKey) ?? 'details');
+  // Deal records (lead, opportunity, quotation, sales order, contract) open on the unified Deal History.
+  const dealHistory = DEAL_HISTORY_RESOURCES.includes(resKey);
+  const [tab, setTab] = useState<Tab>(() => getDefaultRecordTab(resKey) ?? (dealHistory ? 'dealHistory' : 'details'));
   const [expanded, setExpanded] = useState(variant === 'panel'); // record drawer opens wide by default (owner rule)
   const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
@@ -123,19 +128,22 @@ export function RecordInspector({
       ) : (
         <>
           <InspectorHeader res={res} actor={actor} p={projected} onEdit={() => (res.form.fullPage ? navigate(recordEditPath(resKey, recordId)) : (setTab('details'), setEditing(true)))} editing={editing} onDeleted={onClose} hideTitle={drawer} editInFooter={drawer} pageActions={variant === 'page'} />
+          {!editing && DEAL_CHAIN_RESOURCES.includes(resKey) && <DealChain resKey={resKey} recordId={recordId} actor={actor} />}
           <Tabs<Tab>
             label={R.sections}
             value={tab}
             onChange={setTab}
             tabs={[
+              ...(dealHistory ? [{ id: 'dealHistory', label: L.common.deal.tab }] : []),
               { id: 'details', label: R.tabs.details },
               ...getRecordTabs(res.key).map((t) => ({ id: t.id, label: t.label, count: t.count?.({ res, actor, record: projected!.record }) })),
               { id: 'related', label: R.tabs.related },
-              { id: 'activity', label: getRecordTabs(res.key).some((t) => t.label === R.tabs.activityHistory) ? R.tabs.changes : R.tabs.activityHistory },
+              { id: 'activity', label: dealHistory || getRecordTabs(res.key).some((t) => t.label === R.tabs.activityHistory) ? R.tabs.changes : R.tabs.activityHistory },
               { id: 'comments', label: R.tabs.comments, count: commentCount },
             ]}
           />
           <div className="inspector-body" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+            {tab === 'dealHistory' && dealHistory && <DealHistoryTab res={res} actor={actor} record={projected.record} />}
             {tab === 'details' && (editing ? <InlineEdit res={res} recordId={recordId} onDone={() => setEditing(false)} /> : <Details res={res} actor={actor} p={projected} />)}
             {tab === 'related' && <Related res={res} actor={actor} record={projected.record} />}
             {tab === 'activity' && <ActivityFeed resKey={resKey} recordId={recordId} />}
@@ -528,7 +536,12 @@ function Related({ res, actor, record }: { res: ResourceDefinition; actor: Actor
             </section>
           );
         }
-        const { rows, total } = queryRecords(actor, rel.resource, { where: { [rel.foreignKey]: record.id }, sort: [{ field: target.calendar?.startField ?? target.titleField, dir: 'desc' }], pageSize: 8 });
+        // Newest first: the calendar start, else the target's own default view sort (e.g. activities by date), else creation time.
+        const viewSort = target.views[0]?.sort?.[0];
+        const sort = target.calendar?.startField ? { field: target.calendar.startField, dir: 'desc' as const } : viewSort ?? { field: 'createdAt', dir: 'desc' as const };
+        const { rows, total } = queryRecords(actor, rel.resource, { where: { [rel.foreignKey]: record.id }, sort: [sort], pageSize: 8 });
+        const dateField = target.fields.find((f) => f.key === sort.field && (f.type === 'date' || f.type === 'datetime'));
+        const byField = target.ownerField ? target.fields.find((f) => f.key === target.ownerField && f.type === 'relation') : undefined;
         const statusKey = target.lifecycle?.field;
         const statusMaster = statusKey ? target.fields.find((f) => f.key === statusKey)?.master : undefined;
         return (
@@ -553,6 +566,13 @@ function Related({ res, actor, record }: { res: ResourceDefinition; actor: Actor
                         <span className="mono">{r.id}</span> {recordTitle(rel.resource, r.id, actor).replace(recordTitle(res.key, record.id, actor) + ' · ', '')}
                       </Link>
                       {mv && <StatusChip label={mv.label} tone={mv.tone} />}
+                      {(dateField || byField) && (
+                        <span className="muted small">
+                          {dateField && r[dateField.key] ? <DateText value={String(r[dateField.key])} showTime={dateField.type === 'datetime'} /> : null}
+                          {dateField && dateField.type === 'datetime' && r[dateField.key] ? ` ${formatTime(String(r[dateField.key]))}` : ''}
+                          {byField && r[byField.key] ? ` · ${recordTitle(byField.relation!.resource, r[byField.key], actor)}` : ''}
+                        </span>
+                      )}
                     </li>
                   );
                 })}

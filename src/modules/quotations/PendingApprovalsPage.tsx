@@ -155,7 +155,7 @@ export function PendingApprovalsPage() {
         </>
       }
     >
-      <DataTable
+      <DataTable exportResource="quotations"
         key={tab}
         label={title}
         noun={P.noun}

@@ -12,6 +12,8 @@ export interface RoleOverride {
   resources: Record<string, ResourcePermission>;
   /** `${resource}.${field}` → access set explicitly by an administrator (absent = role default). */
   fieldOverrides: Record<string, FieldAccess>;
+  /** Capabilities (approve levels, export, …) granted to or taken from the role by an administrator. */
+  capabilities?: { add: string[]; remove: string[] };
   updatedAt: string;
   updatedBy: string;
 }
@@ -31,5 +33,11 @@ export function applyRoleOverrides(role: RoleDefinition, overrides: RoleOverride
     ...role,
     resources: { ...role.resources, ...o.resources },
     fieldOverrides: { ...(role.fieldOverrides ?? {}), ...o.fieldOverrides },
+    capabilities: o.capabilities ? [...new Set([...role.capabilities.filter((c) => !o.capabilities!.remove.includes(c)), ...o.capabilities.add])] : role.capabilities,
   };
+}
+
+/** Capability grants / removals per role (for approver resolution, which must stay free of authz). */
+export function capabilityGrants(d: Db = getDb()): Record<string, { add: string[]; remove: string[] }> {
+  return Object.fromEntries(Object.entries(roleOverrides(d)).flatMap(([roleId, o]) => (o.capabilities ? [[roleId, o.capabilities]] : [])));
 }

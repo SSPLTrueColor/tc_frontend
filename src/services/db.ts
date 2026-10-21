@@ -6,6 +6,7 @@
  */
 import { now as clockNow, nowIso } from '../lib/clock';
 import { SEED_REVISION, seedApp } from '../mocks/seed';
+import { normaliseQuoteSelection } from './quotations/normalise';
 import type { Db, DemoSettings, PersonalSettings } from './types';
 import { L } from '../constants/labels';
 
@@ -72,7 +73,11 @@ function load(): Db {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Db;
-      if (parsed.schemaVersion === SCHEMA_VERSION) return parsed;
+      if (parsed.schemaVersion === SCHEMA_VERSION) {
+        // One-off, idempotent: data stored before quotation selection existed gets the same closure as a fresh seed.
+        normaliseQuoteSelection(parsed.records ?? {}, parsed.approvals ?? [], nowIso());
+        return parsed;
+      }
     }
   } catch {
     /* storage unavailable or corrupt — fall back to a fresh seed */

@@ -12,7 +12,7 @@
 import type { DemoUser } from '../domain/pack';
 import type { FieldAccess, FieldDefinition, RecordData, ResourceDefinition, ResourcePermission, RoleDefinition, RowScope } from '../metadata/types';
 import { getDb, getRevision } from './db';
-import { getResource, getRole, getUser } from './registry';
+import { getResource, getRole, getUser, userIdForStaff } from './registry';
 import { L } from '../constants/labels';
 import { applyRoleOverrides } from './catalog/roleOverrides';
 import { activeGrantsFor, applyGrants } from './catalog/grantEngine';
@@ -158,10 +158,65 @@ function dealLinkedIds(actor: Actor, resKey: string): Set<string> {
   return ids;
 }
 
+/**
+ * BRD Appendix B narrowing (REQUIREMENTS §2.2) on top of the role's row scope:
+ * - Service Engineer sees the customers and contacts of the sites assigned to them (tickets, site visits,
+ *   installations, PM visits), not the whole customer base.
+ * - Accounts sees chargeable service tickets only.
+ * - Profiling sees the opportunities that have sample requests.
+ * Applies to roles with "all" read only up to their edit scope; records the actor may update stay visible.
+ */
+let workCache: { db: unknown; rev: number; byKey: Map<string, Set<string>> } | null = null;
+function cachedSet(key: string, build: () => Set<string>): Set<string> {
+  const db = getDb();
+  if (!workCache || workCache.db !== db || workCache.rev !== getRevision()) workCache = { db, rev: getRevision(), byKey: new Map() };
+  const hit = workCache.byKey.get(key);
+  if (hit) return hit;
+  const out = build();
+  workCache.byKey.set(key, out);
+  return out;
+}
+function assignedCustomerIds(actor: Actor): Set<string> {
+  return cachedSet(`cust|${actor.staffId}`, () => {
+    const r = getDb().records;
+    const ids = new Set<string>();
+    const add = (rows: RecordData[] | undefined, owner: string) => (rows ?? []).forEach((x) => x[owner] === actor.staffId && x.customerId && ids.add(String(x.customerId)));
+    add(r.tickets, 'assigneeId');
+    add(r.installations, 'engineerId');
+    add(r.pmVisits, 'engineerId');
+    (r.serviceVisits ?? []).forEach((v) => {
+      if (v.engineerId !== actor.staffId) return;
+      const t = (r.tickets ?? []).find((x) => x.id === v.ticketId);
+      if (t?.customerId) ids.add(String(t.customerId));
+    });
+    return ids;
+  });
+}
+const sampledOpportunityIds = () => cachedSet('samples', () => new Set((getDb().records.sampleRequests ?? []).map((x) => String(x.opportunityId ?? '')).filter(Boolean)));
+export const isChargeableTicket = (t: RecordData) => (!!t.chargeableStatus && t.chargeableStatus !== 'none') || t.ticketType === 'chargeable_visit' || Number(t.chargeableAmount) > 0;
+
+function roleRowRule(actor: Actor, resKey: string, record: RecordData): boolean {
+  switch (`${actor.role.id}:${resKey}`) {
+    case 'engineer:customers':
+      return assignedCustomerIds(actor).has(String(record.id));
+    case 'engineer:contacts':
+      return assignedCustomerIds(actor).has(String(record.customerId ?? ''));
+    case 'accounts:tickets':
+      return isChargeableTicket(record);
+    case 'profiling:opportunities':
+      return sampledOpportunityIds().has(String(record.id));
+    default:
+      return true;
+  }
+}
+
 export const canReadRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) =>
   (inScope(perm(actor, res.key).read, actor, res, record) || (perm(actor, res.key).read !== 'none' && res.key in LINK_KEYS && record.workspaceId === actor.workspaceId && dealLinkedIds(actor, res.key).has(String(record.id)))) &&
+  (roleRowRule(actor, res.key, record) || (inScope(perm(actor, res.key).update, actor, res, record) && perm(actor, res.key).update !== 'all')) &&
   (hooksFor(res.key).canRead?.(actor, record) ?? true);
 export const canUpdateRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => inScope(perm(actor, res.key).update, actor, res, record);
+/** COM-10 / ADM-02: soft delete needs the delete (D) flag and the record must be within the actor's update scope. */
+export const canDeleteRecord = (actor: Actor, res: ResourceDefinition, record: RecordData) => perm(actor, res.key).delete && canReadRecord(actor, res, record) && canUpdateRecord(actor, res, record);
 
 export const SCOPE_LABELS: Record<RowScope, string> = L.common.scopes;
 
@@ -196,3 +251,20 @@ export const queryableField = (actor: Actor, res: ResourceDefinition, field: Fie
   const a = fieldAccess(actor, res, field);
   return a === 'edit' || a === 'view';
 };
+
+/**
+ * ADM-01: the live organisation (Administration › Users) as approver candidates: role, divisions and
+ * reporting manager as they are now, including people added after go-live. Inactive users are left out.
+ */
+export function liveStaffUsers(workspaceId: string): { id: string; name: string; roleId: string; staffIds: Record<string, string>; managerId?: string; divisions: string[] }[] {
+  return (getDb().records.employees ?? [])
+    .filter((e) => (e.workspaceId ?? workspaceId) === workspaceId && e.status !== 'inactive')
+    .map((e) => ({
+      id: userIdForStaff(e.id, workspaceId),
+      name: String(e.fullName ?? e.id),
+      roleId: String(e.roleId ?? ''),
+      staffIds: { [workspaceId]: String(e.id) },
+      managerId: e.managerId ? userIdForStaff(e.managerId, workspaceId) : undefined,
+      divisions: Array.isArray(e.divisionIds) ? (e.divisionIds as string[]) : [],
+    }));
+}

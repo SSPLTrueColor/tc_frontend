@@ -28,6 +28,8 @@ import { EmptyState, ErrorState, InlineAlert, Skeleton, StatusChip, useToast } f
 import { Dialog } from '../../components/primitives/overlay';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { TextField, Textarea } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
+import { isBadNumber, NUMBER_LIMITS } from '../../services/validation';
 import { SegmentedControl } from '../../components/primitives/controls';
 import { Table } from '../../components/primitives/Table';
 import { FileInput } from '../../components/primitives/controls';
@@ -676,8 +678,9 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
   const [type, setType] = useState(String(contract.contractType ?? 'amc') as 'amc' | 'cmc');
   const [startDate, setStart] = useState(start);
   const [endDate, setEnd] = useState(addDays(addDays(start, 365), -1));
-  const [value, setValue] = useState(String(Math.round(Number(contract.value) * 1.05)));
-  const [visits, setVisits] = useState(String(contract.pmVisitsPerYear ?? 2));
+  const [value, setValue] = useState<number | null>(Math.round(Number(contract.value) * 1.05));
+  const [visits, setVisits] = useState<number | null>(Number(contract.pmVisitsPerYear ?? 2));
+  const badNumbers = isBadNumber(value, NUMBER_LIMITS.amount) || isBadNumber(visits, NUMBER_LIMITS.count);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   return (
@@ -693,11 +696,12 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
           <Button
             variant="primary"
             loading={busy}
+            disabledReason={badNumbers ? L.common.form.fixHighlighted : undefined}
             onClick={async () => {
               setBusy(true);
               setErrors({});
               try {
-                const fresh = await installedApi.renew(actor, contract.id, { contractType: type, startDate, endDate, value: Number(value), pmVisitsPerYear: Number(visits) });
+                const fresh = await installedApi.renew(actor, contract.id, { contractType: type, startDate, endDate, value: Number(value ?? 0), pmVisitsPerYear: Number(visits ?? 0) });
                 toast(M.renewedAs(String(fresh.contractNo)));
                 onClose();
               } catch (e) {
@@ -717,7 +721,7 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
           <SelectMenu id="rn-type" block label={T.fields.amcContracts.contractType} value={type} options={options('amcType') as { value: 'amc' | 'cmc'; label: string }[]} onChange={setType} />
         </Field>
         <Field id="rn-visits" label={T.fields.amcContracts.pmVisitsPerYear} required error={errors.pmVisitsPerYear}>
-          <TextField id="rn-visits" inputMode="numeric" value={visits} onChange={(e) => setVisits(e.target.value.replace(/\D/g, ''))} />
+          <NumberInput id="rn-visits" value={visits} onValueChange={setVisits} rule={NUMBER_LIMITS.count} invalid={!!errors.pmVisitsPerYear} />
         </Field>
         <Field id="rn-start" label={T.fields.amcContracts.startDate} required error={errors.startDate}>
           <DatePicker id="rn-start" block value={startDate} onChange={(v) => setStart(v ?? '')} label={T.fields.amcContracts.startDate} />
@@ -726,10 +730,7 @@ export function RenewDialog({ contract, onClose }: { contract: RecordData; onClo
           <DatePicker id="rn-end" block value={endDate} onChange={(v) => setEnd(v ?? '')} label={T.fields.amcContracts.endDate} />
         </Field>
         <Field id="rn-value" label={T.fields.amcContracts.value} required error={errors.value}>
-          <div className="input-affix">
-            <span className="affix affix-start">₹</span>
-            <TextField id="rn-value" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value.replace(/[^\d.]/g, ''))} />
-          </div>
+          <NumberInput id="rn-value" prefix="₹" value={value} onValueChange={setValue} rule={NUMBER_LIMITS.amount} invalid={!!errors.value} />
         </Field>
         <div className="form-field">
           <span className="field-label">{M.currentValue}</span>

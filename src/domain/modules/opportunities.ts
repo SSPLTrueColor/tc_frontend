@@ -3,7 +3,7 @@
  * to Won / Lost, demo bookings on demo-centre machines, sample print requests to Profiling.
  * Sidebar entries come from src/domain/sidebar.ts; every label comes from L.opportunities.
  */
-import type { MasterDefinition, MasterValue, ResourceDefinition, ResourcePermission, RowScope, Tone } from '../../metadata/types';
+import type { MasterDefinition, MasterValue, ResourceDefinition, ResourcePermission, RowScope, Tone, Transition } from '../../metadata/types';
 import { todayKey } from '../../lib/dates';
 import { nowMs } from '../../lib/clock';
 import { L } from '../../constants/labels';
@@ -39,6 +39,37 @@ const master = (key: string, label: string, values: Omit<MasterValue, 'order'>[]
 
 export const OPEN_STAGES = ['needs_assessment', 'demo', 'proposal', 'negotiation'];
 
+const FL = L.opportunities.fields.opportunities;
+const showSub = (v: string) => ({ visibleWhen: { field: 'subType', op: 'eq' as const, value: v } });
+/** Lead fields carried to the opportunity on conversion: [opportunity key, label, type, extra]. Lead key mapping lives in services/leads/rules.ts. */
+export const FROM_LEAD_FIELDS: [string, string, FieldType, Extra][] = [
+  ['leadSourceId', FL.leadSourceId, 'master', { master: 'leadSource' }],
+  ['leadCampaign', FL.leadCampaign, 'text', {}],
+  ['leadEventName', FL.leadEventName, 'text', {}],
+  ['leadReferrerType', FL.leadReferrerType, 'master', { master: 'referrerType' }],
+  ['leadReferrerEmployeeId', FL.leadReferrerEmployeeId, 'relation', { relation: { resource: 'employees' } }],
+  ['leadReferrerCustomerId', FL.leadReferrerCustomerId, 'relation', { relation: { resource: 'customers' } }],
+  ['subType', FL.subType, 'master', { master: 'productSubType' }],
+  ['specPrintWidth', FL.specPrintWidth, 'number', { unit: 'mm', ...showSub('textile') }],
+  ['specPrintHeads', FL.specPrintHeads, 'master', { master: 'printHeadConfig', ...showSub('textile') }],
+  ['specFabricType', FL.specFabricType, 'master', { master: 'fabricType', ...showSub('textile') }],
+  ['specCapacity', FL.specCapacity, 'number', { unit: 'm/day', ...showSub('textile') }],
+  ['specPodVolume', FL.specPodVolume, 'number', { unit: 'prints', ...showSub('pod') }],
+  ['specPodMedia', FL.specPodMedia, 'text', showSub('pod')],
+  ['specPodFinishing', FL.specPodFinishing, 'text', showSub('pod')],
+  ['specLabelWidth', FL.specLabelWidth, 'number', { unit: 'mm', ...showSub('label') }],
+  ['specLabelSubstrate', FL.specLabelSubstrate, 'text', showSub('label')],
+  ['specLabelColours', FL.specLabelColours, 'number', showSub('label')],
+  ['specOther', FL.specOther, 'longtext', showSub('other')],
+  ['leadRequirement', FL.leadRequirement, 'longtext', {}],
+  ['leadBudget', FL.leadBudget, 'money', { currency: 'INR' }],
+  ['leadTimeline', FL.leadTimeline, 'master', { master: 'purchaseTimeline' }],
+  ['leadCity', FL.leadCity, 'text', {}],
+  ['leadState', FL.leadState, 'master', { master: 'state' }],
+  ['leadIndustry', FL.leadIndustry, 'master', { master: 'industry' }],
+  ['leadSegment', FL.leadSegment, 'master', { master: 'segment' }],
+];
+
 const M = L.opportunities.masters;
 const masters: MasterDefinition[] = [
   master('oppStage', M.oppStage.label, [
@@ -54,6 +85,7 @@ const masters: MasterDefinition[] = [
     mv('additional_machine', M.oppType.values.additional_machine, 'accent'),
     mv('upgrade', M.oppType.values.upgrade, 'info'),
     mv('consumables', M.oppType.values.consumables),
+    mv('spares', M.oppType.values.spares),
     mv('amc', M.oppType.values.amc),
     mv('renewal', M.oppType.values.renewal, 'warning'),
   ]),
@@ -76,6 +108,47 @@ export function isStagnant(r: Record<string, unknown>): boolean {
   const last = String(r.lastActivityAt || r.updatedAt || r.createdAt || '');
   const idleDays = last ? (nowMs() - new Date(last).getTime()) / 86_400_000 : 0;
   return idleDays > stagnationDays() || (!!r.expectedCloseDate && String(r.expectedCloseDate) < todayKey());
+}
+
+// Re-open: a lost deal by an administrator; a won deal also by a Sales Manager, once its sales order is cancelled (quotation selection guard).
+const REOPEN: Transition[] = [
+  { from: ['lost'], to: 'needs_assessment', action: A.reopen, capability: 'opportunity.reopen', confirm: C.reopen },
+  { from: ['won'], to: 'needs_assessment', action: A.reopen, capability: 'opportunity.reopenWon', confirm: C.reopen },
+];
+
+const TERMINAL_STAGES = ['won', 'lost'];
+const STAGE_ACTION: Record<string, string> = { needs_assessment: A.backToNeedsAssessment, demo: A.moveToDemo, proposal: A.moveToProposal, negotiation: A.moveToNegotiation };
+
+// The Opportunity Stage master as published (injected by src/domain/extensions/opportunities.tsx; domain packs cannot import services).
+type StageValue = { key: string; label: string; active: boolean; order: number };
+let stageSource: () => StageValue[] = () => masters.find((m) => m.key === 'oppStage')!.values;
+export function configureStageSource(fn: () => StageValue[]) {
+  stageSource = fn;
+}
+
+/**
+ * Open (working) stages in master order. A stage added in Masters joins them at its sort position; Won and Lost are
+ * workflow end states. OPEN_STAGES is updated in place so every existing reader follows the master.
+ */
+export function openStages(): string[] {
+  const keys = stageSource()
+    .filter((v) => v.active && !TERMINAL_STAGES.includes(v.key))
+    .sort((a, b) => a.order - b.order)
+    .map((v) => v.key);
+  if (keys.length && keys.join('|') !== OPEN_STAGES.join('|')) OPEN_STAGES.splice(0, OPEN_STAGES.length, ...keys);
+  return OPEN_STAGES;
+}
+
+/** Any open stage → any other open stage; Won from Proposal/Quotation onwards (entry rules still apply). */
+function stageTransitions(): Transition[] {
+  const open = openStages();
+  const labelOf = (k: string) => stageSource().find((v) => v.key === k)?.label ?? k;
+  const moves: Transition[] = open.map((to) => ({ from: open.filter((s) => s !== to), to, action: STAGE_ACTION[to] ?? L.opportunities.pages.pipeline.movedTo(labelOf(to)) }));
+  const p = open.indexOf('proposal');
+  const wonFrom = p >= 0 ? open.slice(p) : open.filter((s) => s !== 'needs_assessment');
+  // Same order as before: forward moves, Won, then back to Needs Assessment.
+  const back = moves.filter((m) => m.to === 'needs_assessment');
+  return [...moves.filter((m) => m.to !== 'needs_assessment'), { from: wonFrom, to: 'won', action: A.markWon, confirm: C.markWon }, ...back];
 }
 
 export const opportunities: ResourceDefinition = {
@@ -102,7 +175,7 @@ export const opportunities: ResourceDefinition = {
     fo('oppType', F.opportunities.oppType, 'master', { master: 'oppType', required: true, defaultValue: 'new_machine', width: 170 }),
     fo('productType', F.opportunities.productType, 'master', { master: 'productType', width: 140 }),
     fo('productId', F.opportunities.productId, 'relation', { relation: { resource: 'products' }, width: 180 }),
-    fo('value', F.opportunities.value, 'money', { required: true, min: 0, max: 10_000_000_000, currency: 'INR', width: 140 }),
+    fo('value', F.opportunities.value, 'money', { required: true, min: 0, max: 999_999_999, currency: 'INR', width: 140 }),
     fo('stage', F.opportunities.stage, 'master', { master: 'oppStage', readOnly: true, width: 170 }),
     fo('probability', F.opportunities.probability, 'number', { min: 0, max: 100, unit: L.opportunities.units.percent, width: 100, help: F.opportunities.probabilityHelp }),
     fo('weightedValue', F.opportunities.weightedValue, 'money', {
@@ -128,6 +201,8 @@ export const opportunities: ResourceDefinition = {
     fo('wonAt', F.opportunities.wonAt, 'datetime', { readOnly: true, capabilities: { list: true, sort: true, filter: true } }),
     fo('lastActivityAt', F.opportunities.lastActivityAt, 'datetime', { readOnly: true, capabilities: { list: true, sort: true, filter: true } }),
     fo('notes', F.opportunities.notes, 'longtext', { maxLength: 2000, capabilities: FORM_ONLY }),
+    // LEAD-10 / §3.1: what the lead captured, copied on conversion and shown read-only in "From Lead".
+    ...FROM_LEAD_FIELDS.map(([key, label, type, extra]) => fo(key, label, type, { readOnly: true, visibleWhen: { field: 'leadId', op: 'truthy' }, capabilities: { list: false, filter: true, export: true }, ...extra })),
   ],
   relationships: [
     { id: 'rel_opp_demos', label: L.opportunities.relationships.demos, resource: 'demos', foreignKey: 'opportunityId' },
@@ -138,14 +213,10 @@ export const opportunities: ResourceDefinition = {
     initial: 'needs_assessment',
     // Lost is recorded through "Mark Lost" (reason + competitor are mandatory, FR-031).
     terminal: ['won', 'lost'],
-    transitions: [
-      { from: ['needs_assessment', 'proposal', 'negotiation'], to: 'demo', action: A.moveToDemo },
-      { from: ['needs_assessment', 'demo', 'negotiation'], to: 'proposal', action: A.moveToProposal },
-      { from: ['needs_assessment', 'demo', 'proposal'], to: 'negotiation', action: A.moveToNegotiation },
-      { from: ['proposal', 'negotiation'], to: 'won', action: A.markWon, confirm: C.markWon },
-      { from: ['demo', 'proposal', 'negotiation'], to: 'needs_assessment', action: A.backToNeedsAssessment },
-      { from: ['won', 'lost'], to: 'needs_assessment', action: A.reopen, capability: 'opportunity.reopen', confirm: C.reopen },
-    ],
+    // ADM-04: built from the Opportunity Stage master on every read, so a stage added there is reachable.
+    get transitions() {
+      return [...stageTransitions(), ...REOPEN];
+    },
   },
   form: {
     quickCreate: ['name', 'customerId', 'contactId', 'divisionId', 'oppType', 'value', 'expectedCloseDate', 'ownerId'],
@@ -153,6 +224,7 @@ export const opportunities: ResourceDefinition = {
       { id: 'deal', title: S.opportunity, fields: ['name', 'customerId', 'contactId', 'oppType', 'divisionId', 'ownerId'], columns: 2 },
       { id: 'value', title: S.valueTiming, fields: ['productType', 'productId', 'value', 'probability', 'expectedCloseDate', 'nextFollowUpAt'], columns: 2 },
       { id: 'context', title: S.context, fields: ['competitors', 'decisionMakers', 'machineId', 'notes'], columns: 2 },
+      { id: 'fromLead', title: S.fromLead, description: S.fromLeadDescription, fields: ['leadId', ...FROM_LEAD_FIELDS.map(([k]) => k)], columns: 2 },
     ],
     primaryLabel: A.newOpportunity,
   },
@@ -387,5 +459,5 @@ export const opportunitiesPack: ModulePack = {
     coordinator: sales('division', true),
     profiling: { opportunities: p('all'), demos: p('all'), sampleRequests: p('all', 'all'), demoMachines: p('all') },
   },
-  capabilities: { admin: ['opportunity.reopen'] },
+  capabilities: { admin: ['opportunity.reopen', 'opportunity.reopenWon'], sales_manager: ['opportunity.reopenWon'] },
 };

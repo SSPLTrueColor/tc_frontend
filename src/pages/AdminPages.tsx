@@ -17,8 +17,9 @@ import { resetLayout, resetRole, saveLayout, saveRole } from '../services/api/ca
 import { actorFor, can, canReadResource, fieldAccess } from '../services/authz';
 import { getRoleMatrix, LOCKED_ROLES, SCOPES, validateRolePermissions } from '../services/catalog/access';
 import { getFormLayout, layoutResources, listFormLayouts, sectionHasRequired, validateFormLayout } from '../services/catalog/formLayouts';
-import { addDraftField, discardDraft, draftSummary, ensureDraft, getDraft, type NewFieldSpec, publishDraft, removeDraftField, revertDraftMaster, setDraftMaster, validateDraft, type ConfigIssue } from '../services/config';
-import { getDb, resetDb, STORAGE_KEY } from '../services/db';
+import { addDraftField, discardDraft, isWorkflowValue, draftSummary, ensureDraft, getDraft, type NewFieldSpec, parentMasterOf, publishDraft, removeDraftField, revertDraftMaster, setDraftMaster, validateDraft, type ConfigIssue } from '../services/config';
+import { getDb, STORAGE_KEY } from '../services/db';
+import { resetDemoData } from '../services/demo';
 import { demoUsers, NO_ACCESS } from '../domain/pack';
 import { DataTransfer, DemoControls } from './DemoPages';
 import { useActor, useRevision } from '../services/hooks';
@@ -39,6 +40,7 @@ import { byTime, QuickGuide, SortPicker, type SortDir, usePaged } from '../modul
 import { AccessSimple } from '../modules/catalog/AccessSimple';
 import { ExpiringAccess } from '../modules/catalog/ExpiringAccess';
 import { PeopleAccess } from '../modules/catalog/PeopleAccess';
+import { RoleCapabilities } from '../modules/settings/RoleCapabilities';
 import { listActiveGrants, listPeople } from '../services/catalog/grants';
 import { Checkbox, SearchInput, TextField } from '../components/primitives/controls';
 import { SegmentedControl } from '../components/primitives/controls';
@@ -84,15 +86,23 @@ function useConfigDraft() {
       <Button
         variant="primary"
         disabledReason={!issues ? D.validateFirst : errors.length ? D.validationErrors(errors.length) : !summary.length ? D.noChanges : undefined}
-        onClick={() => {
-          try {
-            publishDraft(actor);
-            setIssues(null);
-            toast(D.published);
-          } catch (e) {
-            toast(e instanceof ServiceError ? e.message : D.publishFailed, 'danger');
-          }
-        }}
+        onClick={() =>
+          confirmDelete({
+            tone: 'primary',
+            title: D.publishTitle,
+            message: D.publishMessage(summary.length),
+            confirmLabel: D.publish,
+            onConfirm: () => {
+              try {
+                publishDraft(actor);
+                setIssues(null);
+                toast(D.published);
+              } catch (e) {
+                toast(e instanceof ServiceError ? e.message : D.publishFailed, 'danger');
+              }
+            },
+          })
+        }
       >
         {D.publish}
       </Button>
@@ -204,16 +214,24 @@ function RecordMasters() {
   );
 }
 
+const workflowLocked = isWorkflowValue;
+
 function MastersEditor({ onChange }: { onChange: () => void }) {
   const actor = useActor();
   const M = A.masters;
   const masters = allMasters();
   const [sel, setSel] = useState(masters[0].key);
   const [newLabel, setNewLabel] = useState('');
+  const [newParent, setNewParent] = useState('');
   const draft = getDraft();
   const editing = draft?.masters[sel];
   const m: MasterDefinition = editing ?? getMaster(sel);
   const editable = !!draft;
+  // ADM-03: child masters (Complaint Sub-category, Territory) need a parent so new values reach dependent dropdowns.
+  const parentKey = parentMasterOf(sel);
+  const parentMaster = parentKey ? draft?.masters[parentKey] ?? getMaster(parentKey) : undefined;
+  const parentOptions = parentMaster ? [...parentMaster.values].filter((p) => p.active).sort((a, b) => a.order - b.order).map((p) => ({ value: p.key, label: p.label })) : [];
+  const parentName = (key?: string) => parentMaster?.values.find((p) => p.key === key)?.label ?? key ?? '';
   const write = (next: MasterDefinition) => {
     setDraftMaster(actor, next);
     onChange();
@@ -276,14 +294,14 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
                     <TextField aria-label={M.labelFor(v.key)} value={v.label} maxLength={80} disabled={!editable} onChange={(e) => setVal(v.key, { label: e.target.value })} />
                     <span className="field-help">
                       <code>{v.key}</code>
-                      {v.parent ? ` · ${v.parent}` : ''}
+                      {v.parent ? ` · ${parentName(v.parent)}` : ''}
                     </span>
                   </td>
                   <td>
                     <SelectMenu label={M.toneFor(v.key)} value={v.tone ?? 'neutral'} disabled={!editable} options={TONES.map((t) => ({ value: t, label: A.tones[t] }))} onChange={(t) => setVal(v.key, { tone: t as Tone })} />
                   </td>
                   <td>
-                    <Switch className="st-switch" checked={v.active} disabled={!editable} onChange={(on) => setVal(v.key, { active: on })} label={M.activeFor(v.key)} />
+                    <Switch className="st-switch" checked={v.active} disabled={!editable || workflowLocked(m.key, v.key)} tooltip={workflowLocked(m.key, v.key) ? M.workflowLocked : undefined} onChange={(on) => setVal(v.key, { active: on })} label={M.activeFor(v.key)} />
                   </td>
                   <td className="li-actions">
                     <IconButton icon="arrow-up" label={M.moveUp(v.key)} disabled={!editable} onClick={() => move(v.key, -1)} />
@@ -300,21 +318,31 @@ function MastersEditor({ onChange }: { onChange: () => void }) {
           onSubmit={(e) => {
             e.preventDefault();
             const label = newLabel.trim();
-            if (!label || duplicate) return;
-            const key = label
+            if (!label || duplicate || (parentKey && !newParent)) return;
+            const base = label
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, '_')
               .replace(/^_|_$/g, '')
-              .replace(/^(\d)/, 'v_$1');
-            if (!key) return;
-            write({ ...m, values: [...m.values, { key, label, tone: 'neutral', active: true, order: m.values.length }] });
+              .replace(/^(\d)/, 'v_$1')
+              .slice(0, 36);
+            if (!base) return;
+            // Keys are generated: at least two characters and unique within the master.
+            const stem = base.length < 2 ? `${base}_v` : base;
+            let key = stem;
+            for (let n = 2; m.values.some((v) => v.key === key); n++) key = `${stem}_${n}`;
+            write({ ...m, values: [...m.values, { key, label, tone: 'neutral', active: true, order: m.values.length, ...(parentKey ? { parent: newParent } : {}) }] });
             setNewLabel('');
           }}
         >
           <SettingsField label={M.newValue} htmlFor="new-master-value" error={duplicate ? M.duplicateValue : undefined}>
             <TextField id="new-master-value" maxLength={80} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} aria-invalid={duplicate || undefined} />
           </SettingsField>
-          <Button type="submit" icon="plus" disabledReason={!newLabel.trim() ? M.newValue : duplicate ? M.duplicateValue : undefined}>
+          {parentMaster && (
+            <SettingsField label={M.parentFor(parentMaster.label)} htmlFor="new-master-parent">
+              <SelectMenu id="new-master-parent" searchable label={M.parentFor(parentMaster.label)} value={newParent} options={parentOptions} onChange={setNewParent} />
+            </SettingsField>
+          )}
+          <Button type="submit" icon="plus" disabledReason={!newLabel.trim() ? M.newValue : duplicate ? M.duplicateValue : parentMaster && !newParent ? M.chooseParent(parentMaster.label) : undefined}>
             {M.addValue}
           </Button>
         </form>
@@ -1028,6 +1056,7 @@ export function AccessPage() {
               )}
               onChange={(next) => setDraft({ ...work, resources: next })}
             />
+            <RoleCapabilities actor={actor} role={role} shipped={base} disabled={locked} />
           </>
         )}
 
@@ -1545,18 +1574,26 @@ export function DemoSettingsPage() {
           </Table>
         
       </SettingsSection>
-      <DangerZone
-        title={S.reset}
-        description={S.resetHelp}
-        actionLabel={S.resetAction}
-        confirmWord={L.settingsKit.resetWord}
-        confirmTitle={L.common.confirm.resetTitle}
-        confirmBody={L.common.confirm.resetBody}
-        onConfirm={() => {
-          resetDb();
-          toast(L.common.toasts.demoReset, 'info');
-        }}
-      />
+      {can(actor, 'demo.settings') ? (
+        <DangerZone
+          title={S.reset}
+          description={S.resetHelp}
+          actionLabel={S.resetAction}
+          confirmWord={L.settingsKit.resetWord}
+          confirmTitle={L.common.confirm.resetTitle}
+          confirmBody={L.common.confirm.resetBody}
+          onConfirm={() => {
+            try {
+              resetDemoData(actor);
+              toast(L.common.toasts.demoReset, 'info');
+            } catch (e) {
+              toast(e instanceof ServiceError ? e.message : String(e), 'danger');
+            }
+          }}
+        />
+      ) : (
+        <InlineAlert tone="info">{S.resetAdminOnly}</InlineAlert>
+      )}
     </SettingsPage>
   );
 }

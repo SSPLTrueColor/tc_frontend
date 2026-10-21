@@ -1,37 +1,39 @@
-/** Opportunities module: stage guards, defaults, demo double-booking check, record actions, banner and timeline. */
+/** Opportunities module: stage guards, defaults, demo double-booking check, record actions, banner. Activity history lives in the shared Deal History tab. */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { addMinutes, formatDate, overlaps, todayKey } from '../../lib/dates';
 import { nowIso } from '../../lib/clock';
 import { formatMoney } from '../../lib/format';
-import { useServiceQuery } from '../../hooks/useServiceQuery';
-import { activitiesFor } from '../../services/activities';
 import { canUpdateRecord, perm } from '../../services/authz';
 import { userOfStaff } from '../../services/lookups';
 import { notify } from '../../services/ledger';
-import { masterLabel } from '../../services/registry';
+import { getMaster, masterLabel } from '../../services/registry';
 import { registerResourceHooks, type HookContext } from '../../services/resourceHooks';
 import { runStagnationSweep } from '../../services/api/opportunities';
 import { acceptedQuotationFor, applyCreateDefaults, checkStageEntry, isStagnant, OPEN_STAGES, stageProbability } from '../../services/opportunities';
 import { getPolicies } from '../../services/policies';
 import { ServiceError } from '../../services/types';
 import type { RecordData } from '../../metadata/types';
-import { registerCardActions, registerRecordActions, registerRecordBanner, registerRecordTab, registerStageMoveHandler, type RecordExtensionProps } from '../../components/resource/extensions';
+import { registerCardActions, registerRecordActions, registerRecordBanner, registerStageMoveHandler, type RecordExtensionProps } from '../../components/resource/extensions';
 import { Button, IconButton } from '../../components/primitives/Button';
-import { DateText } from '../../components/primitives/display';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/primitives/feedback';
+import { InlineAlert } from '../../components/primitives/feedback';
 import { LogActivityDialog } from '../../components/crm/LogActivityDialog';
 import { MarkLostDialog } from '../../modules/opportunities/MarkLostDialog';
+import { MarkWonDialog } from '../../modules/opportunities/MarkWonDialog';
 import { L } from '../../constants/labels';
 import { ROUTES, toPath } from '../../constants/routes';
 import { recordPeekPath } from '../../lib/routes';
-import { getDb } from '../../services/db';
-import { configureStagnationDays } from '../modules/opportunities';
+import { getDb, subscribe } from '../../services/db';
+import { configureStageSource, configureStagnationDays, openStages } from '../modules/opportunities';
 import { LinkButton } from '../../components/primitives/controls';
 
 const T = L.opportunities;
 
 configureStagnationDays(() => getPolicies().opportunityStagnationDays);
+// ADM-04: stages, transitions and board columns follow the published Opportunity Stage master.
+configureStageSource(() => getMaster('oppStage').values);
+openStages();
+subscribe(() => void openStages());
 
 const notifyStaff = (ctx: HookContext, staffId: unknown, title: string, link: { resource: string; recordId: string }) => {
   const u = userOfStaff(staffId);
@@ -213,42 +215,6 @@ function OpportunityBanner({ actor, record }: RecordExtensionProps) {
   );
 }
 
-function Timeline({ actor, record }: RecordExtensionProps) {
-  // LEAD-10: the opportunity carries the lead's history, so the timeline also lists the activities logged on its lead.
-  const leadId = record.leadId ? String(record.leadId) : '';
-  const q = useServiceQuery(
-    () =>
-      [...activitiesFor(actor, 'opportunities', record.id), ...(leadId && perm(actor, 'activities').read !== 'none' ? activitiesFor(actor, 'leads', leadId) : [])].sort((a, b) => String(b.at).localeCompare(String(a.at))),
-    [record.id, leadId, actor.user.id],
-  );
-  if (q.error)
-    return (
-      <ErrorState title={T.timeline.errorTitle} onRetry={q.retry}>
-        {q.error}
-      </ErrorState>
-    );
-  if (!q.data) return <Skeleton rows={4} />;
-  if (!q.data.length) return <EmptyState icon="message" title={T.timeline.emptyTitle}>{T.timeline.emptyBody}</EmptyState>;
-  return (
-    <ul className="flow-list">
-      {q.data.map((a: RecordData) => (
-        <li key={a.id} className="flow-item">
-          <span className="tag tone-neutral">{masterLabel('activityType', a.activityType)}</span>
-          {a.parentResource === 'leads' && <span className="tag tone-info">{T.timeline.fromLead(String(a.parentId))}</span>}
-          <span className="flow-main">
-            <span className="flow-title">{String(a.subject)}</span>
-            <span className="muted small">
-              <DateText value={String(a.at)} />
-              {a.notes ? ` · ${String(a.notes).slice(0, 140)}` : ''}
-              {a.nextFollowUpAt ? T.timeline.nextFollowUp(formatDate(String(a.nextFollowUpAt))) : ''}
-            </span>
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 registerRecordActions('opportunities', OpportunityActions);
 
 /** List row / board card: Create Quotation for an open opportunity (QUO-01 — the quotation links to it). */
@@ -262,10 +228,11 @@ function OpportunityCardActions({ actor, record, surface }: RecordExtensionProps
 }
 registerCardActions('opportunities', OpportunityCardActions);
 
-// Dragging / switching an open opportunity to Lost opens Mark Lost (reason + competitor are mandatory, FR-031).
+// Dragging / switching an open opportunity to Lost opens Mark Lost (reason + competitor are mandatory, FR-031);
+// to Won opens Mark Won, which confirms with an accepted quotation or explains what is missing (OPP-05).
 registerStageMoveHandler('opportunities', {
-  targets: ({ actor, res, record }) => (OPEN_STAGES.includes(String(record.stage)) && canUpdateRecord(actor, res, record) ? ['lost'] : []),
-  Dialog: ({ actor, record, onClose }) => <MarkLostDialog actor={actor} record={record} onClose={onClose} />,
+  targets: ({ actor, res, record }) => (OPEN_STAGES.includes(String(record.stage)) && canUpdateRecord(actor, res, record) ? ['won', 'lost'] : []),
+  Dialog: ({ actor, record, to, onClose }) => (to === 'won' ? <MarkWonDialog actor={actor} record={record} onClose={onClose} /> : <MarkLostDialog actor={actor} record={record} onClose={onClose} />),
 });
 registerRecordBanner('opportunities', OpportunityBanner);
-registerRecordTab('opportunities', { id: 'timeline', label: T.tabs.timeline, component: Timeline });
+// The old activity Timeline tab is replaced by Deal History (activities incl. the lead's, status, quotations, orders).

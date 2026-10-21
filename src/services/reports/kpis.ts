@@ -6,6 +6,7 @@
 import { L } from '../../constants/labels';
 import type { RecordData } from '../../metadata/types';
 import { addDays, toDate, toDateKey } from '../../lib/dates';
+import { orderNetValue } from '../../domain/modules/field/rules';
 
 type Rows = RecordData[];
 
@@ -64,11 +65,37 @@ export function avgSalesCycleDays(opps: Rows, leads: Rows) {
   );
 }
 
+// ---------------------------------------------------------------- value basis (Decision D-1)
+
+/**
+ * Sales value BEFORE GST: the one basis for targets, leaderboard, revenue KPIs and pipeline. Line net
+ * (quantity × price − discount), the same figure Target vs Actual uses; records without lines fall back to
+ * subtotal less discount, then taxable value less freight and insurance.
+ */
+const has = (v: unknown) => v !== undefined && v !== null && v !== '';
+export function netValue(r: RecordData): number {
+  const lines = r.lines as RecordData[] | undefined;
+  if (Array.isArray(lines) && lines.length) return orderNetValue(r);
+  // Lists and reports read projected records (no line items): subtotal less discount is the same figure.
+  if (has(r.subtotal)) return Math.max(0, n(r.subtotal) - n(r.discountTotal));
+  if (has(r.taxable)) return Math.max(0, n(r.taxable) - n(r.freight) - n(r.insurance));
+  return Math.max(0, n(r.grandTotal) - n(r.cgst) - n(r.sgst) - n(r.igst) - n(r.freight) - n(r.insurance));
+}
+export const sumNet = (rows: Rows) => rows.reduce((t, r) => t + netValue(r), 0);
+/** GST-inclusive total, shown next to the net value on orders and invoices. */
+export const sumGross = (rows: Rows) => sum(rows, 'grandTotal');
+/** Rows with `netValue` set, for helpers that sum a field by key (trend buckets, top-customer boards). */
+export const withNet = (rows: Rows) => rows.map((r) => ({ ...r, netValue: netValue(r) }));
+
+/** A quotation that still counts: latest revision, not replaced (superseded) and not passed over for a sibling (not selected). */
+export const DEAD_QUOTE = ['superseded', 'not_selected'];
+export const isLiveQuote = (q: RecordData) => q.isLatest !== false && !DEAD_QUOTE.includes(s(q.status));
+
 const SENT = ['sent', 'negotiation', 'accepted', 'rejected', 'expired'];
 /** Quote-to-order %: latest quotations that became a sales order ÷ quotations sent. */
 export function quoteToOrder(quotes: Rows, orders: Rows) {
   const ordered = new Set(orders.filter((o) => o.status !== 'cancelled').map((o) => s(o.quotationId)));
-  const sent = quotes.filter((q) => q.isLatest !== false && (SENT.includes(s(q.status)) || s(q.sentAt)));
+  const sent = quotes.filter((q) => isLiveQuote(q) && (SENT.includes(s(q.status)) || s(q.sentAt)));
   return ratio(sent.filter((q) => ordered.has(q.id)).length, sent.length);
 }
 
@@ -76,7 +103,7 @@ export function quoteToOrder(quotes: Rows, orders: Rows) {
 export const BACKLOG = ['confirmed', 'payment_pending', 'payment_received', 'processing', 'ready_for_dispatch', 'dispatched', 'delivered', 'installation'];
 export const orderBacklog = (orders: Rows) => {
   const rows = orders.filter((o) => BACKLOG.includes(s(o.status)));
-  return { count: rows.length, value: sum(rows, 'grandTotal') };
+  return { count: rows.length, value: sumNet(rows), gross: sumGross(rows) };
 };
 
 /** Orders that count as booked business (confirmed or later, not cancelled). */
@@ -218,24 +245,87 @@ export function attachRate(machines: Rows, orders: Rows, sinceDay: string) {
   return { rate: ratio([...machineCustomers].filter((c) => buyers.has(c)).length, machineCustomers.size), machineCustomers: machineCustomers.size };
 }
 
-/** Activity scorecard counts per person for a window (calls, visits, demos, quotations, referrals). */
-export function activityScorecard(input: { activities: Rows; fieldVisits: Rows; demos: Rows; quotations: Rows; leads: Rows; from: string; to: string }) {
-  const per = new Map<string, { calls: number; visits: number; demos: number; quotations: number; referrals: number }>();
+export interface ScoreCounts {
+  calls: number;
+  visits: number;
+  demos: number;
+  quotations: number;
+  referrals: number;
+}
+export const scoreTotal = (c: ScoreCounts) => c.calls + c.visits + c.demos + c.quotations + c.referrals;
+
+/**
+ * TGT-03 activity scorecard: THE one calculation, used by /activity-scorecard and the Business Scorecard.
+ * Window `from`–`to` is inclusive (calendar days). Rules:
+ * - calls: logged call activities;
+ * - visits: completed field visits (by check-out, else check-in) plus manually logged visit activities that
+ *   are not the timeline entry of a field visit (a completed field visit writes one), so nothing counts twice;
+ * - demos: completed demos plus logged demo activities;
+ * - quotations: quotations sent in the window (drafts do not count);
+ * - referrals: leads created in the window with a referring employee or the Referral source, credited to
+ *   the referrer (else the lead owner).
+ */
+export function activityScorecard(input: { activities: Rows; fieldVisits: Rows; demos: Rows; quotations: Rows; leads: Rows; from: string; to: string }): Map<string, ScoreCounts> {
+  const per = new Map<string, ScoreCounts>();
   const row = (id: unknown) => {
     const k = s(id);
     if (!per.has(k)) per.set(k, { calls: 0, visits: 0, demos: 0, quotations: 0, referrals: 0 });
     return per.get(k)!;
   };
-  input.activities.filter((a) => inRange(a.at, input.from, input.to)).forEach((a) => {
-    if (a.activityType === 'call') row(a.byId).calls++;
-    if (a.activityType === 'visit') row(a.byId).visits++;
-    if (a.activityType === 'demo') row(a.byId).demos++;
-  });
-  input.fieldVisits.filter((v) => v.status === 'completed' && inRange(v.checkInAt || v.plannedFor, input.from, input.to)).forEach((v) => row(v.employeeId).visits++);
-  input.demos.filter((d) => d.status === 'done' && inRange(d.scheduledAt, input.from, input.to)).forEach((d) => row(d.ownerId).demos++);
+  const visitAt = (v: RecordData) => v.checkOutAt || v.checkInAt || v.plannedFor;
+  const done = input.fieldVisits.filter((v) => v.status === 'completed' && inRange(visitAt(v), input.from, input.to));
+  const doneIds = new Set(done.map((v) => s(v.id)));
+  const visitStamp = new Set(input.fieldVisits.filter((v) => v.status === 'completed').map((v) => `${s(v.employeeId)}|${s(visitAt(v)).slice(0, 16)}`));
+  input.activities
+    .filter((a) => inRange(a.at, input.from, input.to))
+    .forEach((a) => {
+      if (a.activityType === 'call') row(a.byId).calls++;
+      if (a.activityType === 'demo') row(a.byId).demos++;
+      if (a.activityType === 'visit') {
+        const fromVisit = (a.parentResource === 'fieldVisits' && doneIds.has(s(a.parentId))) || visitStamp.has(`${s(a.byId)}|${s(a.at).slice(0, 16)}`);
+        if (!fromVisit) row(a.byId).visits++;
+      }
+    });
+  done.forEach((v) => row(v.employeeId).visits++);
+  input.demos.filter((d) => ['done', 'completed'].includes(s(d.status)) && inRange(d.scheduledAt, input.from, input.to)).forEach((d) => row(d.ownerId).demos++);
   input.quotations.filter((q) => s(q.sentAt) && inRange(q.sentAt, input.from, input.to)).forEach((q) => row(q.ownerId).quotations++);
-  input.leads.filter((l) => l.sourceId === 'referral' && inRange(l.createdAt, input.from, input.to)).forEach((l) => row(l.referrerEmployeeId || l.ownerId).referrals++);
+  input.leads
+    .filter((l) => (s(l.referrerEmployeeId) || l.sourceId === 'referral') && inRange(l.createdAt, input.from, input.to))
+    .forEach((l) => row(l.referrerEmployeeId || l.ownerId).referrals++);
   return per;
+}
+
+// ---------------------------------------------------------------- one query for win rate, funnel and leads → orders
+
+/** When an opportunity was closed (won or lost). */
+export const closedAt = (o: RecordData) => o.wonAt || o.stageChangedAt || o.updatedAt;
+
+/**
+ * Opportunities for a window, shared by the Win Rate tile, the Won vs Lost chart, the opportunity funnel and
+ * the Business Scorecard: closed = won or lost in the window; cohort = closed ones plus open ones created in
+ * the window. The funnel's Won step is exactly `won`, so win rate and funnel always agree.
+ */
+export function oppOutcomes(opps: Rows, from?: string, to?: string) {
+  const closed = opps.filter((o) => ['won', 'lost'].includes(s(o.stage)) && inRange(closedAt(o), from, to));
+  const won = closed.filter((o) => o.stage === 'won');
+  const lost = closed.filter((o) => o.stage === 'lost');
+  const openNew = opps.filter((o) => isOpenOpp(o) && inRange(o.createdAt, from, to));
+  return { closed, won, lost, winRate: ratio(won.length, closed.length), cohort: [...openNew, ...closed] };
+}
+
+/**
+ * Lead → order funnel for leads created in the window. Every stage is a subset of the one before, so no
+ * stage can exceed 100 % of the leads: qualified (has an opportunity), quoted (a live quotation was sent or
+ * an order exists), ordered (a booked sales order on the lead's opportunity).
+ */
+export function leadFunnel(leads: Rows, quotes: Rows, orders: Rows) {
+  const quotedOpps = new Set(quotes.filter((q) => isLiveQuote(q) && (SENT.includes(s(q.status)) || s(q.sentAt))).map((q) => s(q.opportunityId)));
+  const quotedLeads = new Set(quotes.filter((q) => s(q.sentAt)).map((q) => s(q.leadId)));
+  const bookedOpps = new Set(orders.filter(isBooked).map((o) => s(o.opportunityId)));
+  const qualified = leads.filter((l) => l.status === 'qualified' || !!l.opportunityId);
+  const ordered = qualified.filter((l) => bookedOpps.has(s(l.opportunityId)));
+  const quoted = qualified.filter((l) => quotedOpps.has(s(l.opportunityId)) || quotedLeads.has(s(l.id)) || bookedOpps.has(s(l.opportunityId)));
+  return { leads: leads.length, qualified: qualified.length, quoted: quoted.length, ordered: ordered.length };
 }
 
 /** Overdue follow-ups on open leads/opportunities owned by a person. */

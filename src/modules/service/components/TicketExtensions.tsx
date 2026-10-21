@@ -29,6 +29,8 @@ import { ROUTES, toPath } from '../../../constants/routes';
 import { resourcePath } from '../../../lib/routes';
 import { escalationRole } from '../../../services/service/tickets';
 import { SegmentedControl, TextField, Textarea } from '../../../components/primitives/controls';
+import { NumberInput } from '../../../components/primitives/NumberInput';
+import { isBadNumber, NUMBER_LIMITS } from '../../../services/validation';
 
 const S = L.service;
 
@@ -438,7 +440,7 @@ export function AssignDialog({ ticketId, current, onClose }: { ticketId: string;
 function RemoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => void }) {
   const actor = useActor();
   const [steps, setSteps] = useState('');
-  const [duration, setDuration] = useState('');
+  const [duration, setDuration] = useState<number | null>(null);
   const [ref, setRef] = useState('');
   const [outcome, setOutcome] = useState<'continue' | 'resolved' | 'site_visit'>('continue');
   const { busy, errors, submit } = useSubmit(onClose);
@@ -452,7 +454,7 @@ function RemoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => 
       footer={
         <>
           <Button onClick={onClose}>{S.actions.cancel}</Button>
-          <Button variant="primary" loading={busy} onClick={() => submit(() => serviceApi.remote(actor, ticketId, { steps, durationMin: Number(duration), sessionRef: ref, outcome }), outcome === 'site_visit' ? S.toasts.convertedToSiteVisit : S.toasts.remoteRecorded)}>
+          <Button variant="primary" loading={busy} onClick={() => !isBadNumber(duration, NUMBER_LIMITS.count) && submit(() => serviceApi.remote(actor, ticketId, { steps, durationMin: Number(duration ?? 0), sessionRef: ref, outcome }), outcome === 'site_visit' ? S.toasts.convertedToSiteVisit : S.toasts.remoteRecorded)}>
             {outcome === 'site_visit' ? S.actions.convertToSiteVisit : S.actions.saveSession}
           </Button>
         </>
@@ -473,7 +475,7 @@ function RemoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => 
           <label className="field-label" htmlFor="rs-dur">
             {S.remote.duration} <span className="req">*</span>
           </label>
-          <TextField id="rs-dur" inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))} aria-invalid={!!errors.durationMin || undefined} />
+          <NumberInput id="rs-dur" value={duration} onValueChange={setDuration} rule={NUMBER_LIMITS.count} invalid={!!errors.durationMin} />
           {errors.durationMin && <p className="field-error">{errors.durationMin}</p>}
         </div>
         <div className="form-field">
@@ -494,7 +496,7 @@ function RemoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => 
 
 function QuoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => void }) {
   const actor = useActor();
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const { busy, errors, submit } = useSubmit(onClose);
   return (
@@ -507,7 +509,7 @@ function QuoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => v
       footer={
         <>
           <Button onClick={onClose}>{S.actions.cancel}</Button>
-          <Button variant="primary" loading={busy} onClick={() => submit(() => serviceApi.quote(actor, ticketId, Number(amount), note), S.toasts.quoteSent)}>
+          <Button variant="primary" loading={busy} onClick={() => !isBadNumber(amount, NUMBER_LIMITS.amount) && submit(() => serviceApi.quote(actor, ticketId, Number(amount ?? 0), note), S.toasts.quoteSent)}>
             {S.actions.sendQuote}
           </Button>
         </>
@@ -518,11 +520,8 @@ function QuoteDialog({ ticketId, onClose }: { ticketId: string; onClose: () => v
           <label className="field-label" htmlFor="cq-amt">
             {S.quote.amount} <span className="req">*</span>
           </label>
-          <div className="input-affix">
-            <span className="affix affix-start">₹</span>
-            <TextField id="cq-amt" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} aria-invalid={!!errors.amount || undefined} data-autofocus />
-          </div>
-          {amount && Number(amount) > 0 && <span className="muted small">{formatMoney(Number(amount))}</span>}
+          <NumberInput id="cq-amt" prefix="₹" value={amount} onValueChange={setAmount} rule={NUMBER_LIMITS.amount} invalid={!!errors.amount} data-autofocus />
+          {!!amount && amount > 0 && !isBadNumber(amount, NUMBER_LIMITS.amount) && <span className="muted small">{formatMoney(amount)}</span>}
           {errors.amount && <p className="field-error">{errors.amount}</p>}
         </div>
         <div className="form-field">

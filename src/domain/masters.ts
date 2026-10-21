@@ -67,6 +67,14 @@ export const INDIAN_STATES: [string, string][] = [
 ];
 
 /** Shared masters — immutable keys, editable labels via Administration › Masters. Labels: L.common.masters (GLOSSARY §3). */
+/**
+ * Child masters whose values belong to a value of another master (ADM-03). Dependent pickers show only
+ * the children of the chosen parent, so a new child value must name its parent. Masters bound through a
+ * field's `masterParentField` (e.g. Complaint Sub-category → Complaint Category) are found automatically;
+ * this lists the ones linked by data only.
+ */
+export const MASTER_PARENTS: Record<string, string> = { territory: 'state' };
+
 export const appMasters: MasterDefinition[] = [
   master('division', M.division.label, [
     v('TX', M.division.values.TX, 'accent'),

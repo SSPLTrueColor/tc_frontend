@@ -9,10 +9,10 @@ import { useServiceQuery } from '../../hooks/useServiceQuery';
 import { errorMessage } from '../../services/api/client';
 import { resetPolicies, savePolicies } from '../../services/api/catalog';
 import { can } from '../../services/authz';
-import { COVERAGE_KEYS, POLICY_GROUPS, PRIORITY_KEYS, STAGE_KEYS, type PolicyGroup, validatePolicyGroup } from '../../services/catalog/policyRules';
+import { COVERAGE_KEYS, POLICY_GROUPS, priorityKeys, stageKeys, type PolicyGroup, validatePolicyGroup } from '../../services/catalog/policyRules';
 import { useActor } from '../../services/hooks';
 import { getPolicies, type Policies } from '../../services/policies';
-import { activeMasterValues } from '../../services/registry';
+import { activeMasterValues, masterLabel } from '../../services/registry';
 import type { ApprovalLevel } from '../../services/types';
 import { Button, IconButton } from '../../components/primitives/Button';
 import { ErrorState, NoAccess, useToast } from '../../components/primitives/feedback';
@@ -20,6 +20,7 @@ import { MultiSelectMenu } from '../../components/primitives/MultiSelectMenu';
 import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { DangerZone, SaveBar, SettingsField, SettingsPage, SettingsSection, SettingsSkeleton } from '../../components/settings/kit';
 import { TextField } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
 import { Table } from '../../components/primitives/Table';
 
 const P = L.admin.policies;
@@ -45,28 +46,21 @@ function Num({ id, label, value, onChange, unit, error, help, step = 1 }: { id: 
   const shownError = blurred || all ? error : undefined;
   return (
     <SettingsField label={label} htmlFor={id} help={help} error={shownError}>
-      <div className={unit ? 'input-affix has-end' : undefined}>
-        <TextField
-          id={id}
-          
-          type="number"
-          step={step}
-          inputMode="decimal"
-          value={Number.isFinite(value) ? value : ''}
-          onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))}
-          onBlur={() => setBlurred(true)}
-          aria-invalid={!!shownError || undefined}
-          aria-describedby={shownError ? `${id}-err` : undefined}
-        />
-        {unit && <span className="affix affix-end">{unit}</span>}
-      </div>
+      <NumberInput
+        id={id}
+        suffix={unit}
+        step={step}
+        value={value}
+        onValueChange={(n) => onChange(n ?? NaN)}
+        onBlur={() => setBlurred(true)}
+        invalid={!!shownError}
+        aria-describedby={shownError ? `${id}-err` : undefined}
+      />
     </SettingsField>
   );
 }
 
 const Section = SettingsSection;
-
-const num = (v: string) => (v === '' ? NaN : Number(v));
 
 interface EditorProps {
   p: Policies;
@@ -199,13 +193,12 @@ export function WorkflowsPage() {
                     <tr key={i}>
                       <td>
                         <div className="input-affix has-end cat-num">
-                          <TextField
-                            
-                            type="number"
+                          <NumberInput
                             aria-label={F.bandLimit(i + 1)}
-                            value={Number.isFinite(b.upTo) ? b.upTo : ''}
-                            onChange={(e) => set({ discountBands: p.discountBands.map((x, j) => (j === i ? { ...x, upTo: num(e.target.value) } : x)) })}
-                            aria-invalid={!!shown(`band.${i}`) || undefined}
+                            value={b.upTo}
+                            showError={false}
+                            onValueChange={(n) => set({ discountBands: p.discountBands.map((x, j) => (j === i ? { ...x, upTo: n ?? NaN } : x)) })}
+                            invalid={!!shown(`band.${i}`)}
                           />
                           <span className="affix affix-end">{U.pct}</span>
                         </div>
@@ -251,6 +244,10 @@ export function WorkflowsPage() {
   );
 }
 
+// Rows come from the masters: shipped values keep their page wording, added values show their master label.
+const priorityLabel = (k: string) => (P.priorities as Record<string, string>)[k] ?? masterLabel('ticketPriority', k);
+const stageLabel = (k: string) => (P.stages as Record<string, string>)[k] ?? masterLabel('oppStage', k);
+
 // ---------------------------------------------------------------- SLA Matrix (SRV-04, SRV-09)
 
 export function SlaMatrixPage() {
@@ -260,9 +257,9 @@ export function SlaMatrixPage() {
         <>
           <Section wide title={P.sections.slaMatrix} help={P.sections.slaMatrixHelp}>
             <div className="st-sla-list">
-              {PRIORITY_KEYS.map((pr) => (
+              {priorityKeys().map((pr) => (
                 <div key={pr} className="st-sla-block">
-                  <h3 className="st-subtitle">{P.priorities[pr]}</h3>
+                  <h3 className="st-subtitle">{priorityLabel(pr)}</h3>
                   
                     <Table className="st-sla">
                       <thead>
@@ -285,7 +282,7 @@ export function SlaMatrixPage() {
                               <th scope="row">{P.coverages[cv]}</th>
                               {(['response', 'arrival', 'resolution'] as const).map((k) => (
                                 <td key={k}>
-                                  <TextField type="number" aria-label={F.slaCell(P.priorities[pr], P.coverages[cv], F.slaKinds[k])} value={Number.isFinite(s[k]) ? s[k] : ''} onChange={(e) => upd(k, num(e.target.value))} aria-invalid={!!err || undefined} />
+                                  <NumberInput aria-label={F.slaCell(priorityLabel(pr), P.coverages[cv], F.slaKinds[k])} value={s[k]} onValueChange={(n) => upd(k, n ?? NaN)} invalid={!!err} />
                                 </td>
                               ))}
                               {err && (
@@ -311,7 +308,7 @@ export function SlaMatrixPage() {
                     <tr key={i}>
                       <td>
                         <div className="input-affix has-end cat-num">
-                          <TextField type="number" aria-label={F.escalationHours(i + 1)} value={Number.isFinite(x.afterHours) ? x.afterHours : ''} onChange={(e) => set({ escalation: p.escalation.map((y, j) => (j === i ? { ...y, afterHours: num(e.target.value) } : y)) })} />
+                          <NumberInput aria-label={F.escalationHours(i + 1)} value={x.afterHours} showError={false} onValueChange={(n) => set({ escalation: p.escalation.map((y, j) => (j === i ? { ...y, afterHours: n ?? NaN } : y)) })} invalid={!!shown(`esc.${i}`)} />
                           <span className="affix affix-end">{U.h}</span>
                         </div>
                       </td>
@@ -348,8 +345,8 @@ export function ConfigurableRulesPage() {
             <div className="form-grid cols-2">
               <Num id="pol-lead" label={F.leadFirstContact} unit={U.hours} value={p.leadFirstContactHours} onChange={(v) => set({ leadFirstContactHours: v })} error={shown('leadFirstContactHours')} help={F.leadFirstContactHelp} />
               <Num id="pol-stag" label={F.stagnation} unit={U.days} value={p.opportunityStagnationDays} onChange={(v) => set({ opportunityStagnationDays: v })} error={shown('opportunityStagnationDays')} help={F.stagnationHelp} />
-              {STAGE_KEYS.map((k) => (
-                <Num key={k} id={`pol-stage-${k}`} label={F.stageProbability(P.stages[k])} unit={U.pct} value={p.stageProbability[k] ?? NaN} onChange={(v) => set({ stageProbability: { ...p.stageProbability, [k]: v } })} error={shown(`stage.${k}`)} />
+              {stageKeys().map((k) => (
+                <Num key={k} id={`pol-stage-${k}`} label={F.stageProbability(stageLabel(k))} unit={U.pct} value={p.stageProbability[k] ?? NaN} onChange={(v) => set({ stageProbability: { ...p.stageProbability, [k]: v } })} error={shown(`stage.${k}`)} />
               ))}
             </div>
           </Section>

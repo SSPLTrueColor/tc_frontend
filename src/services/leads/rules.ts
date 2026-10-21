@@ -18,7 +18,7 @@ import { activeMasterValues, allResources, getResource, masterLabel } from '../r
 import type { HookContext } from '../resourceHooks';
 import { createRecord, insertRecordIn, queryRecords, recordTitle } from '../runtime';
 import { ServiceError, type Db } from '../types';
-import { validateValues } from '../validation';
+import { NUMBER_LIMITS, validateValues } from '../validation';
 import { isFollowUpDue, isNotAttended, scoreLead } from '../../domain/modules/leads/computed';
 import { L } from '../../constants/labels';
 
@@ -180,7 +180,7 @@ export function validateNewParty(company: NewCompanyInput | null, contact: NewCo
  * The party records are created in one commit; the lead goes through the normal runtime (permissions,
  * validation, audit). Lead values are pre-validated so a failing lead never leaves an orphan company.
  */
-export function createLeadWithParty(actor: Actor, lead: Record<string, unknown>, company: NewCompanyInput | null, contact: NewContactInput | null) {
+export function createLeadWithParty(actor: Actor, lead: Record<string, unknown>, company: NewCompanyInput | null, contact: NewContactInput | null, opts: { duplicateReason?: string } = {}) {
   if (!perm(actor, 'leads').create) throw new ServiceError('forbidden', E.noCreate);
   const partyErrors = validateNewParty(company, contact);
   if (Object.keys(partyErrors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: partyErrors });
@@ -243,7 +243,15 @@ export function createLeadWithParty(actor: Actor, lead: Record<string, unknown>,
       }
     });
   }
-  return createRecord(actor, 'leads', { ...lead, customerId, contactId, city: lead.city || company?.city, state: lead.state || company?.state, industry: lead.industry || company?.industry });
+  // LEAD-03: creating a lead next to open matches is a deliberate choice with a reason, kept in the audit trail.
+  const dups = findDuplicateLeads(actor, { customerId, contactId, divisionId: lead.divisionId as string | undefined });
+  const dupIds = dups.visible.map((l) => l.id);
+  if (opts.duplicateReason !== undefined && (dupIds.length || dups.hidden) && opts.duplicateReason.trim().length < 5) throw new ServiceError('validation', E.duplicateReason, { fieldErrors: { duplicateReason: E.duplicateReason } });
+  const out = createRecord(actor, 'leads', { ...lead, customerId, contactId, city: lead.city || company?.city, state: lead.state || company?.state, industry: lead.industry || company?.industry });
+  if (opts.duplicateReason?.trim() && (dupIds.length || dups.hidden)) {
+    commit((d) => appendAudit(d, actor, { action: 'leads.duplicate_override', resource: 'leads', recordId: out.record.id, summary: M.duplicateAudit(dupIds.join(', ') || String(dups.hidden), opts.duplicateReason!.trim()), correlationId: uid('cor') }));
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- status changes with data (LEAD-10, LEAD-11)
@@ -273,8 +281,8 @@ function writeStatus(d: Db, actor: Actor, idx: number, lead: RecordData, to: str
   return next;
 }
 
-/** Sanity ceiling for a single deal: ₹1,000 Cr. Catches extra zeros; no machine deal comes close. */
-export const MAX_DEAL_VALUE = 10_000_000_000;
+/** Sanity ceiling for a single deal: ₹99,99,99,999 (NUMBER_LIMITS.amount). Catches extra zeros; no machine deal comes close. */
+export const MAX_DEAL_VALUE = NUMBER_LIMITS.amount.max;
 
 export interface QualifyInput {
   requirement: string;
@@ -308,6 +316,48 @@ export function validateQualify(q: QualifyInput): Record<string, string> {
   return e;
 }
 
+/**
+ * Opportunity type for a lead (OPP-01): machines are New or Additional Machine (the customer already owns one),
+ * service is AMC / CMC, spares stay Spares, software is an Upgrade, inks / paper / fabric are a Consumables Contract.
+ */
+export function oppTypeForLead(d: Db, lead: RecordData): string {
+  const pt = String(lead.productType ?? '');
+  if (pt === 'machine') return (d.records.machines ?? []).some((m) => m.customerId === lead.customerId) ? 'additional_machine' : 'new_machine';
+  if (pt === 'service') return 'amc';
+  if (pt === 'spares') return 'spares';
+  if (pt === 'software') return 'upgrade';
+  return 'consumables';
+}
+
+/** Lead key → opportunity key for everything the lead captured (shown read-only under "From Lead"). */
+export const LEAD_TO_OPP_FIELDS: Record<string, string> = {
+  sourceId: 'leadSourceId',
+  campaign: 'leadCampaign',
+  eventName: 'leadEventName',
+  referrerType: 'leadReferrerType',
+  referrerEmployeeId: 'leadReferrerEmployeeId',
+  referrerCustomerId: 'leadReferrerCustomerId',
+  subType: 'subType',
+  specPrintWidth: 'specPrintWidth',
+  specPrintHeads: 'specPrintHeads',
+  specFabricType: 'specFabricType',
+  specCapacity: 'specCapacity',
+  specPodVolume: 'specPodVolume',
+  specPodMedia: 'specPodMedia',
+  specPodFinishing: 'specPodFinishing',
+  specLabelWidth: 'specLabelWidth',
+  specLabelSubstrate: 'specLabelSubstrate',
+  specLabelColours: 'specLabelColours',
+  specOther: 'specOther',
+  requirement: 'leadRequirement',
+  budget: 'leadBudget',
+  timeline: 'leadTimeline',
+  city: 'leadCity',
+  state: 'leadState',
+  industry: 'leadIndustry',
+  segment: 'leadSegment',
+};
+
 /** LEAD-10 / §3.1: Convert to Opportunity with the lead's data; notify the referrer (LEAD-12, BR-37). */
 export function qualifyLead(actor: Actor, id: string, version: number, q: QualifyInput): { leadId: string; opportunityId: string } {
   const errors = validateQualify(q);
@@ -315,9 +365,18 @@ export function qualifyLead(actor: Actor, id: string, version: number, q: Qualif
   if (!hasResource('opportunities')) throw new ServiceError('invalid_state', E.noOpportunities);
   return commit((d) => {
     const { idx, lead } = loadForChange(d, actor, id, version);
-    if (!['new', 'contacted'].includes(String(lead.status))) throw new ServiceError('invalid_state', E.onlyOpenConvert(masterLabel('leadStatus', lead.status)));
+    // Appendix A: New → Contacted → Qualified. The first contact must be logged first (LEAD-08 response KPI stays true).
+    if (lead.status === 'new') throw new ServiceError('invalid_state', E.convertNeedsContact);
+    if (lead.status !== 'contacted') throw new ServiceError('invalid_state', E.onlyOpenConvert(masterLabel('leadStatus', lead.status)));
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     const probability = getPolicies().stageProbability.needs_assessment ?? 10;
+    // The answers given in the dialog win over what the lead had (BANT is confirmed at conversion).
+    const merged: RecordData = { ...lead, requirement: q.requirement.trim(), budget: Number(q.budget), timeline: q.timeline };
+    const carried = Object.fromEntries(
+      Object.entries(LEAD_TO_OPP_FIELDS)
+        .map(([from, to]) => [to, merged[from]] as const)
+        .filter(([, v]) => v !== undefined && v !== null && v !== ''),
+    );
     const opp = insertRecordIn(
       ctx,
       'opportunities',
@@ -327,8 +386,9 @@ export function qualifyLead(actor: Actor, id: string, version: number, q: Qualif
         contactId: lead.contactId,
         leadId: lead.id,
         divisionId: lead.divisionId,
-        oppType: lead.productType === 'machine' ? 'new_machine' : 'consumables',
+        oppType: oppTypeForLead(d, lead),
         productType: lead.productType ?? undefined,
+        ...carried,
         notes: q.requirement.trim(),
         value: Number(q.value),
         expectedCloseDate: q.expectedCloseDate,
@@ -349,7 +409,18 @@ export function qualifyLead(actor: Actor, id: string, version: number, q: Qualif
       idx,
       lead,
       'qualified',
-      { requirement: q.requirement.trim(), budget: Number(q.budget), decisionMaker: q.decisionMaker.trim(), timeline: q.timeline, currentSetup: q.currentSetup?.trim() || lead.currentSetup, opportunityId: opp.id, nextFollowUpAt: null, statusNote: M.convertedNote(opp.id) },
+      {
+        requirement: q.requirement.trim(),
+        budget: Number(q.budget),
+        decisionMaker: q.decisionMaker.trim(),
+        timeline: q.timeline,
+        currentSetup: q.currentSetup?.trim() || lead.currentSetup,
+        opportunityId: opp.id,
+        nextFollowUpAt: null,
+        statusNote: M.convertedNote(opp.id),
+        // A contacted lead always has its first contact; older data without the stamp gets it now.
+        firstContactAt: lead.firstContactAt || nowLocal(),
+      },
       L.leads.actions.convertToOpportunity,
       ctx.correlationId,
     );

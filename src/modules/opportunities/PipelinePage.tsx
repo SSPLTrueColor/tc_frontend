@@ -11,7 +11,7 @@ import { perm } from '../../services/authz';
 import { useActor } from '../../services/hooks';
 import { periodLabel, pipelineFacets, pipelineRows, pipelineTotals, type PipelineFilter } from '../../services/opportunities';
 import { runStagnationSweep } from '../../services/api/opportunities';
-import { activeMasterValues, getResource } from '../../services/registry';
+import { activeMasterValues, getResource, masterLabel } from '../../services/registry';
 import { recordTitle } from '../../services/runtime';
 import { Button } from '../../components/primitives/Button';
 import { EmptyState, ErrorState, NoAccess, Skeleton } from '../../components/primitives/feedback';
@@ -26,6 +26,7 @@ import { moneyShort } from './format';
 import { SearchInput } from '../../components/primitives/controls';
 import { SegmentedControl } from '../../components/primitives/controls';
 import { FilterPanelButton } from '../../components/primitives/FilterPanel';
+import '../../components/resource/NotionFilters.css';
 
 const T = L.opportunities.pages.pipeline;
 const PAGE_SIZES = [25, 50, 100];
@@ -53,11 +54,15 @@ export function PipelinePage() {
   const [creating, setCreating] = useState<null | { mode: 'quick' | 'drawer'; initial?: Record<string, unknown> }>(null);
   const [editId, setEditId] = useState<string | null>(null);
 
+  // OPP-03: the board shows every stage column, so Won and Lost deals stay findable there; the list defaults to
+  // open stages and says so with a removable chip (no hidden filter).
+  const stageParam = params.get('stage') ?? '';
+  const effectiveStage = stageParam || (mode === 'kanban' ? 'all' : '');
   const filter: PipelineFilter = {
     search: search || undefined,
     divisionId: params.get('division') || undefined,
     ownerId: params.get('owner') || undefined,
-    stage: params.get('stage') || undefined,
+    stage: effectiveStage === 'open' ? undefined : effectiveStage || undefined,
     territoryId: params.get('territory') || undefined,
     productType: params.get('type') || undefined,
     closeMonth: params.get('month') || undefined,
@@ -104,6 +109,8 @@ export function PipelinePage() {
   const masterOptions = (master: string, all: string) => [{ value: '', label: all }, ...activeMasterValues(master).map((v) => ({ value: v.key, label: v.label }))];
 
   const activeFilters = FILTER_KEYS.filter((k) => params.get(k)).length;
+  // The stage filter in force, always visible: "Open stages" (list default) or a picked stage.
+  const stageChip = effectiveStage === 'all' ? '' : !effectiveStage || effectiveStage === 'open' ? T.chipOpenOnly : T.chipStage(masterLabel('oppStage', effectiveStage));
   const clearFilters = () => update({ page: undefined, ...Object.fromEntries(FILTER_KEYS.map((k) => [k, undefined])) });
   const clearAll = () => {
     setSearchText('');
@@ -118,7 +125,7 @@ export function PipelinePage() {
   return (
     <div className={cx('page page-resource', peek && 'has-inspector')}>
       <div className="page-main">
-        <PageHeader title="Leads & Opportunities" description={T.description} />
+        <PageHeader title={L.leads.workspace.title} description={T.description} />
         <SalesWorkspaceTabs actor={actor} active="pipeline" />
         <div className="view-toolbar view-tabs-row is-subviews pipeline-bar">
           <SegmentedControl
@@ -134,6 +141,16 @@ export function PipelinePage() {
             </span>
             <SearchInput dense placeholder={T.search} aria-label={T.searchLabel} value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
+          {stageChip && (
+            <span className="nf-pill is-set">
+              <span className="nf-pill-btn">
+                <span className="nf-pill-field">{stageChip}</span>
+              </span>
+              <button type="button" className="nf-pill-x" aria-label={T.removeChip(stageChip)} data-tooltip={T.removeChip(stageChip)} onClick={() => update({ stage: mode === 'kanban' ? undefined : 'all', page: undefined })}>
+                <Icon name="x" size={12} />
+              </button>
+            </span>
+          )}
           {filtered && (
             <button type="button" className="link small" onClick={clearAll}>
               {L.opportunities.actions.clearFilters}
@@ -154,7 +171,7 @@ export function PipelinePage() {
               <SelectMenu
                 label={T.stage}
                 value={params.get('stage') ?? ''}
-                options={[{ value: '', label: T.openStages }, { value: 'all', label: T.allStages }, ...activeMasterValues('oppStage').map((v) => ({ value: v.key, label: v.label }))]}
+                options={[{ value: '', label: mode === 'kanban' ? T.boardDefault : T.openStages }, ...(mode === 'kanban' ? [{ value: 'open', label: T.openStages }] : [{ value: 'all', label: T.allStages }]), ...activeMasterValues('oppStage').map((v) => ({ value: v.key, label: v.label }))]}
                 onChange={(v) => update({ stage: v, page: undefined })}
               />
             </FilterField>

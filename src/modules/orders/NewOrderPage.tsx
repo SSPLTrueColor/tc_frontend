@@ -20,7 +20,12 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { L } from '../../constants/labels';
 import { ROUTES, toPath } from '../../constants/routes';
-import { recordPeekPath } from '../../lib/routes';
+import { recordPagePath, recordPeekPath } from '../../lib/routes';
+import { fieldAccessMap } from '../../services/authz';
+import { customSection, validateCustomValues } from '../../services/customFields';
+import { getResource } from '../../services/registry';
+import { NUMBER_LIMITS, numberRangeError } from '../../services/validation';
+import { FormSections } from '../../components/resource/FormFields';
 import { DiffAlert, Field, FilePick, LinesTable, TotalsBlock } from './components';
 import { LinkButton, SearchInput, TextField } from '../../components/primitives/controls';
 
@@ -129,6 +134,8 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
   const [lines, setLines] = useState<QuoteLine[] | null>(null);
   const [po, setPo] = useState({ customerPoNo: '', customerPoDate: todayKey(), poFileName: '', poFileSize: 0 });
   const [site, setSite] = useState('');
+  // ADM-05: published custom fields of Sales Orders (stored on the order right after it is created).
+  const [custom, setCustom] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -176,17 +183,34 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
       </div>
     );
 
-  const totals = computeTotals(lines, d.placeOfSupply, d.freight, d.insurance);
+  // A quantity / discount still being typed (NaN) previews as 0; the cell shows why and the submit is blocked.
+  const fin = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0);
+  const safeLines = lines.map((l) => ({ ...l, qty: fin(l.qty), discountPct: fin(l.discountPct) }));
+  const totals = computeTotals(safeLines, d.placeOfSupply, d.freight, d.insurance);
+  const soRes = getResource('salesOrders');
+  const customValues = { ...custom, divisionId: d.divisionId };
+  const customSections = customSection(soRes, customValues);
+  const customKeys = customSections.flatMap((s) => s.fields);
   const diff = d.quotationLines ? diffLines(lines, d.quotationLines, totals.grandTotal, d.quotationTotal ?? totals.grandTotal) : undefined;
   const intra = d.placeOfSupply === getPolicies().companyGstState;
 
   const submit = async () => {
+    const badNumber = lines.some((l) => numberRangeError(Number(l.qty), NUMBER_LIMITS.qty) || numberRangeError(Number(l.discountPct ?? 0), NUMBER_LIMITS.discountPct));
+    const customErrors = validateCustomValues(actor, 'salesOrders', customValues);
+    if (badNumber || Object.keys(customErrors).length) {
+      setErrors((e) => ({ ...e, ...customErrors }));
+      setFormError(L.common.form.fixHighlighted);
+      toast(L.common.form.fixHighlighted, 'danger');
+      return;
+    }
     setBusy(true);
     setFormError('');
     try {
-      const order = await createOrder(actor, { source, sourceId, lines, siteAddressId: site || undefined, idempotencyKey: idem.current, ...po });
+      // ADM-05: custom fields are validated and saved by the same create (a required one never blocks it).
+      const order = await createOrder(actor, { source, sourceId, lines, siteAddressId: site || undefined, idempotencyKey: idem.current, ...po, custom: Object.fromEntries(customKeys.map((k) => [k, custom[k]])) });
       toast(P.created(String(order.orderNo)));
-      navigate(recordPeekPath(actor.workspaceId, 'salesOrders', order.id));
+      // Open the new order in place of the New Order entry (Back returns to where the user came from).
+      navigate(recordPagePath(actor.workspaceId, 'salesOrders', order.id), { replace: true });
     } catch (e) {
       if (e instanceof ServiceError && e.fieldErrors) setErrors(e.fieldErrors);
       setFormError(errorMessage(e));
@@ -261,6 +285,11 @@ function OrderForm({ source, sourceId }: { source: 'quotation' | 'repeat'; sourc
           </div>
         </section>
       </div>
+      {customSections.length > 0 && (
+        <section className="panel">
+          <FormSections res={{ ...soRes, form: { ...soRes.form, sections: customSections } }} sectionIds={['custom']} values={customValues} setValue={(k, v) => setCustom((c) => ({ ...c, [k]: v }))} errors={errors} access={fieldAccessMap(actor, soRes, 'create')} actor={actor} />
+        </section>
+      )}
       <section className="panel">
         <div className="panel-head">
           <h2 className="panel-title">{P.linesPanel}</h2>

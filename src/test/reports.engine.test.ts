@@ -185,6 +185,8 @@ describe('date range matrix', () => {
 
 /** Views whose rows are a fixed list (every KPI, every stage), not records: they keep their rows when there is no data. */
 const FIXED_ROWS = new Set(['business-scorecard/scorecard/-', 'pipeline-forecast/stage/-']);
+// Attendance exceptions list one row per person per day (no check-in), like the live Exception Dashboard.
+const PER_DAY_ROWS = new Set(['attendance/exceptions/-']);
 
 describe('no data, one row, many rows', () => {
   const resources = () => Object.keys(getDb().records);
@@ -202,7 +204,7 @@ describe('no data, one row, many rows', () => {
     __setDb(createDb());
     resources().forEach((k) => (getDb().records[k] = getDb().records[k].slice(0, 1)));
     runAll({ from: addDays(todayKey(), -400), to: addDays(todayKey(), 400) }).forEach(({ id, res }) => {
-      if (!FIXED_ROWS.has(id)) expect(res.rows.length, id).toBeLessThanOrEqual(3);
+      if (!FIXED_ROWS.has(id) && !PER_DAY_ROWS.has(id)) expect(res.rows.length, id).toBeLessThanOrEqual(3);
       res.kpis.forEach((k) => expect(k.value === null || Number.isFinite(k.value), `${id} ${k.label}`).toBe(true));
     });
   });
@@ -235,6 +237,8 @@ describe('very large, zero and negative amounts', () => {
   it('shows ₹10,00,00,000-scale orders in full in the footer and compact on the card', () => {
     const o = getDb().records.salesOrders.find((x) => !['pending_approval', 'cancelled'].includes(String(x.status)))!;
     o.grandTotal = 1_000_000_000;
+    o.subtotal = 1_000_000_000; // value before GST (Decision D-1)
+    o.discountTotal = 0;
     o.orderDate = todayKey();
     const res = runReport(admin(), 'order-value', 'value', { from: addDays(todayKey(), -400), to: todayKey(), group: 'month' });
     expect(res.totals.value!).toBeGreaterThanOrEqual(1_000_000_000);

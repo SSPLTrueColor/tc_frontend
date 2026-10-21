@@ -151,6 +151,10 @@ export function computeTotals(lines: QuoteLine[], placeOfSupply: string, freight
   };
 }
 
+/** Same bounds as NUMBER_LIMITS in services/validation.ts (kept here because this module stays import-free). */
+const MAX_QTY = 9_999;
+const MAX_AMOUNT = 999_999_999;
+
 /** Field-level checks for each line (returned as "Line n: …" messages). */
 export function validateLines(lines: QuoteLine[]): string[] {
   const errors: string[] = [];
@@ -159,7 +163,9 @@ export function validateLines(lines: QuoteLine[]): string[] {
     const err = (m: string) => errors.push(`${M.line(i + 1)}: ${m}`);
     if (!l.productId && !String(l.description ?? '').trim()) err(M.productOrDescription);
     if (!Number.isInteger(Number(l.qty)) || Number(l.qty) < 1) err(M.quantity);
+    else if (Number(l.qty) > MAX_QTY) err(M.quantityMax(MAX_QTY.toLocaleString('en-IN')));
     if (!(Number(l.listPrice) >= 0)) err(M.listPrice);
+    else if (Number(l.listPrice) > MAX_AMOUNT) err(M.amountMax);
     const pct = Number(l.discountPct) || 0;
     if (pct < 0 || pct > 100) err(M.discountRange);
     const amt = Number(l.discountAmt) || 0;

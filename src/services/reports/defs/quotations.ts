@@ -1,7 +1,7 @@
 /** QUO-14 quotation reports: value & conversion, lost quotations, discount analysis. (Pending approvals: /quotations/pending-approvals.) */
 import { L } from '../../../constants/labels';
 import { getPolicies } from '../../policies';
-import { sum } from '../kpis';
+import { isLiveQuote, netValue, sum, sumNet } from '../kpis';
 import { applyFilters, empName, groupBy, label, monthKey, n, peek, row, s } from '../helpers';
 import { count, countIf, maxOf, ratio, sum as sumOf, weighted } from '../metrics';
 import type { ReportDef } from '../types';
@@ -11,7 +11,8 @@ const C = L.reports.cols;
 const G = L.reports.groupBy;
 const R = L.reports.rep;
 const M = L.reports.more;
-const latest = <T extends Record<string, unknown>>(qs: T[]) => qs.filter((q) => q.isLatest !== false && q.status !== 'superseded');
+/** Live quotations only: latest revision, not superseded and not passed over for a sibling (not selected). */
+const latest = <T extends Record<string, unknown>>(qs: T[]) => qs.filter((q) => isLiveQuote(q as never));
 const SENT = ['sent', 'negotiation', 'accepted', 'rejected', 'expired'];
 
 export const quotationReports: ReportDef[] = [
@@ -43,7 +44,7 @@ export const quotationReports: ReportDef[] = [
           const rows = [...groupBy(qs, keyOf).entries()].map(([k, v]) => {
             const sent = v.filter((q) => SENT.includes(s(q.status)) || s(q.sentAt));
             const ordered = sent.filter((q) => orders.some((x) => x.quotationId === q.id));
-            return row(k, { group: k, quotes: v.length, value: sum(v, 'grandTotal'), sent: sent.length, ordered: ordered.length, rate: sent.length ? ordered.length / sent.length : null, avgDiscount: v.length ? v.reduce((t, q) => t + n(q.maxDiscountPct), 0) / v.length / 100 : null, accepted: v.filter((q) => q.status === 'accepted').length });
+            return row(k, { group: k, quotes: v.length, value: sumNet(v), sent: sent.length, ordered: ordered.length, rate: sent.length ? ordered.length / sent.length : null, avgDiscount: v.length ? v.reduce((t, q) => t + n(q.maxDiscountPct), 0) / v.length / 100 : null, accepted: v.filter((q) => q.status === 'accepted').length });
           });
           return {
             columns: [
@@ -86,7 +87,7 @@ export const quotationReports: ReportDef[] = [
         compute: (ds, f) => {
           const qs = latest(applyFilters(ds.get('quotations').filter((q) => q.status === 'rejected' || q.status === 'expired'), f, { date: 'quoteDate', owner: 'ownerId' }));
           const reasonOf = (q: Record<string, unknown>) => (q.status === 'expired' ? D.lostQuotations.expired : label('lostReason', q.rejectReason));
-          const rows = qs.map((q) => row(q.id, { id: q.id, quote: s(q.quoteNo) || q.id, customer: ds.name('customers', q.customerId), status: q.status, reason: reasonOf(q), value: n(q.grandTotal), owner: empName(ds, q.ownerId) })).sort((a, b) => n(b.value) - n(a.value));
+          const rows = qs.map((q) => row(q.id, { id: q.id, quote: s(q.quoteNo) || q.id, customer: ds.name('customers', q.customerId), status: q.status, reason: reasonOf(q), value: netValue(q), owner: empName(ds, q.ownerId) })).sort((a, b) => n(b.value) - n(a.value));
           return {
             columns: [
               { key: 'quote', label: C.quotationNumber, link: peek('quotations') },

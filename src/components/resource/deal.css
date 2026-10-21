@@ -1,0 +1,147 @@
+/* ---------- Deal Chain panel (lead → opportunity → quotations → sales order → contract) ---------- */
+.deal-chain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: var(--s-panel);
+}
+.deal-chain-title {
+  margin: 0;
+  font-size: var(--fs-supportive);
+  font-weight: var(--fw-semibold);
+  color: var(--s-text-secondary);
+}
+.deal-chain-steps {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.deal-chain-steps::-webkit-scrollbar { display: none; }
+.deal-chain-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  flex: 1 1 0;
+  min-width: 132px;
+}
+.deal-chain-arrow {
+  flex: none;
+  margin-top: 2px;
+  color: var(--s-text-muted);
+}
+.deal-chain-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.deal-chain-label {
+  font-size: var(--fs-supportive);
+  color: var(--s-text-muted);
+}
+.deal-chain-node {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-supportive);
+}
+.deal-chain-node .rel-link {
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.deal-chain-node.is-current .rel-link { font-weight: var(--fw-semibold); color: var(--s-text); }
+.deal-chain-node.is-muted { opacity: 0.55; }
+.deal-chain-node .tag.is-selected { --tone-fg: var(--s-success); --tone-bg: color-mix(in srgb, var(--s-success) 12%, var(--s-panel)); }
+.deal-chain-missing {
+  font-size: var(--fs-supportive);
+  font-style: italic;
+  color: var(--c-empty-value-fg, var(--s-text-muted));
+}
+.deal-chain-step .btn { align-self: flex-start; }
+@media (max-width: 760px) {
+  .deal-chain-steps { flex-direction: column; }
+  .deal-chain-step { min-width: 0; }
+  .deal-chain-arrow { transform: rotate(90deg); }
+}
+
+/* ---------- Deal History tab ---------- */
+.deal-history-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.deal-history-tools .spacer { flex: 1; }
+.deal-history-day { margin-bottom: var(--sp-3); }
+.deal-history-day-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 0 var(--sp-2);
+  padding: 4px 0;
+  font-size: var(--fs-supportive);
+  font-weight: var(--fw-semibold);
+  color: var(--s-text-secondary);
+  background: var(--s-panel);
+}
+.deal-history-item {
+  position: relative;
+  display: flex;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  font-size: var(--fs-supportive);
+}
+.deal-history-item::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 30px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--s-border);
+}
+.deal-history-item:last-child::before { display: none; }
+.deal-history-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--s-text-secondary);
+  background: var(--s-sunken);
+}
+.deal-history-icon.is-activity { color: var(--s-accent); background: color-mix(in srgb, var(--s-accent) 10%, var(--s-panel)); }
+.deal-history-icon.is-approval { color: var(--s-success); background: color-mix(in srgb, var(--s-success) 10%, var(--s-panel)); }
+.deal-history-icon.is-comment { color: var(--s-info, var(--s-accent)); }
+.deal-history-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.deal-history-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp-2); }
+.deal-history-title { color: var(--s-text); overflow-wrap: anywhere; }
+.deal-history-source { text-decoration: none; }
+.deal-history-source:hover { color: var(--s-accent); text-decoration: underline; }
+.deal-history-detail { margin: 0; color: var(--s-text-secondary); white-space: pre-line; overflow-wrap: anywhere; }
+.deal-history-meta { color: var(--s-text-muted); font-variant-numeric: tabular-nums; }
+.deal-history-meta time { color: var(--s-text-secondary); }
+.deal-chain-node-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}

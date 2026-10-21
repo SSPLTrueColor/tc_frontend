@@ -8,14 +8,14 @@
  */
 import { L } from '../../constants/labels';
 import { ROUTES } from '../../constants/routes';
-import { addDays, todayKey } from '../../lib/dates';
+import { addDays, nowLocal, todayKey } from '../../lib/dates';
 import { nowIso, nowMs } from '../../lib/clock';
-import { fyLabel } from '../../lib/fy';
 import { uid } from '../../lib/ids';
 import { validateEmail, validateMobile } from '../../lib/validators';
 import { demoUsers } from '../../domain/pack';
 import type { RecordData } from '../../metadata/types';
-import { type Actor, actorFor, canReadRecord, canUpdateRecord, fieldAccess, perm } from '../authz';
+import { nextNumber } from '../config';
+import { type Actor, actorFor, canReadRecord, canUpdateRecord, fieldAccess, liveStaffUsers, perm } from '../authz';
 import { commit, getDb } from '../db';
 import { appendAudit, notify } from '../ledger';
 import { byId, listPriceFor, userOfStaff } from '../lookups';
@@ -23,15 +23,19 @@ import { queueMessage } from '../outbox';
 import { discountApprovalLevels, getPolicies } from '../policies';
 import { getResource, masterLabel } from '../registry';
 import type { HookContext } from '../resourceHooks';
+import { customDefaults, customFieldKeys, validateCustomValues } from '../customFields';
 import { createRecord, insertRecordIn, patchRecordIn, type Projected, updateRecord } from '../runtime';
 import { ServiceError } from '../types';
 import { canDecide, decideApproval, requestApprovalIn } from '../workflow';
 import { cleanLines, computeTotals, type QuoteLine, validateLines } from './pricing';
 import { resolveQuoteLevels, roleMayDecideQuoteLevel } from './approvalLevels';
+import { capabilityGrants } from '../catalog/roleOverrides';
 import type { Approval, ApprovalLevel } from '../types';
+import { liveOrderForQuote, OPEN_QUOTE, QUOTE_APPROVAL, quoteBlockReason, restoreOpportunityIn, selectQuotationIn, unselectQuotationIn, withdrawQuoteApprovals } from './selection';
 
 const E = L.quotations.errors;
 const A = L.quotations.audit;
+const SEL = L.quotations.selection;
 
 /**
  * BR-15: lines for products with a valid price list take the list price (and landed cost) from
@@ -46,8 +50,8 @@ export function applyPriceList(lines: QuoteLine[], quoteDate: string, store?: Pa
   });
 }
 
-export const QUOTE_APPROVAL = 'quotation.discount';
-const OPEN = ['draft', 'pending_approval', 'approved', 'sent', 'negotiation'];
+export { QUOTE_APPROVAL, quoteBlockReason };
+const OPEN = OPEN_QUOTE;
 const ROI_KEYS = ['roiOutputPerDay', 'roiPricePerUnit', 'roiCostPerUnit', 'roiWorkingDays'];
 /** Header fields the editor may write (everything else is derived or set by the workflow). */
 export const EDITABLE_HEADER = ['opportunityId', 'contactId', 'ownerId', 'quoteDate', 'validUntil', 'placeOfSupply', 'freight', 'insurance', 'termsTemplateId', 'paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'];
@@ -148,10 +152,7 @@ export function quoteBeforeCreate(ctx: HookContext, c: Record<string, unknown>) 
   if (c.isLatest === undefined || c.isLatest === null) c.isLatest = true;
   // BR-13: division-wise series per financial year, e.g. QT/TX/26-27/0001.
   if (!c.quoteNo) {
-    const fy = fyLabel();
-    const key = `quoteNo:${c.divisionId}:${fy}`;
-    ctx.d.counters[key] = (ctx.d.counters[key] ?? 0) + 1;
-    c.quoteNo = `QT/${c.divisionId}/${fy}/${String(ctx.d.counters[key]).padStart(4, '0')}`;
+    c.quoteNo = nextNumber(ctx.d, 'quotation', String(c.divisionId)); // Settings › Numbering Series
   }
 }
 
@@ -159,8 +160,12 @@ export function quoteBeforeUpdate(ctx: HookContext, before: RecordData, c: Recor
   if (pendingLines) c.lines = pendingLines;
   const changed = Object.keys(c).filter((k) => !['version', 'updatedAt'].includes(k) && JSON.stringify(c[k] ?? null) !== JSON.stringify(before[k] ?? null));
   const content = changed.filter((k) => !ROI_KEYS.includes(k));
+  // A Not Selected quotation is read-only, ROI inputs included.
+  if (changed.length && before.status === 'not_selected') throw new ServiceError('invalid_state', quoteBlockReason(ctx.d, before)!);
   if (!content.length) return; // ROI inputs can change in any status (FR-047)
   if (!before.isLatest) throw new ServiceError('invalid_state', E.oldVersion(String(before.quoteNo)));
+  const blocked = quoteBlockReason(ctx.d, before);
+  if (blocked) throw new ServiceError('invalid_state', blocked);
   if (before.status !== 'draft') throw new ServiceError('invalid_state', E.onlyDraftEdit(String(before.quoteNo)));
   derive(ctx, c, false);
 }
@@ -243,8 +248,17 @@ export interface QuoteInput {
 }
 
 export function saveQuote(actor: Actor, input: QuoteInput): Projected {
-  const header = Object.fromEntries(Object.entries(input.header).filter(([k]) => EDITABLE_HEADER.includes(k)));
+  // ADM-05: published custom fields the actor may edit are saved with the header in the same write, so a
+  // required custom field is validated here (and never blocks the create because it was dropped).
+  const custom = customFieldKeys(actor, res(), input.id ? 'update' : 'create');
+  const header = Object.fromEntries(Object.entries(input.header).filter(([k]) => EDITABLE_HEADER.includes(k) || custom.includes(k)));
   if (!input.lines.length) throw new ServiceError('validation', E.needLine, { fieldErrors: { lines: E.needLineField } });
+  if (custom.length) {
+    const current = input.id ? (getDb().records.quotations ?? []).find((x) => x.id === input.id) : undefined;
+    const opp = byId('opportunities', header.opportunityId ?? current?.opportunityId);
+    const errors = validateCustomValues(actor, 'quotations', { divisionId: opp?.divisionId ?? current?.divisionId, ...(current ?? customDefaults(res())), ...header });
+    if (Object.keys(errors).length) throw new ServiceError('validation', L.common.form.fixHighlighted, { fieldErrors: errors });
+  }
   return withPendingLines(input.lines, () => (input.id ? updateRecord(actor, 'quotations', input.id, header, input.version ?? 0) : createRecord(actor, 'quotations', header)));
 }
 
@@ -254,25 +268,20 @@ function load(actor: Actor, d: ReturnType<typeof getDb>, id: string, version?: n
   if (!canUpdateRecord(actor, res(), q)) throw new ServiceError('forbidden', E.cannotChange(String(q.quoteNo)));
   if (version !== undefined && q.version !== version) throw new ServiceError('version_conflict', E.changed(String(q.quoteNo)));
   if (!q.isLatest) throw new ServiceError('invalid_state', E.superseded(String(q.quoteNo)));
+  // Central selection guard: Not Selected, another quotation accepted, or the opportunity lost.
+  const blocked = quoteBlockReason(d, q);
+  if (blocked) throw new ServiceError('invalid_state', blocked);
   return q;
 }
 
-function withdrawPending(ctx: HookContext, id: string, why: string) {
-  ctx.d.approvals.forEach((a) => {
-    if (a.recordId === id && a.type === QUOTE_APPROVAL && a.status === 'pending') {
-      a.status = 'withdrawn';
-      a.version++;
-      appendAudit(ctx.d, ctx.actor, { action: 'approval.withdrawn', actorType: 'workflow', resource: 'quotations', recordId: id, summary: A.withdrawn(a.id, why), correlationId: ctx.correlationId });
-    }
-  });
-}
+const withdrawPending = withdrawQuoteApprovals;
 
 function logActivityIn(ctx: HookContext, q: RecordData, type: string, subject: string, notes = '') {
   if (!ctx.d.records.activities) return;
   insertRecordIn(
     ctx,
     'activities',
-    { activityType: type, subject, notes, at: nowIso().slice(0, 16), byId: ctx.actor.staffId, parentResource: 'quotations', parentId: q.id, parentLabel: String(q.quoteNo), customerId: q.customerId ?? null, nextFollowUpAt: null },
+    { activityType: type, subject, notes, at: nowLocal(), byId: ctx.actor.staffId, parentResource: 'quotations', parentId: q.id, parentLabel: String(q.quoteNo), customerId: q.customerId ?? null, nextFollowUpAt: null },
     { validate: false },
   );
 }
@@ -309,11 +318,11 @@ export function submitQuote(actor: Actor, id: string, version: number, reason = 
 
 /** BR-17 band for the discount, resolved to who actually decides (named Sales Manager, escalation; see approvalLevels.ts). */
 export function quoteApprovalChain(actor: Actor, q: Record<string, unknown>, pct: number): ApprovalLevel[] {
-  return resolveQuoteLevels(discountApprovalLevels(pct), { ownerStaffId: q.ownerId ?? actor.staffId, requesterUserId: actor.user.id, divisionId: q.divisionId, users: demoUsers, workspaceId: actor.workspaceId });
+  return resolveQuoteLevels(discountApprovalLevels(pct), { ownerStaffId: q.ownerId ?? actor.staffId, requesterUserId: actor.user.id, divisionId: q.divisionId, users: liveStaffUsers(actor.workspaceId), workspaceId: actor.workspaceId, grants: capabilityGrants() }); // ADM-01/02: live org, as sales orders
 }
 
 /** canDecide plus the quotation rule that only the role holding the level decides it (REQUIREMENTS §2.2). */
-export const canDecideQuote = (actor: Actor, a: Approval) => canDecide(actor, a) && roleMayDecideQuoteLevel(actor.role.id, a.levels[a.currentLevel]);
+export const canDecideQuote = (actor: Actor, a: Approval) => canDecide(actor, a) && roleMayDecideQuoteLevel(actor.role.id, a.levels[a.currentLevel], capabilityGrants());
 
 /** Pulls a pending request back to draft (e.g. to change the discount). */
 export function backToDraft(actor: Actor, id: string, version: number) {
@@ -384,8 +393,10 @@ export function acceptQuote(actor: Actor, id: string, version: number, input: Ac
     // BR-20: one accepted quotation per opportunity — a second open quotation cannot win it again.
     const other = q.opportunityId ? (d.records.quotations ?? []).find((x) => x.id !== q.id && x.opportunityId === q.opportunityId && x.status === 'accepted') : undefined;
     if (other) throw new ServiceError('invalid_state', E.otherQuoteAccepted(String(other.quoteNo ?? other.id)));
+    const lostOpp = byId('opportunities', q.opportunityId, d.records);
+    if (lostOpp?.stage === 'lost') throw new ServiceError('invalid_state', SEL.oppLost(String(lostOpp.id)));
     const errors: Record<string, string> = {};
-    const patch: Record<string, unknown> = { status: 'accepted', acceptedAt: nowIso(), acceptanceMethod: input.method };
+    const patch: Record<string, unknown> = { status: 'accepted', acceptedAt: nowIso(), acceptanceMethod: input.method, previousStatus: q.status };
     if (input.method === 'po') {
       if (!input.poNo?.trim()) errors.poNo = E.poNoRequired;
       else if (input.poNo.trim().length > 40) errors.poNo = E.poNoMax;
@@ -403,13 +414,8 @@ export function acceptQuote(actor: Actor, id: string, version: number, input: Ac
     if (Object.keys(errors).length) throw new ServiceError('validation', E.fixFields, { fieldErrors: errors });
     const ctx: HookContext = { d, actor, correlationId: uid('cor') };
     patchRecordIn(ctx, 'quotations', id, patch, input.method === 'po' ? A.acceptedPo(String(input.poNo)) : A.acceptedElectronic(String(input.acceptedByName)));
-    const opp = byId('opportunities', q.opportunityId, d.records);
-    if (opp && !['won', 'lost'].includes(String(opp.stage))) {
-      // The won deal is worth what the customer accepted, not the early estimate (pipeline / won reports read this value).
-      patchRecordIn(ctx, 'opportunities', String(opp.id), { stage: 'won', wonAt: nowIso(), probability: 100, value: Number(q.grandTotal) || Number(opp.value) || 0 }, A.oppWon(String(q.quoteNo)));
-    } else if (opp?.stage === 'lost') {
-      appendAudit(d, actor, { action: 'warning', resource: 'opportunities', recordId: String(opp.id), summary: A.oppLostWarning(String(q.quoteNo)), correlationId: ctx.correlationId });
-    }
+    // Opportunity → Won at the accepted value; every other open quotation → Not Selected (same commit).
+    selectQuotationIn(ctx, q, SEL.reasonAccepted(String(q.quoteNo)), Number(q.grandTotal) || 0, A.oppWon(String(q.quoteNo)));
     const owner = userOfStaff(q.ownerId);
     if (owner && owner.id !== actor.user.id) notify(d, { userId: owner.id, workspaceId: actor.workspaceId, kind: 'info', title: A.acceptedNotify(String(q.quoteNo)), link: { resource: 'quotations', recordId: q.id } });
     logActivityIn(ctx, q, 'note', A.acceptedActivity(String(q.quoteNo)));
@@ -439,7 +445,7 @@ export function reviseQuote(actor: Actor, id: string, version: number, note: str
     patchRecordIn(ctx, 'quotations', id, { status: 'superseded', isLatest: false }, A.superseded);
     const rev = (Number(q.revision) || 0) + 1;
     const copy: Record<string, unknown> = {};
-    for (const k of [...EDITABLE_HEADER, 'customerId', 'divisionId', 'lines', ...ROI_KEYS]) copy[k] = q[k];
+    for (const k of [...EDITABLE_HEADER, 'customerId', 'divisionId', 'lines', ...ROI_KEYS, ...res().fields.filter((f) => f.custom).map((f) => f.key)]) copy[k] = q[k];
     const next = insertRecordIn(ctx, 'quotations', {
       ...copy,
       quoteDate: todayKey(),
@@ -453,6 +459,28 @@ export function reviseQuote(actor: Actor, id: string, version: number, note: str
     });
     appendAudit(d, actor, { action: 'version.created', resource: 'quotations', recordId: next.id, summary: A.versionCreated(rev, baseNo(q.quoteNo), note.trim()), correlationId: ctx.correlationId });
     return next.id;
+  });
+}
+
+/** Roles that may undo a quotation selection (Sales Manager, System Administrator). */
+export const canUndoSelection = (actor: Actor) => ['admin', 'sales_manager'].includes(actor.role.id);
+
+/**
+ * Undo Selection: only while no live sales order exists. The accepted quotation returns to its previous
+ * status, its Not Selected alternatives open again and the opportunity goes back to its previous stage.
+ */
+export function undoSelection(actor: Actor, id: string, version: number) {
+  if (!canUndoSelection(actor)) throw new ServiceError('forbidden', SEL.undoOnlyRoles);
+  commit((d) => {
+    const q = load(actor, d, id, version);
+    if (q.status !== 'accepted') throw new ServiceError('invalid_state', SEL.undoOnlyAccepted);
+    const so = liveOrderForQuote(d, q);
+    if (so) throw new ServiceError('invalid_state', SEL.undoOrderExists(String(so.orderNo ?? so.id)));
+    const ctx: HookContext = { d, actor, correlationId: uid('cor') };
+    const no = String(q.quoteNo);
+    unselectQuotationIn(ctx, q, SEL.auditUndo(no), SEL.auditRestored(no));
+    restoreOpportunityIn(ctx, q.opportunityId, (stage) => SEL.auditUndoOpp(no, stage));
+    logActivityIn(ctx, q, 'note', SEL.auditUndo(no));
   });
 }
 
@@ -572,13 +600,16 @@ export function decideQuoteApproval(actor: Actor, approvalId: string, decision: 
   const a = getDb().approvals.find((x) => x.id === approvalId && x.workspaceId === actor.workspaceId);
   if (!a) throw new ServiceError('not_found', E.approvalNotFound);
   if (a.type !== QUOTE_APPROVAL) throw new ServiceError('invalid_state', E.notQuotationApproval);
-  if (a.status === 'pending' && a.requestedBy !== actor.user.id && !roleMayDecideQuoteLevel(actor.role.id, a.levels[a.currentLevel])) throw new ServiceError('forbidden', E.notYourLevel(levelName(a.levels[a.currentLevel])));
+  if (a.status === 'pending' && a.requestedBy !== actor.user.id && !roleMayDecideQuoteLevel(actor.role.id, a.levels[a.currentLevel], capabilityGrants())) throw new ServiceError('forbidden', E.notYourLevel(levelName(a.levels[a.currentLevel])));
+  const blocked = a.status === 'pending' ? quoteBlockReason(getDb(), (getDb().records.quotations ?? []).find((q) => q.id === a.recordId)) : undefined;
+  if (blocked) throw new ServiceError('invalid_state', blocked);
   return decideApproval(actor, approvalId, decision, note, expectedVersion);
 }
 
 export function onDiscountApproved(ctx: HookContext, recordId: string) {
   const q = (ctx.d.records.quotations ?? []).find((x) => x.id === recordId);
-  if (q && q.status === 'pending_approval') patchRecordIn(ctx, 'quotations', recordId, { status: 'approved' }, A.discountApproved);
+  // A quotation that is no longer selectable never completes its approval (guard against stale requests).
+  if (q && q.status === 'pending_approval' && !quoteBlockReason(ctx.d, q)) patchRecordIn(ctx, 'quotations', recordId, { status: 'approved' }, A.discountApproved);
 }
 
 export function onDiscountRejected(ctx: HookContext, recordId: string, note: string) {

@@ -23,6 +23,8 @@ import { ROUTES, toPath } from '../../../constants/routes';
 import { Checkbox, LinkButton, TextField, Textarea } from '../../../components/primitives/controls';
 import { SegmentedControl } from '../../../components/primitives/controls';
 import { FileInput } from '../../../components/primitives/controls';
+import { NumberInput } from '../../../components/primitives/NumberInput';
+import { isBadNumber, NUMBER_LIMITS } from '../../../services/validation';
 
 const S = L.service;
 const P = S.pages.myJob;
@@ -117,7 +119,7 @@ export function MyJobPage() {
   const q = useServiceQuery(loaders.job(actor, recordId), [actor.user.id, recordId]);
   const { run, busy } = useStep();
   const [dialog, setDialog] = useState<'activity' | 'spotted' | null>(null);
-  const [work, setWork] = useState({ diagnosis: '', workDone: '', partsUsed: '', photosBefore: '', photosAfter: '', printCounter: '', inkUsedMl: '' });
+  const [work, setWork] = useState({ diagnosis: '', workDone: '', partsUsed: '', photosBefore: '', photosAfter: '', printCounter: null as number | null, inkUsedMl: null as number | null });
   const [fileError, setFileError] = useState('');
   const [method, setMethod] = useState<'otp' | 'signature'>('otp');
   const [otp, setOtp] = useState<string | null>(null);
@@ -152,7 +154,8 @@ export function MyJobPage() {
   const machine = byId('machines', t.machineId);
   const mine = t.assigneeId === actor.staffId;
   const v = t.version;
-  const num = (x: string) => (x.trim() === '' ? null : Number(x));
+  // Typed readings that are not plain whole numbers ("-5", "1e3") keep the text, show why and block the save.
+  const badReading = isBadNumber(work.printCounter, NUMBER_LIMITS.count) || isBadNumber(work.inkUsedMl, NUMBER_LIMITS.count);
   const maxMb = getPolicies().maxFileMb;
   // Resolving needs the work to be running (not Waiting for Parts / Customer); checking out is always possible.
   const canResolve = status === 'in_progress';
@@ -290,20 +293,21 @@ export function MyJobPage() {
               <label className="field-label" htmlFor="jc-counter">
                 {P.counter}
               </label>
-              <TextField id="jc-counter" inputMode="numeric" value={work.printCounter} onChange={(e) => setWork({ ...work, printCounter: e.target.value.replace(/\D/g, '') })} />
+              <NumberInput id="jc-counter" value={work.printCounter} rule={NUMBER_LIMITS.count} onValueChange={(n) => setWork((w) => ({ ...w, printCounter: n }))} />
             </div>
             <div className="form-field">
               <label className="field-label" htmlFor="jc-ink">
                 {P.ink}
               </label>
-              <TextField id="jc-ink" inputMode="numeric" value={work.inkUsedMl} onChange={(e) => setWork({ ...work, inkUsedMl: e.target.value.replace(/\D/g, '') })} />
+              <NumberInput id="jc-ink" value={work.inkUsedMl} rule={NUMBER_LIMITS.count} onValueChange={(n) => setWork((w) => ({ ...w, inkUsedMl: n }))} />
             </div>
             {fileError && <p className="field-error span-all">{fileError} {P.fileNote}</p>}
             <div className="span-all">
               <Button
                 variant="primary"
                 loading={busy === ST.save}
-                onClick={() => run(ST.save, () => serviceApi.saveWork(actor, t.id, { ...work, printCounter: num(work.printCounter), inkUsedMl: num(work.inkUsedMl) }, v), S.toasts.jobCardSaved)}
+                disabledReason={badReading ? L.common.form.fixHighlighted : undefined}
+                onClick={() => run(ST.save, () => serviceApi.saveWork(actor, t.id, work, v), S.toasts.jobCardSaved)}
               >
                 {S.actions.saveJobCard}
               </Button>
@@ -352,7 +356,7 @@ export function MyJobPage() {
                 disabledReason={method === 'otp' && code.length !== 6 ? P.enterCode : method === 'signature' && !signed ? P.mustSign : undefined}
                 onClick={async () => {
                   // Persist the latest job-card text first so "resolve" sees the work performed.
-                  if (work.workDone.trim() && work.workDone !== s(visit.workDone)) await run(ST.save, () => serviceApi.saveWork(actor, t.id, { ...work, printCounter: num(work.printCounter), inkUsedMl: num(work.inkUsedMl) }), S.toasts.jobCardSaved);
+                  if (!badReading && work.workDone.trim() && work.workDone !== s(visit.workDone)) await run(ST.save, () => serviceApi.saveWork(actor, t.id, work), S.toasts.jobCardSaved);
                   const ok = await run(ST.checkOut, () => serviceApi.checkOut(actor, t.id, { method, otp: code, signed, resolve: canResolve && resolve }), canResolve && resolve ? S.toasts.checkedOutResolved : S.toasts.checkedOut);
                   if (ok) {
                     setOtp(null);

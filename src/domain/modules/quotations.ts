@@ -13,10 +13,11 @@ import { type ModulePack, p } from './types';
 const T = L.quotations;
 const F = T.fields.quotations;
 const FT = T.fields.termsTemplates;
+const SEL = T.selection.fields;
 const v = (key: string, label: string, tone: Tone = 'neutral'): Omit<MasterValue, 'order'> => ({ key, label, tone, active: true });
 const master = (key: string, label: string, values: Omit<MasterValue, 'order'>[]): MasterDefinition => ({ id: `mst_${key}`, key, label, version: 1, values: values.map((x, i) => ({ ...x, order: i })) });
 
-export const QUOTE_STATUS = ['draft', 'pending_approval', 'approved', 'sent', 'negotiation', 'accepted', 'rejected', 'expired', 'superseded'] as const;
+export const QUOTE_STATUS = ['draft', 'pending_approval', 'approved', 'sent', 'negotiation', 'accepted', 'rejected', 'expired', 'superseded', 'not_selected'] as const;
 /** Statuses that can still change (BR-18 / FR-044). */
 export const OPEN_QUOTE_STATUS = ['draft', 'pending_approval', 'approved', 'sent', 'negotiation'];
 
@@ -33,12 +34,14 @@ const masters: MasterDefinition[] = [
     v('rejected', S.rejected, 'danger'),
     v('expired', S.expired),
     v('superseded', S.superseded),
+    v('not_selected', S.not_selected),
   ]),
   master('quoteReviewStage', 'Quotation status', [
     v('draft', S.draft), v('under_revision', 'Under Revision', 'warning'),
     v('pending_approval', S.pending_approval, 'warning'), v('approved', S.approved, 'success'),
     v('sent', S.sent, 'info'), v('negotiation', S.negotiation, 'warning'),
     v('accepted', S.accepted, 'success'), v('rejected', S.rejected, 'danger'), v('expired', S.expired),
+    v('not_selected', S.not_selected),
   ]),
   master('quoteLineType', T.masters.quoteLineType.label, [
     v('machine', LT.machine, 'accent'),
@@ -125,6 +128,11 @@ export const quotations: ResourceDefinition = {
     fq('poFileName', F.poFileName, 'text', { readOnly: true }),
     fq('rejectReason', F.rejectReason, 'master', { master: 'lostReason', readOnly: true }),
     fq('rejectNote', F.rejectNote, 'text', { readOnly: true }),
+    // Quotation selection: set when another quotation of the opportunity is accepted / ordered, or the opportunity is lost.
+    fq('notSelectedAt', SEL.notSelectedAt, 'datetime', { readOnly: true }),
+    fq('notSelectedReason', SEL.notSelectedReason, 'text', { readOnly: true, capabilities: { export: true } }),
+    fq('selectedQuotationId', SEL.selectedQuotationId, 'relation', { relation: { resource: 'quotations' }, readOnly: true }),
+    fq('previousStatus', SEL.previousStatus, 'master', { master: 'quoteStatus', system: true, readOnly: true }),
     // FR-047 ROI / payback calculator inputs (editable in any status).
     fq('roiOutputPerDay', F.roiOutputPerDay, 'number', { min: 0, unit: F.roiOutputUnit, capabilities: { export: true } }),
     fq('roiPricePerUnit', F.roiPricePerUnit, 'money', { min: 0, currency: 'INR', capabilities: { export: true } }),
@@ -139,13 +147,13 @@ export const quotations: ResourceDefinition = {
       { id: 'header', title: T.sections.quotations.header, fields: ['quoteNo', 'leadId', 'opportunityId', 'customerId', 'contactId', 'divisionId', 'ownerId', 'quoteDate', 'validUntil', 'placeOfSupply'], columns: 2 },
       { id: 'value', title: T.sections.quotations.value, fields: ['subtotal', 'discountTotal', 'freight', 'insurance', 'taxable', 'cgst', 'sgst', 'igst', 'grandTotal', 'amountInWords', 'maxDiscountPct', 'landedCostTotal', 'marginPct'], columns: 2 },
       { id: 'terms', title: T.sections.quotations.terms, fields: ['termsTemplateId', 'paymentTerms', 'deliveryTerms', 'warrantyTerms', 'installationTerms'], columns: 2 },
-      { id: 'outcome', title: T.sections.quotations.outcome, fields: ['sentAt', 'sentVia', 'acceptanceMethod', 'acceptedAt', 'acceptedByName', 'customerPoNo', 'customerPoDate', 'poFileName', 'rejectReason', 'rejectNote'], columns: 2 },
+      { id: 'outcome', title: T.sections.quotations.outcome, fields: ['sentAt', 'sentVia', 'acceptanceMethod', 'acceptedAt', 'acceptedByName', 'customerPoNo', 'customerPoDate', 'poFileName', 'rejectReason', 'rejectNote', 'notSelectedAt', 'notSelectedReason', 'selectedQuotationId'], columns: 2 },
     ],
   },
   lifecycle: {
     field: 'status',
     initial: 'draft',
-    terminal: ['accepted', 'rejected', 'expired', 'superseded'],
+    terminal: ['accepted', 'rejected', 'expired', 'superseded', 'not_selected'],
     // Only the plain step is a lifecycle button; submit/send/accept/reject/new version need data and run through the quotations service.
     // Mark as Sent records a quotation shared outside the CRM (no message); Send Quotation still sends + logs it.
     transitions: [
@@ -255,7 +263,7 @@ export const quotationsPack: ModulePack = {
     division_head: { quotations: p('division', 'division', true, false, true), termsTemplates: p('division', 'division', true, false, false) },
     sales_manager: { quotations: p('team', 'team', true, false, true), termsTemplates: p('all') },
     sales_exec: { quotations: p('own', 'own', true), termsTemplates: p('all') },
-    service_head: { quotations: p('all'), termsTemplates: p('all') },
+    service_head: { quotations: p('all', 'own', true), termsTemplates: p('all') }, // App. B: Service Head raises service quotes (CEV)
     coordinator: { quotations: p('division'), termsTemplates: p('all') },
     scm: { quotations: p('all') },
     accounts: { quotations: p('all', 'none', false, false, true), termsTemplates: p('all') },

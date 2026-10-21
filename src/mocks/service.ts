@@ -108,7 +108,10 @@ export function seed(ctx: SeedContext): void {
     const recentByMachineCat = new Map<string, RecordData>();
     for (let i = 0; i < COUNT; i++) {
       // Older tickets first so repeat detection and ids follow time.
-      const ageDays = Math.round(180 - (i / COUNT) * 180 + rnd.int(-2, 2));
+      // The newest few tickets are always yesterday's and still waiting for an engineer, so the
+      // unassigned queue (SRV-05) is never empty, whatever the time of day the demo is opened.
+      const waiting = i >= COUNT - 3;
+      const ageDays = Math.max(waiting ? 1 : -Infinity, Math.round(180 - (i / COUNT) * 180 + rnd.int(-2, 2)));
       const target = rnd.chance(0.82) && machines.length ? rnd.pick(targets.filter((t) => t.machine).length ? targets.filter((t) => t.machine) : targets) : rnd.pick(targets);
       const machine = target.machine;
       const day = addDays(today, -Math.max(0, ageDays));
@@ -125,7 +128,7 @@ export function seed(ctx: SeedContext): void {
       const prior = machine ? recentByMachineCat.get(key) : undefined;
       const repeatOfId = prior && s(prior.reportedAt).slice(0, 10) >= addDays(day, -30) ? prior.id : null;
       // Status by age: recent tickets are still moving; old ones are closed.
-      const status =
+      const byAge =
         ageDays <= 1
           ? rnd.pick(['open', 'open', 'assigned', 'accepted'])
           : ageDays <= 5
@@ -135,6 +138,7 @@ export function seed(ctx: SeedContext): void {
               : rnd.chance(0.04)
                 ? 'reopened'
                 : 'closed';
+      const status = waiting ? 'open' : byAge;
       const late = rnd.chance(0.22); // ~ 1 in 5 misses an SLA
       const respondedAt = status === 'open' ? null : at(reportedAt, hr * (late && rnd.chance(0.5) ? rnd.next() + 1.1 : rnd.next() * 0.9));
       const progressed = !['open', 'assigned', 'accepted'].includes(status);

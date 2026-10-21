@@ -57,7 +57,7 @@ export function RepeatOrdersPage() {
             </EmptyState>
           </>
         ) : (
-          <DataTable
+          <DataTable exportResource="salesOrders"
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}
@@ -148,7 +148,7 @@ export function DealerOrdersPage() {
             {P.emptyBody}
           </EmptyState>
         ) : (
-          <DataTable
+          <DataTable exportResource="dealerOrders"
             label={P.tableLabel}
             rows={rows}
             rowKey={(r) => r.id}

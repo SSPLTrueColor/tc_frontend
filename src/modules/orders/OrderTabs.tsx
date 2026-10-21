@@ -32,6 +32,8 @@ import { SelectMenu } from '../../components/primitives/SelectMenu';
 import { DiffAlert, Field, LinesTable, TotalsBlock } from './components';
 import { ConfirmDeliveryDialog } from './OrderActions';
 import { Checkbox, LinkButton, TextField, Textarea } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
+import { isBadNumber, NUMBER_LIMITS } from '../../services/validation';
 import { Table } from '../../components/primitives/Table';
 
 const O = L.orders;
@@ -118,7 +120,7 @@ function ApprovalList({ list }: { list: Approval[] }) {
                 <div className="muted small mono">{a.id}</div>
               </td>
               <td className="nowrap">
-                <DateText value={a.requestedAt.slice(0, 10)} />
+                <DateText value={a.requestedAt} showTime />
                 <div className="muted small">{userName(a.requestedBy)}</div>
               </td>
               <td>{a.reason || <EmptyValue />}</td>
@@ -251,7 +253,9 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const total = Math.round(rows.reduce((t, r) => t + (Number(r.percent) || 0), 0) * 100) / 100;
-  const set = (i: number, p: Partial<ScheduleRow>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const set = (i: number, p: Partial<ScheduleRow>) => setRows((cur) => cur.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  // An empty, unparseable or out-of-range share (NaN / "-5" / 120) blocks the save; the cell says why.
+  const badShare = rows.some((r) => !Number.isFinite(r.percent) || isBadNumber(r.percent, NUMBER_LIMITS.discountPct));
   const FM = O.fields.paymentMilestones;
   return (
     <Dialog
@@ -266,6 +270,7 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
           <Button
             variant="primary"
             loading={busy}
+            disabledReason={badShare ? L.common.form.fixHighlighted : undefined}
             onClick={async () => {
               setBusy(true);
               setError('');
@@ -305,7 +310,7 @@ function ScheduleDialog({ orderId, orderDate, rows: initial, onClose }: { orderI
                   <TextField dense aria-label={R.milestoneAria(i + 1, FM.label)} value={r.label} maxLength={60} onChange={(e) => set(i, { label: e.target.value })} />
                 </td>
                 <td>
-                  <TextField dense className="orders-num" type="number" min={0} max={100} aria-label={R.milestoneAria(i + 1, FM.percent)} value={r.percent} onChange={(e) => set(i, { percent: Number(e.target.value) })} />
+                  <NumberInput dense className="orders-num" aria-label={R.milestoneAria(i + 1, FM.percent)} value={r.percent} rule={NUMBER_LIMITS.discountPct} onValueChange={(n) => set(i, { percent: n ?? NaN })} />
                 </td>
                 <td>
                   <DatePicker label={R.milestoneAria(i + 1, FM.dueDate)} value={r.dueDate} onChange={(v) => set(i, { dueDate: v ?? '' })} clearable={false} />
@@ -339,7 +344,7 @@ export function ReceiptDialog({ milestone, onClose }: { milestone: Record<string
   const actor = useActor();
   const toast = useToast();
   const outstanding = Math.round((Number(milestone.amount) - (Number(milestone.receivedAmount) || 0)) * 100) / 100;
-  const [amount, setAmount] = useState(String(outstanding));
+  const [amount, setAmount] = useState<number | null>(outstanding);
   const [date, setDate] = useState(todayKey());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -356,11 +361,12 @@ export function ReceiptDialog({ milestone, onClose }: { milestone: Record<string
           <Button
             variant="primary"
             loading={busy}
+            disabledReason={isBadNumber(amount, NUMBER_LIMITS.amount) ? L.common.form.fixHighlighted : undefined}
             onClick={async () => {
               setBusy(true);
               setErrors({});
               try {
-                await recordPaymentReceipt(actor, milestone.id, Number(amount), date);
+                await recordPaymentReceipt(actor, milestone.id, Number(amount ?? 0), date);
                 toast(R.receiptSaved(formatMoney(Number(amount))));
                 onClose();
               } catch (e) {
@@ -378,7 +384,7 @@ export function ReceiptDialog({ milestone, onClose }: { milestone: Record<string
     >
       <div className="form-grid cols-2">
         <Field id="rc-amount" label={R.receiptAmount} required help={R.receiptOutstanding(formatMoney(outstanding))} error={errors.amount}>
-          <TextField id="rc-amount" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} aria-invalid={!!errors.amount || undefined} data-autofocus />
+          <NumberInput id="rc-amount" prefix="₹" value={amount} onValueChange={setAmount} rule={NUMBER_LIMITS.amount} invalid={!!errors.amount} data-autofocus />
         </Field>
         <Field id="rc-date" label={R.receiptDate} required error={errors.receivedAt}>
           <DatePicker id="rc-date" label={R.receiptDate} value={date} onChange={(v) => setDate(v ?? '')} invalid={!!errors.receivedAt} />
@@ -506,7 +512,7 @@ export function ErpInvoiceTab({ actor, record }: RecordExtensionProps) {
       {!approved ? <InlineAlert tone="info">{R.erpBeforeApproval}</InlineAlert> : !o.invoiceNo && <InlineAlert tone="info">{R.erpPending}</InlineAlert>}
       <dl className="detail-list">
         <Row label={F.financeCheck}>{o.financeCheck ? O.common.yes : O.common.no}</Row>
-        <Row label={F.erpPushedAt}>{o.erpPushedAt ? <DateText value={String(o.erpPushedAt).slice(0, 10)} /> : <EmptyValue label={R.erpNotPushed} />}</Row>
+        <Row label={F.erpPushedAt}>{o.erpPushedAt ? <DateText value={String(o.erpPushedAt)} showTime /> : <EmptyValue label={R.erpNotPushed} />}</Row>
         <Row label={F.invoiceNo}>{o.invoiceNo ? <span className="mono">{String(o.invoiceNo)}</span> : <EmptyValue />}</Row>
         <Row label={F.invoiceDate}>{o.invoiceDate ? <DateText value={String(o.invoiceDate)} /> : <EmptyValue />}</Row>
         <Row label={F.ewayBill}>{o.ewayBill ? <span className="mono">{String(o.ewayBill)}</span> : <EmptyValue />}</Row>

@@ -60,7 +60,16 @@ export interface OutboxMessage {
   related?: { resource: string; recordId: string };
   createdAt: string;
   createdBy: string;
-  status: 'simulated';
+  /** simulated = "sent"; queued = held by the recipient's quiet hours until `deliverAt`; digest = batched into the recipient's daily digest. */
+  status: 'simulated' | 'queued' | 'digest';
+  /** Notification Template (ADM-06) the text was rendered from, with its name for the Sent Messages list. */
+  templateName?: string;
+  /** Event the message belongs to (notificationEvent master key, or a preference event for staff alerts). */
+  event?: string;
+  /** Staff alert routed by the recipient's Notification Preferences (COM-03), not a customer message. */
+  audience?: 'customer' | 'staff';
+  recipientUserId?: string;
+  deliverAt?: string;
 }
 
 /** Soft-deleted record (COM-10): restorable by an administrator. */

@@ -168,11 +168,17 @@ export interface ConvertInput {
   billingState?: string;
   divisionId: string;
   productType: string;
+  /** LEAD-02: lead source from the master (defaults to the contact's own source when it has one). */
+  sourceId?: string;
   ownerId: string;
   nextFollowUpAt: string;
   requirement?: string;
   /** BR-06: required when the contact came from an exhibition. */
   eventName?: string;
+  /** Required when the lead source is Referral: who referred it (employee / engineer, or customer / dealer). */
+  referrerType?: string;
+  referrerEmployeeId?: string;
+  referrerCustomerId?: string;
 }
 
 const CITY_ALIASES: Record<string, string> = { delhi: 'delhi_ncr', 'new delhi': 'delhi_ncr', noida: 'delhi_ncr', gurugram: 'delhi_ncr', gurgaon: 'delhi_ncr', bangalore: 'bengaluru', bombay: 'mumbai', madras: 'chennai', tirupur: 'tiruppur' };
@@ -200,6 +206,10 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
     if (!contact || !canReadRecord(actor, getResource('contacts'), contact)) throw new ServiceError('not_found', L.customers.messages.contactNotFound);
     if (contact.poolStatus === 'converted') throw new ServiceError('invalid_state', L.customers.messages.alreadyConverted);
     if (contact.source === 'exhibition' && !input.eventName?.trim()) errors.eventName = L.customers.messages.eventRequired;
+    // LEAD-02: every lead has a source from the Lead Source master; never a silent default.
+    const sourceId = input.sourceId || (activeMasterValues('leadSource').some((m) => m.key === contact.source) ? String(contact.source) : '');
+    if (!sourceId) errors.sourceId = L.customers.messages.sourceRequired;
+    else if (!activeMasterValues('leadSource').some((m) => m.key === sourceId)) errors.sourceId = L.customers.messages.sourceRequired;
     if (!contact.customerId) {
       // Pre-fill territory and billing state from the contact's city when not chosen (the lead's state follows the company).
       const guess = territoryForCity(contact.city);
@@ -209,6 +219,12 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
       if (!input.territoryId) errors.territoryId = L.customers.messages.territoryRequired;
       if (!input.billingState) errors.billingState = L.customers.messages.stateRequired;
     }
+    const referral = sourceId === 'referral';
+    const refType = referral ? input.referrerType || '' : '';
+    const refByEmployee = refType === 'engineer' || refType === 'employee';
+    if (referral && !refType) errors.referrerType = L.customers.messages.referrerTypeRequired;
+    else if (refByEmployee && !input.referrerEmployeeId) errors.referrerEmployeeId = L.customers.messages.referrerPersonRequired;
+    else if (refType && !refByEmployee && !input.referrerCustomerId) errors.referrerCustomerId = L.customers.messages.referrerPersonRequired;
     if (Object.values(errors).some(Boolean)) throw new ServiceError('validation', L.customers.messages.fixFields, { fieldErrors: errors });
     const ctx = { d, actor, correlationId: uid('cor') };
     let customerId = String(contact.customerId ?? '');
@@ -235,8 +251,11 @@ export function convertContactToLead(actor: Actor, input: ConvertInput): { leadI
       customerId,
       contactId: contact.id,
       divisionId: input.divisionId,
-      sourceId: contact.source || 'cold_call',
+      sourceId,
       eventName: input.eventName?.trim() || null,
+      referrerType: refType || null,
+      referrerEmployeeId: refType && refByEmployee ? input.referrerEmployeeId : null,
+      referrerCustomerId: refType && !refByEmployee ? input.referrerCustomerId : null,
       productType: input.productType,
       requirement: input.requirement ?? '',
       ownerId: input.ownerId,

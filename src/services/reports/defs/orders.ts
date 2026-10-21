@@ -1,6 +1,6 @@
 /** SO-11 order reports: order value & sales performance, backlog & delays, payments & overdue ageing. */
 import { L } from '../../../constants/labels';
-import { AGEING, BACKLOG, dayOf, isBooked, ms, outstandingOf, sum } from '../kpis';
+import { AGEING, BACKLOG, dayOf, isBooked, ms, netValue, outstandingOf, sum, sumNet } from '../kpis';
 import { applyFilters, empName, groupBy, label, list, monthKey, n, peek, row, s } from '../helpers';
 import { count, mean, maxOf, ratio, sum as sumOf, sumIf } from '../metrics';
 import type { ReportDef } from '../types';
@@ -34,12 +34,13 @@ export const orderReports: ReportDef[] = [
         compute: (ds, f) => {
           const os = applyFilters(ds.get('salesOrders').filter(isBooked), f, { date: 'orderDate', owner: 'ownerId' });
           const g = f.group ?? 'month';
-          const rows = [...groupBy(os, (o) => (g === 'division' ? label('division', o.divisionId) : g === 'kind' ? label('orderKind', o.orderKind) : g === 'owner' ? empName(ds, o.ownerId) : monthKey(o.orderDate))).entries()].map(([k, v]) => row(k, { group: k, orders: v.length, value: sum(v, 'grandTotal'), avg: v.length ? sum(v, 'grandTotal') / v.length : 0 }));
+          const rows = [...groupBy(os, (o) => (g === 'division' ? label('division', o.divisionId) : g === 'kind' ? label('orderKind', o.orderKind) : g === 'owner' ? empName(ds, o.ownerId) : monthKey(o.orderDate))).entries()].map(([k, v]) => row(k, { group: k, orders: v.length, value: sumNet(v), gross: sum(v, 'grandTotal'), avg: v.length ? sumNet(v) / v.length : 0 }));
           return {
             columns: [
               { key: 'group', label: g === 'month' ? C.month : g === 'division' ? C.division : g === 'owner' ? C.salesExecutive : D.orderValue.cols.orderType, type: g === 'month' ? 'month' : 'text', link: () => list('salesOrders') },
               { key: 'orders', label: C.salesOrders, type: 'number', total: 'sum' },
               { key: 'value', label: D.orderValue.cols.value, type: 'money', total: 'sum' },
+              { key: 'gross', label: D.orderValue.cols.gross, type: 'money', total: 'sum' },
               { key: 'avg', label: D.orderValue.cols.avg, type: 'money', total: ratio('value', 'orders') },
             ],
             rows: g === 'month' ? rows.sort((a, b) => s(a.group).localeCompare(s(b.group))) : rows.sort((a, b) => n(b.value) - n(a.value)),
@@ -70,7 +71,7 @@ export const orderReports: ReportDef[] = [
         compute: (ds, f, ctx) => {
           const os = applyFilters(ds.get('salesOrders').filter((o) => BACKLOG.includes(s(o.status))), f, { owner: 'ownerId' });
           const rows = os
-            .map((o) => row(o.id, { id: o.id, order: s(o.orderNo) || o.id, customer: ds.name('customers', o.customerId), status: o.status, kind: o.orderKind, value: n(o.grandTotal), age: Math.round((ms(ctx.today) - ms(dayOf(o.orderDate))) / 86_400_000), owner: empName(ds, o.ownerId) }))
+            .map((o) => row(o.id, { id: o.id, order: s(o.orderNo) || o.id, customer: ds.name('customers', o.customerId), status: o.status, kind: o.orderKind, value: netValue(o), age: Math.round((ms(ctx.today) - ms(dayOf(o.orderDate))) / 86_400_000), owner: empName(ds, o.ownerId) }))
             .sort((a, b) => n(b.age) - n(a.age));
           return {
             columns: [

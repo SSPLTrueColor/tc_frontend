@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { L } from '../../constants/labels';
 import { addDays, todayKey } from '../../lib/dates';
-import { recordPeekPath, resourcePath } from '../../lib/routes';
+import { recordPagePath, recordPeekPath, resourcePath } from '../../lib/routes';
+import { fieldAccessMap } from '../../services/authz';
+import { customSection, validateCustomValues } from '../../services/customFields';
+import { getResource } from '../../services/registry';
+import { confirmAction } from '../../components/primitives/overlay';
+import { FormSections } from '../../components/resource/FormFields';
 import { formatMoney } from '../../lib/format';
 import { errorMessage } from '../../services/api/client';
 import { quotationsApi } from '../../services/api/quotations';
@@ -25,6 +30,8 @@ import { useUnsavedGuard } from '../../components/resource/RecordForm';
 import { PageHeader } from '../../components/shell/PageHeader';
 import { TotalsBlock } from './LinesTable';
 import { TextField, Textarea } from '../../components/primitives/controls';
+import { NumberInput } from '../../components/primitives/NumberInput';
+import { NUMBER_LIMITS, numberRangeError } from '../../services/validation';
 
 const T = L.quotations;
 const E = T.editor;
@@ -32,13 +39,43 @@ const F = T.fields.quotations;
 
 const LINE_TYPE_BY_PRODUCT: Record<string, string> = { machine: 'machine', ink: 'ink', paper: 'consumable', fabric: 'consumable', spares: 'spares_kit', service: 'installation', software: 'software' };
 
+const fin = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0);
+
+/** Inline message for a line's discount (percentage 0–100 or an amount within the rupee limit). */
+const discountError = (l: QuoteLine, byAmount: boolean) => (byAmount ? numberRangeError(Number(l.discountAmt ?? 0), NUMBER_LIMITS.amount) : numberRangeError(Number(l.discountPct ?? 0), NUMBER_LIMITS.discountPct));
+
 const emptyLine = (): QuoteLine => ({ productId: null, description: '', lineType: 'accessory', qty: 1, listPrice: 0, discountPct: 0, discountAmt: 0, hsnSac: '', gstRate: 18, landedCost: null, priceLocked: false });
+
+// COM-02: a New Quotation history entry that already produced a quotation. Browser Back to it opens that
+// quotation instead of a blank editor, so it cannot create a duplicate (keyed by the history entry).
+const SAVED_KEY = 'tc.quoteEditor.saved';
+const savedEntries = (): Record<string, { id: string; no: string }> => {
+  try {
+    return JSON.parse(sessionStorage.getItem(SAVED_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+};
+function rememberSavedEntry(locationKey: string, id: string, no: string) {
+  try {
+    sessionStorage.setItem(SAVED_KEY, JSON.stringify({ ...savedEntries(), [locationKey]: { id, no } }));
+  } catch {
+    /* storage unavailable: replace navigation still covers the common case */
+  }
+}
 
 /** ROUTES.quotationNew (?opportunity=<id>) and ROUTES.quotationEdit — FR-035 … FR-041, FR-046. */
 export function QuoteEditorPage() {
   const { recordId } = useParams();
   const [params] = useSearchParams();
+  const location = useLocation();
+  const toast = useToast();
   const oppId = params.get('opportunity') ?? undefined;
+  const already = !recordId ? savedEntries()[location.key] : undefined;
+  useEffect(() => {
+    if (already) toast(E.alreadySaved(already.no), 'info');
+  }, [already?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (already) return <Navigate replace to={recordPagePath('tc', 'quotations', already.id)} />;
   return <EditorLoader key={`${recordId ?? 'new'}:${oppId ?? ''}`} recordId={recordId} oppId={oppId} />;
 }
 
@@ -75,6 +112,9 @@ function EditorLoader({ recordId, oppId }: { recordId?: string; oppId?: string }
       </div>
     );
   const d = state.data;
+  // Edit on a quotation waiting for approval: explain the way out and offer it here (withdraw → Draft → edit).
+  if (d.quote && !d.quote.canEdit && d.quote.canUpdate && d.quote.record.isLatest && d.quote.record.status === 'pending_approval')
+    return <PendingApprovalNotice record={d.quote.record} onWithdrawn={() => setNonce((n) => n + 1)} />;
   if (d.quote && !d.quote.canEdit)
     return (
       <div className="page">
@@ -103,7 +143,46 @@ function EditorLoader({ recordId, oppId }: { recordId?: string; oppId?: string }
   return <QuoteEditor data={d} />;
 }
 
+function PendingApprovalNotice({ record, onWithdrawn }: { record: RecordData; onWithdrawn: () => void }) {
+  const actor = useActor();
+  const toast = useToast();
+  const no = String(record.quoteNo ?? record.id);
+  const withdraw = () =>
+    confirmAction({
+      title: `${E.withdrawToEdit}?`,
+      message: E.withdrawConfirm,
+      tone: 'danger',
+      confirmLabel: E.withdrawToEdit,
+      onConfirm: async () => {
+        try {
+          await quotationsApi.backToDraft(actor, record.id, Number(record.version));
+          toast(E.withdrawn(no));
+          onWithdrawn();
+        } catch (e) {
+          toast(errorMessage(e), 'danger');
+        }
+      },
+    });
+  return (
+    <div className="page">
+      <PageHeader title={E.titleEditNo(no)} />
+      <div className="full-form panel">
+        <InlineAlert tone="info" title={E.pendingTitle(no)}>
+          {E.pendingBody}
+        </InlineAlert>
+        <div className="form-actions">
+          <Link to={recordPeekPath('tc', 'quotations', record.id)}>{T.actions.openQuotation}</Link>
+          <Button variant="primary" onClick={withdraw}>
+            {E.withdrawToEdit}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuoteEditor({ data }: { data: EditorData }) {
+  const location = useLocation();
   const actor = useActor();
   const navigate = useNavigate();
   const toast = useToast();
@@ -154,7 +233,8 @@ function QuoteEditor({ data }: { data: EditorData }) {
   };
 
   // Live preview with the same pricing the service enforces on save (BR-15/16).
-  const priced = useMemo(() => applyPriceList(lines, quoteDate), [lines, quoteDate]);
+  // A number still being typed (NaN) previews as 0; the field shows its own error and the save is blocked.
+  const priced = useMemo(() => applyPriceList(lines.map((l) => ({ ...l, qty: fin(l.qty), listPrice: fin(l.listPrice), discountPct: fin(l.discountPct), discountAmt: fin(l.discountAmt) })), quoteDate), [lines, quoteDate]);
   const totals = useMemo(() => computeTotals(priced, placeOfSupply, Number(header.freight) || 0, Number(header.insurance) || 0, getPolicies().companyGstState), [priced, placeOfSupply, header.freight, header.insurance]);
   const lineErrors = validateLines(priced);
   const levels = quoteApprovalChain(actor, { ownerId: header.ownerId || opp?.ownerId || existing?.ownerId, divisionId }, totals.maxDiscountPct);
@@ -195,8 +275,12 @@ function QuoteEditor({ data }: { data: EditorData }) {
     if (!header.opportunityId) e.opportunityId = E.chooseOpportunity;
     if (String(header.validUntil) < quoteDate) e.validUntil = F.validUntilCompare;
     if (lineErrors.length) e.lines = lineErrors.join(' · ');
+    // Unparseable or out-of-range numbers ("-2", "1e6", 120 %) block the save; each field shows why.
+    const badNumber = lines.some((l, i) => [l.qty, l.listPrice].some((x) => !Number.isFinite(Number(x))) || !!discountError(l, lines[i].discountType === 'amt' || (lines[i].discountType !== 'pct' && Number(lines[i].discountAmt) > 0)));
+    if (badNumber || [header.freight, header.insurance].some((x) => numberRangeError(Number(x ?? 0), NUMBER_LIMITS.amount))) e.numbers = E.fixFields;
     if (!lines.length) e.lines = E.needLine;
     if (submit && levels.length && reason.trim().length < 5) e.reason = E.needReason;
+    Object.assign(e, validateCustomValues(actor, 'quotations', { ...header, divisionId }));
     if (Object.keys(e).length) {
       setErrors(e);
       toast(E.fixFields, 'danger');
@@ -207,14 +291,17 @@ function QuoteEditor({ data }: { data: EditorData }) {
     try {
       const target = saved ?? (existing ? { id: existing.id, version: Number(existing.version ?? 0) } : null);
       const result = await quotationsApi.save(actor, { id: target?.id, version: target?.version, header: { ...header, placeOfSupply }, lines });
-      setSaved({ id: result.record.id, version: result.record.version });
+      // ADM-05: published custom fields travel in the header and are validated and saved by the same write.
+      setSaved({ id: result.record.id, version: Number(result.record.version) });
       setDirty(false);
+      if (!existing) rememberSavedEntry(location.key, result.record.id, String(result.record.quoteNo ?? result.record.id));
       if (submit) {
-        const r = await quotationsApi.submit(actor, result.record.id, result.record.version, reason);
+        const r = await quotationsApi.submit(actor, result.record.id, Number(result.record.version), reason);
         const no = String(result.record.quoteNo ?? result.record.id);
         toast(r.status === 'approved' ? E.submittedApproved(no) : E.submittedPending(no, String(r.approvalId)));
       } else toast(E.savedDraft(String(result.record.quoteNo ?? result.record.id)));
-      navigate(recordPeekPath('tc', 'quotations', result.record.id));
+      // Open the saved quotation in place of the editor entry (COM-02: Back must not reopen a blank New Quotation).
+      navigate(recordPagePath('tc', 'quotations', result.record.id), { replace: true });
     } catch (err) {
       if (err instanceof ServiceError && err.fieldErrors) setErrors(err.fieldErrors);
       toast(errorMessage(err), 'danger');
@@ -225,6 +312,8 @@ function QuoteEditor({ data }: { data: EditorData }) {
   };
 
   const title = existing ? E.titleEditNo(String(existing.quoteNo)) : E.titleNew;
+  const quoteRes = getResource('quotations');
+  const customSections = customSection(quoteRes, { ...header, divisionId });
   return (
     <div className="page">
       <PageHeader title={title} />
@@ -297,6 +386,13 @@ function QuoteEditor({ data }: { data: EditorData }) {
           </div>
         </div>
 
+        {customSections.length > 0 && (
+          <>
+            <h2 className="panel-title qt-section">{E.customFields}</h2>
+            <FormSections res={{ ...quoteRes, form: { ...quoteRes.form, sections: customSections } }} sectionIds={['custom']} values={header} setValue={set} errors={errors} access={fieldAccessMap(actor, quoteRes, existing ? 'update' : 'create')} actor={actor} />
+          </>
+        )}
+
         <h2 className="panel-title qt-section">{T.tabs.lineItems}</h2>
         <div className="line-items">
           <ol className="qt-line-list">
@@ -351,7 +447,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                       <label className="field-label" htmlFor={`${id}-q`}>
                         {T.lineTable.qty}
                       </label>
-                      <TextField id={`${id}-q`} className="num" inputMode="numeric" value={String(lines[i].qty)} onChange={(e) => setLine(i, { qty: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
+                      <NumberInput id={`${id}-q`} className="num" rule={NUMBER_LIMITS.qty} value={lines[i].qty} onValueChange={(n) => setLine(i, { qty: n ?? NaN })} />
                     </div>
                     <div className="form-field">
                       <span className="field-label-row">
@@ -365,10 +461,7 @@ function QuoteEditor({ data }: { data: EditorData }) {
                           {formatMoney(l.listPrice)}
                         </span>
                       ) : (
-                        <div className="input-affix has-start">
-                          <span className="affix affix-start">₹</span>
-                          <TextField id={`${id}-lp`} className="num" inputMode="decimal" value={String(lines[i].listPrice)} onChange={(e) => setLine(i, { listPrice: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })} />
-                        </div>
+                        <NumberInput id={`${id}-lp`} className="num" prefix="₹" rule={NUMBER_LIMITS.amount} value={lines[i].listPrice} onValueChange={(n) => setLine(i, { listPrice: n ?? 0 })} />
                       )}
                     </div>
                     <div className="form-field">
@@ -376,15 +469,14 @@ function QuoteEditor({ data }: { data: EditorData }) {
                         {T.lineTable.discount}
                       </label>
                       <div className="qt-disc">
-                        <TextField
+                        <NumberInput
+                          key={byAmount ? 'amt' : 'pct'}
                           id={`${id}-dc`}
                           className="num"
-                          inputMode="decimal"
-                          value={String(byAmount ? lines[i].discountAmt : lines[i].discountPct)}
-                          onChange={(e) => {
-                            const n = Number(e.target.value.replace(/[^\d.]/g, '')) || 0;
-                            setLine(i, byAmount ? { discountAmt: n } : { discountPct: n });
-                          }}
+                          showError={false}
+                          rule={byAmount ? NUMBER_LIMITS.amount : NUMBER_LIMITS.discountPct}
+                          value={byAmount ? lines[i].discountAmt : lines[i].discountPct}
+                          onValueChange={(n) => setLine(i, byAmount ? { discountAmt: n ?? 0 } : { discountPct: n ?? 0 })}
                         />
                         <SelectMenu
                           label={E.lineDiscountUnit(i + 1)}
@@ -396,6 +488,11 @@ function QuoteEditor({ data }: { data: EditorData }) {
                           onChange={(v) => setLine(i, v === 'amt' ? { discountType: 'amt', discountAmt: a.discount || 0, discountPct: 0 } : { discountType: 'pct', discountPct: a.effectivePct, discountAmt: 0 })}
                         />
                       </div>
+                      {discountError(lines[i], byAmount) && (
+                        <p className="field-error" role="alert">
+                          {discountError(lines[i], byAmount)}
+                        </p>
+                      )}
                     </div>
                     <div className="form-field">
                       <label className="field-label" htmlFor={`${id}-g`}>
@@ -442,19 +539,13 @@ function QuoteEditor({ data }: { data: EditorData }) {
               <label className="field-label" htmlFor="qt-freight">
                 {F.freight}
               </label>
-              <div className="input-affix has-start">
-                <span className="affix affix-start">₹</span>
-                <TextField id="qt-freight" inputMode="decimal" value={String(header.freight ?? 0)} onChange={(e) => set('freight', Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} />
-              </div>
+              <NumberInput id="qt-freight" prefix="₹" rule={NUMBER_LIMITS.amount} value={Number(header.freight ?? 0)} onValueChange={(n) => set('freight', n ?? 0)} />
             </div>
             <div className="form-field">
               <label className="field-label" htmlFor="qt-ins">
                 {F.insurance}
               </label>
-              <div className="input-affix has-start">
-                <span className="affix affix-start">₹</span>
-                <TextField id="qt-ins" inputMode="decimal" value={String(header.insurance ?? 0)} onChange={(e) => set('insurance', Number(e.target.value.replace(/[^\d.]/g, '')) || 0)} />
-              </div>
+              <NumberInput id="qt-ins" prefix="₹" rule={NUMBER_LIMITS.amount} value={Number(header.insurance ?? 0)} onValueChange={(n) => set('insurance', n ?? 0)} />
             </div>
             <p className="muted small span-all">
               {sameState ? T.tabContent.intraState : T.tabContent.interState} {T.tabContent.extrasTaxed}

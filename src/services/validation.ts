@@ -8,6 +8,68 @@ import { L } from '../constants/labels';
 
 const V = L.common.form.v;
 
+// ---------------------------------------------------------------- numbers (COM-05)
+
+/** Sensible bounds for the app's numeric inputs. Values outside are rejected with an inline message, never clamped. */
+export const NUMBER_LIMITS = {
+  /** Line quantity: whole units, 1 – 9,999. */
+  qty: { min: 1, max: 9_999, integer: true },
+  /** Discount percentage: 0 – 100 %. */
+  discountPct: { min: 0, max: 100 },
+  /** Any rupee amount: ₹0 – ₹99,99,99,999. */
+  amount: { min: 0, max: 999_999_999, money: true },
+  /** Whole-number counts and readings (print counter, ml, minutes, visits): 0 – 99,99,99,999. */
+  count: { min: 0, max: 999_999_999, integer: true },
+} as const;
+
+export interface NumberRule {
+  min?: number;
+  max?: number;
+  integer?: boolean;
+  /** Shows limits as ₹ with Indian grouping. */
+  money?: boolean;
+}
+
+/**
+ * Strict parse of what the user typed. Never sanitises: a minus sign (unless negatives are allowed by `min < 0`),
+ * an exponent ("1e6"), a plus sign or any other character is an error, so "-2" can never silently become 2.
+ * Indian digit grouping ("1,00,000") is accepted. Empty input is `null` (required-ness is checked elsewhere).
+ */
+export function parseNumberText(raw: string, rule: NumberRule = {}): { value: number | null; error?: string } {
+  const text = String(raw ?? '').trim();
+  if (!text) return { value: null };
+  const negativeOk = rule.min !== undefined && rule.min < 0;
+  const plain = text.replace(/,/g, '');
+  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(plain)) return { value: NaN, error: /^-/.test(plain) && !negativeOk && /^-[\d.,]+$/.test(text) ? V.noNegative : V.digitsOnly };
+  if (plain.startsWith('-') && !negativeOk) return { value: NaN, error: V.noNegative };
+  const value = Number(plain);
+  if (!Number.isFinite(value)) return { value: NaN, error: V.digitsOnly };
+  return { value, error: numberRangeError(value, rule) };
+}
+
+/** Range / whole-number check for an already-parsed value. */
+export function numberRangeError(n: number, rule: NumberRule = {}): string | undefined {
+  if (!Number.isFinite(n)) return V.digitsOnly;
+  if (n < 0 && !(rule.min !== undefined && rule.min < 0)) return V.noNegative;
+  if (rule.integer && !Number.isInteger(n)) return V.wholeNumber;
+  const show = (x: number) => (rule.money ? formatMoney(x) : x.toLocaleString('en-IN'));
+  if (rule.min !== undefined && rule.max !== undefined && (n < rule.min || n > rule.max)) return V.between(show(rule.min), show(rule.max));
+  if (rule.min !== undefined && n < rule.min) return V.min(show(rule.min));
+  if (rule.max !== undefined && n > rule.max) return V.max(show(rule.max));
+  return undefined;
+}
+
+/** True when a NumberInput value was typed but cannot be used: unparseable text (NaN) or outside the rule. Empty is not "bad". */
+export function isBadNumber(n: number | null | undefined, rule: NumberRule = {}): boolean {
+  return n !== null && n !== undefined && (Number.isNaN(n) || !!numberRangeError(n, rule));
+}
+
+/** The rule a number / money field definition implies (money defaults to ₹0 – ₹99,99,99,999; negatives only when min < 0). */
+export function fieldNumberRule(f: Pick<FieldDefinition, 'type' | 'min' | 'max'>): NumberRule {
+  const money = f.type === 'money';
+  return { min: f.min ?? 0, max: f.max ?? (money ? NUMBER_LIMITS.amount.max : undefined), money, integer: false };
+}
+
 export function isEmpty(v: unknown) {
   // Whitespace-only text counts as empty, so required fields cannot be filled with blanks.
   return v === null || v === undefined || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
@@ -54,6 +116,7 @@ function validateCell(col: LineItemColumn, v: unknown): string | undefined {
     const n = Number(v);
     if (Number.isNaN(n)) return V.lineNumber;
     if (col.min !== undefined && n < col.min) return V.lineMin(col.min);
+    if (n < 0 && col.min === undefined) return V.noNegative;
   }
   return undefined;
 }
@@ -96,13 +159,12 @@ export function validateField(f: FieldDefinition, v: unknown, values: Record<str
     }
     case 'number':
     case 'money': {
+      // Typed text (from a NumberInput that could not parse it) is checked strictly: no signs, no exponents.
+      if (typeof v === 'string') return parseNumberText(v, fieldNumberRule(f)).error;
       const n = Number(v);
       if (Number.isNaN(n)) return V.number;
-      // Money limits read as ₹ with Indian grouping (₹10,00,00,00,000), not a bare 10000000000.
-      const show = (x: number) => (f.type === 'money' ? formatMoney(x) : x);
-      if (f.min !== undefined && n < f.min) return V.min(show(f.min));
-      if (f.max !== undefined && n > f.max) return V.max(show(f.max));
-      return undefined;
+      // Money limits read as ₹ with Indian grouping (₹99,99,99,999), not a bare 999999999.
+      return numberRangeError(n, fieldNumberRule(f));
     }
     case 'date':
     case 'datetime': {
