@@ -14,11 +14,13 @@ export const STORAGE_KEY = 'tc.crm.db.v1';
 export const SEED = 2627;
 /** Stored data is re-seeded when this changes (core schema + every module's seed rev). */
 const SCHEMA_VERSION = `2:${SEED_REVISION}`;
+/** Bump to run a one-off migration of stored personal settings. */
+const SETTINGS_REV = 2;
 
 export const defaultDemoSettings = (): DemoSettings => ({ latencyMin: 300, latencyMax: 800, failureRate: 0, idleTimeoutMin: 30 });
 
 export const defaultSettings = (): PersonalSettings => ({
-  theme: 'system',
+  theme: 'light',
   railSkin: 'softCharcoal',
   navDensity: 'balanced',
   sidebarWidth: 240,
@@ -63,6 +65,7 @@ export function createDb(now = clockNow()): Db {
     idempotency: {},
     session: { userId: 'u_rahul', workspaceId: 'tc', signedIn: false, lastActiveAt: nowIso() },
     settings: {},
+    settingsRev: SETTINGS_REV,
     commentDrafts: {},
     formDrafts: {},
   };
@@ -76,6 +79,13 @@ function load(): Db {
       if (parsed.schemaVersion === SCHEMA_VERSION) {
         // One-off, idempotent: data stored before quotation selection existed gets the same closure as a fresh seed.
         normaliseQuoteSelection(parsed.records ?? {}, parsed.approvals ?? [], nowIso());
+        // One-off: the theme default changed from "system" to "light"; stored defaults follow it.
+        if ((parsed.settingsRev ?? 1) < SETTINGS_REV) {
+          Object.values(parsed.settings ?? {}).forEach((st) => {
+            if (st.theme === 'system') st.theme = 'light';
+          });
+          parsed.settingsRev = SETTINGS_REV;
+        }
         return parsed;
       }
     }
