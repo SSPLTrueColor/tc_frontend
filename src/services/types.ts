@@ -268,7 +268,7 @@ export interface Db {
   /** Simulated sign-in: no passwords; MFA roles confirm a displayed one-time code. */
   session: { userId: string; workspaceId: string; signedIn: boolean; lastActiveAt: string };
   settings: Record<string, PersonalSettings>;
-  /** 2 = theme default moved from "system" to "light" (stored "system" values migrated once). */
+  /** Personal-settings migrations: 2 = theme default "light", 3 = rail default "softLight". */
   settingsRev?: number;
   commentDrafts: Record<string, string>;
   formDrafts: Record<string, Record<string, unknown>>;

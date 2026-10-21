@@ -15,13 +15,13 @@ export const SEED = 2627;
 /** Stored data is re-seeded when this changes (core schema + every module's seed rev). */
 const SCHEMA_VERSION = `2:${SEED_REVISION}`;
 /** Bump to run a one-off migration of stored personal settings. */
-const SETTINGS_REV = 2;
+const SETTINGS_REV = 3;
 
 export const defaultDemoSettings = (): DemoSettings => ({ latencyMin: 300, latencyMax: 800, failureRate: 0, idleTimeoutMin: 30 });
 
 export const defaultSettings = (): PersonalSettings => ({
   theme: 'light',
-  railSkin: 'softCharcoal',
+  railSkin: 'softLight',
   navDensity: 'balanced',
   sidebarWidth: 240,
   sidebarCollapsed: false,
@@ -79,10 +79,13 @@ function load(): Db {
       if (parsed.schemaVersion === SCHEMA_VERSION) {
         // One-off, idempotent: data stored before quotation selection existed gets the same closure as a fresh seed.
         normaliseQuoteSelection(parsed.records ?? {}, parsed.approvals ?? [], nowIso());
-        // One-off: the theme default changed from "system" to "light"; stored defaults follow it.
-        if ((parsed.settingsRev ?? 1) < SETTINGS_REV) {
+        // One-off: defaults changed to match the light sign-in screen (theme "system" → "light",
+        // rail "softCharcoal" → "softLight"); stored defaults follow, explicit other choices are kept.
+        const rev = parsed.settingsRev ?? 1;
+        if (rev < SETTINGS_REV) {
           Object.values(parsed.settings ?? {}).forEach((st) => {
-            if (st.theme === 'system') st.theme = 'light';
+            if (rev < 2 && st.theme === 'system') st.theme = 'light';
+            if (rev < 3 && st.railSkin === 'softCharcoal') st.railSkin = 'softLight';
           });
           parsed.settingsRev = SETTINGS_REV;
         }
