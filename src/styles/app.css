@@ -6931,34 +6931,243 @@ td.is-editable:hover > .cell {
 }
 /* ---------------------------------------------------------------- Simulated sign-in (True Color) */
 .login-page {
+  --login-hero-deep: color-mix(in srgb, var(--s-accent) 45%, #140d33);
   min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: var(--sp-4);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   background: var(--s-canvas);
+}
+/* Brand panel */
+.login-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: 48px 56px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 85% 12%, color-mix(in srgb, #fff 18%, transparent) 0, transparent 38%),
+    radial-gradient(circle at 10% 95%, color-mix(in srgb, var(--s-accent) 70%, #fff) 0, transparent 45%),
+    linear-gradient(150deg, var(--s-accent) 0%, var(--login-hero-deep) 100%);
+}
+.login-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto -120px -160px auto;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, #fff 22%, transparent);
+  box-shadow: 0 0 0 60px color-mix(in srgb, #fff 4%, transparent), 0 0 0 120px color-mix(in srgb, #fff 3%, transparent);
+  pointer-events: none;
+}
+.login-hero-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-weight: var(--fw-semibold);
+}
+.login-hero-brand {
+  align-self: flex-start;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 20px -8px rgb(0 0 0 / 35%);
+}
+.login-hero-brand .login-logo {
+  height: 44px;
+}
+.login-hero-body {
+  position: relative;
+  z-index: 1;
+  max-width: 520px;
+}
+.login-eyebrow {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #fff 16%, transparent);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.login-hero-title {
+  margin: var(--sp-4) 0 var(--sp-3);
+  font-size: 32px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: #fff;
+}
+.login-hero-text {
+  margin: 0 0 var(--sp-6);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: color-mix(in srgb, #fff 82%, transparent);
+}
+.login-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.login-features li {
+  display: flex;
+  gap: var(--sp-3);
+  padding: 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #fff 10%, transparent);
+  border: 1px solid color-mix(in srgb, #fff 16%, transparent);
+  backdrop-filter: blur(4px);
+}
+.login-features li > span:last-child {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-supportive);
+  color: color-mix(in srgb, #fff 78%, transparent);
+}
+.login-features strong {
+  color: #fff;
+  font-size: var(--fs-secondary);
+  font-weight: var(--fw-semibold);
+}
+.login-feature-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: color-mix(in srgb, #fff 18%, transparent);
+  color: #fff;
+}
+.login-hero-foot {
+  position: relative;
+  z-index: 1;
+  font-size: var(--fs-xs);
+  color: color-mix(in srgb, #fff 70%, transparent);
+}
+/* Form side */
+.login-side {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: var(--sp-6) var(--sp-4);
 }
 .login-card {
   width: 100%;
-  max-width: 440px;
+  min-width: 0;
+  max-width: 420px;
   display: grid;
-  gap: var(--sp-4);
+  gap: var(--sp-6);
+  padding: 36px 32px 28px;
+  background: var(--s-panel);
+  border: 1px solid var(--s-border);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 4%), 0 12px 32px -8px rgb(16 24 40 / 12%);
 }
 .login-brand {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
 }
-.login-brand .rail-brand {
-  pointer-events: none;
+.login-logo {
+  display: block;
+  flex: none;
+  width: auto;
+  height: 52px;
+}
+.login-brand-divider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  background: var(--s-border);
 }
 .login-title {
+  margin: 0;
   font-size: var(--fs-primary);
   font-weight: var(--fw-semibold);
 }
+.login-brand p {
+  margin: 0;
+}
+.login-form {
+  display: grid;
+  gap: var(--sp-4);
+}
+.login-heading h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+.login-heading p {
+  margin: 0;
+}
 .login-user {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--sp-3);
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--s-sunken);
+  border: 1px solid var(--s-border);
+}
+.login-user-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.login-role {
+  font-size: var(--fs-supportive);
+  font-weight: var(--fw-medium);
+  color: var(--s-accent-text);
+}
+.login-submit {
+  width: 100%;
+}
+.login-form .btn,
+.login-form button[type='submit'] {
+  height: 42px;
+}
+.login-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: stretch;
+  gap: var(--sp-3);
+}
+.login-otp-box {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--s-accent-subtle);
+  border: 1px dashed color-mix(in srgb, var(--s-accent) 45%, transparent);
+}
+.login-otp-code {
+  font-size: 28px;
+  letter-spacing: 8px;
+  color: var(--s-accent-text);
+}
+@media (max-width: 960px) {
+  .login-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .login-hero {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .login-card {
+    padding: 28px 20px 22px;
+    border-radius: 14px;
+  }
 }
 .rs-head h2 {
   margin: 0;
@@ -7659,7 +7868,14 @@ td.is-editable:hover > .cell {
   user-select: text;
 }
 .login-foot {
+  margin: 0;
   text-align: center;
+  text-wrap: balance;
+}
+.login-foot-icon {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-right: 6px;
 }
 
 /* Standard list filter bar (DataTable): search · filters · clear ………… summary */
