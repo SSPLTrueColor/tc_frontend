@@ -851,6 +851,8 @@ const common = {
   dealChain: {
     title: 'Deal chain',
     steps: { leads: 'Lead', opportunities: 'Opportunity', quotations: 'Quotations', salesOrders: 'Sales Order', salesContracts: 'Contract' },
+    /** Short names on the journey pills (the full name shows on hover). */
+    pill: { leads: 'Lead', opportunities: 'Opportunity', quotations: 'Quotation', salesOrders: 'Order', salesContracts: 'Contract' } as Record<string, string>,
     notCreated: 'Not created yet',
     notLinked: 'No lead (created directly)',
     selected: 'Selected',
@@ -858,6 +860,8 @@ const common = {
     quotation: 'Quotation',
     older: (n: number) => `+${n} older`,
     olderTitle: 'Other quotations in this deal',
+    showEarlier: (n: number) => `Show ${n} earlier ${n === 1 ? 'stage' : 'stages'}`,
+    showLess: 'Show only the current stages',
     restricted: 'Not visible for your role',
     revision: (n: number) => `R${n}`,
   },
@@ -1941,7 +1945,7 @@ const customers = {
 // ==================== leads =================================================================
 /** leads labels (docs/GLOSSARY.md §1.2 Leads, §2.2, §3, §5). BRD module 4.2 Lead Management. */
 const leads = {
-  /** Sales workspace (All · Leads · Opportunities · Pipeline), BRD 4.2 / 4.3. */
+  /** Sales workspace (leads and opportunities in one list), BRD 4.2 / 4.3. */
   workspace: {
     title: 'Leads & Opportunities',
     noAccess: 'Sales',
@@ -1954,11 +1958,8 @@ const leads = {
     allOwners: 'All owners',
     unknownStage: 'Unknown',
     openOpportunity: 'Open Opportunity',
-    navLabel: 'Sales workspace',
     columns: { name: 'Lead / Opportunity', type: 'Type', customer: 'Customer', owner: 'Owner', stage: 'Stage', actions: 'Actions' },
     types: { leads: 'Lead', opportunities: 'Opportunity' },
-    tabs: { all: 'All', leads: 'Leads', opportunities: 'Opportunities', pipeline: 'Pipeline' },
-    tabCount: (label: string, n: number) => `${label} · ${n.toLocaleString('en-IN')}`,
   },
   records: {
     leads: { one: 'Lead', many: 'Leads' },
@@ -3967,7 +3968,7 @@ const orders = {
     noApprovals: 'No approval requests yet',
     noApprovalsBody: 'Submit the sales order for approval to start SO-04 approval by the reporting manager.',
     level: (n: number, of: number, label: string) => `Level ${n} of ${of}: ${label}`,
-    decidedBy: (who: string, decision: string, note: string) => `${who}: ${decision}${note ? ` (“${note}”)` : ''}`,
+    decidedBy: (who: string, decision: string, note: string) => `${decision} by ${who}${note ? ` · “${note}”` : ''}`,
     // ERP invoice tab
     erpNotPushed: 'Not pushed to ERP yet',
     erpPending: 'Approved sales orders are pushed to the ERP automatically; the invoice number, invoice date and e-way bill reference come back from the ERP (simulated).',

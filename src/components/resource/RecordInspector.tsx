@@ -418,10 +418,12 @@ function Details({ res, actor, p }: { res: ResourceDefinition; actor: Actor; p: 
         // Same visibility rules as the form (visibleWhen): spec fields of another product sub-type are not listed.
         const fields = s.fields.map((k) => res.fields.find((f) => f.key === k)).filter((f): f is FieldDefinition => !!f && p.access[f.key] !== 'hide' && isVisible(f, p.record));
         if (!fields.length) return null;
+        // Mostly paragraphs (e.g. Commercial Terms): short fields on one line above, each paragraph as a full-text card.
+        const prose = fields.filter((f) => f.type === 'longtext').length >= 2;
         return (
           <section key={s.id} className="detail-section">
             <h3 className="detail-section-title">{s.title}</h3>
-            <dl className="detail-list">
+            <dl className={cx('detail-list', prose && 'is-prose')}>
               {fields.map((f) => (
                 <div key={f.key} className="detail-row" data-type={f.type}>
                   <dt>

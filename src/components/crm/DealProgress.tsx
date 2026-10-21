@@ -1,7 +1,5 @@
 import type { RecordData } from '../../metadata/types';
-import { cx } from '../../lib/format';
 import { L } from '../../constants/labels';
-import { Icon } from '../primitives/Icon';
 
 const P = L.common.dealProgress;
 
@@ -9,11 +7,6 @@ export type StepKey = (typeof STEPS)[number];
 export type StepState = 'done' | 'skipped' | 'current' | 'todo';
 /** Quotation → order → delivery → installation, the BRD §3 sales-to-service cycle for one deal. */
 const STEPS = ['approved', 'sent', 'accepted', 'order', 'orderApproved', 'payment', 'processing', 'dispatched', 'delivered', 'installed'] as const;
-const PHASES: { key: keyof typeof P.phases; steps: readonly StepKey[] }[] = [
-  { key: 'quotation', steps: ['approved', 'sent', 'accepted'] },
-  { key: 'order', steps: ['order', 'orderApproved', 'payment'] },
-  { key: 'fulfilment', steps: ['processing', 'dispatched', 'delivered', 'installed'] },
-];
 
 const SO_STEP: Record<string, StepKey> = {
   pending_approval: 'order',
@@ -86,34 +79,4 @@ export function dealProgress(quote: RecordData | undefined, order: RecordData | 
     return { key, state };
   });
   return { steps, current, driver, next, stopped, complete: !current && !stopped };
-}
-
-/** Phase-grouped stepper: Quotation · Order · Fulfilment, one-line step names, the current step as a pending state. */
-export function DealStepper({ model }: { model: DealProgressModel }) {
-  const phases = PHASES.map((ph) => ({ ...ph, steps: model.steps.filter((s) => ph.steps.includes(s.key)) })).filter((ph) => ph.steps.length);
-  return (
-    <ol className={cx('dj-phases', model.stopped && 'is-stopped')}>
-      {phases.map((ph) => {
-        const state = ph.steps.every((s) => s.state === 'done' || s.state === 'skipped') ? 'done' : ph.steps.some((s) => s.state === 'current') ? 'current' : 'todo';
-        return (
-          <li key={ph.key} className={cx('dj-phase', `is-${state}`)} style={{ flexGrow: ph.steps.length }}>
-            <span className="dj-phase-title">{P.phases[ph.key]}</span>
-            <ol className="dj-steps">
-              {ph.steps.map((s) => (
-                <li key={s.key} className={cx('dj-step', `is-${s.state}`)} aria-current={s.state === 'current' ? 'step' : undefined} data-tooltip={s.state === 'skipped' ? P.skipped(P.steps[s.key]) : P.steps[s.key]}>
-                  <span className="dj-dot" aria-hidden="true">
-                    {s.state === 'done' && <Icon name="check" size={10} />}
-                  </span>
-                  <span className="dj-label">
-                    {s.state === 'current' ? P.pending[s.key] : s.state === 'skipped' ? `${P.short[s.key]} · ${P.skippedShort}` : P.short[s.key]}
-                  </span>
-                  <span className="sr-only">{P.steps[s.key]}</span>
-                </li>
-              ))}
-            </ol>
-          </li>
-        );
-      })}
-    </ol>
-  );
 }

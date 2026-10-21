@@ -81,7 +81,7 @@ export function LinesTab({ actor, record }: RecordExtensionProps) {
   const v = q.data;
   const o = v.order;
   return (
-    <div className="details">
+    <div className="details ord-tab">
       {v.diff ? <DiffAlert diff={v.diff} tolerance={getPolicies().soTolerancePct} /> : <InlineAlert tone="info">{O.diff.noQuotation}</InlineAlert>}
       <LinesTable lines={v.lines} diffAgainst={v.quotation ? v.quotationLines : undefined} />
       <TotalsBlock
@@ -102,7 +102,7 @@ export function LinesTab({ actor, record }: RecordExtensionProps) {
 function ApprovalList({ list }: { list: Approval[] }) {
   return (
     
-      <Table>
+      <Table className="ord-approvals">
         <thead>
           <tr>
             <th scope="col">{O.table.type}</th>
@@ -149,7 +149,7 @@ export function ApprovalTab({ actor, record }: RecordExtensionProps) {
   if (!q.data) return <Loading q={q} />;
   const list = q.data.approvals.filter((a) => a.type === APPROVAL);
   return (
-    <div className="details">
+    <div className="details ord-tab">
       <dl className="detail-list">
         <Row label={F.status}>{chip('soStatus', q.data.order.status)}</Row>
         <Row label={F.financeCheck}>{q.data.order.financeCheck ? O.common.yes : O.common.no}</Row>
@@ -178,7 +178,7 @@ export function PaymentsTab({ actor, record }: RecordExtensionProps) {
   const total = Number(v.order.grandTotal);
   const FM = O.fields.paymentMilestones;
   return (
-    <div className="details">
+    <div className="details ord-tab">
       <dl className="detail-list">
         <Row label={R.received}>{R.receivedOf(formatMoney(received), formatMoney(total))}</Row>
         <Row label={R.outstanding}>{formatMoney(Math.max(0, total - received))}</Row>
@@ -208,7 +208,7 @@ export function PaymentsTab({ actor, record }: RecordExtensionProps) {
             <tbody>
               {v.milestones.map((m) => (
                 <tr key={m.id}>
-                  <td>{String(m.label)}</td>
+                  <td className="ord-milestone">{String(m.label)}</td>
                   <td className="num">{String(m.percent)}%</td>
                   <td className="num">{formatMoney(Number(m.amount))}</td>
                   <td>
@@ -420,7 +420,7 @@ export function ProcessingTab({ actor, record }: RecordExtensionProps) {
   );
   if (!editable)
     return (
-      <div className="details">
+      <div className="details ord-tab">
         {!can(actor, 'orders.process') && <InlineAlert tone="info">{R.processingViewOnly}</InlineAlert>}
         <dl className="detail-list">
           <Row label={R.poToPrincipal}>{o.poToPrincipalNo ? `${o.poToPrincipalNo}${o.poToPrincipalDate ? ` · ${formatDate(String(o.poToPrincipalDate))}` : ''}` : <EmptyValue />}</Row>
@@ -434,7 +434,7 @@ export function ProcessingTab({ actor, record }: RecordExtensionProps) {
       </div>
     );
   return (
-    <div className="details">
+    <div className="details ord-tab">
       <div className="form-grid cols-2">
         <Field id="pr-po" label={F.poToPrincipalNo} error={errors.poToPrincipalNo}>
           <TextField id="pr-po" maxLength={40} value={String(f.poToPrincipalNo)} onChange={(e) => set({ poToPrincipalNo: e.target.value })} aria-invalid={!!errors.poToPrincipalNo || undefined} />
@@ -508,7 +508,7 @@ export function ErpInvoiceTab({ actor, record }: RecordExtensionProps) {
   const o = q.data.order;
   const approved = !['pending_approval', 'cancelled'].includes(String(o.status));
   return (
-    <div className="details">
+    <div className="details ord-tab">
       {!approved ? <InlineAlert tone="info">{R.erpBeforeApproval}</InlineAlert> : !o.invoiceNo && <InlineAlert tone="info">{R.erpPending}</InlineAlert>}
       <dl className="detail-list">
         <Row label={F.financeCheck}>{o.financeCheck ? O.common.yes : O.common.no}</Row>
@@ -551,7 +551,7 @@ export function DispatchTab({ actor, record }: RecordExtensionProps) {
   if (!q.data) return <Loading q={q} />;
   const list = q.data.dispatches;
   return (
-    <div className="details">
+    <div className="details ord-tab">
       {list.length ? (
         list.map((d) => (
           <section key={d.id} className="detail-section">
@@ -610,7 +610,7 @@ export function ContractTab({ actor, record }: RecordExtensionProps) {
     }
   };
   return (
-    <div className="details">
+    <div className="details ord-tab">
       {!approved && <InlineAlert tone="info">{R.contractAfterApproval}</InlineAlert>}
       {current ? (
         <section className="detail-section">
@@ -743,7 +743,7 @@ export function HoldCancelTab({ actor, record }: RecordExtensionProps) {
   const list = q.data.approvals.filter((a) => a.type !== APPROVAL);
   const before = o.statusBeforeHold ? masterValue('soStatus', o.statusBeforeHold)?.label ?? String(o.statusBeforeHold) : '';
   return (
-    <div className="details">
+    <div className="details ord-tab">
       {o.status === 'on_hold' && <InlineAlert tone="danger" title={O.banner.hold}>{before ? R.onHoldSince(before) : String(o.holdReason ?? '')}</InlineAlert>}
       <dl className="detail-list">
         <Row label={F.status}>{chip('soStatus', o.status)}</Row>

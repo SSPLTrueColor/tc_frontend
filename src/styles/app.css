@@ -8322,8 +8322,7 @@ a.btn:focus-visible,
 .board-card-actions .btn {
   width: 100%;
 }
-/* Sales workspace: page-level tabs (parent) directly under the title; the page's saved views below read as pills (children) */
-.sales-nav,
+/* Page-level tabs directly under the title */
 .page-nav {
   display: flex;
   align-items: stretch;
@@ -8335,31 +8334,25 @@ a.btn:focus-visible,
   overflow-x: auto;
   scrollbar-width: none;
 }
-.sales-nav::-webkit-scrollbar,
 .page-nav::-webkit-scrollbar {
   display: none;
 }
 /* Tabs reuse .view-tab / .view-tab-btn; only the static underline (no sliding ink here) and link reset are added */
-.sales-nav .view-tab,
 .page-nav .view-tab {
   height: auto;
 }
-.sales-nav .view-tab-btn,
 .page-nav .view-tab-btn {
   text-decoration: none;
   border-radius: 0;
 }
-.sales-nav .view-tab-btn:hover,
 .page-nav .view-tab-btn:hover {
   text-decoration: none;
 }
-.sales-nav .view-tab-btn:focus-visible,
 .page-nav .view-tab-btn:focus-visible {
   outline: 2px solid var(--s-focus);
   outline-offset: -4px;
   border-radius: var(--c-radius-control);
 }
-.sales-nav .view-tab.is-active::after,
 .page-nav .view-tab.is-active::after {
   display: block;
   left: 4px;
@@ -8403,7 +8396,6 @@ a.btn:focus-visible,
   align-self: center;
 }
 @media (max-width: 640px) {
-  .sales-nav,
   .page-nav {
     gap: 0;
     padding: 0 var(--sp-2);
@@ -10126,3 +10118,67 @@ textarea.input.input {
   min-height: 56px;
   line-height: 1.45;
 }
+
+/* Paragraph sections (Commercial Terms on quotations, orders, contracts): short fields such as the template sit on one
+   line above; each paragraph is a card of equal width showing its full text, so nothing is cut off or misaligned. */
+.detail-list.is-prose,
+.inspector-page .detail-list.is-prose {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--sp-3);
+  row-gap: var(--sp-3);
+}
+.detail-list.is-prose > .detail-row:not([data-type="longtext"]) {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.detail-list.is-prose > .detail-row:not([data-type="longtext"]) dd { width: auto; }
+.detail-list.is-prose > .detail-row[data-type="longtext"] {
+  grid-column: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--s-border);
+  border-radius: var(--c-radius-control);
+  background: color-mix(in srgb, var(--s-sunken) 55%, var(--s-panel));
+}
+.detail-list.is-prose > .detail-row[data-type="longtext"] dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inspector-page .detail-list.is-prose .detail-icon { display: inline-block; color: var(--s-text-muted); }
+.detail-list.is-prose > .detail-row[data-type="longtext"] dd {
+  width: 100%;
+  overflow: visible;
+  line-height: 1.55;
+  color: var(--s-text-secondary);
+}
+.detail-list.is-prose .clamp-2 {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+  white-space: pre-wrap;
+}
+@media (max-width: 760px) {
+  .detail-list.is-prose,
+  .inspector-page .detail-list.is-prose { grid-template-columns: minmax(0, 1fr); }
+  .detail-list.is-prose > .detail-row:not([data-type="longtext"]) { flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+}
+
+/* Sales order record tabs (Approval, Payment Schedule, …): summary, table, actions and notes stacked with even spacing. */
+.details.ord-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.details.ord-tab > * { margin: 0; }
+.details.ord-tab > .row-gap + p { margin-top: calc(var(--sp-2) - var(--sp-4)); }
+/* Approvals: multi-line cells (levels, decisions) read from the top so each first line lines up. */
+.mini-table.ord-approvals td { vertical-align: top; }
+.mini-table.ord-approvals td > .chip { margin-top: -2px; }
+.mini-table .ord-milestone { min-width: 180px; }
+.details.ord-tab > .btn { align-self: flex-start; }
